@@ -1,0 +1,157 @@
+hackathon_sources:
+  web3_hackathon_platforms:
+  - name: ETHGlobal
+    type: hackathon_platform
+    url: https://ethglobal.com/
+    focus: Ethereum hackathons, sponsor tracks, ecosystem bounties, prototype ideas
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Devpost
+    type: hackathon_platform
+    url: https://devpost.com/hackathons
+    focus: hackathon listings, sponsor challenges, builder competitions
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DoraHacks
+    type: hackathon_platform
+    url: https://dorahacks.io/
+    focus: Web3 hackathons, grant rounds, bounties, ecosystem challenges
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Devfolio
+    type: hackathon_platform
+    url: https://devfolio.co/hackathons
+    focus: Indian and global hackathons, Web3 developer events
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Gitcoin
+    type: bounty_or_grants_platform
+    url: https://www.gitcoin.co/
+    focus: bounties, builder opportunities, grants, public goods
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  ecosystem_hackathons:
+  - name: Chainlink Hackathons
+    type: ecosystem_hackathon
+    url: https://chain.link/hackathon
+    focus: oracles, cross-chain, data feeds, RWA, DeFi
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Solana Hackathons
+    type: ecosystem_hackathon
+    url: https://solana.com/developers/events
+    focus: high-performance apps, DePIN, payments, stablecoins
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Polygon Hackathons
+    type: ecosystem_hackathon
+    url: https://polygon.technology/
+    focus: ZK, scaling, RWA, identity, Web3 applications
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Starknet Events
+    type: ecosystem_hackathon
+    url: https://www.starknet.io/en/content/events
+    focus: ZK, Cairo, scalability, on-chain applications
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Filecoin Events
+    type: ecosystem_hackathon
+    url: https://filecoin.io/events/
+    focus: decentralized storage, DePIN, data infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  challenge_platforms:
+  - name: HackerEarth Challenges
+    type: challenge_platform
+    url: https://www.hackerearth.com/challenges/
+    focus: innovation challenges, enterprise problem statements, technology tracks
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Challenge.gov
+    type: government_challenge_platform
+    url: https://www.challenge.gov/
+    focus: public-sector innovation challenges, data and technology competitions
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Startup India Challenges
+    type: government_or_startup_challenge_platform
+    url: https://www.startupindia.gov.in/content/sih/en/ams-application/challenge.html
+    focus: Indian innovation challenges, startup problem statements
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Smart India Hackathon
+    type: government_hackathon
+    url: https://www.sih.gov.in/
+    focus: government problem statements, student prototypes, public-sector needs
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  cps_challenges:
+  - name: Smart India Hackathon
+    type: government_hackathon
+    url: https://www.sih.gov.in/
+    focus: smart cities, IoT, CPS, transportation, public infrastructure, cyber security
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Challenge.gov
+    type: government_challenge_platform
+    url: https://www.challenge.gov/
+    focus: public-sector innovation, infrastructure, smart systems, resilience
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: DARPA Challenges
+    type: government_challenge_platform
+    url: https://www.darpa.mil/work-with-us
+    focus: robotics, autonomy, resilient systems, CPS
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Hackster.io Contests
+    type: hardware_hackathon_platform
+    url: https://www.hackster.io/contests
+    focus: IoT, embedded systems, robotics, smart devices, CPS prototypes
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IEEE Hackathons / Challenges
+    type: challenge_platform
+    url: https://www.ieee.org/
+    focus: smart grid, IoT, robotics, CPS, embedded systems
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60

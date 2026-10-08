@@ -1,0 +1,5 @@
+model: qwen3:8b
+endpoint: http://localhost:11434/api/generate
+timeout: 120
+
+retries: 3

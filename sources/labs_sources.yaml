@@ -1,0 +1,125 @@
+labs:
+- name: Ethereum Foundation
+  url: https://ethereum.foundation/
+  focus_pages:
+  - /ecosystem-support-program/
+  - /blog/
+  - /research/
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Chainlink Labs
+  url: https://chain.link/
+  focus_pages:
+  - /research
+  - /ecosystem
+  - /resources
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Protocol Labs
+  url: https://protocol.ai/
+  focus_pages:
+  - /work
+  - /blog
+  - /projects
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Offchain Labs
+  url: https://offchainlabs.com/
+  focus_pages:
+  - /research
+  - /blog
+  - /arbitrum
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Input Output Global
+  url: https://iohk.io/
+  focus_pages:
+  - /en/research/
+  - /en/blog/
+  - /en/projects/
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: ConsenSys Research
+  url: https://consensys.io/
+  focus_pages:
+  - /research
+  - /blog
+  - /solutions
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: NIST Cyber-Physical Systems Public Working Group
+  url: https://pages.nist.gov/cpspwg/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 4
+    max_depth: 1
+    max_seconds: 60
+- name: NIST CPS / IoT Testbed
+  url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
+  focus_pages:
+  - /
+  limits:
+    max_pages: 4
+    max_depth: 1
+    max_seconds: 60
+- name: Vanderbilt Institute for Software Integrated Systems
+  url: https://www.isis.vanderbilt.edu/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: UC Berkeley Cyber-Physical Systems Research
+  url: https://ptolemy.berkeley.edu/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Carnegie Mellon CyLab
+  url: https://www.cylab.cmu.edu/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: University of Birmingham RITICS
+  url: https://uob-ritics.github.io/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Singapore University of Technology and Design iTrust
+  url: https://itrust.sutd.edu.sg/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120
+- name: Fraunhofer CPS / Industrial Security Research
+  url: https://www.sit.fraunhofer.de/en/offers/fields-of-expertise/cyber-physical-systems/
+  focus_pages:
+  - /
+  limits:
+    max_pages: 12
+    max_depth: 2
+    max_seconds: 120

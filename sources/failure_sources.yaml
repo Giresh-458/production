@@ -1,0 +1,182 @@
+failure_sources:
+  incident_databases:
+  - name: Rekt News
+    type: incident_database
+    url: https://rekt.news/
+    focus: DeFi exploits, governance failures, oracle failures, bridge attacks
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DeFiLlama Hacks
+    type: incident_database
+    url: https://defillama.com/hacks
+    focus: DeFi hacks, exploit database, losses
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Immunefi Reports
+    type: security_reports
+    url: https://immunefi.com/blog/
+    focus: Web3 security, bug bounty reports, exploit analysis
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Chainalysis Crypto Crime Reports
+    type: research_report
+    url: https://www.chainalysis.com/blog/
+    focus: crypto crime, illicit flows, fraud trends
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: CertiK Blog
+    type: security_blog
+    url: https://www.certik.com/resources/blog
+    focus: smart contract exploits, security incidents
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: SlowMist Hacked Archive
+    type: incident_database
+    url: https://hacked.slowmist.io/
+    focus: blockchain hacks, exploit archive
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  audit_security_blogs:
+  - name: OpenZeppelin Blog
+    type: security_blog
+    url: https://blog.openzeppelin.com/
+    focus: smart contract security, incident analysis, audit lessons
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Trail of Bits Blog
+    type: security_blog
+    url: https://blog.trailofbits.com/
+    focus: security research, smart contract vulnerabilities
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ConsenSys Diligence
+    type: security_blog
+    url: https://consensys.io/diligence/blog/
+    focus: smart contract audits, security best practices
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ChainSecurity Blog
+    type: security_blog
+    url: https://www.chainsecurity.com/blog
+    focus: smart contract vulnerabilities, DeFi security
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  protocol_postmortems:
+  - name: MakerDAO Forum
+    type: governance_forum
+    url: https://forum.makerdao.com/
+    focus: stablecoin governance, depeg risks, liquidation events
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Curve Finance Blog
+    type: protocol_blog
+    url: https://news.curve.fi/
+    focus: DeFi incidents, liquidity, stablecoin pools
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Flashbots Writings
+    type: research_blog
+    url: https://writings.flashbots.net/
+    focus: MEV, transaction ordering, block building risks
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  carbon_esg_failure_sources:
+  - name: Verra News
+    type: registry_news
+    url: https://verra.org/news/
+    focus: carbon credit integrity, registry issues, market integrity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Gold Standard News
+    type: registry_news
+    url: https://www.goldstandard.org/news
+    focus: carbon credit standards, MRV, market integrity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Carbon Market Watch
+    type: watchdog_reports
+    url: https://carbonmarketwatch.org/publications/
+    focus: carbon market fraud, double counting, credit quality
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps_failures:
+  - name: CISA ICS Advisories
+    type: vulnerability_advisory
+    url: https://www.cisa.gov/news-events/cybersecurity-advisories
+    focus: ICS vulnerabilities, OT advisories, critical infrastructure incidents
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: ICS Advisory Project / CISA ICS
+    type: incident_advisory
+    url: https://www.cisa.gov/topics/industrial-control-systems
+    focus: industrial control systems, OT security, vulnerability reports
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Dragos Year in Review
+    type: security_report
+    url: https://www.dragos.com/
+    focus: industrial control system threats, OT incidents, adversary activity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Nozomi OT / IoT Security Reports
+    type: security_report
+    url: https://www.nozominetworks.com/
+    focus: OT and IoT threat intelligence
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Claroty Research
+    type: security_blog
+    url: https://claroty.com/team82/research
+    focus: CPS vulnerabilities, OT/IoT security research
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: MITRE ATT&CK for ICS
+    type: knowledge_base
+    url: https://attack.mitre.org/matrices/ics/
+    focus: ICS adversary tactics, techniques, and procedures
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120

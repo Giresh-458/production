@@ -1,0 +1,173 @@
+investment_sources:
+  vc_blogs:
+  - name: a16z crypto
+    type: vc_blog
+    url: https://a16zcrypto.com/posts/
+    focus: crypto investment theses, infrastructure, regulation, stablecoins, tokenization
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Paradigm
+    type: research_blog
+    url: https://www.paradigm.xyz/writing
+    focus: protocol research, DeFi, MEV, stablecoins, cryptoeconomics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Variant Fund
+    type: vc_blog
+    url: https://variant.fund/writing
+    focus: ownership economy, stablecoins, consumer crypto, infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Multicoin Capital
+    type: vc_blog
+    url: https://multicoin.capital/writing/
+    focus: DePIN, Solana ecosystem, tokenomics, infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Dragonfly
+    type: vc_blog
+    url: https://www.dragonfly.xyz/research
+    focus: crypto markets, DeFi, infrastructure, stablecoins
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Pantera Capital
+    type: investor_insights
+    url: https://panteracapital.com/blockchain-letter/
+    focus: digital assets, blockchain markets, infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Blockchain Capital
+    type: vc_blog
+    url: https://www.blockchaincapital.com/blog
+    focus: crypto infrastructure, Web3, stablecoins, tokenization
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: CoinFund
+    type: vc_blog
+    url: https://www.coinfund.io/blog
+    focus: Web3, DeFi, infrastructure, digital assets
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  research_reports:
+  - name: Electric Capital Developer Reports
+    type: market_report
+    url: https://www.developerreport.com/
+    focus: developer activity, ecosystem growth, open-source signals
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Galaxy Digital Research
+    type: research_report
+    url: https://www.galaxy.com/insights/research/
+    focus: digital assets, market infrastructure, stablecoins, tokenization
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Messari Research
+    type: research_report
+    url: https://messari.io/research
+    focus: crypto networks, DePIN, stablecoins, tokenomics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Delphi Digital
+    type: research_report
+    url: https://members.delphidigital.io/reports
+    focus: crypto research, DeFi, infrastructure, tokenomics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  venture_arms:
+  - name: Coinbase Ventures
+    type: portfolio_or_blog
+    url: https://www.coinbase.com/ventures
+    focus: crypto startups, infrastructure, stablecoins, compliance
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Binance Labs
+    type: portfolio_or_blog
+    url: https://www.binance.com/en/blog/ecosystem
+    focus: crypto startups, infrastructure, DeFi, stablecoins
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Circle Ventures
+    type: portfolio_or_blog
+    url: https://www.circle.com/en/circle-ventures
+    focus: stablecoins, payments, settlement infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps_investment:
+  - name: Lux Capital
+    type: vc_blog
+    url: https://www.luxcapital.com/
+    focus: robotics, autonomy, deep tech, CPS, industrial systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DCVC
+    type: vc_blog
+    url: https://www.dcvc.com/
+    focus: deep tech, industrial systems, robotics, cyber-physical infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Eclipse Ventures
+    type: vc_blog
+    url: https://www.eclipse.vc/
+    focus: industrial technology, robotics, manufacturing, automation
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: a16z American Dynamism
+    type: vc_blog
+    url: https://a16z.com/american-dynamism/
+    focus: infrastructure, defense, manufacturing, physical-world systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Energy Impact Partners
+    type: vc_blog
+    url: https://www.energyimpactpartners.com/
+    focus: grid, energy, climate infrastructure, industrial systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Robotics Business Review
+    type: market_report
+    url: https://www.roboticsbusinessreview.com/
+    focus: robotics market trends, industrial automation, autonomous systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120

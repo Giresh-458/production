@@ -1,0 +1,315 @@
+sources:
+  tier_1:
+  - name: Ethereum ESP RFPs
+    url: https://esp.ethereum.foundation/applicants/rfp
+    focus: current Ethereum requests for proposals, research, security, cryptography,
+      protocol, academic and ecosystem infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants/rfp
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ethereum ESP Open Rounds
+    url: https://esp.ethereum.foundation/applicants/open-rounds
+    focus: active Ethereum grant rounds and time-limited funding opportunities
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants/open-rounds
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ethereum Road to Devcon 8 India University Program
+    url: https://esp.ethereum.foundation/applicants/rfp/rtd8_india_academic
+    focus: India universities, faculty, academic engagement, Ethereum research and
+      education
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants/rfp/rtd8_india_academic
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ethereum Foundation ESP
+    url: https://esp.ethereum.foundation/applicants
+    focus: protocol research, identity, zero-knowledge, public goods, security, infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Chainlink Grants
+    url: https://chain.link/community/grants
+    direct_page: true
+    focus: oracles, RWA, proof of reserve, data feeds, cross-chain, stablecoins
+    collection:
+      mode: url_validation
+  - name: Polygon Grants
+    url: https://polygon.technology/village/startups
+    focus: zero-knowledge, RWA, identity, scalability, consumer applications
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - polygon.technology
+      - hadronfc.com
+      discovery:
+        start_urls:
+        - https://polygon.technology/village/startups
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Solana Grants and Funding
+    url: https://solana.org/grants-funding
+    focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
+      apps
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - solana.org
+      - solana.com
+      - earn.superteam.fun
+      discovery:
+        start_urls:
+        - https://solana.org/grants-funding
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  tier_2:
+  - name: NEAR Funding
+    url: https://www.near.org/funding
+    focus: identity, usability, chain abstraction, payments, consumer blockchain infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - near.org
+      - docs.metapool.app
+      discovery:
+        start_urls:
+        - https://www.near.org/funding
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ripple UBRI
+    url: https://ripple.com/impact/ubri/
+    focus: university blockchain research, payments, stablecoins, digital assets,
+      identity
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ripple.com
+      discovery:
+        start_urls:
+        - https://ripple.com/impact/ubri/
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ripple XRPL Builder Funding
+    url: https://ripple.com/insights/supporting-innovation-on-the-xrp-ledger/
+    focus: XRPL builders, tokenization, stablecoins, payments, financial infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ripple.com
+      - xrplgrants.org
+      discovery:
+        start_urls:
+        - https://ripple.com/insights/supporting-innovation-on-the-xrp-ledger/
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Filecoin Grants and Funding
+    url: https://github.com/filecoin-project/devgrants
+    direct_page: true
+    focus: DePIN, decentralized storage, data infrastructure, retrieval, verifiable
+      compute
+    collection:
+      mode: api
+      provider: github
+      repo: filecoin-project/devgrants
+      pagination: true
+      detail_fetch: true
+      limits:
+        max_pages: 1
+        max_documents: 50
+  tier_3:
+  - name: MeitY
+    url: https://www.meity.gov.in/whats-new
+    focus: India digital public infrastructure, identity, trust, policy-linked funding
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - meity.gov.in
+      discovery:
+        start_urls:
+        - https://www.meity.gov.in/whats-new
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: DST India
+    url: https://dst.gov.in/
+    focus: India science funding, academic research, frontier technology, cybersecurity,
+      digital systems
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - dst.gov.in
+      discovery:
+        start_urls:
+        - https://dst.gov.in/
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        max_pages: 50
+  cps_funding:
+  - name: NSF CPS Foundations and Connected Communities
+    url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
+    focus: cyber-physical systems, AI-enabled autonomy, formal methods, safety, security,
+      privacy, trustworthiness, IoT, CPS platforms
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - nsf.gov
+      - www.nsf.gov
+      discovery:
+        start_urls:
+        - https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        max_pages: 30
+  - name: NSF Cyber Physical and Intelligent Systems
+    url: https://www.nsf.gov/cise/cyber-physical-intelligent-systems
+    focus: robotics, CPS, intelligent systems, security, privacy, trust, safe and
+      reliable systems
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - nsf.gov
+      - www.nsf.gov
+      discovery:
+        start_urls:
+        - https://www.nsf.gov/cise/cyber-physical-intelligent-systems
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: NIST CPS / IoT Testbed
+    url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
+    focus: CPS testbeds, IoT, smart grid, SCADA, robotics, transportation, autonomous
+      vehicles, smart cities, cybersecurity
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - nist.gov
+      - www.nist.gov
+      discovery:
+        start_urls:
+        - https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
+        max_depth: 3
+        max_pages: 4
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: DARPA
+    url: https://www.darpa.mil/
+    focus: resilient autonomous systems, cyber-physical security, critical infrastructure,
+      robotics, embedded systems
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - darpa.mil
+      - www.darpa.mil
+      discovery:
+        start_urls:
+        - https://www.darpa.mil/
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: ARPA-E
+    url: https://arpa-e-foa.energy.gov/Default.aspx
+    focus: smart grid, energy systems, resilient infrastructure, control systems
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - arpa-e-foa.energy.gov
+      discovery:
+        start_urls:
+        - https://arpa-e-foa.energy.gov/Default.aspx
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: CISA ICS
+    url: https://www.cisa.gov/topics/industrial-control-systems
+    focus: industrial control systems, critical infrastructure security, OT security
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - cisa.gov
+      - www.cisa.gov
+      discovery:
+        start_urls:
+        - https://www.cisa.gov/topics/industrial-control-systems
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Grants.gov Public Opportunities API
+    url: https://api.grants.gov/v1/api/search2
+    direct_page: true
+    focus: U.S. federal research and technology funding opportunities, open and forecasted
+      grants
+    collection:
+      mode: api
+      provider: grants_gov
+      pagination: true
+      detail_fetch: true
+      limits:
+        max_pages: 2
+        max_documents: 100

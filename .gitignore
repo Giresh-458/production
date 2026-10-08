@@ -1,0 +1,41 @@
+__pycache__/
+*.pyc
+.venv
+.venv-test/
+# Outputs and databases
+outputs/*
+!outputs/**/.gitkeep
+*.db
+*.sqlite3
+
+# Secrets
+.env
+.env.*
+*secret*
+*credentials*
+
+# Tools
+.pytest_cache/
+.coverage
+htmlcov/
+
+*_backup.py
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Temporary directories
+tmp/
+scratch/
+
+# Pipeline runtime artifacts
+*.log
+pipeline_stats.json
+fix_*.py
+patch.py
+gen_test.py
+skip_funding.py

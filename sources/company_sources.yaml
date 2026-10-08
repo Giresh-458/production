@@ -1,0 +1,265 @@
+companies:
+  rwa:
+  - name: Centrifuge
+    url: https://centrifuge.io/
+    source_type: Blockchain-native
+    focus: RWA tokenization
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Securitize
+    url: https://securitize.io/
+    source_type: Blockchain-native
+    focus: tokenized securities
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Ondo Finance
+    url: https://ondo.finance/
+    source_type: Blockchain-native
+    focus: tokenized financial products
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: JPMorgan Kinexys
+    url: https://www.jpmorgan.com/kinexys
+    source_type: Enterprise adopter
+    focus: tokenized financial infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  esg_carbon:
+  - name: Toucan Protocol
+    url: https://toucan.earth/
+    source_type: Blockchain-native
+    focus: carbon markets
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Regen Network
+    url: https://www.regen.network/
+    source_type: Blockchain-native
+    focus: ecological assets and carbon markets
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Energy Web
+    url: https://www.energyweb.org/
+    source_type: Enterprise adopter
+    focus: energy and climate infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  zk_iov:
+  - name: zkSync
+    url: https://zksync.io/
+    source_type: Blockchain-native
+    focus: zero-knowledge infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: StarkWare
+    url: https://starkware.co/
+    source_type: Blockchain-native
+    focus: zero-knowledge scalability
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Polygon ID
+    url: https://polygon.technology/polygon-id
+    source_type: Blockchain-native
+    focus: ZK identity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  did:
+  - name: SpruceID
+    url: https://www.spruceid.com/
+    source_type: Blockchain-native
+    focus: decentralized identity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: cheqd
+    url: https://cheqd.io/
+    source_type: Blockchain-native
+    focus: verifiable credentials
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Dock
+    url: https://www.dock.io/
+    source_type: Blockchain-native
+    focus: credential infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  depin:
+  - name: Helium
+    url: https://www.helium.com/
+    source_type: Blockchain-native
+    focus: decentralized wireless infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Hivemapper
+    url: https://hivemapper.com/
+    source_type: Blockchain-native
+    focus: decentralized mapping
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Filecoin
+    url: https://filecoin.io/
+    source_type: Blockchain-native
+    focus: decentralized storage
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: GEODNET
+    url: https://geodnet.com/
+    source_type: Blockchain-native
+    focus: decentralized positioning infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  mev:
+  - name: Flashbots
+    url: https://www.flashbots.net/
+    source_type: Blockchain-native
+    focus: MEV research and infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Jito Labs
+    url: https://www.jito.network/
+    source_type: Blockchain-native
+    focus: MEV and validator infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Radius
+    url: https://www.radius.xyz/
+    source_type: Blockchain-native
+    focus: transaction ordering and shared sequencing
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  stablecoins:
+  - name: Circle
+    url: https://www.circle.com/
+    source_type: Blockchain-native
+    focus: stablecoins
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Paxos
+    url: https://paxos.com/
+    source_type: Blockchain-native
+    focus: regulated stablecoin infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: PayPal Stablecoin
+    url: https://www.paypal.com/us/digital-wallet/manage-money/crypto/pyusd
+    source_type: Enterprise adopter
+    focus: stablecoin payments
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: BVNK
+    url: https://www.bvnk.com/
+    source_type: Enterprise adopter
+    focus: stablecoin settlement infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps:
+  - name: Siemens Industrial Cybersecurity
+    url: https://www.siemens.com/
+    source_type: Enterprise adopter
+    focus: industrial automation, OT security, smart manufacturing, CPS security
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Schneider Electric Industrial Cybersecurity
+    url: https://www.se.com/
+    source_type: Enterprise adopter
+    focus: industrial control systems, energy management, OT cybersecurity
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Rockwell Automation
+    url: https://www.rockwellautomation.com/en-us.html
+    source_type: Enterprise adopter
+    focus: industrial automation, connected manufacturing, OT systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ABB Ability
+    url: https://www.abb.com/global/en/company/innovation/news/abb-ability
+    source_type: Enterprise adopter
+    focus: industrial digitalization, robotics, power systems, CPS monitoring
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Bosch Connected Industry
+    url: https://www.bosch-connected-industry.com/
+    source_type: Enterprise adopter
+    focus: industrial IoT, smart manufacturing, CPS data platforms
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Siemens Mobility
+    url: https://www.mobility.siemens.com/
+    source_type: Enterprise adopter
+    focus: intelligent transportation, rail CPS, mobility infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: NVIDIA Isaac / Omniverse
+    url: https://developer.nvidia.com/isaac
+    source_type: Technology platform
+    focus: robotics simulation, digital twins, autonomous systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: MathWorks Simulink
+    url: https://www.mathworks.com/products/simulink.html
+    source_type: Technology platform
+    focus: model-based design, CPS simulation, control systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120

@@ -1,0 +1,185 @@
+expert_sources:
+  india_premier_institutions:
+  - name: IISc CrIS Lab
+    type: lab_page
+    url: https://cris.csa.iisc.ac.in/
+    focus: cryptography, security, privacy, blockchain applications, secure computation
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IISc CSA Faculty
+    type: faculty_page
+    url: https://www.csa.iisc.ac.in/people-all/faculty/
+    focus: cryptography, security, distributed systems, privacy, algorithmic game
+      theory
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: AI at IISc Faculty
+    type: faculty_page
+    url: https://ai.iisc.ac.in/faculty/
+    focus: blockchain technology, mechanism design, cryptography, distributed intelligence
+      systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IISc SINESys Lab
+    type: lab_page
+    url: https://labs.dese.iisc.ac.in/sinesyslab/
+    focus: blockchain, cryptography, authentication protocols, secure systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Bombay CoE for Blockchain
+    type: research_center
+    url: https://isrdc.iitb.ac.in/blockchain/coe/about.html
+    focus: blockchain R&D, fintech, distributed ledgers, faculty ecosystem
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Bombay Synerg Lab People
+    type: lab_page
+    url: https://www.cse.iitb.ac.in/synerg/people
+    focus: distributed systems, blockchain, cloud computing, systems faculty and researchers
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Madras CyStar People
+    type: research_center
+    url: https://cystar.iitm.ac.in/people/
+    focus: cybersecurity, decentralized trust, blockchains, privacy, identity, faculty
+      profiles
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Hyderabad Center for Cryptography and Cybersecurity
+    type: research_center
+    url: https://ccs.iith.ac.in/
+    focus: cryptography, privacy-preserving mechanisms, blockchain security, secure
+      distributed systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Hyderabad CSE Faculty
+    type: faculty_page
+    url: https://cse.iith.ac.in/people/faculty.html
+    focus: blockchain, lattice cryptography, databases, distributed systems, faculty
+      profiles
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Kanpur National Blockchain Project Team
+    type: project_team
+    url: https://blockchain.cse.iitk.ac.in/team.html
+    focus: blockchain project team, faculty, researchers, decentralized systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Delhi Cyber Center
+    type: research_center
+    url: https://home.iitd.ac.in/cyber-center.php
+    focus: cyber security, information assurance, critical infrastructure, associated
+      faculty
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IIT Delhi Venkata Koppula
+    type: faculty_page
+    url: https://web.iitd.ac.in/~kvenkata/
+    focus: theoretical cryptography, identity-based encryption, cryptographic protocols
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  global_scholarly_apis:
+  - name: OpenAlex Authors
+    type: api_directory
+    url: https://api.openalex.org/authors
+    query_template: https://api.openalex.org/authors?search={query}&per-page=5
+    focus: author discovery, affiliations, works, concepts
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Semantic Scholar Author Search
+    type: api_directory
+    url: https://api.semanticscholar.org/graph/v1/author/search
+    query_template: https://api.semanticscholar.org/graph/v1/author/search?query={query}&limit=5&fields=name,affiliations,paperCount,citationCount,homepage
+    focus: author search, papers, citation activity, affiliations
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  manual_profile_directories:
+  - name: Google Scholar Profiles
+    type: profile_directory_manual
+    url: https://scholar.google.com/
+    auto_collect: false
+    focus: manual profile validation, citation tracking, alerts
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ORCID
+    type: profile_directory_manual
+    url: https://orcid.org/
+    auto_collect: false
+    focus: manual researcher identity validation, affiliations, public works
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ResearchGate
+    type: profile_directory_manual
+    url: https://www.researchgate.net/
+    auto_collect: false
+    focus: manual profile discovery, topic overlap, publication discovery
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DBLP
+    type: profile_directory_manual
+    url: https://dblp.org/
+    auto_collect: false
+    focus: manual computer science bibliography validation and author lookup
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps_experts:
+  - name: Vanderbilt Institute for Software Integrated Systems
+    type: academic_lab
+    url: https://www.isis.vanderbilt.edu/
+    focus: CPS, model-integrated computing, autonomous systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Carnegie Mellon CyLab
+    type: academic_research_center
+    url: https://www.cylab.cmu.edu/
+    focus: cybersecurity, IoT security, CPS security
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: NIST Cyber-Physical Systems Public Working Group
+    type: government_research_group
+    url: https://pages.nist.gov/cpspwg/
+    focus: CPS framework, trustworthiness, cybersecurity
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60

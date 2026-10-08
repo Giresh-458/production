@@ -1,0 +1,228 @@
+opensource_sources:
+  ethereum:
+  - name: Ethereum Go Client
+    type: github_repo
+    url: https://github.com/ethereum/go-ethereum
+    focus: protocol, execution client, scalability, security
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Ethereum Research
+    type: forum
+    url: https://ethresear.ch/
+    focus: protocol research, MEV, scalability, ZK
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Ethereum EIPs
+    type: improvement_proposals
+    url: https://eips.ethereum.org/
+    focus: protocol upgrades, standards
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  chainlink:
+  - name: Chainlink
+    type: github_repo
+    url: https://github.com/smartcontractkit/chainlink
+    focus: oracles, RWA, data infrastructure
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  polygon_zk:
+  - name: Polygon zkEVM
+    type: github_repo
+    url: https://github.com/0xPolygonHermez/zkevm-node
+    focus: ZK, scalability, Ethereum L2
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Polygon ID
+    type: github_repo
+    url: https://github.com/iden3
+    focus: DID, ZK identity, verifiable credentials
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  starknet:
+  - name: Starknet
+    type: github_repo
+    url: https://github.com/starkware-libs
+    focus: ZK, scalability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  zksync:
+  - name: zkSync Era
+    type: github_repo
+    url: https://github.com/matter-labs/zksync-era
+    focus: ZK, scalability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  solana:
+  - name: Solana
+    type: github_repo
+    url: https://github.com/solana-labs/solana
+    focus: high-performance blockchain, scalability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  depin:
+  - name: Filecoin
+    type: github_repo
+    url: https://github.com/filecoin-project
+    focus: decentralized storage, DePIN
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Helium
+    type: github_repo
+    url: https://github.com/helium
+    focus: DePIN, wireless infrastructure
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Hivemapper
+    type: documentation
+    url: https://docs.hivemapper.com/
+    focus: decentralized mapping, DePIN
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  mev:
+  - name: Flashbots
+    type: github_repo
+    url: https://github.com/flashbots
+    focus: MEV, block building, transaction ordering
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Jito
+    type: github_repo
+    url: https://github.com/jito-foundation
+    focus: MEV, validator infrastructure
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  stablecoins:
+  - name: MakerDAO / Sky
+    type: github_repo
+    url: https://github.com/makerdao
+    focus: stablecoins, tokenomics, governance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Circle Docs
+    type: documentation
+    url: https://developers.circle.com/
+    focus: stablecoin payments, settlement infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  did:
+  - name: Veramo
+    type: github_repo
+    url: https://github.com/decentralized-identity/veramo
+    focus: DID, verifiable credentials
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: W3C DID Test Suite
+    type: github_repo
+    url: https://github.com/w3c/did-test-suite
+    focus: DID, standards interoperability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  cps:
+  - name: CPSim
+    type: simulator
+    url: https://sim.cpsec.org/
+    focus: CPS security simulation, attack simulator, anomaly/security experiments
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: CARLA Simulator
+    type: github_repo
+    url: https://github.com/carla-simulator/carla
+    focus: autonomous driving simulation, CPS, IoV, perception and control
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: SUMO
+    type: github_repo
+    url: https://github.com/eclipse-sumo/sumo
+    focus: traffic simulation, mobility traces, IoV and smart transportation CPS
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Veins
+    type: simulator
+    url: https://veins.car2x.org/
+    focus: vehicular network simulation, V2X, communication, CPS
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: AutoDRIVE
+    type: github_repo
+    url: https://github.com/Tinker-Twins/AutoDRIVE
+    focus: autonomous driving research, digital twin, sim-to-real CPS
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: ROS 2
+    type: github_repo
+    url: https://github.com/ros2/ros2
+    focus: robotics middleware, distributed CPS, communication, autonomy
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Awesome ROS Security
+    type: github_repo
+    url: https://github.com/iotsrg/awesome-ros-security
+    focus: robotics security, ROS security, CPS attack surfaces
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: OpenPLC
+    type: github_repo
+    url: https://github.com/thiagoralves/OpenPLC_v3
+    focus: industrial control systems, PLC, OT security experimentation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: TRIPLE Digital Twin
+    type: github_repo
+    url: https://github.com/mubashar-iqbal/triple-digital-twin
+    focus: blockchain-based digital twin framework for CPS security
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60

@@ -1,0 +1,362 @@
+data_sources:
+  rwa:
+  - name: RWA.xyz
+    type: dashboard_or_api
+    url: https://app.rwa.xyz/
+    focus: tokenized real-world asset market data, tokenized treasuries, asset categories
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DeFiLlama
+    type: dashboard_or_api
+    url: https://defillama.com/
+    focus: DeFi TVL, protocol data, stablecoin and RWA-linked metrics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Dune Analytics
+    type: dashboard
+    url: https://dune.com/
+    focus: on-chain dashboards, tokenized asset analytics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Etherscan
+    type: block_explorer
+    url: https://etherscan.io/
+    focus: smart contract and token transaction data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Chainlink Proof of Reserve
+    type: documentation_or_data
+    url: https://chain.link/proof-of-reserve
+    focus: proof-of-reserve, asset backing, oracle-based reserve verification
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  esg_carbon:
+  - name: Verra Registry
+    type: registry
+    url: https://registry.verra.org/
+    focus: carbon credit registry, project and credit data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Gold Standard Registry
+    type: registry
+    url: https://registry.goldstandard.org/
+    focus: carbon credit registry, climate project data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Climate Action Data Trust
+    type: registry_or_data_platform
+    url: https://climateactiondata.org/
+    focus: carbon market transparency, registry metadata
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: OpenAQ
+    type: dataset_or_api
+    url: https://openaq.org/
+    focus: air quality data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Climate TRACE
+    type: emissions_data_platform
+    url: https://climatetrace.org/
+    focus: greenhouse gas emissions monitoring and MRV
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  zk_iov:
+  - name: SUMO Mobility Simulator
+    type: simulator
+    url: https://eclipse.dev/sumo/
+    focus: traffic simulation, mobility traces, IoV experiments
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Veins
+    type: simulator
+    url: https://veins.car2x.org/
+    focus: vehicular network simulation, V2X communication
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: LuST Dataset
+    type: dataset
+    url: https://github.com/lcodeca/LuSTScenario
+    focus: Luxembourg SUMO traffic scenario
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: RISC Zero Benchmarks
+    type: benchmark_repo
+    url: https://github.com/risc0/risc0
+    focus: zkVM benchmarks and proving performance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: zkBenchmark
+    type: benchmark
+    url: https://zkbench.dev/
+    focus: zero-knowledge proving benchmarks
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  did:
+  - name: W3C DID Test Suite
+    type: test_suite
+    url: https://github.com/w3c/did-test-suite
+    focus: DID conformance and interoperability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: W3C Verifiable Credentials Test Suite
+    type: test_suite
+    url: https://github.com/w3c/vc-data-model
+    focus: verifiable credential interoperability and conformance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: DID Method Registry
+    type: registry
+    url: https://www.w3.org/TR/did-spec-registries/
+    focus: DID methods and interoperability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Veramo Examples
+    type: code_examples
+    url: https://github.com/decentralized-identity/veramo
+    focus: DID and verifiable credential implementation examples
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  depin:
+  - name: Helium Explorer
+    type: dashboard_or_explorer
+    url: https://explorer.helium.com/
+    focus: decentralized wireless network data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Filecoin Network Data
+    type: dashboard_or_api
+    url: https://filfox.info/
+    focus: decentralized storage metrics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Hivemapper Explorer
+    type: dashboard
+    url: https://hivemapper.com/explorer
+    focus: decentralized mapping coverage
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IoTeX Explorer
+    type: explorer
+    url: https://iotexscan.io/
+    focus: IoT blockchain and DePIN transaction data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  mev:
+  - name: Flashbots Data
+    type: data_or_dashboard
+    url: https://flashbots.net/
+    focus: MEV, bundles, block building, relay data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: MEV-Boost Relay Data
+    type: dashboard_or_api
+    url: https://www.mevboost.org/
+    focus: MEV-Boost relay metrics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: EigenPhi
+    type: analytics_dashboard
+    url: https://eigenphi.io/
+    focus: MEV analytics and transaction strategies
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Ethereum Blocks / Transactions
+    type: block_explorer
+    url: https://etherscan.io/
+    focus: transaction ordering, blocks, gas, execution traces
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  stablecoins:
+  - name: DeFiLlama Stablecoins
+    type: dashboard_or_api
+    url: https://defillama.com/stablecoins
+    focus: stablecoin supply and chain-level distribution
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Circle Transparency
+    type: transparency_report
+    url: https://www.circle.com/transparency
+    focus: USDC reserve reports and transparency data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Paxos Transparency
+    type: transparency_report
+    url: https://paxos.com/transparency/
+    focus: stablecoin reserves and attestations
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: MakerDAO / Sky Dashboards
+    type: dashboard
+    url: https://makerburn.com/
+    focus: stablecoin collateral, governance, protocol metrics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Curve Stablecoin Pools
+    type: protocol_dashboard
+    url: https://curve.fi/
+    focus: stablecoin liquidity pools and depeg dynamics
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps:
+  - name: NIST CPS / IoT Testbed
+    type: testbed
+    url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
+    focus: smart grid, SCADA, robotics, autonomous vehicles, IoT, CPS experiments
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: University of Birmingham RITICS Datasets
+    type: dataset_repository
+    url: https://uob-ritics.github.io/
+    focus: industrial control system datasets, CPS security research
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: SWaT Dataset
+    type: dataset
+    url: https://www.sutd.edu.sg/itrust/itrust-labs/datasets/
+    focus: water treatment CPS, ICS anomaly detection
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: WADI Dataset
+    type: dataset
+    url: https://www.sutd.edu.sg/itrust/itrust-labs/datasets/
+    focus: water distribution CPS, attack detection
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: HAI Dataset
+    type: dataset
+    url: https://github.com/icsdataset/hai
+    focus: industrial control system anomaly detection, CPS security
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Data4Cyber
+    type: dataset
+    url: https://zenodo.org/records/19965384
+    focus: distribution-grid management systems, representative OT attacks, smart
+      grid CPS
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: DataPort CPS Datasets
+    type: dataset_repository
+    url: https://www.hsu-hh.de/dataport
+    focus: cyber-physical systems and cyber-physical production systems datasets
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: SUMO
+    type: simulator
+    url: https://eclipse.dev/sumo/
+    focus: traffic and mobility simulation
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Veins
+    type: simulator
+    url: https://veins.car2x.org/
+    focus: V2X simulation, vehicular networks, IoV
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: LuST Scenario
+    type: dataset
+    url: https://github.com/lcodeca/LuSTScenario
+    focus: Luxembourg traffic simulation scenario
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: CPSim
+    type: simulator
+    url: https://sim.cpsec.org/
+    focus: CPS security simulation and attack simulation
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: AutoDRIVE
+    type: simulator_testbed
+    url: https://github.com/Tinker-Twins/AutoDRIVE
+    focus: autonomous driving digital twin and sim-to-real CPS research
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60

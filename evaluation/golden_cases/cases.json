@@ -1,0 +1,205 @@
+[
+  {
+    "id": "funding_rwa_manual_text",
+    "type": "agent_run",
+    "description": "Funding collector should accept a strong RWA grant-style manual signal.",
+    "agent": "funding",
+    "mode": "manual_text",
+    "area": "RWA",
+    "input_data": {
+      "title": "RWA Infrastructure Grant Call",
+      "source": "Manual",
+      "text": "The program funds tokenized real-world asset infrastructure, oracle verification, compliance tooling, and settlement rails. Applicants must build a prototype, define milestones, and provide an evaluation plan for reserve monitoring."
+    },
+    "expected": {
+      "status": "success",
+      "min_items_saved": 1,
+      "problem_contains": [
+        "tokenized real-world asset",
+        "oracle verification"
+      ],
+      "markdown_sections": [
+        "Shared Metadata",
+        "Problem Preview",
+        "Agent-Specific Body",
+        "Raw Content"
+      ],
+      "markdown_contains": [
+        "tokenized real-world asset infrastructure",
+        "evaluation plan"
+      ]
+    }
+  },
+  {
+    "id": "hackathon_did_manual_text",
+    "type": "agent_run",
+    "description": "Hackathon collector should preserve DID challenge/problem-statement signals rather than generic event copy.",
+    "agent": "hackathon",
+    "mode": "manual_text",
+    "area": "DID",
+    "input_data": {
+      "title": "DID Wallet Challenge",
+      "source": "Manual",
+      "text": "Challenge track: build a decentralized identity wallet that issues and verifies verifiable credentials for student access. Required technology includes DID methods, credential signing, and privacy-preserving verification. Expected output is a working demo and short architecture note."
+    },
+    "expected": {
+      "status": "success",
+      "min_items_saved": 1,
+      "problem_contains": [
+        "decentralized identity wallet",
+        "verifiable credentials"
+      ],
+      "markdown_sections": [
+        "Shared Metadata",
+        "Evidence Bundle",
+        "Agent-Specific Body",
+        "Raw Content"
+      ],
+      "markdown_contains": [
+        "working demo",
+        "privacy-preserving verification"
+      ]
+    }
+  },
+  {
+    "id": "failure_stablecoins_manual_text",
+    "type": "agent_run",
+    "description": "Failure collector should keep incident/root-cause language for stablecoin depeg signals.",
+    "agent": "failure",
+    "mode": "manual_text",
+    "area": "Stablecoins",
+    "input_data": {
+      "title": "Stablecoin Liquidity Spiral Incident",
+      "source": "Manual",
+      "text": "Incident report: a stablecoin depeg triggered a liquidation cascade after reserve confidence weakened and on-chain liquidity fragmented. Root cause included delayed reserve disclosure, oracle lag, and poorly designed emergency controls."
+    },
+    "expected": {
+      "status": "success",
+      "min_items_saved": 1,
+      "problem_contains": [
+        "stablecoin depeg",
+        "liquidation cascade"
+      ],
+      "markdown_sections": [
+        "Shared Metadata",
+        "Evidence Bundle",
+        "Agent-Specific Body",
+        "Raw Content"
+      ],
+      "markdown_contains": [
+        "oracle lag",
+        "reserve disclosure"
+      ]
+    }
+  },
+  {
+    "id": "data_availability_zkiov_manual_text",
+    "type": "agent_run",
+    "description": "Data-availability collector should keep benchmark and evaluation utility for ZK-IoV inputs.",
+    "agent": "data_availability",
+    "mode": "manual_text",
+    "area": "ZK-IoV",
+    "input_data": {
+      "title": "Mobility Proof Benchmark Suite",
+      "source": "Manual",
+      "text": "Dataset and benchmark description: a mobility-trace simulator plus proving-time benchmark for zero-knowledge vehicle communication experiments. Provides V2X traces, verifier latency metrics, and reproducible benchmark scenarios for privacy-preserving message validation."
+    },
+    "expected": {
+      "status": "success",
+      "min_items_saved": 1,
+      "problem_contains": [
+        "mobility-trace simulator",
+        "zero-knowledge vehicle communication"
+      ],
+      "markdown_sections": [
+        "Shared Metadata",
+        "Evidence Bundle",
+        "Agent-Specific Body",
+        "Raw Content"
+      ],
+      "markdown_contains": [
+        "verifier latency metrics",
+        "reproducible benchmark scenarios"
+      ]
+    }
+  },
+  {
+    "id": "quality_gate_reject_generic_page",
+    "type": "quality_gate",
+    "description": "Quality gate should reject generic, boilerplate-heavy collection artifacts.",
+    "agent_name": "funding",
+    "title": "Insights",
+    "source": "https://example.org/insights",
+    "explicit_area": "ESG",
+    "raw_content": "Subscribe to our newsletter. Learn more about our archive. Cookie policy and terms of service. Follow us for updates and featured stories.",
+    "expected": {
+      "passed": false,
+      "reason_contains": [
+        "generic page title",
+        "problem-signal density too low"
+      ]
+    }
+  },
+  {
+    "id": "recursive_link_ranking_grants_fixture",
+    "type": "recursive_links",
+    "description": "Recursive link extraction should keep same-domain high-signal links and skip generic or external links.",
+    "fixture": "evaluation/fixtures/recursive_grants_root.html",
+    "base_url": "https://example.org/grants/root",
+    "allowed_domains": [
+      "example.org"
+    ],
+    "link_keywords": [
+      "grant",
+      "challenge",
+      "bounty",
+      "prototype",
+      "rwa",
+      "depin"
+    ],
+    "relevance_threshold": 1,
+    "expected": {
+      "included_urls": [
+        "https://example.org/grants/rwa-challenge",
+        "https://example.org/hackathon/depin-prototype-bounty"
+      ],
+      "excluded_urls": [
+        "https://example.org/about",
+        "https://external.example.com/challenge"
+      ]
+    }
+  },
+  {
+    "id": "synthesis_manual_text_rwa",
+    "type": "agent_run",
+    "description": "Baseline synthesis should generate a structured intelligence artifact from strong manual input.",
+    "agent": "synthesis",
+    "mode": "manual_text",
+    "area": "RWA",
+    "input_data": {
+      "title": "Reserve Verification Problem",
+      "source": "Manual",
+      "text": "Protocols need verifiable reserve and compliance monitoring for tokenized treasury assets. A useful prototype would combine proof-of-reserve checks, audit trails, and exception alerts for abnormal reserve changes."
+    },
+    "expected": {
+      "status": "success",
+      "min_items_saved": 1,
+      "problem_contains": [
+        "verifiable reserve",
+        "tokenized treasury assets"
+      ],
+      "markdown_sections": [
+        "Problem",
+        "Research Area",
+        "Gap",
+        "Idea",
+        "Feasibility",
+        "Evidence Inputs"
+      ],
+      "markdown_contains": [
+        "proof-of-reserve checks",
+        "exception alerts"
+      ]
+    }
+  }
+]

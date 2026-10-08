@@ -1,0 +1,17 @@
+langchain>=0.1.0,<0.3.0
+openai>=1.0.0,<2.0.0
+PyYAML>=6.0.0,<7.0.0
+APScheduler>=3.10.0,<4.0.0
+requests>=2.31.0,<3.0.0
+beautifulsoup4>=4.12.0,<5.0.0
+streamlit>=1.30.0,<2.0.0
+sentence-transformers>=2.2.0,<3.0.0
+pytest
+pytest-cov
+# Free/open-source adaptive scraping stack. Playwright is an optional JS fallback;
+# install Chromium separately with: python -m playwright install chromium
+trafilatura~=1.12.0
+pypdf>=5,<7
+playwright>=1.50,<2
+python-dotenv>=1.2.3,<2.0.0
+crawl4ai>=0.4.0

@@ -1,0 +1,193 @@
+practitioner_sources:
+  developer_forums:
+  - name: Ethereum Magicians
+    type: forum
+    url: https://ethereum-magicians.org/
+    focus: Ethereum standards, protocol discussions, developer pain points
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Ethereum Research
+    type: forum
+    url: https://ethresear.ch/
+    focus: protocol research, MEV, scalability, ZK
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Chainlink Community
+    type: forum_or_docs
+    url: https://docs.chain.link/
+    focus: oracles, RWA, data feeds, cross-chain infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  native_developer_sources:
+  - name: Ethereum Go Client Issues
+    type: github_issues
+    url: https://github.com/ethereum/go-ethereum
+    focus: Ethereum execution client bugs, performance, developer pain points
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Ethereum Go Client Discussions
+    type: github_discussions
+    url: https://github.com/ethereum/go-ethereum
+    focus: Ethereum execution client design discussions and practitioner pain points
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Stack Overflow Blockchain
+    type: stack_overflow
+    url: https://stackoverflow.com/questions/tagged/blockchain
+    focus: blockchain smart contract developer problems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  technical_blogs:
+  - name: Flashbots Writings
+    type: technical_blog
+    url: https://writings.flashbots.net/
+    focus: MEV, block building, transaction ordering
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Circle Developer Blog
+    type: technical_blog
+    url: https://www.circle.com/blog
+    focus: stablecoins, settlement, payment infrastructure
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Matter Labs Blog
+    type: technical_blog
+    url: https://zksync.mirror.xyz/
+    focus: ZK, rollups, proving systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: StarkWare Blog
+    type: technical_blog
+    url: https://starkware.co/blog/
+    focus: ZK, scalability, proving systems
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  job_signals:
+  - name: Web3 Jobs
+    type: job_board
+    url: https://web3.career/
+    focus: blockchain hiring signals
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Cryptocurrency Jobs
+    type: job_board
+    url: https://cryptocurrencyjobs.co/
+    focus: blockchain hiring signals
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  conferences:
+  - name: Devcon
+    type: conference
+    url: https://archive.devcon.org/
+    focus: Ethereum talks, developer problems, protocol roadmap
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ETHGlobal
+    type: hackathon_or_talks
+    url: https://ethglobal.com/
+    focus: prototypes, developer problems, hackathon trends
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  industry_discussions:
+  - name: a16z Crypto Blog
+    type: industry_blog
+    url: https://a16zcrypto.com/posts/
+    focus: industry theses, builder problems, infrastructure gaps
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Paradigm Research
+    type: research_blog
+    url: https://www.paradigm.xyz/writing
+    focus: protocol research, MEV, DeFi, stablecoins
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps_practitioners:
+  - name: CISA ICS Advisories
+    type: advisory_feed
+    url: https://www.cisa.gov/news-events/cybersecurity-advisories
+    focus: ICS vulnerabilities, OT security, critical infrastructure practitioner
+      issues
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Dragos Blog
+    type: technical_blog
+    url: https://www.dragos.com/blog/
+    focus: ICS/OT security, industrial incidents, practitioner pain points
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Nozomi Networks Blog
+    type: technical_blog
+    url: https://www.nozominetworks.com/blog/
+    focus: OT/IoT security, industrial monitoring, CPS threats
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Claroty Blog
+    type: technical_blog
+    url: https://claroty.com/blog
+    focus: CPS security, healthcare CPS, OT visibility, industrial security
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Microsoft Security Blog - IoT/OT
+    type: technical_blog
+    url: https://www.microsoft.com/en-us/security/blog/
+    focus: IoT and OT security, enterprise deployment constraints
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Cybersecurity Jobs - OT Security
+    type: job_board_query
+    url: https://www.linkedin.com/jobs/
+    focus: OT security, ICS security, CPS security hiring signals
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Robotics Jobs - CPS / Autonomy
+    type: job_board_query
+    url: https://www.linkedin.com/jobs/
+    focus: robotics, autonomy, embedded systems, CPS engineering
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120

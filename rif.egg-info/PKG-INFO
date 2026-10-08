@@ -1,0 +1,354 @@
+Metadata-Version: 2.4
+Name: rif
+Version: 0.1.0
+Summary: Research Intelligence Framework
+Author-email: Giresh-458 <gireshvelaga@gmail.com>
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: langchain<0.3.0,>=0.1.0
+Requires-Dist: openai<2.0.0,>=1.0.0
+Requires-Dist: PyYAML<7.0.0,>=6.0.0
+Requires-Dist: APScheduler<4.0.0,>=3.10.0
+Requires-Dist: requests<3.0.0,>=2.31.0
+Requires-Dist: beautifulsoup4<5.0.0,>=4.12.0
+Requires-Dist: streamlit<2.0.0,>=1.30.0
+Requires-Dist: sentence-transformers<3.0.0,>=2.2.0
+Requires-Dist: trafilatura<3,>=2.2
+Requires-Dist: pypdf<7,>=5
+Requires-Dist: playwright<2,>=1.50
+Requires-Dist: python-dotenv<2.0.0,>=1.2.3
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+
+# Research Intelligence Framework (RIF)
+
+RIF is a multi-agent research intelligence system for discovering blockchain research problems from real-world signals such as literature, funding calls, labs, companies, regulation, open-source engineering gaps, practitioner pain points, investment trends, failures, data availability, and hackathon challenges.
+
+The current architecture is collection-first:
+
+- collection agents collect and clean signals
+- collection agents save intermediate Markdown artifacts
+- processing and intelligence agents act later across those collected artifacts
+- final high-quality synthesis and ideation can be done in a chat-assisted human-in-the-loop pass on top of the saved artifacts
+
+## Current Status
+
+Implemented:
+
+- 12 collection agents
+- 3 processing agents
+- 3 intelligence agents
+- evidence/provenance and promotion gates
+- collection-to-proposal regression and end-to-end tests
+- shared agent interface in `core/`
+- Streamlit UI in `ui/streamlit_app.py`
+- intermediate Markdown output storage under `outputs/intermediate/`
+- per-agent SQLite metadata and deduplication
+- config-driven source lists under `sources/`
+
+Not implemented yet:
+
+- scheduled source refresh
+- scheduled source discovery
+- content change detection
+- recurring end-to-end orchestration
+- external novelty validation automation
+
+## Research Areas
+
+- RWA
+- ESG
+- ZK-IoV
+- DID
+- DePIN
+- MEV
+- Stablecoins
+
+## Repository Structure
+
+```text
+agents/          Collection agents
+core/            Shared interface, schema, and registry
+sources/         YAML source configuration files
+outputs/         Intermediate artifacts, synthesis artifacts, and SQLite memory files
+ui/              Streamlit UI
+test_agent_interface.py
+llm_provider.py
+config.yaml
+```
+
+## Environments & Setup
+
+RIF uses two distinct testing and execution environments. Do NOT confuse the local developer environment with the authoritative CI environment.
+
+### 1. Developer Environment (Local)
+
+Optional local development for writing code and testing small changes.
+
+```bash
+# Clone the repository
+git clone <repository>
+cd RIF_collection_to_proposal_hardened
+
+# Create and activate virtual environment
+python -m venv .venv
+# On Windows: .venv\Scripts\activate
+# On Linux/Mac: source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Faculty CPU CI (Authoritative Validation)
+
+The authoritative validation environment is a faculty-provided CPU server operating as a GitHub Actions self-hosted runner.
+
+```text
+Developer PC
+    ↓ git push
+GitHub Actions
+    ↓ dispatch
+Faculty self-hosted CPU
+    ↓ tests
+PASS/FAIL
+```
+
+The CI runner will automatically:
+1. Pull the latest commit.
+2. Setup an isolated Python 3.11 environment.
+3. Install dependencies.
+4. Run deterministic tests on the CPU (using mocks, bypassing real LLMs and network calls).
+
+See `docs/FACULTY_CPU_CI_SETUP.md` for instructions on how to configure the faculty server.
+
+## LLM Configuration
+
+The project uses a local LLM through Ollama and a centralized provider layer.
+
+- config file: `config.yaml`
+- interface: `llm_provider.py`
+
+Collection, processing, and intelligence agents must not call OpenAI directly. 
+**Note:** The CI environment uses deterministic test doubles (mocks) and does NOT require a large local LLM or GPU to run the validation suite.
+
+## Current End-to-End Flow
+
+The default pipeline is now funding-driven and live. It does **not** depend on a local `test.txt` file.
+
+```text
+Live Funding Discovery → Open-Call Verification → Funding Selection
+→ Mission-Driven Collection → Adaptive Research (when needed)
+→ Normalization → Tagging → Clustering → Trends
+→ Evidence-Grounded Synthesis → Ideas → Proposal Agent
+→ FINAL_PROPOSAL.md → Human / sponsor review
+```
+
+Run it with:
+
+```bash
+python run_pipeline.py
+```
+
+Use `--input-file` only when you intentionally want to override live funding discovery with a specific call.
+
+The repository deliberately separates automated draft generation from final research judgment.
+
+## Automation vs Final Intelligence
+
+RIF now has two different output qualities on purpose:
+
+- baseline automated outputs generated inside the repo
+- stronger chat-assisted final outputs generated after reviewing saved artifacts
+
+Current expectation:
+
+- `synthesis_agent.py` is a first-pass synthesis compiler
+- `idea_agent.py` is a first-pass idea generator
+- the best final synthesis and idea notes should still be refined in chat from saved files when quality matters
+
+That means the normal operating flow is:
+
+1. run collection agents
+2. refresh/normalize the collected evidence
+3. run tagging, clustering, and trend detection
+4. run synthesis and idea generation
+5. generate proposal drafts
+6. externally validate novelty and review the evidence before making a research decision
+
+## Running Agents from CLI
+
+### Shared interface
+
+This is the best way to mimic UI behavior:
+
+```bash
+.venv/bin/python test_agent_interface.py \
+  --agent funding \
+  --mode manual_text \
+  --area RWA \
+  --text "We fund research on tokenized real-world assets and oracle verification." \
+  --title "RWA Funding Test"
+```
+
+### Direct legacy-style CLI examples
+
+Literature:
+
+```bash
+.venv/bin/python agents/literature_agent.py RWA --limit 3 --log-level INFO
+```
+
+Funding:
+
+```bash
+.venv/bin/python agents/funding_agent.py --mode auto --area RWA --log-level INFO
+```
+
+Lab:
+
+```bash
+.venv/bin/python agents/lab_agent.py --mode auto --log-level INFO
+```
+
+Hackathon:
+
+```bash
+.venv/bin/python agents/hackathon_agent.py --mode text --challenge-name "RWA Builder Track" --text "Build a prototype for tokenized real-world assets with oracle verification and compliance-aware smart contracts."
+```
+
+## Running the UI
+Run Streamlit from the same virtual environment that contains `requests`, `beautifulsoup4`, and `streamlit`:
+
+```bash
+# Activate your virtual environment first
+# Windows: .venv\Scripts\activate
+# Linux/Mac: source .venv/bin/activate
+streamlit run ui/streamlit_app.py
+```
+
+Or:
+
+```bash
+.venv/bin/streamlit run ui/streamlit_app.py
+```
+
+## UI Features
+
+- Live funding → proposal workspace
+- Open-call discovery with status/deadline gating
+- Pipeline run inspection and final-proposal surfacing
+- Agent-level manual runs
+- Manual input for explicit overrides
+- Evidence/output browser
+- Processing, intelligence, operational and promotion views
+- Settings and source-health inspection
+
+The UI calls collection agents only through:
+
+```python
+from core.agent_registry import run_registered_agent
+```
+
+## Common Agent Interface
+
+Every registered collection agent is callable through:
+
+```python
+run_registered_agent(
+    agent_name="funding",
+    mode="manual_text",
+    area="RWA",
+    input_data={"text": "..."},
+)
+```
+
+Standard modes:
+
+- `configured_scan`
+- `manual_url`
+- `manual_text`
+
+## Current Limitations
+
+1. Local Ollama inference can still be slow when long analysis prompts are used
+2. Public website structure can change and affect configured collection scans
+3. Heuristic clustering is intentionally conservative and can later be upgraded with evaluated embeddings
+4. Local RIF outputs do not establish scientific novelty automatically
+5. Proposal drafts require external validation and human review before submission
+6. Live API/source validation depends on network access and source credentials
+
+## Recommended Testing Order
+
+1. Run the 12-agent collection acceptance suite
+2. Run `python -m pytest -q`
+3. Run `python run_golden_tests.py`
+4. Run an isolated collection-to-proposal smoke test
+5. Run live configured scans only on the actual RIF machine with network access
+
+## Next Development Priorities
+
+1. Scheduled source refresh
+2. Scheduled source discovery
+3. Change detection for collected signals
+4. Incremental downstream processing
+5. Alerts and recurring intelligence reports
+
+## Final End-to-End Walkthrough
+
+### Terminal
+
+1. Open PowerShell in the RIF project root.
+2. Create/activate the virtual environment and install dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+3. Make sure Ollama is installed and the configured model is available if your later intelligence configuration requires it. The standard live pipeline no longer uses the LLM for every fetched page or for normal clustering.
+4. Put the funding-call text in `test.txt`.
+5. Run:
+
+```powershell
+python run_pipeline.py --input-file test.txt
+```
+
+6. The command writes a timestamped run under `outputs/pipeline_run/<run-id>/` and ends with `Pipeline Completed!` when the run succeeds.
+
+Useful outputs include `workflow/pipeline_manifest.json`, `workflow/pipeline_report.json`, `normalized/records.json`, and the final `proposals/` directory.
+
+### UI
+
+From the same activated virtual environment:
+
+```powershell
+streamlit run ui/streamlit_app.py
+```
+
+Open the local Streamlit address shown by Streamlit. Use **Run Full Pipeline**, upload `test.txt`, and click **Run Pipeline**. The UI executes the same `run_pipeline.py --input-file ...` flow, shows the live terminal output, domain relevance, run metrics, and generated proposals.
+
+Other UI pages expose individual agents, outputs, operational source health, processing/intelligence artifacts, review queues, and settings.
+p y t h o n   - m   p l a y w r i g h t   i n s t a l l   c h r o m i u m 
+ 
+ 
+## Live pipeline execution
+
+`python run_pipeline.py` runs the pipeline in **live-refresh mode by default**. This is intentional: funding discovery is a current-state gate and must not be skipped merely because the local source registry was checked recently.
+
+Use `python run_pipeline.py --scheduled-refresh` only when you explicitly want the source registry's refresh intervals to control fetching.
+
+For JavaScript-heavy public pages, install the Playwright browser once after installing Python dependencies:
+
+```bash
+python -m playwright install chromium
+```
+
+The pipeline never creates synthetic funding calls, research evidence, incidents, datasets, experts, or proposal facts. If live evidence cannot be obtained, the affected source/agent is reported as unavailable rather than fabricated.
+
+## Structured-source acquisition
+
+Where an official/free machine-readable interface exists, collection uses it before HTML/browser scraping. Current integrations include GitHub REST, Grants.gov public opportunity search, SEC EDGAR JSON, Zenodo records, OpenAQ (when `OPENAQ_API_KEY` is configured), and Etherscan V2 (when `ETHERSCAN_API_KEY` is configured). Literature/expert agents already use OpenAlex, Semantic Scholar, Crossref, arXiv and related APIs. API acquisition is evidence-bearing and retains the structured endpoint as provenance; missing credentials or API failures fall back to the existing web collector.
+
+Optional credentials are documented in `.env.example`. Do not commit real secrets.

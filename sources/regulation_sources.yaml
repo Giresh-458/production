@@ -1,0 +1,297 @@
+regulation_sources:
+  india:
+  - name: RBI
+    url: https://www.rbi.org.in/
+    focus: digital payments, CBDC, stablecoins, financial infrastructure
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: SEBI
+    url: https://www.sebi.gov.in/
+    focus: securities, tokenized assets, market infrastructure
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: MeitY
+    url: https://www.meity.gov.in/
+    focus: blockchain, digital infrastructure, identity
+    source_type: Policy Report
+    evidence_type: Guidance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: SEBI BRSR
+    url: https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=42&smid=0
+    focus: ESG reporting, sustainability disclosures, auditability
+    source_type: Regulation
+    evidence_type: Guidance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  global_finance:
+  - name: BIS
+    url: https://www.bis.org/
+    focus: tokenisation, stablecoins, CBDC, unified ledger
+    source_type: Policy Report
+    evidence_type: Report
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: FATF
+    url: https://www.fatf-gafi.org/
+    focus: virtual assets, VASP compliance, AML
+    source_type: Regulation
+    evidence_type: Guidance
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: IOSCO
+    url: https://www.iosco.org/
+    focus: crypto assets, securities regulation, market integrity
+    source_type: Policy Report
+    evidence_type: Consultation
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: SEC Climate Disclosure
+    url: https://www.sec.gov/
+    focus: climate disclosure, ESG assurance, reporting controls
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  eu:
+  - name: EU MiCA
+    url: https://finance.ec.europa.eu/digital-finance/crypto-assets_en
+    focus: crypto-assets, stablecoins, CASPs
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: CSRD
+    url: https://finance.ec.europa.eu/capital-markets-union-and-financial-markets/company-reporting-and-auditing/company-reporting/corporate-sustainability-reporting_en
+    focus: sustainability disclosure, auditability, ESG reporting
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: ESRS
+    url: https://knowledgehub.efrag.org/eng
+    focus: sustainability reporting standards, interoperable disclosures
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  standards:
+  - name: W3C DID
+    url: https://www.w3.org/TR/did-core/
+    focus: decentralized identifiers
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: W3C Verifiable Credentials
+    url: https://www.w3.org/TR/vc-data-model-2.0/
+    focus: verifiable credentials
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: ISO Blockchain Standards
+    url: https://www.iso.org/committee/6266604.html
+    focus: blockchain standards, DLT standards
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: NIST Digital Identity
+    url: https://www.nist.gov/itl/applied-cybersecurity/tig/back-basics-multi-factor-authentication
+    focus: digital identity assurance, credentialing, privacy
+    source_type: Framework
+    evidence_type: Guidance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  climate_carbon:
+  - name: Verra
+    url: https://verra.org/
+    focus: carbon standards, carbon markets
+    source_type: Registry Standard
+    evidence_type: Registry Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Gold Standard
+    url: https://www.goldstandard.org/
+    focus: carbon credits, MRV, climate impact
+    source_type: Registry Standard
+    evidence_type: Registry Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: Climate Action Data Trust
+    url: https://climateactiondata.org/
+    focus: carbon market transparency, registry data
+    source_type: Framework
+    evidence_type: Framework
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: World Bank Carbon Markets
+    url: https://www.worldbank.org/en/topic/climatechange/brief/carbon-markets
+    focus: carbon markets, climate finance
+    source_type: Policy Report
+    evidence_type: Report
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  esg_reporting:
+  - name: IFRS Sustainability
+    url: https://www.ifrs.org/issued-standards/ifrs-sustainability-standards-navigator/
+    focus: sustainability reporting, assurance, interoperable disclosures
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: GRI
+    url: https://www.globalreporting.org/standards/
+    focus: sustainability disclosures, reporting controls, interoperability
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: SASB
+    url: https://sasb.ifrs.org/
+    focus: sector-specific sustainability disclosures
+    source_type: Standard
+    evidence_type: Standard
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: TCFD
+    url: https://www.fsb-tcfd.org/
+    focus: climate-related financial disclosures, governance, risk
+    source_type: Framework
+    evidence_type: Framework
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: CDP
+    url: https://www.cdp.net/en/guidance
+    focus: climate disclosure, data quality, assurance
+    source_type: Framework
+    evidence_type: Guidance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: SBTi
+    url: https://sciencebasedtargets.org/
+    focus: emissions targets, reporting integrity, validation
+    source_type: Framework
+    evidence_type: Guidance
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  cps_standards:
+  - name: NIST CPS Framework
+    url: https://www.nist.gov/publications/framework-cyber-physical-systems-volume-1-overview
+    source_type: framework
+    focus: CPS architecture, trustworthiness, timing, data, lifecycle, assurance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: NIST CPS Public Working Group
+    url: https://pages.nist.gov/cpspwg/
+    source_type: standards_working_group
+    focus: CPS trustworthiness, cybersecurity, standards, timing, data interoperability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: NIST Cyber-Physical Systems CSRC Topic
+    url: https://csrc.nist.gov/topics/applications/cyber-physical-systems
+    source_type: government_guidance
+    focus: CPS, IoT, operational technology, smart grid, cybersecurity
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: IEC 62443
+    url: https://www.iec.ch/
+    source_type: industrial_security_standard
+    focus: industrial automation and control system security
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: ISO/SAE 21434
+    url: https://www.iso.org/
+    source_type: automotive_cybersecurity_standard
+    focus: road vehicle cybersecurity engineering
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: NERC CIP
+    url: https://www.nerc.com/
+    source_type: critical_infrastructure_standard
+    focus: electric grid cybersecurity and reliability
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
+  - name: CISA Industrial Control Systems
+    url: https://www.cisa.gov/topics/industrial-control-systems
+    source_type: government_guidance
+    focus: ICS security, critical infrastructure, OT cybersecurity
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: IEEE Cyber-Physical Systems Standards
+    url: https://standards.ieee.org/
+    source_type: standards_body
+    focus: CPS, IoT, smart grid, autonomy, trustworthy systems
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60

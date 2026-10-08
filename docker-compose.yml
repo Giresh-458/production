@@ -1,0 +1,39 @@
+services:
+  # ---------- GPU-accelerated LLM inference ----------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rif-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- RIF Pipeline Application ----------
+  rif:
+    build: .
+    container_name: rif-pipeline
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./outputs:/app/outputs
+      - ./sources:/app/sources
+    restart: "no"
+
+volumes:
+  ollama_data:

@@ -1,0 +1,16 @@
+langchain<0.3.0,>=0.1.0
+openai<2.0.0,>=1.0.0
+PyYAML<7.0.0,>=6.0.0
+APScheduler<4.0.0,>=3.10.0
+requests<3.0.0,>=2.31.0
+beautifulsoup4<5.0.0,>=4.12.0
+streamlit<2.0.0,>=1.30.0
+sentence-transformers<3.0.0,>=2.2.0
+trafilatura<3,>=2.2
+pypdf<7,>=5
+playwright<2,>=1.50
+python-dotenv<2.0.0,>=1.2.3
+
+[dev]
+pytest
+pytest-cov
