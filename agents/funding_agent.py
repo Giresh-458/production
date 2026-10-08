@@ -1369,7 +1369,7 @@ def build_tags(analysis: FundingOpportunity) -> list[str]:
     return tags
 
 
-def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags: list[str]) -> str:
+def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags: list[str], run_id: str | None = None) -> str:
     source_value = document.source if document.source_type != "Manual" or document.source.startswith("http") else "Manual"
     keyword_tags = " ".join(normalize_tag(keyword) for keyword in analysis.keywords if normalize_tag(keyword)) or "#funding"
     research_context = analysis.research_context or {}
@@ -1377,6 +1377,18 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
     research_mission = str(inferred_challenges[0]).strip() if inferred_challenges else "Unknown"
     investigation_questions = research_context.get("investigation_questions") or []
     domain_relevance = build_domain_relevance(document.content)
+    
+    evidence_bundle = ""
+    if analysis.evidence:
+        evidence_lines = []
+        for key, snippet in analysis.evidence.items():
+            clean_snippet = snippet.replace('\n', ' ').strip()
+            evidence_lines.append(f"        - **{key}**: {clean_snippet}")
+        evidence_bundle = "\n".join(evidence_lines)
+    else:
+        evidence_bundle = "        - No explicit evidence snippets provided."
+
+    run_id_line = f"\n        - Run Id: {run_id}" if run_id else ""
 
     return textwrap.dedent(
         f'''\
@@ -1414,13 +1426,13 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
         {research_mission}
         
         ## Investigation Questions
-        {chr(10).join(f"- {q}" for q in investigation_questions) if investigation_questions else "None"}
+        {chr(10).join(f"        - {q}" for q in investigation_questions) if investigation_questions else "        None"}
 
         ## Focus Area
         {analysis.focus_area}
 
         ## Domain Relevance
-        {chr(10).join(f"- {item['rank']}. {item['domain']}: {item['score']:.2f} ({', '.join(item['matched_terms']) or 'no direct evidence'})" for item in domain_relevance)}
+        {chr(10).join(f"        - {item['rank']}. {item['domain']}: {item['score']:.2f} ({', '.join(item['matched_terms']) or 'no direct evidence'})" for item in domain_relevance)}
 
         ## Keywords
         {keyword_tags}
@@ -1434,17 +1446,27 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
         ## Layer
         Funding
 
+        ## Provenance
+        - Source URL: {analysis.source_url}
+        - Retrieved At: {analysis.retrieved_at}
+
+        ## Evidence Bundle
+        ### Evidence Snippets
+{evidence_bundle}
+
         ## Shared Metadata
-        Agent: funding
-        Research Area: {analysis.focus_area}
-        Source: {source_value}
-        Program: {analysis.program_name}
+        - Agent: funding
+        - Title: {analysis.program_name}
+        - Source: {source_value}
+        - Funding Call Id: {analysis.call_id}
+        - Layer: Funding
+        - Research Area: {analysis.focus_area}{run_id_line}
 
         ## Agent-Specific Body
-        Funding Body: {analysis.funding_body}
-        Opportunity Type: {analysis.opportunity_type}
-        Funding Amount: {analysis.funding_amount or "Unknown"}
-        Evaluation Criteria: {analysis.evaluation_criteria or "Unknown"}
+        - Funding Body: {analysis.funding_body}
+        - Opportunity Type: {analysis.opportunity_type}
+        - Funding Amount: {analysis.funding_amount or "Unknown"}
+        - Evaluation Criteria: {analysis.evaluation_criteria or "Unknown"}
 
         ## Raw Content
         {document.content.strip()}
@@ -1455,13 +1477,13 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
     ).strip() + "\n"
 
 
-def save_markdown_output(document: FundingDocument, analysis: FundingOpportunity, output_dir: Path) -> Path:
+def save_markdown_output(document: FundingDocument, analysis: FundingOpportunity, output_dir: Path, run_id: str | None = None) -> Path:
     org_dir = output_dir / slugify(document.organization)
     org_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{slugify(analysis.program_name)}.md"
     output_path = org_dir / filename
     tags = build_tags(analysis)
-    output_path.write_text(build_markdown(document, analysis, tags), encoding="utf-8")
+    output_path.write_text(build_markdown(document, analysis, tags, run_id=run_id), encoding="utf-8")
     LOGGER.info("Saved funding markdown output to %s", output_path)
     return output_path
 
@@ -1541,7 +1563,7 @@ def write_insights(connection: sqlite3.Connection, output_dir: Path) -> None:
     LOGGER.info("Saved funding insights to %s", insights_path)
 
 
-def process_documents(documents_with_analysis: list[tuple[FundingDocument, FundingOpportunity]], output_dir: Path, db_path: Path) -> int:
+def process_documents(documents_with_analysis: list[tuple[FundingDocument, FundingOpportunity]], output_dir: Path, db_path: Path, run_id: str | None = None) -> int:
     connection = db_connect(db_path)
     init_funding_db(connection)
     created = 0
@@ -1549,7 +1571,7 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
         if funding_exists(connection, document.title, document.source):
             LOGGER.info("Skipping already stored funding item '%s'", document.title)
             continue
-        output_path = save_markdown_output(document, analysis, output_dir)
+        output_path = save_markdown_output(document, analysis, output_dir, run_id=run_id)
         save_funding_record(
             connection,
             opportunity=analysis,
@@ -1661,6 +1683,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     agent_name = "funding"
     layer = "Funding"
     payload = input_data or {}
+    run_id = payload.get("run_id")
     analysis_mode = str(payload.get("analysis_mode", "collect_only")).strip().lower()
     started_at = datetime.now(UTC)
     configure_logging(payload.get("log_level", "INFO"))
@@ -1740,7 +1763,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                         documents.append((doc, analysis))
                         source_docs.append((doc, analysis))
                     if analysis_mode == "analyze" and source_docs:
-                        process_documents(source_docs, output_dir, db_path)
+                        process_documents(source_docs, output_dir, db_path, run_id=run_id)
                         
                     # Save checkpoint after each source
                     completed_sources.add(res.source_id)
@@ -1765,7 +1788,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             analysis = analyze_document(doc)
             documents = [(doc, analysis)]
             if analysis_mode == "analyze":
-                process_documents([(doc, analysis)], output_dir, db_path)
+                process_documents([(doc, analysis)], output_dir, db_path, run_id=run_id)
         else:
             text = payload["text"]
             organization = payload.get("organization") or "Manual Organization"
@@ -1773,7 +1796,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             analysis = analyze_document(doc)
             documents = [(doc, analysis)]
             if analysis_mode == "analyze":
-                process_documents([(doc, analysis)], output_dir, db_path)
+                process_documents([(doc, analysis)], output_dir, db_path, run_id=run_id)
             
         outputs = []
         docs_only = []
@@ -1781,7 +1804,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             docs_only.append(doc)
             output_path = None
             try:
-                output_path = save_markdown_output(doc, analysis, output_dir)
+                output_path = save_markdown_output(doc, analysis, output_dir, run_id=run_id)
             except Exception as e:
                 LOGGER.warning("Could not save funding markdown output: %s", e)
 
