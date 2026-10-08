@@ -1197,6 +1197,65 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
     return None
 
 
+def _extract_general_themes(content: str) -> list[str]:
+    from collections import Counter
+    stop_words = {
+        'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'their', 'there', 
+        'which', 'using', 'used', 'use', 'are', 'was', 'were', 'have', 'has', 'had', 
+        'will', 'can', 'may', 'more', 'than', 'also', 'such', 'these', 'those', 'about', 
+        'research', 'funding', 'opportunity', 'program', 'call', 'application', 'applicant', 
+        'applicants', 'project', 'projects', 'grant', 'grants', 'technology', 'technologies', 
+        'solution', 'solutions', 'adoption', 'deployment', 'validation', 'support', 
+        'development', 'innovation', 'innovations', 'system', 'systems', 'new', 'all', 'any', 
+        'other', 'some', 'many', 'its', 'our', 'we', 'they', 'it', 'an', 'a', 'of', 'in', 
+        'to', 'on', 'by', 'as', 'at', 'or', 'is', 'be', 'not', 'this', 'that', 'but', 
+        'national', 'state', 'federal', 'department', 'agency', 'center', 'institute', 
+        'university', 'college', 'colleges', 'universities', 'tribal', 'focus', 'area', 
+        'areas', 'general', 'specific', 'related', 'relevant', 'including', 'include', 'includes',
+        'provides', 'important', 'fund', 'provide', 'seeking', 'seek', 'seeks', 'must', 'should',
+        'would', 'could', 'required', 'requires', 'require', 'who', 'what', 'where', 'when', 'why',
+        'how', 'each', 'every', 'both', 'either', 'neither', 'through', 'during', 'before', 'after',
+        'above', 'below', 'under', 'over', 'between', 'among', 'within', 'without', 'against', 'stem'
+    }
+    
+    candidates = re.findall(r'\b(?:[A-Z][a-z\-]{2,}\s+){1,2}[A-Z][a-z\-]{2,}\b', content)
+    cap_phrases = []
+    for c in candidates:
+        low = c.lower()
+        if not any(w in stop_words for w in low.split()):
+            cap_phrases.append(low)
+            
+    chunks = re.split(r'[,.;:!?\n\t\[\](){}]+', content.lower())
+    phrases = []
+    for chunk in chunks:
+        words = [w for w in re.findall(r'[a-z\-]+', chunk) if len(w) > 2]
+        for i in range(len(words) - 1):
+            w1, w2 = words[i], words[i+1]
+            if w1 not in stop_words and w2 not in stop_words:
+                phrases.append(f'{w1} {w2}')
+            if i < len(words) - 2:
+                w3 = words[i+2]
+                if w1 not in stop_words and w2 not in stop_words and w3 not in stop_words:
+                    phrases.append(f'{w1} {w2} {w3}')
+                    
+    counter = Counter(phrases)
+    final = []
+    for p, c in counter.most_common(20):
+        if c >= 2:
+            if not any(p in f for f in final) and not any(f in p for f in final):
+                final.append(p)
+                
+    for p in Counter(cap_phrases).most_common(10):
+        p = p[0]
+        if not any(p in f for f in final) and not any(f in p for f in final):
+            final.append(p)
+            
+        if len(final) >= 3:
+            break
+            
+    return final[:3]
+
+
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
@@ -1222,6 +1281,11 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         "DigitalHealthCPS": ["Cyber-Physical Systems", "Digital Healthcare"],
     }
     themes = list(domain_themes.get(focus_area, []))
+    if focus_area == "General" or not themes:
+        extracted = _extract_general_themes(document.content)
+        if extracted:
+            themes = extracted
+
     if top_domain == "DigitalHealthCPS":
         if "cyber-physical systems" not in lowered and "cps" not in lowered and "Cyber-Physical Systems" in themes:
             themes.remove("Cyber-Physical Systems")
