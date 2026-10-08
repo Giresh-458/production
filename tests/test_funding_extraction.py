@@ -99,6 +99,8 @@ def test_analyze_document_general_robotics():
     themes = opp.research_context["technology_themes"]
     assert "robotics" in themes
     assert any("autonomous systems" in t for t in themes)
+    assert "manufacturing" not in themes
+    assert "advanced manufacturing" in themes
 
 def test_analyze_document_general_computer_vision():
     doc = FundingDocument(
@@ -113,4 +115,21 @@ def test_analyze_document_general_computer_vision():
     assert opp.focus_area == "General"
     themes = opp.research_context["technology_themes"]
     assert "computer vision" in themes
+    assert "image understanding" in themes
+    assert "industrial inspection" in themes
+    assert "industrial" not in themes
     assert not any("research priorities" in t for t in themes)
+
+def test_analyze_document_general_rejects_generic_verbs():
+    doc = FundingDocument(
+        organization="TestOrg",
+        title="Generic Call",
+        source="http://test.com",
+        source_type="Manual",
+        content="This program supports institutions and investigators conducting research and education activities and encourages collaboration, innovation, and capacity building.",
+        year=2026
+    )
+    opp = analyze_document(doc)
+    assert opp.focus_area == "General"
+    themes = opp.research_context["technology_themes"]
+    assert "conducting research" not in themes

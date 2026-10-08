@@ -1219,7 +1219,7 @@ def _extract_general_themes(content: str) -> list[str]:
         'focus', 'focuses', 'focused', 'focusing', 'target', 'targets', 'targeted', 'targeting',
         'significantly', 'systematically', 'example', 'scope', 'content', 'traditional',
         'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects',
-        'understanding', 'inspection', 'applications', 'advanced'
+        'applications'
     }
     
     generic_administrative = {
@@ -1232,7 +1232,8 @@ def _extract_general_themes(content: str) -> list[str]:
         'mission', 'missions', 'strand', 'strands', 'general', 'specific', 'related', 'relevant',
         'your', 'please', 'submit', 'submission', 'welcome', 'welcomes', 'researcher', 'researchers',
         'priority', 'priorities', 'prioritize', 'interest', 'interests', 'topic', 'topics',
-        'activity', 'activities', 'initiative', 'initiatives', 'investigator', 'investigators'
+        'activity', 'activities', 'initiative', 'initiatives', 'investigator', 'investigators',
+        'conducting', 'conduct', 'conducts', 'conducted'
     }
     
     chunks = re.split(r'[,.;:!?\n\t\[\](){}]+', content)
@@ -1259,15 +1260,16 @@ def _extract_general_themes(content: str) -> list[str]:
         'cybersecurity', 'distributed', 'infrastructure', 'equipment', 'stem',
         'computational', 'cyber', 'materials', 'biology', 'physics', 'chemistry',
         'medicine', 'health', 'energy', 'climate', 'quantum', 'biomedical', 'clinical',
-        'genomics', 'manufacturing', 'aerospace', 'robot', 'intelligent', 'intelligence',
+        'genomics', 'aerospace', 'robot', 'intelligent', 'intelligence',
         'algorithms', 'models', 'sensors', 'devices', 'hardware', 'software', 'network', 
-        'networks', 'machine', 'deep', 'decision', 'industrial', 'computer', 'natural', 'nlp'
+        'networks', 'machine', 'deep', 'decision', 'computer', 'natural', 'nlp', 'image'
     }
     
     broad_indicators = {
         'technology', 'technologies', 'science', 'engineering', 'research', 'systems',
         'data', 'academic', 'laboratory', 'education', 'curriculum', 'curricula', 
-        'course', 'courses', 'instructional', 'technical'
+        'course', 'courses', 'instructional', 'technical', 'manufacturing', 'industrial',
+        'understanding'
     }
     
     all_indicators = high_signal_technical | broad_indicators
