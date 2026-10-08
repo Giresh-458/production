@@ -127,7 +127,12 @@ def _sec(url: str) -> StructuredResult | None:
 
 
 
-def grantsgov_paginated_search(keywords: str, limit_per_page: int = 50, test_limits: Optional[dict] = None) -> dict:
+def grantsgov_paginated_search(
+    keywords: str,
+    limit_per_page: int = 50,
+    test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
+) -> dict:
     """Paginate through Grants.gov API until all results are consumed.
 
     Returns a dict with:
@@ -145,6 +150,7 @@ def grantsgov_paginated_search(keywords: str, limit_per_page: int = 50, test_lim
     pagination_complete = False
     previous_start = -1  # loop-detection state
     seen_ids: set[Any] = set()
+    source_max_pages = source_limits.get("max_pages") if source_limits else None
 
     while True:
         # Infinite-loop safeguard: detect non-advancing pagination
@@ -152,6 +158,10 @@ def grantsgov_paginated_search(keywords: str, limit_per_page: int = 50, test_lim
             errors.append(f"Pagination stalled at startRecordNum={start_record}")
             break
         previous_start = start_record
+
+        if source_max_pages is not None and pages_fetched >= source_max_pages:
+            errors.append(f"SOURCE_LIMIT_REACHED: Max pages reached ({source_max_pages})")
+            break
 
         from core.crawl_context import current_crawl_context
         ctx = current_crawl_context.get(None)
@@ -273,7 +283,12 @@ def grantsgov_fetch_opportunity(opp_id: str) -> dict | None:
         )
         return None
 
-def github_paginated_issues(owner: str, repo: str, test_limits: Optional[dict] = None) -> dict:
+def github_paginated_issues(
+    owner: str,
+    repo: str,
+    test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
+) -> dict:
     """Paginate through GitHub Issues API until no more records.
 
     Returns a dict with:
@@ -295,8 +310,13 @@ def github_paginated_issues(owner: str, repo: str, test_limits: Optional[dict] =
     pagination_complete = False
     rate_limited = False
     previous_ids: set[int] = set()
+    source_max_pages = source_limits.get("max_pages") if source_limits else None
 
     while True:
+        if source_max_pages is not None and pages_fetched >= source_max_pages:
+            errors.append(f"SOURCE_LIMIT_REACHED: Max pages reached ({source_max_pages})")
+            break
+
         from core.crawl_context import current_crawl_context
         ctx = current_crawl_context.get(None)
         if ctx and ctx.check_limits(source_max_pages=10):

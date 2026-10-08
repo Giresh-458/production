@@ -61,21 +61,30 @@ def collect_auto_sources(
         coll = source.collection
         mode = coll.get("mode", "web")
         
-        # Merge source-specific limits
-        active_limits = dict(test_limits) if test_limits else {}
-        source_limits = coll.get("limits", {})
-        if "max_pages" in source_limits:
-            active_limits["max_pages"] = source_limits["max_pages"]
-        if "max_documents" in source_limits:
-            active_limits["max_documents"] = source_limits["max_documents"]
+        # Keep production source limits separate from test-only limits.
+        source_limits = dict(coll.get("limits", {}))
         # For web discovery block backwards compatibility
         discovery = coll.get("discovery", {})
-        if "max_pages" in discovery and "max_pages" not in active_limits:
-            active_limits["max_pages"] = discovery["max_pages"]
+        if "max_pages" in discovery and "max_pages" not in source_limits:
+            source_limits["max_pages"] = discovery["max_pages"]
+
+        active_test_limits = None
+        production_source_limits = source_limits or None
+        if is_test_mode:
+            # Preserve the existing test-mode precedence/diagnostic behavior.
+            active_test_limits = dict(test_limits or {})
+            if "max_pages" in source_limits:
+                active_test_limits["max_pages"] = source_limits["max_pages"]
+            if "max_documents" in source_limits:
+                active_test_limits["max_documents"] = source_limits["max_documents"]
+            production_source_limits = None
             
         try:
             if mode == "api":
-                yield _collect_api_source(source, area, warnings, active_limits)
+                yield _collect_api_source(
+                    source, area, warnings,
+                    active_test_limits, production_source_limits
+                )
             elif mode == "url_validation":
                 result = CollectionResult(
                     source_id=source.name,
@@ -88,7 +97,10 @@ def collect_auto_sources(
                     warnings.append(f"{source.name} requires manual url_validation check")
                 yield result
             else:
-                yield _collect_web_source(source, area, warnings, active_limits)
+                yield _collect_web_source(
+                    source, area, warnings,
+                    active_test_limits, production_source_limits
+                )
         except Exception as e:
             LOGGER.exception("Collection failed for source %s", source.name)
             result = CollectionResult(
@@ -141,15 +153,20 @@ def _collect_api_source(
     area: Optional[str],
     warnings: Optional[List[str]],
     test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
 ) -> CollectionResult:
     """Collect from an API source (Grants.gov or GitHub)."""
     provider = source.collection.get("provider", "")
     result = CollectionResult(source_id=source.name, method="api")
 
     if provider == "grants_gov":
-        return _collect_grants_gov(source, area, result, warnings, test_limits)
+        return _collect_grants_gov(
+            source, area, result, warnings, test_limits, source_limits
+        )
     elif provider == "github":
-        return _collect_github(source, result, warnings, test_limits)
+        return _collect_github(
+            source, result, warnings, test_limits, source_limits
+        )
     else:
         result.final_status = "FAIL"
         result.errors.append({
@@ -167,14 +184,19 @@ def _collect_grants_gov(
     result: CollectionResult,
     warnings: Optional[List[str]],
     test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
 ) -> CollectionResult:
     """Collect from Grants.gov API with genuine pagination exhaustion."""
     query = "research cyber physical blockchain identity infrastructure"
-    api_result = grantsgov_paginated_search(query, test_limits=test_limits)
+    api_result = grantsgov_paginated_search(
+        query, test_limits=test_limits, source_limits=source_limits
+    )
 
     hits = api_result["hits"]
     if test_limits and "max_documents" in test_limits:
         hits = hits[:test_limits["max_documents"]]
+    if source_limits and "max_documents" in source_limits:
+        hits = hits[:source_limits["max_documents"]]
         
     result.api_pages_fetched = api_result["pages_fetched"]
     result.api_expected_records = api_result["total_expected"]
@@ -193,6 +215,8 @@ def _collect_grants_gov(
         if "TEST_TRUNCATED" in err:
             result.truncated = True
             result.final_status = "TEST_TRUNCATED"
+        elif "SOURCE_LIMIT_REACHED" in err:
+            result.truncated = True
         if warnings is not None:
             warnings.append(f"Grants.gov: {err}")
 
@@ -301,6 +325,7 @@ def _collect_github(
     result: CollectionResult,
     warnings: Optional[List[str]],
     test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
 ) -> CollectionResult:
     """Collect from GitHub Issues API with genuine pagination exhaustion."""
     repo = source.collection.get("repo", "")
@@ -315,11 +340,15 @@ def _collect_github(
         return result
 
     owner, repo_name = repo.split("/", 1)
-    api_result = github_paginated_issues(owner, repo_name, test_limits=test_limits)
+    api_result = github_paginated_issues(
+        owner, repo_name, test_limits=test_limits, source_limits=source_limits
+    )
 
     issues = api_result["issues"]
     if test_limits and "max_documents" in test_limits:
         issues = issues[:test_limits["max_documents"]]
+    if source_limits and "max_documents" in source_limits:
+        issues = issues[:source_limits["max_documents"]]
         
     result.api_pages_fetched = api_result["pages_fetched"]
     result.api_records_received = len(issues)
@@ -340,6 +369,8 @@ def _collect_github(
         if "TEST_TRUNCATED" in err:
             result.truncated = True
             result.final_status = "TEST_TRUNCATED"
+        elif "SOURCE_LIMIT_REACHED" in err:
+            result.truncated = True
         if warnings is not None:
             warnings.append(f"GitHub API: {err}")
 
@@ -441,18 +472,23 @@ def _collect_web_source(
     area: Optional[str],
     warnings: Optional[List[str]],
     test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
 ) -> CollectionResult:
     """Collect from a web source using Crawl4AI with BFS traversal."""
     allowed_domains = source.collection.get("allowed_domains", [])
     config = source.collection.get("discovery", {})
 
     # crawl_funding_source returns raw opportunities as dicts
-    result = crawl_funding_source(source.name, source.url, config, allowed_domains, test_limits)
+    result = crawl_funding_source(
+        source.name, source.url, config, allowed_domains, test_limits, source_limits
+    )
 
     # Normalize: convert raw dicts +' FundingDocument +' analyze_document
     raw_opps = list(result.opportunities)
     if test_limits and "max_documents" in test_limits:
         raw_opps = raw_opps[:test_limits["max_documents"]]
+    if source_limits and "max_documents" in source_limits:
+        raw_opps = raw_opps[:source_limits["max_documents"]]
         
     result.opportunities = []
     result.records_discovered = len(raw_opps)

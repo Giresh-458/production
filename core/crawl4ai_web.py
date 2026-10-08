@@ -318,6 +318,7 @@ def crawl_funding_source(
     discovery_config: dict,
     allowed_domains: list[str],
     test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
 ) -> CollectionResult:
     """Crawl a funding source using BFS traversal with two-stage discovery.
 
@@ -349,6 +350,8 @@ def crawl_funding_source(
     if test_limits:
         configured_max_pages = test_limits.get("max_pages", configured_max_pages)
         # also apply it as a hard stop flag in the loop later, but we can just override the vars here
+    if source_limits and "max_pages" in source_limits:
+        configured_max_pages = source_limits["max_pages"]
 
     result.max_depth = configured_max_depth
 
@@ -372,10 +375,20 @@ def crawl_funding_source(
 
         from core.crawl_context import current_crawl_context
         ctx = current_crawl_context.get(None)
+        source_max_documents = None
+        source_max_seconds = None
+        if test_limits:
+            source_max_documents = test_limits.get("max_documents")
+            source_max_seconds = test_limits.get("max_seconds")
+        if source_limits:
+            if "max_documents" in source_limits:
+                source_max_documents = source_limits["max_documents"]
+            if "max_seconds" in source_limits:
+                source_max_seconds = source_limits["max_seconds"]
         is_limit = ctx.check_limits(
             source_max_pages=configured_max_pages,
-            source_max_documents=test_limits.get("max_documents") if test_limits else None,
-            source_max_seconds=test_limits.get("max_seconds") if test_limits else None,
+            source_max_documents=source_max_documents,
+            source_max_seconds=source_max_seconds,
             source_max_depth=configured_max_depth,
             current_depth=depth
         ) if ctx else False

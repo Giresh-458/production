@@ -31,3 +31,36 @@ def test_funding_boundaries_respects_limits(monkeypatch):
         assert res.pages_fetched <= 4
     finally:
         current_crawl_context.reset(token)
+def test_collect_auto_sources_separates_production_source_limits(monkeypatch):
+    from types import SimpleNamespace
+    import agents.funding_collector as fc
+
+    captured = {}
+    sentinel = object()
+
+    def fake_collect_api_source(
+        source,
+        area,
+        warnings,
+        test_limits=None,
+        source_limits=None,
+    ):
+        captured["test_limits"] = test_limits
+        captured["source_limits"] = source_limits
+        return sentinel
+
+    monkeypatch.setattr(fc, "_collect_api_source", fake_collect_api_source)
+    source = SimpleNamespace(
+        name="Grants.gov Public Opportunities API",
+        url="https://api.grants.gov/v1/api/search2",
+        collection={
+            "mode": "api",
+            "provider": "grants_gov",
+            "limits": {"max_pages": 2, "max_documents": 100},
+        },
+    )
+
+    result = next(fc.collect_auto_sources([source], is_test_mode=False))
+    assert result is sentinel
+    assert captured["test_limits"] is None
+    assert captured["source_limits"] == {"max_pages": 2, "max_documents": 100}

@@ -128,3 +128,30 @@ def test_grantsgov_api_non_json_response(monkeypatch):
     assert len(result["errors"]) > 0
     assert "non-JSON/non-dict" in result["errors"][0]
 
+
+
+def test_grantsgov_api_source_page_limit_is_partial_not_test_truncated(monkeypatch):
+    import core.structured_sources as ss
+    from core.structured_sources import grantsgov_paginated_search
+
+    def mock_post_json(url, json_body, **kwargs):
+        start = json_body.get("startRecordNum", 0)
+        if start == 0:
+            hits = [{"id": str(i), "title": f"Opp {i}"} for i in range(50)]
+        else:
+            hits = [{"id": str(i), "title": f"Opp {i}"} for i in range(50, 100)]
+        return {
+            "errorcode": 0,
+            "data": {"hitCount": 100, "oppHits": hits},
+        }, url
+
+    monkeypatch.setattr(ss, "post_json", mock_post_json)
+    result = grantsgov_paginated_search(
+        "test",
+        limit_per_page=50,
+        source_limits={"max_pages": 1},
+    )
+    assert result["pages_fetched"] == 1
+    assert result["pagination_complete"] is False
+    assert any("SOURCE_LIMIT_REACHED" in err for err in result["errors"])
+    assert not any("TEST_TRUNCATED" in err for err in result["errors"])
