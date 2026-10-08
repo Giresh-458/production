@@ -343,8 +343,7 @@ def build_manual_payload(*, text: str, title: str, source: str, area: str | None
     motivation = "Manual input suggests a candidate problem that is already specific enough to draft into a proposal scaffold."
     proposed_method = "Define a narrow technical intervention, implement a first prototype, and compare it against a measurable baseline."
     evaluation_plan = "Use a bounded benchmark or dataset slice and report explicit outcome metrics tied to the target system behavior."
-    funding_context_alignment = cleaned_text(str(record.get("funding_alignment", "")))
-    funding_alignment = funding_context_alignment or "Funding alignment must be established from the selected live funding call and its preserved evidence; no fixed research-area mapping is used in adaptive mode."
+    funding_alignment = "Funding alignment must be established from the selected live funding call and its preserved evidence; no fixed research-area mapping is used in adaptive mode."
     payload = {
         "title": derive_proposal_title(title or "Manual Input", normalized_area),
         "problem": clean[:500],

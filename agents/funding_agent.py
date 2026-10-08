@@ -1390,9 +1390,26 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
 
     run_id_line = f"\n        - Run Id: {run_id}" if run_id else ""
 
+    from core.problem_extraction import extract_problem_intelligence
+    content_for_extraction = "\n".join(analysis.evidence.values()) if analysis.evidence else document.content
+    intel = extract_problem_intelligence(
+        content=content_for_extraction,
+        title=analysis.program_name,
+        evidence_bundle={"evidence_snippets": list(analysis.evidence.values())} if analysis.evidence else {},
+        allow_llm_refinement=False,
+        research_area=analysis.focus_area,
+        agent_name="funding"
+    )
+    selected_problem = intel.get("selected_problem") or "Insufficient problem signal"
+    problem_confidence = intel.get("problem_confidence") or "Low"
+
     return textwrap.dedent(
         f'''\
         # Grant: {analysis.program_name}
+
+        ## Problem Intelligence
+        **Selected Problem**: {selected_problem}
+        **Confidence**: {problem_confidence}
 
         ## Status
         {analysis.status}
