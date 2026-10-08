@@ -492,19 +492,28 @@ def main() -> int:
             print(f"❌ Proposal generation failed with exception: {exc}")
             proposal_ok = False
 
+        proposal_result = stage_results.get("proposal", {})
+        
         proposal_dir = call_root / "proposals"
         proposal_files = sorted(proposal_dir.rglob("*.md")) if proposal_dir.exists() else []
         final_output = proposal_files[0] if proposal_files else None
         
-        if not proposal_ok or not final_output:
-            print("❌ Proposal generation failed or produced no output.")
+        if not proposal_ok:
+            print("❌ Proposal generation encountered an execution failure.")
             global_exit_code = max(global_exit_code, 5)
             call_run_status = "failed_proposal_generation"
+        elif not final_output:
+            if not proposal_result.get("errors"):
+                print("⚠️ Proposal generation completed but all candidates were rejected by quality gates.")
+                call_run_status = "completed_no_proposal"
+            else:
+                print("❌ Proposal generation failed internally and produced no output.")
+                global_exit_code = max(global_exit_code, 5)
+                call_run_status = "failed_proposal_generation"
         else:
             call_run_status = "completed"
             total_proposals += len(proposal_files)
-            if final_output:
-                all_final_outputs.append(str(final_output.resolve()))
+            all_final_outputs.append(str(final_output.resolve()))
 
         report = {
             "run_id": run_id,
@@ -566,7 +575,13 @@ def main() -> int:
     else:
         print(f"⚠️ RIF Pipeline Completed with some errors (Exit code {global_exit_code})")
     print(f"Valid open calls processed: {len(valid_calls)}")
-    print(f"Total proposals generated: {total_proposals}")
+    if total_proposals == 0:
+        if any(r["status"] == "completed_no_proposal" for r in all_reports):
+            print("⚠️ Zero proposals were generated because no candidate satisfied the proposal quality gate.")
+        else:
+            print("Total proposals generated: 0")
+    else:
+        print(f"Total proposals generated: {total_proposals}")
     print(f"Summary report: {global_workflow / 'pipeline_summary.json'}")
     print("==============================================")
     return global_exit_code
