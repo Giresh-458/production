@@ -246,17 +246,31 @@ def grantsgov_paginated_search(keywords: str, limit_per_page: int = 50, test_lim
 def grantsgov_fetch_opportunity(opp_id: str) -> dict | None:
     """Fetch detail for a single Grants.gov opportunity."""
     try:
+        opportunity_id = int(str(opp_id).strip())
+    except (TypeError, ValueError):
+        import logging
+        logging.getLogger("rif.structured_sources").warning(
+            "Invalid Grants.gov opportunity ID: %r", opp_id
+        )
+        return None
+
+    try:
         data, _ = post_json(
-            "https://api.grants.gov/v1/api/opportunities/opportunity",
-            json_body={"oppId": opp_id},
-            headers={"Content-Type": "application/json", "User-Agent": "RIF-Structured-Source/1.0"},
+            "https://api.grants.gov/v1/api/fetchOpportunity",
+            json_body={"opportunityId": opportunity_id},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "RIF-Structured-Source/1.0",
+            },
             timeout=(8, 20),
             retries=2,
         )
         return data.get("data", {}) if isinstance(data, dict) else None
     except Exception as e:
         import logging
-        logging.getLogger("rif.structured_sources").warning("Grants.gov detail fetch failed for %s: %s", opp_id, e)
+        logging.getLogger("rif.structured_sources").warning(
+            "Grants.gov detail fetch failed for %s: %s", opp_id, e
+        )
         return None
 
 def github_paginated_issues(owner: str, repo: str, test_limits: Optional[dict] = None) -> dict:
