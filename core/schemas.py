@@ -290,9 +290,10 @@ def rank_research_areas(text: str) -> list[Dict[str, Any]]:
         matches[area] = area_matches
 
     total = sum(weighted.values())
+    normalization_floor = max(4.0, total)
     ranked: list[Dict[str, Any]] = []
     for area in ALLOWED_RESEARCH_AREAS:
-        score = (weighted[area] / total) if total else 0.0
+        score = (weighted[area] / normalization_floor) if normalization_floor else 0.0
         ranked.append({
             "domain": area,
             "score": round(score, 4),

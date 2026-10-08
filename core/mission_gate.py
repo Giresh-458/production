@@ -29,16 +29,11 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     substantive_values: list[str] = []
     if rc:
         substantive_values.extend(list(rc.technology_themes or ()))
-        substantive_values.extend(list(rc.funding_priorities or ()))
-        substantive_values.extend(list(rc.target_outcomes or ()))
         substantive_values.extend(list(rc.investigation_questions or ()))
         substantive_values.extend(list(rc.inferred_challenges or ()))
         substantive_values.extend(list(rc.selected_domains or ()))
     if ctx.research_area and str(ctx.research_area).strip().lower() not in {"general", "unscoped"}:
         substantive_values.append(str(ctx.research_area))
-    # The call title is useful only as a substantive anchor when it contains more
-    # than generic funding/program language.
-    substantive_values.append(str(ctx.call_title or ""))
     anchor_text = " ".join(v for v in substantive_values if v)
     doc = " ".join(str(record.get(k, '')) for k in ('title','problem_statement','context_summary','focus','source_type','evidence_type','actor','keywords'))
     mt = _tokens(anchor_text); dt = _tokens(doc)
