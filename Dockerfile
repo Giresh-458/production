@@ -22,4 +22,4 @@ RUN playwright install chromium && playwright install-deps chromium
 COPY . .
 
 # Default: run the full pipeline
-CMD ["python", "run_full_pipeline.py"]
+CMD ["python", "run_pipeline.py"]
