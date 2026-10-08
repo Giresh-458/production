@@ -208,8 +208,11 @@ def infer_collaborators(area: str, entry: dict[str, Any], sections: dict[str, st
 
 
 def validate_idea_payload(problem: str, gap: str, hypothesis: str, experiment: str, feasibility: str, entry: dict[str, Any], existing_solutions: str = "") -> dict[str, Any]:
+    low_prob = problem.lower().strip()
+    is_sentinel = not low_prob or low_prob in ("insufficient problem signal", "unknown", "no explicit problem statement found.") or (low_prob.startswith("title:") and "agency:" in low_prob)
+    
     checks = {
-        "problem_present": bool(problem),
+        "problem_present": not is_sentinel,
         "gap_present": bool(gap),
         "testable_hypothesis": hypothesis.lower().startswith("if ") and " then " in hypothesis.lower(),
         "measurable_experiment": any(term in experiment.lower() for term in ("metric", "benchmark", "compare", "baseline", "measure")),
@@ -261,6 +264,20 @@ def build_idea_payload_from_synthesis(entry: dict[str, Any]) -> dict[str, Any]:
         f"The near-term research idea is to formalize this into a bounded hypothesis, measurable prototype, and evaluation plan rather than leaving it as a broad ecosystem recommendation."
     ).strip()
     topic_tags = [f"#{topic}" for topic in extract_topics(" ".join([problem, gap, seed_idea, enriched_idea]))]
+    
+    # Check if the problem is a sentinel
+    low_prob = problem.lower().strip()
+    is_sentinel = not low_prob or low_prob in ("insufficient problem signal", "unknown", "no explicit problem statement found.") or (low_prob.startswith("title:") and "agency:" in low_prob)
+    
+    if is_sentinel:
+        hypothesis = "Unresolved due to insufficient problem signal"
+        experiment_direction = "Unresolved"
+        prototype_scope = "Unresolved"
+        collaborators = "Unresolved"
+        enriched_idea = "Unresolved"
+        gap = "Unresolved"
+        why_important = "Unresolved"
+        topic_tags = []
     validation = validate_idea_payload(problem, gap, hypothesis, experiment_direction, feasibility, entry, existing_solutions)
     tags = list(
         dict.fromkeys(

@@ -70,10 +70,9 @@ class OpenAlexSearcher(ExistingSolutionSearcher):
 
         stopwords = {
             "the", "and", "this", "that", "with", "from", "for", "are", "was", "were", 
-            "problem", "project", "research", "technology", "system", "evaluation", 
-            "development", "data", "analysis", "approach", "method", "results", "based", 
-            "using", "study", "new", "proposed", "model", "performance", "design", 
-            "application", "novel", "different", "important", "can", "has", "have", 
+            "problem", "project", "research", "based", 
+            "using", "study", "new", "proposed", 
+            "novel", "different", "important", "can", "has", "have", 
             "which", "these", "tribal", "colleges", "universities", "program", "agency", 
             "number", "details", "title", "grant", "funding", "opportunity", "award"
         }
