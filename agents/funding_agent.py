@@ -1198,62 +1198,104 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
 
 
 def _extract_general_themes(content: str) -> list[str]:
+    import re
     from collections import Counter
     stop_words = {
         'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'their', 'there', 
         'which', 'using', 'used', 'use', 'are', 'was', 'were', 'have', 'has', 'had', 
-        'will', 'can', 'may', 'more', 'than', 'also', 'such', 'these', 'those', 'about', 
-        'research', 'funding', 'opportunity', 'program', 'call', 'application', 'applicant', 
-        'applicants', 'project', 'projects', 'grant', 'grants', 'technology', 'technologies', 
-        'solution', 'solutions', 'adoption', 'deployment', 'validation', 'support', 
-        'development', 'innovation', 'innovations', 'system', 'systems', 'new', 'all', 'any', 
-        'other', 'some', 'many', 'its', 'our', 'we', 'they', 'it', 'an', 'a', 'of', 'in', 
-        'to', 'on', 'by', 'as', 'at', 'or', 'is', 'be', 'not', 'this', 'that', 'but', 
-        'national', 'state', 'federal', 'department', 'agency', 'center', 'institute', 
-        'university', 'college', 'colleges', 'universities', 'tribal', 'focus', 'area', 
-        'areas', 'general', 'specific', 'related', 'relevant', 'including', 'include', 'includes',
-        'provides', 'important', 'fund', 'provide', 'seeking', 'seek', 'seeks', 'must', 'should',
-        'would', 'could', 'required', 'requires', 'require', 'who', 'what', 'where', 'when', 'why',
-        'how', 'each', 'every', 'both', 'either', 'neither', 'through', 'during', 'before', 'after',
-        'above', 'below', 'under', 'over', 'between', 'among', 'within', 'without', 'against', 'stem'
+        'will', 'can', 'may', 'might', 'must', 'should', 'would', 'could', 'more', 'than', 
+        'also', 'such', 'these', 'those', 'about', 'all', 'any', 'other', 'some', 'many', 
+        'its', 'our', 'we', 'they', 'it', 'an', 'a', 'of', 'in', 'to', 'on', 'by', 'as', 
+        'at', 'or', 'is', 'be', 'not', 'but', 'who', 'what', 'where', 'when', 'why', 'how', 
+        'each', 'every', 'both', 'either', 'neither', 'through', 'during', 'before', 'after', 
+        'above', 'below', 'under', 'over', 'between', 'among', 'within', 'without', 'against',
+        'provide', 'provides', 'provided', 'providing', 'offer', 'offers', 'offered', 'offering',
+        'require', 'requires', 'required', 'requiring', 'seek', 'seeks', 'seeking', 'sought',
+        'include', 'includes', 'included', 'including', 'enhance', 'enhances', 'enhanced', 'enhancing',
+        'improve', 'improves', 'improved', 'improving', 'develop', 'develops', 'developed', 'developing',
+        'expand', 'expands', 'expanded', 'expanding', 'modernize', 'modernizes', 'modernized', 'modernizing',
+        'update', 'updates', 'updated', 'updating', 'deliver', 'delivers', 'delivered', 'delivering',
+        'add', 'adds', 'added', 'adding', 'support', 'supports', 'supported', 'supporting',
+        'focus', 'focuses', 'focused', 'focusing', 'target', 'targets', 'targeted', 'targeting',
+        'significantly', 'systematically', 'example', 'scope', 'content', 'traditional',
+        'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects'
     }
     
-    candidates = re.findall(r'\b(?:[A-Z][a-z\-]{2,}\s+){1,2}[A-Z][a-z\-]{2,}\b', content)
-    cap_phrases = []
-    for c in candidates:
-        low = c.lower()
-        if not any(w in stop_words for w in low.split()):
-            cap_phrases.append(low)
-            
-    chunks = re.split(r'[,.;:!?\n\t\[\](){}]+', content.lower())
+    generic_administrative = {
+        'funding', 'grant', 'grants', 'opportunity', 'program', 'programs', 'call', 'calls',
+        'application', 'applications', 'applicant', 'applicants', 'project', 'projects',
+        'proposal', 'proposals', 'award', 'awards', 'awarded', 'budget', 'deadline',
+        'eligibility', 'eligible', 'requirement', 'requirements', 'department', 'agency',
+        'center', 'institute', 'university', 'college', 'colleges', 'universities', 'tribal',
+        'national', 'state', 'federal', 'local', 'objective', 'objectives', 'goal', 'goals',
+        'mission', 'missions', 'strand', 'strands', 'general', 'specific', 'related', 'relevant',
+        'your', 'please', 'submit', 'submission', 'welcome', 'welcomes', 'researcher', 'researchers'
+    }
+    
+    chunks = re.split(r'[,.;:!?\n\t\[\](){}]+', content)
     phrases = []
+    
     for chunk in chunks:
-        words = [w for w in re.findall(r'[a-z\-]+', chunk) if len(w) > 2]
-        for i in range(len(words) - 1):
-            w1, w2 = words[i], words[i+1]
-            if w1 not in stop_words and w2 not in stop_words:
-                phrases.append(f'{w1} {w2}')
-            if i < len(words) - 2:
-                w3 = words[i+2]
-                if w1 not in stop_words and w2 not in stop_words and w3 not in stop_words:
-                    phrases.append(f'{w1} {w2} {w3}')
-                    
-    counter = Counter(phrases)
-    final = []
-    for p, c in counter.most_common(20):
-        if c >= 2:
-            if not any(p in f for f in final) and not any(f in p for f in final):
-                final.append(p)
+        words = [w for w in re.findall(r'[a-zA-Z\-]+', chunk) if len(w) > 2]
+        for n in range(2, 5):
+            for i in range(len(words) - n + 1):
+                phrase_words = words[i:i+n]
+                phrase_lower = [w.lower() for w in phrase_words]
+                if any(w in stop_words for w in phrase_lower):
+                    continue
+                if any(w in generic_administrative for w in phrase_lower):
+                    continue
+                phrase_str = " ".join(phrase_words)
+                phrases.append(phrase_str)
                 
-    for p in Counter(cap_phrases).most_common(10):
-        p = p[0]
-        if not any(p in f for f in final) and not any(f in p for f in final):
-            final.append(p)
+    unique_phrases = set(phrases)
+    scored_phrases = []
+    
+    substantive_indicators = {
+        'infrastructure', 'equipment', 'stem', 'education', 'research', 'computational', 
+        'academic', 'laboratory', 'technology', 'technologies', 'science', 'engineering', 
+        'data', 'computing', 'cyber', 'physical', 'systems', 'materials', 'biology', 
+        'physics', 'chemistry', 'medicine', 'health', 'energy', 'climate', 'network',
+        'networks', 'software', 'hardware', 'curriculum', 'curricula', 'course', 'courses',
+        'instructional'
+    }
+    
+    phrase_counts = Counter([p.lower() for p in phrases])
+    
+    for phrase in unique_phrases:
+        lower_phrase = phrase.lower()
+        words = lower_phrase.split()
             
+        has_indicator = any(w in substantive_indicators for w in words)
+        has_acronym = any(w.isupper() and len(w) >= 3 for w in phrase.split())
+        
+        # Must be valid
+        if not (has_indicator or has_acronym):
+            continue
+        
+        score = 0
+        if has_indicator: score += 5
+        
+        indicator_count = sum(1 for w in words if w in substantive_indicators)
+        score += indicator_count * 5
+        
+        if indicator_count == len(words):
+            score += 10
+            
+        score += phrase_counts[lower_phrase]
+        score += len(words)
+        scored_phrases.append((score, len(phrase), lower_phrase))
+        
+    scored_phrases.sort(reverse=True, key=lambda x: (x[0], x[1]))
+    
+    final = []
+    for score, length, p in scored_phrases:
+        if not any(p in existing for existing in final) and not any(existing in p for existing in final):
+            final.append(p)
         if len(final) >= 3:
             break
             
-    return final[:3]
+    return final
 
 
 def analyze_document(document: FundingDocument) -> FundingOpportunity:

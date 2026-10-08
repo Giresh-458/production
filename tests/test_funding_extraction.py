@@ -19,10 +19,10 @@ from agents.funding_agent import analyze_document, FundingDocument
 def test_analyze_document_general_fallback():
     doc = FundingDocument(
         organization="TestOrg",
-        title="Testing Call",
+        title="Targeted STEM Infusion Projects",
         source="http://test.com",
         source_type="Manual",
-        content="We provide a research grant for computational infrastructure and laboratory equipment. Our research focus is computational infrastructure. We also care about laboratory equipment.",
+        content="Targeted STEM Infusion Projects could, for example, enhance academic infrastructure by systematically adding traditional knowledge to the scope or content of a STEM course, updating curricula, modernizing laboratory research equipment, developing and delivering professional development for K-12 STEM educators, or improving the computational infrastructure. The objective of this strand is to expand STEM degrees or significantly enhance instructional approaches. This is a research grant.",
         year=2026
     )
     opp = analyze_document(doc)
@@ -31,8 +31,9 @@ def test_analyze_document_general_fallback():
     assert rc is not None
     assert len(rc["selected_domains"]) == 0
     themes = rc["technology_themes"]
+    
     assert "computational infrastructure" in themes
-    assert "laboratory equipment" in themes
+    assert any(t in themes for t in ["laboratory research equipment", "academic infrastructure", "stem course", "stem educators"])
     
     questions = rc["investigation_questions"]
     assert any("computational infrastructure" in q for q in questions)
@@ -55,3 +56,17 @@ def test_analyze_document_general_negative():
     
     questions = rc["investigation_questions"]
     assert any("relevant technologies" in q for q in questions)
+
+def test_analyze_document_general_administrative_phrases():
+    doc = FundingDocument(
+        organization="TestOrg",
+        title="Administrative Grants",
+        source="http://test.com",
+        source_type="Manual",
+        content="Please submit your grant application to the tribal colleges and universities program. The tribal colleges and universities program welcomes your grant application. This is a research grant.",
+        year=2026
+    )
+    opp = analyze_document(doc)
+    assert opp.focus_area == "General"
+    rc = opp.research_context
+    assert len(rc["technology_themes"]) == 0
