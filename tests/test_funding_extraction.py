@@ -70,3 +70,47 @@ def test_analyze_document_general_administrative_phrases():
     assert opp.focus_area == "General"
     rc = opp.research_context
     assert len(rc["technology_themes"]) == 0
+
+def test_analyze_document_general_machine_learning():
+    doc = FundingDocument(
+        organization="TestOrg",
+        title="ML Call",
+        source="http://test.com",
+        source_type="Manual",
+        content="This research funding supports machine learning for scientific applications and intelligent decision systems.",
+        year=2026
+    )
+    opp = analyze_document(doc)
+    assert opp.focus_area == "General"
+    themes = opp.research_context["technology_themes"]
+    assert "machine learning" in themes
+
+def test_analyze_document_general_robotics():
+    doc = FundingDocument(
+        organization="TestOrg",
+        title="Robotics Call",
+        source="http://test.com",
+        source_type="Manual",
+        content="The call supports robotics and autonomous systems research for advanced manufacturing.",
+        year=2026
+    )
+    opp = analyze_document(doc)
+    assert opp.focus_area == "General"
+    themes = opp.research_context["technology_themes"]
+    assert "robotics" in themes
+    assert any("autonomous systems" in t for t in themes)
+
+def test_analyze_document_general_computer_vision():
+    doc = FundingDocument(
+        organization="TestOrg",
+        title="CV Call",
+        source="http://test.com",
+        source_type="Manual",
+        content="Research priorities include computer vision and image understanding for industrial inspection.",
+        year=2026
+    )
+    opp = analyze_document(doc)
+    assert opp.focus_area == "General"
+    themes = opp.research_context["technology_themes"]
+    assert "computer vision" in themes
+    assert not any("research priorities" in t for t in themes)

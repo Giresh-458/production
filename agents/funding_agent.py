@@ -1218,7 +1218,8 @@ def _extract_general_themes(content: str) -> list[str]:
         'add', 'adds', 'added', 'adding', 'support', 'supports', 'supported', 'supporting',
         'focus', 'focuses', 'focused', 'focusing', 'target', 'targets', 'targeted', 'targeting',
         'significantly', 'systematically', 'example', 'scope', 'content', 'traditional',
-        'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects'
+        'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects',
+        'understanding', 'inspection', 'applications', 'advanced'
     }
     
     generic_administrative = {
@@ -1229,7 +1230,9 @@ def _extract_general_themes(content: str) -> list[str]:
         'center', 'institute', 'university', 'college', 'colleges', 'universities', 'tribal',
         'national', 'state', 'federal', 'local', 'objective', 'objectives', 'goal', 'goals',
         'mission', 'missions', 'strand', 'strands', 'general', 'specific', 'related', 'relevant',
-        'your', 'please', 'submit', 'submission', 'welcome', 'welcomes', 'researcher', 'researchers'
+        'your', 'please', 'submit', 'submission', 'welcome', 'welcomes', 'researcher', 'researchers',
+        'priority', 'priorities', 'prioritize', 'interest', 'interests', 'topic', 'topics',
+        'activity', 'activities', 'initiative', 'initiatives', 'investigator', 'investigators'
     }
     
     chunks = re.split(r'[,.;:!?\n\t\[\](){}]+', content)
@@ -1237,7 +1240,7 @@ def _extract_general_themes(content: str) -> list[str]:
     
     for chunk in chunks:
         words = [w for w in re.findall(r'[a-zA-Z\-]+', chunk) if len(w) > 2]
-        for n in range(2, 5):
+        for n in range(1, 5):
             for i in range(len(words) - n + 1):
                 phrase_words = words[i:i+n]
                 phrase_lower = [w.lower() for w in phrase_words]
@@ -1251,14 +1254,23 @@ def _extract_general_themes(content: str) -> list[str]:
     unique_phrases = set(phrases)
     scored_phrases = []
     
-    substantive_indicators = {
-        'infrastructure', 'equipment', 'stem', 'education', 'research', 'computational', 
-        'academic', 'laboratory', 'technology', 'technologies', 'science', 'engineering', 
-        'data', 'computing', 'cyber', 'physical', 'systems', 'materials', 'biology', 
-        'physics', 'chemistry', 'medicine', 'health', 'energy', 'climate', 'network',
-        'networks', 'software', 'hardware', 'curriculum', 'curricula', 'course', 'courses',
-        'instructional'
+    high_signal_technical = {
+        'learning', 'vision', 'robotics', 'autonomous', 'language', 'processing',
+        'cybersecurity', 'distributed', 'infrastructure', 'equipment', 'stem',
+        'computational', 'cyber', 'materials', 'biology', 'physics', 'chemistry',
+        'medicine', 'health', 'energy', 'climate', 'quantum', 'biomedical', 'clinical',
+        'genomics', 'manufacturing', 'aerospace', 'robot', 'intelligent', 'intelligence',
+        'algorithms', 'models', 'sensors', 'devices', 'hardware', 'software', 'network', 
+        'networks', 'machine', 'deep', 'decision', 'industrial', 'computer', 'natural', 'nlp'
     }
+    
+    broad_indicators = {
+        'technology', 'technologies', 'science', 'engineering', 'research', 'systems',
+        'data', 'academic', 'laboratory', 'education', 'curriculum', 'curricula', 
+        'course', 'courses', 'instructional', 'technical'
+    }
+    
+    all_indicators = high_signal_technical | broad_indicators
     
     phrase_counts = Counter([p.lower() for p in phrases])
     
@@ -1266,20 +1278,31 @@ def _extract_general_themes(content: str) -> list[str]:
         lower_phrase = phrase.lower()
         words = lower_phrase.split()
             
-        has_indicator = any(w in substantive_indicators for w in words)
+        has_indicator = any(w in all_indicators for w in words)
         has_acronym = any(w.isupper() and len(w) >= 3 for w in phrase.split())
         
+        if all(w in broad_indicators for w in words):
+            continue
+            
+        if len(words) == 1:
+            if not (words[0] in high_signal_technical or has_acronym):
+                continue
+                
         # Must be valid
         if not (has_indicator or has_acronym):
-            continue
+            if phrase_counts[lower_phrase] < 2:
+                continue
         
         score = 0
         if has_indicator: score += 5
         
-        indicator_count = sum(1 for w in words if w in substantive_indicators)
-        score += indicator_count * 5
+        high_signal_count = sum(1 for w in words if w in high_signal_technical)
+        score += high_signal_count * 10
         
-        if indicator_count == len(words):
+        broad_count = sum(1 for w in words if w in broad_indicators)
+        score += broad_count * 2
+        
+        if (high_signal_count + broad_count) == len(words):
             score += 10
             
         score += phrase_counts[lower_phrase]
