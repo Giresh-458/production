@@ -63,7 +63,7 @@ def validate_run_input(mode_or_agent: str, input_or_mode: Any = None, input_data
         errors.append("manual_url mode requires input_data['url']")
     if mode == "manual_text" and not payload.get("text"):
         errors.append("manual_text mode requires input_data['text']")
-        
+
     from core.agent_registry import COLLECTION_AGENTS
     if mode == "configured_scan" and agent_name in COLLECTION_AGENTS and funding_context is None and not funding_contexts:
         if agent_name != "funding":
@@ -343,23 +343,23 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
     import re
     matched_ids = []
     raw = (str(content) + " " + str(title)).lower()
-    
+
     for ctx in funding_contexts:
         # 1. Explicit ID
         if ctx.funding_call_id and re.search(rf"\b{re.escape(ctx.funding_call_id.lower())}\b", raw):
             matched_ids.append(ctx.funding_call_id)
             continue
-        
+
         # 2. Exact URL
         if ctx.application_url and ctx.application_url.lower() in raw:
             matched_ids.append(ctx.funding_call_id)
             continue
-        
+
         # 3. Exact Program / Call Identifier
         if ctx.call_id and len(ctx.call_id) > 4 and re.search(rf"\b{re.escape(ctx.call_id.lower())}\b", raw):
             matched_ids.append(ctx.funding_call_id)
             continue
-            
+
         # 4. Strong textual match (e.g. exact title or program name if long enough)
         if ctx.call_title and len(ctx.call_title) > 15 and ctx.call_title.lower() in raw:
             matched_ids.append(ctx.funding_call_id)
@@ -367,7 +367,7 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
         if ctx.program_name and len(ctx.program_name) > 15 and ctx.program_name.lower() in raw:
             matched_ids.append(ctx.funding_call_id)
             continue
-            
+
     return matched_ids
 
 def build_intermediate_artifact_payload(
@@ -483,10 +483,37 @@ def save_intermediate_markdown(
     area_dir = _slugify_filename(resolved_area or "unscoped")
     target_dir = output_dir / area_dir
     target_dir.mkdir(parents=True, exist_ok=True)
-    output_path = target_dir / f"{_slugify_filename(str(shared_header['title']))}.md"
-    if output_path.exists():
-        timestamp_suffix = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        output_path = target_dir / f"{_slugify_filename(str(shared_header['title']))}-{timestamp_suffix}.md"
+
+    base_name = _slugify_filename(str(shared_header['title']))
+
+    import hashlib
+    import json
+
+    source_url = str(shared_header.get('source', '')).strip()
+
+    raw_content = payload.get("raw_content")
+    if raw_content:
+        actual_content_hash = hashlib.sha256(str(raw_content).encode("utf-8")).hexdigest()[:16]
+    else:
+        # Fallback: hash the semantic content fields while excluding volatile metadata
+        # like timestamps ('collected_at'), generated metadata ('quality_gate'), and
+        # 'problem_intelligence' which might be downstream derivations.
+        # This keeps the document identity stable across repeat runs.
+        semantic_payload = {
+            "title": shared_header.get("title"),
+            "source": shared_header.get("source"),
+            "agent_name": shared_header.get("agent_name"),
+            "research_area": shared_header.get("research_area"),
+            "evidence_bundle": payload.get("evidence_bundle", {}),
+            "agent_specific_body": payload.get("agent_specific_body", {})
+        }
+        actual_content_hash = hashlib.sha256(json.dumps(semantic_payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+
+    if source_url:
+        url_hash = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:16]
+        output_path = target_dir / f"{base_name}-{url_hash}-{actual_content_hash}.md"
+    else:
+        output_path = target_dir / f"{base_name}-{actual_content_hash}.md"
 
     problem_intelligence = payload.get("problem_intelligence", {})
     preview = problem_intelligence.get("selected_problem") or "No explicit problem statement found."
@@ -684,12 +711,12 @@ def finalize_collection_agent_response(
             collected_at=started_at,
             allow_llm_refinement=allow_llm_refinement,
         )
-        
+
         if funding_contexts:
             doc_ids = getattr(document, "funding_call_ids", None)
             if doc_ids is None and isinstance(document, dict):
                 doc_ids = document.get("funding_call_ids")
-                
+
             if not doc_ids:
                 # Single call explicitly passed to collector overrides everything
                 if funding_context:
@@ -698,18 +725,18 @@ def finalize_collection_agent_response(
                     # Multi-call: strict provenance requirements
                     matched_ids = []
                     raw = (str(content) + " " + str(title)).lower()
-                    
+
                     doc_ids = assign_funding_calls(title, content, funding_contexts)
-                
+
                 artifact_payload["shared_header"]["funding_call_ids"] = doc_ids
-                
+
         elif funding_context:
             artifact_payload["shared_header"]["funding_call_id"] = funding_context.funding_call_id
             artifact_payload["shared_header"]["funding_call_ids"] = [funding_context.funding_call_id]
 
         if run_id:
             artifact_payload["shared_header"]["run_id"] = run_id
-            
+
         artifact_payload["agent_specific_body"] = agent_specific_body
         collected_warnings.extend(area_warnings)
         quality_gate = artifact_payload["metadata"].get("quality_gate", {})
