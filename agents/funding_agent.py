@@ -1626,9 +1626,18 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
 
 
 def save_markdown_output(document: FundingDocument, analysis: FundingOpportunity, output_dir: Path, run_id: str | None = None) -> Path:
+    import hashlib
     org_dir = output_dir / slugify(document.organization)
     org_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{slugify(analysis.program_name)}.md"
+    
+    base_slug = slugify(analysis.program_name)
+    if analysis.call_id:
+        unique_suffix = slugify(analysis.call_id)
+    else:
+        url_hash = hashlib.sha256(document.source.encode('utf-8')).hexdigest()[:8]
+        unique_suffix = url_hash
+        
+    filename = f"{base_slug}-{unique_suffix}.md"
     output_path = org_dir / filename
     tags = build_tags(analysis)
     output_path.write_text(build_markdown(document, analysis, tags, run_id=run_id), encoding="utf-8")
