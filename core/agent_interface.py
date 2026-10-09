@@ -721,6 +721,7 @@ def finalize_collection_agent_response(
             mode == "configured_scan"
             and bool(source.strip().startswith(("http://", "https://")))
             and len(content.strip()) >= 180
+            and agent != "adaptive_research"
         )
         if live_source_rescue and not quality_gate.get("passed", False):
             agent_specific_body = _rescue_required_agent_body(agent, document, agent_specific_body, resolved_area, source)

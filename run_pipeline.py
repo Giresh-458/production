@@ -385,7 +385,7 @@ def main() -> int:
 
         print("\n[3/6] Normalizing evidence...")
         try:
-            normalized = save_normalized_collection_records(root / "intermediate", call_root, context.funding_call_id)
+            normalized = save_normalized_collection_records([root / "intermediate", call_root / "intermediate"], call_root, context.funding_call_id)
         except Exception as exc:
             print(f"❌ Normalization failed with exception: {exc}")
             global_exit_code = max(global_exit_code, 4)

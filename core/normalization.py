@@ -67,7 +67,7 @@ def canonicalize_url(url: str) -> str:
         parsed = urllib.parse.urlparse(url)
         query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
         filtered_query = [(k, v) for k, v in query if not k.startswith("utm_")]
-        
+
         # Rebuild URL
         scheme = parsed.scheme.lower()
         netloc = parsed.netloc.lower()
@@ -80,8 +80,8 @@ def canonicalize_url(url: str) -> str:
         path = parsed.path
         if not path:
             path = "/"
-        
-        # Don't strip trailing slash arbitrarily as it might be semantically meaningful on some domains, 
+
+        # Don't strip trailing slash arbitrarily as it might be semantically meaningful on some domains,
         # but let's just use it as is
         new_query = urllib.parse.urlencode(filtered_query)
         new_url = urllib.parse.urlunparse((scheme, netloc, path, parsed.params, new_query, parsed.fragment))
@@ -200,13 +200,13 @@ def extract_source_identity(title: str, source_url: str, canonical_url: str, met
         doi = source_hints.get("doi") or metadata.get("doi")
         if doi:
             return f"doi:{doi}"
-    
+
     # 2. canonical URL
     if canonical_url:
         return f"url:{canonical_url}"
     if source_url:
         return f"url:{source_url}"
-    
+
     # 3. Hash
     return f"hash:{hashlib.sha256(title.encode('utf-8')).hexdigest()[:16]}"
 
@@ -281,7 +281,7 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
     problem_intel_body = sections.get("Problem Intelligence", {}).get("body", "")
     selected_problem_match = re.search(r"\*\*Selected Problem\*\*:\s*(.*)", problem_intel_body)
     extracted_selected_problem = selected_problem_match.group(1).strip() if selected_problem_match else ""
-    
+
     original_candidate_match = re.search(r"\*\*Original Candidate\*\*:\s*(.*)", problem_intel_body)
     extracted_original_candidate = original_candidate_match.group(1).strip() if original_candidate_match else ""
 
@@ -366,7 +366,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     canonical_url = canonicalize_url(source_url)
     collected_at = _coalesce(shared_header.get("collected_at", ""), provenance.get("collected_at", ""))
     collection_mode = _coalesce(shared_header.get("collection_mode", ""))
-    
+
     funding_call_id = _clean(shared_header.get("funding_call_id", ""))
     raw_call_ids = shared_header.get("funding_call_ids", [])
     if isinstance(raw_call_ids, str):
@@ -379,7 +379,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         funding_call_ids.append(funding_call_id)
 
     run_id = _clean(shared_header.get("run_id", ""))
-    
+
     source_type = _coalesce(
         _body_field(body, "Source Type"),
         str(machine_metadata.get("source_type", "")),
@@ -438,7 +438,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
 
     content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
     source_id = extract_source_identity(title, source_url, canonical_url, machine_metadata)
-    
+
     # Needs review if lacking funding call id or source
     needs_review = (not funding_call_id and not funding_call_ids) or not source_url
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
@@ -522,43 +522,47 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     normalized_record["tokens"] = _tokenize(normalized_record["search_text"])
     return normalized_record
 
-def build_normalized_collection_records(intermediate_root: Path, target_funding_call_id: str | None = None, *, errors: list[str] | None = None) -> list[dict[str, Any]]:
+def build_normalized_collection_records(intermediate_root: Path | list[Path], target_funding_call_id: str | None = None, *, errors: list[str] | None = None) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    if not intermediate_root.exists():
-        return records
-    for path in sorted(intermediate_root.rglob("*.md")):
-        if path.name.lower() == "insights.md":
+
+    roots = [intermediate_root] if isinstance(intermediate_root, Path) else intermediate_root
+
+    for root in roots:
+        if not root.exists():
             continue
-        try:
-            record = normalize_intermediate_artifact(path)
-            # Filter by target_funding_call_id if provided
-            if target_funding_call_id:
-                call_ids = record.get("funding_call_ids", [])
-                explicit_id = record.get("funding_call_id")
-                
-                if explicit_id == target_funding_call_id:
-                    # Valid explicit ownership
-                    pass
-                elif target_funding_call_id in call_ids:
-                    # Do not treat appearance in a broad multi-ID list as proof of ownership
-                    if len(call_ids) > 3:
-                        # Ambiguous: leave evidence unassigned / skip for this call
-                        continue
+        for path in sorted(root.rglob("*.md")):
+            if path.name.lower() == "insights.md":
+                continue
+            try:
+                record = normalize_intermediate_artifact(path)
+                # Filter by target_funding_call_id if provided
+                if target_funding_call_id:
+                    call_ids = record.get("funding_call_ids", [])
+                    explicit_id = record.get("funding_call_id")
+
+                    if explicit_id == target_funding_call_id:
+                        # Valid explicit ownership
+                        pass
+                    elif target_funding_call_id in call_ids:
+                        # Do not treat appearance in a broad multi-ID list as proof of ownership
+                        if len(call_ids) > 3:
+                            # Ambiguous: leave evidence unassigned / skip for this call
+                            continue
+                        else:
+                            # Legitimate shared evidence (e.g. 1-3 specific calls)
+                            record["funding_call_id"] = target_funding_call_id
                     else:
-                        # Legitimate shared evidence (e.g. 1-3 specific calls)
-                        record["funding_call_id"] = target_funding_call_id
-                else:
-                    continue
-                
-            records.append(record)
-        except Exception as exc:
-            if errors is not None:
-                errors.append(f"{path}: {exc}")
-            continue
+                        continue
+
+                records.append(record)
+            except Exception as exc:
+                if errors is not None:
+                    errors.append(f"{path}: {exc}")
+                continue
     return records
 
 
-def save_normalized_collection_records(intermediate_root: Path, output_dir: Path, target_funding_call_id: str | None = None) -> dict[str, Path]:
+def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None) -> dict[str, Path]:
     errors: list[str] = []
     records = build_normalized_collection_records(intermediate_root, target_funding_call_id=target_funding_call_id, errors=errors)
     target_dir = output_dir / "normalized"
@@ -584,12 +588,12 @@ def save_normalized_collection_records(intermediate_root: Path, output_dir: Path
                 existing["context_summary"] = r["context_summary"]
                 existing["content_hash"] = r["content_hash"]
                 existing["evidence_snippets"] = r["evidence_snippets"]
-            
+
             if r["content_hash"] not in existing["content_versions"]:
                 existing["content_versions"].append(r["content_hash"])
-                
+
     records = list(deduped_records.values())
-    
+
     import shutil
     if normalized_root.exists():
         shutil.rmtree(normalized_root)
@@ -609,19 +613,19 @@ def save_normalized_collection_records(intermediate_root: Path, output_dir: Path
 
     by_layer_path = normalized_root / "by_layer.json"
     by_layer_path.write_text(json.dumps(by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    
+
     # DB Insertion Layer for Evidence Ledger
     try:
         db_path = normalized_root / "evidence_ledger.db"
         conn = get_ledger_connection(db_path)
-        
-        # We need to compute independence groups. 
+
+        # We need to compute independence groups.
         # Deterministic clustering based on content_hash
         content_hash_to_group = {}
         for rec in records:
             if rec["content_hash"] not in content_hash_to_group:
                 content_hash_to_group[rec["content_hash"]] = rec["source_id"]
-        
+
         for record in records:
             if record["normalization_status"] == "NEEDS_REVIEW":
                 independence_status = "UNKNOWN"
@@ -674,16 +678,16 @@ def save_normalized_collection_records(intermediate_root: Path, output_dir: Path
                 },
                 "raw_record_id": record["file_path"]
             }
-            
+
             try:
                 upsert_canonical_evidence(conn, canonical_rec)
-                
+
                 # Extract claims
                 claims = extract_claims(record["evidence_snippets"])
                 for claim in claims:
                     upsert_claim(conn, claim)
                     link_evidence_claim(conn, canonical_rec["evidence_id"], claim["claim_id"])
-                
+
                 # Extract entities
                 for entity_name in record["named_entities"]:
                     eid = hashlib.sha256(entity_name.lower().encode('utf-8')).hexdigest()[:16]
@@ -696,10 +700,10 @@ def save_normalized_collection_records(intermediate_root: Path, output_dir: Path
                     }
                     upsert_entity(conn, entity)
                     link_evidence_entity(conn, canonical_rec["evidence_id"], eid)
-                    
+
             except Exception as e:
                 errors.append(f"DB Error for {record['record_id']}: {e}")
-                
+
         conn.commit()
         conn.close()
     except Exception as e:

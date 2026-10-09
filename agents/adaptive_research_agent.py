@@ -131,10 +131,6 @@ def run_agent(mode: str, area: str | None = None, input_data: dict[str, Any] | N
 
     try:
         queries = generate_funding_queries(funding_context, max_queries=6)
-        # Add the actual call title and mission terms so genuinely new domains are not
-        # forced through the canonical blockchain taxonomy.
-        if funding_context.call_title:
-            queries.insert(0, funding_context.call_title)
         queries = list(dict.fromkeys(q.strip() for q in queries if q and q.strip()))[:6]
 
         documents: list[AdaptiveDocument] = []

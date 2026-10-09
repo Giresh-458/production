@@ -446,7 +446,7 @@ def build_cross_cluster_groups(clusters: list[dict[str, Any]], max_groups: int =
         funding_call_ids = list(dict.fromkeys(
             str(x) for c in chosen for x in (c.get("funding_call_ids", []) or []) if str(x).strip()
         ))
-        
+
         # Only use a strong call-specific ID if it was explicitly present in the seed.
         # Do NOT invent strong call-specific ownership by picking from the array.
         funding_call_id = seed.get("funding_call_id")
@@ -583,6 +583,12 @@ def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, n
     payload["cluster_signature"] = provenance["cluster_signature"]
     evidence_assessment["synthesis_decision"] = synthesis_decision
     payload["evidence_assessment"] = evidence_assessment
+
+    if synthesis_decision.get("decision") == "insufficient_evidence" or not synthesis_decision.get("gap_supported", False):
+        if "priority_readiness" in payload:
+            payload["priority_readiness"]["ready_for_high_priority"] = False
+            payload["priority_readiness"]["rationale"] += " Synthesis marked as insufficient evidence or lacking gap support."
+
     return payload
 
 
@@ -661,6 +667,12 @@ def build_payload_from_manual_record(record: dict[str, Any], cluster: dict[str, 
     payload["cluster_signature"] = provenance["cluster_signature"]
     evidence_assessment["synthesis_decision"] = synthesis_decision
     payload["evidence_assessment"] = evidence_assessment
+
+    if synthesis_decision.get("decision") == "insufficient_evidence" or not synthesis_decision.get("gap_supported", False):
+        if "priority_readiness" in payload:
+            payload["priority_readiness"]["ready_for_high_priority"] = False
+            payload["priority_readiness"]["rationale"] += " Synthesis marked as insufficient evidence or lacking gap support."
+
     return payload
 
 
