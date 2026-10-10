@@ -29,11 +29,11 @@ def evaluate_collection_health(collection_tasks: list[dict], min_required_agents
         agent_name = str(t.get("agent_name"))
         status = str(t.get("status", "")).lower()
         outputs_count = int(t.get("outputs_count", 0) or 0)
-        
+
         # An agent is healthy if it succeeded (or partially succeeded) AND produced evidence.
         if status in ("success", "partial_success", "partial_limit") and outputs_count > 0:
             healthy_agents.add(agent_name)
-    
+
     is_healthy = len(healthy_agents) >= min_required_agents
     return is_healthy, len(healthy_agents)
 
@@ -63,10 +63,10 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
     now = datetime.now(UTC)
     candidates: list[tuple[float, dict[str, Any]]] = []
     rejected: list[dict[str, Any]] = []
-    
+
     seen_hashes: set[str] = set()
     import hashlib
-    
+
     for record in funding_result.get("outputs", []) or []:
         status = str(record.get("status", "")).upper()
         deadline = _parse_date(record.get("deadline"), end_of_day=True)
@@ -113,7 +113,7 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             org = str(record.get("organization") or record.get("source_name") or "").strip().lower()
             base_str = f"{app_url}|{title}|{org}"
             call_id = f"CALL-{hashlib.sha256(base_str.encode('utf-8')).hexdigest()[:10].upper()}"
-        
+
         if call_id in seen_hashes:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["duplicate of existing valid call"], "source_url": record.get("source_url")})
             continue
@@ -138,7 +138,7 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
 
     candidates.sort(key=lambda pair: (-pair[0], str(pair[1].get("title", ""))))
     selected = [pair[1] for pair in candidates]
-    
+
     return selected, rejected
 
 
@@ -261,7 +261,7 @@ def main() -> int:
         valid_calls, rejected = get_all_open_funding_calls(funding_result)
         if args.max_open_calls is not None and args.max_open_calls > 0:
             valid_calls = valid_calls[:args.max_open_calls]
-        
+
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}
         (root / "workflow").mkdir(parents=True, exist_ok=True)
@@ -270,7 +270,7 @@ def main() -> int:
         return 3
 
     print(f"   ✅ Discovered {len(valid_calls)} valid open funding calls.")
-    
+
     # Pre-sync registry ONCE before parallel operations
     try:
         from core.source_registry import sync_source_registry, build_source_refresh_plan
@@ -290,14 +290,14 @@ def main() -> int:
     print(f"\n==============================================")
     print(f"▶️ GLOBAL SHARED COLLECTION FOR {len(valid_calls)} CALLS")
     print(f"==============================================")
-    
+
     all_contexts = [build__selected_call_context(c) for c in valid_calls]
     global_workflow = root / "workflow"
     global_workflow.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"\n[1.5/6] Running shared downstream collection agents ({len(downstream_agents)})...")
     downstream_areas = [None]
-    
+
     try:
         downstream_plan = execute_batch_run(
             agent_names=downstream_agents,
@@ -319,11 +319,11 @@ def main() -> int:
     except Exception as exc:
         print(f"❌ Shared collection failed with exception: {exc}")
         return 4
-        
+
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
     min_required = max(3, len(downstream_agents) // 3)
     is_healthy, healthy_count = evaluate_collection_health(collection_tasks, min_required)
-    
+
     collector_health = {"healthy_agents": healthy_count, "total_agents": len(downstream_agents), "required": min_required}
     if not is_healthy:
         print(f"❌ Shared collection quality gate failed: {healthy_count}/{len(downstream_agents)} unique collectors produced evidence.")
@@ -339,20 +339,20 @@ def main() -> int:
         context = build__selected_call_context(selected)
         canonical_areas = select_collection_areas(selected, args.area)
         unknown_area = not canonical_areas or max((float(x.get("score", 0.0) or 0.0) for x in selected.get("domain_relevance", []) or []), default=0.0) < 0.10
-        
+
         call_root = root / "calls" / context.funding_call_id
         call_root.mkdir(parents=True, exist_ok=True)
-        
+
         selected_path = call_root / "workflow" / "selected_funding_call.json"
         selected_path.parent.mkdir(parents=True, exist_ok=True)
         selected_path.write_text(json.dumps({"selected": selected, "rejected_alternatives": rejected if call_idx == 1 else []}, indent=2, ensure_ascii=False), encoding="utf-8")
-        
+
         print(f"\n==============================================")
         print(f"▶️ Processing Call {call_idx}/{len(valid_calls)}: {selected.get('program_name') or selected.get('title')}")
         print(f"==============================================")
         print(f"   ✅ Selected: {selected.get('program_name') or selected.get('title')} | {selected.get('status')} | deadline={selected.get('deadline') or 'not specified'}")
         print(f"   🎯 Canonical research areas: {', '.join(canonical_areas) if canonical_areas else 'none — adaptive research mode'}")
-        
+
         research_ctx = context.research_context
         research_intent = getattr(research_ctx, "research_intent", "unknown") if research_ctx else "unknown"
         if research_intent != "research":
@@ -384,34 +384,46 @@ def main() -> int:
                 print(f"   ⚠️ Adaptive research failed: {exc}")
 
         print("\n[3/6] Normalizing evidence...")
+        gate_details = []
+        accepted_evidence_ids = set()
+        rejected_evidence_ids = set()
+
+        def apply_gate(record):
+            nonlocal accepted_evidence_ids, rejected_evidence_ids
+            gate = mission_relevance(record, context)
+            record["mission_relevance"] = gate
+            eid = record.get("evidence_id")
+            if gate["passed"]:
+                accepted_evidence_ids.add(eid)
+                return True
+            else:
+                if eid not in rejected_evidence_ids:
+                    rejected_evidence_ids.add(eid)
+                    gate_details.append({"record_id": record.get("record_id"), "title": record.get("title"), "source_url": record.get("source_url"), **gate})
+                return False
+
         try:
-            normalized = save_normalized_collection_records([root / "intermediate", call_root / "intermediate"], call_root, context.funding_call_id)
+            normalized = save_normalized_collection_records([root / "intermediate", call_root / "intermediate"], call_root, context.funding_call_id, filter_func=apply_gate)
         except Exception as exc:
             print(f"❌ Normalization failed with exception: {exc}")
             global_exit_code = max(global_exit_code, 4)
             continue
-            
+
         records_path = call_root / "normalized" / "records.json"
         records = json.loads(records_path.read_text(encoding="utf-8")) if records_path.exists() else []
-        if not records:
+
+        accepted_count = len(accepted_evidence_ids)
+        rejected_count = len(rejected_evidence_ids)
+        input_count = accepted_count + rejected_count
+
+        if input_count == 0:
             print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        gated_records = []
-        gate_details = []
-        for record in records:
-            gate = mission_relevance(record, context)
-            record["mission_relevance"] = gate
-            if gate["passed"]:
-                gated_records.append(record)
-            else:
-                gate_details.append({"record_id": record.get("record_id"), "title": record.get("title"), "source_url": record.get("source_url"), **gate})
-        rejected_count = len(records) - len(gated_records)
-        records = gated_records
-        records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        (call_root / "workflow" / "mission_relevance_gate.json").write_text(json.dumps({"input_records": rejected_count + len(records), "accepted_records": len(records), "rejected_records": rejected_count, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"   🔎 Mission relevance gate: {len(records)} accepted / {rejected_count} rejected")
+        (call_root / "workflow" / "mission_relevance_gate.json").write_text(json.dumps({"input_records": input_count, "accepted_records": accepted_count, "rejected_records": rejected_count, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
+
         if not records:
             report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
             (call_root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -421,7 +433,15 @@ def main() -> int:
 
         print("\n[4/6] Processing evidence: tagging → clustering → trends...")
         stage_results: dict[str, Any] = {}
-        process_area = canonical_areas[0] if canonical_areas else "Unscoped"
+        accepted_areas = set()
+        for r in records:
+            a = normalize_area(r.get("research_area"))
+            accepted_areas.add(a if a in ALLOWED_RESEARCH_AREAS else "Unscoped")
+
+        if len(accepted_areas) == 1 and "Unscoped" not in accepted_areas:
+            process_area = list(accepted_areas)[0]
+        else:
+            process_area = "Unscoped"
         processing_failed = False
         for agent, payload in [
             ("tagging", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "tags")}),
@@ -439,7 +459,7 @@ def main() -> int:
                 print(f"❌ Processing stage '{agent}' failed with exception: {exc}")
                 processing_failed = True
                 break
-                
+
         if processing_failed:
             global_exit_code = max(global_exit_code, 4)
             continue
@@ -453,7 +473,7 @@ def main() -> int:
         except Exception as exc:
             print(f"❌ Synthesis failed with exception: {exc}")
             synthesis_ok = False
-            
+
         if not synthesis_ok:
             print("❌ Synthesis failed or produced no output; refusing to generate a proposal from degraded evidence.")
             report = {
@@ -467,7 +487,7 @@ def main() -> int:
             global_exit_code = max(global_exit_code, 5)
             all_reports.append(report)
             continue
-            
+
         try:
             stage_results["idea"] = run_stage("idea", "configured_scan", process_area if process_area != "Unscoped" else None, {
                 "output_dir": str(call_root / "ideas"), "manifest_dir": str(call_root / "synthesis" / "manifest"),
@@ -477,12 +497,12 @@ def main() -> int:
         except Exception as exc:
             print(f"❌ Idea generation failed with exception: {exc}")
             idea_ok = False
-            
+
         if not idea_ok:
             print("❌ Idea generation failed; refusing to generate a proposal from incomplete intelligence.")
             global_exit_code = max(global_exit_code, 5)
             continue
-            
+
         try:
             stage_results["proposal"] = run_stage("proposal", "configured_scan", process_area if process_area != "Unscoped" else None, {
                 "output_dir": str(call_root / "proposals"), "idea_dir": str(call_root / "ideas"), "__selected_call_context": context
@@ -493,11 +513,11 @@ def main() -> int:
             proposal_ok = False
 
         proposal_result = stage_results.get("proposal", {})
-        
+
         proposal_dir = call_root / "proposals"
         proposal_files = sorted(proposal_dir.rglob("*.md")) if proposal_dir.exists() else []
         final_output = proposal_files[0] if proposal_files else None
-        
+
         if not proposal_ok:
             print("❌ Proposal generation encountered an execution failure.")
             global_exit_code = max(global_exit_code, 5)

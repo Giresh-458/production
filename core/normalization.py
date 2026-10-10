@@ -8,7 +8,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.schemas import normalize_area, rank_research_areas
+from core.schemas import normalize_area, rank_research_areas, ALLOWED_RESEARCH_AREAS
 from core.evidence_ledger import (
     get_ledger_connection,
     upsert_canonical_evidence,
@@ -558,11 +558,28 @@ def build_normalized_collection_records(intermediate_root: Path | list[Path], ta
             except Exception as exc:
                 if errors is not None:
                     errors.append(f"{path}: {exc}")
-                continue
     return records
 
 
-def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None) -> dict[str, Path]:
+def _build_indexes(records: list[dict[str, Any]]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+    by_area: dict[str, list[dict[str, Any]]] = {}
+    by_layer: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        raw_area = record.get("research_area")
+        area = normalize_area(raw_area)
+        if area not in ALLOWED_RESEARCH_AREAS:
+            area = "Unscoped"
+        by_area.setdefault(area, []).append(record)
+
+        raw_layer = record.get("layer")
+        if raw_layer:
+            layer = str(raw_layer).strip()
+            if layer:
+                by_layer.setdefault(layer, []).append(record)
+    return by_area, by_layer
+
+
+def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None, filter_func=None) -> dict[str, Path]:
     errors: list[str] = []
     records = build_normalized_collection_records(intermediate_root, target_funding_call_id=target_funding_call_id, errors=errors)
     target_dir = output_dir / "normalized"
@@ -593,6 +610,8 @@ def save_normalized_collection_records(intermediate_root: Path | list[Path], out
                 existing["content_versions"].append(r["content_hash"])
 
     records = list(deduped_records.values())
+    if filter_func:
+        records = [r for r in records if filter_func(r)]
 
     import shutil
     if normalized_root.exists():
@@ -602,11 +621,7 @@ def save_normalized_collection_records(intermediate_root: Path | list[Path], out
     records_path = normalized_root / "records.json"
     records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    by_area: dict[str, list[dict[str, Any]]] = {}
-    by_layer: dict[str, list[dict[str, Any]]] = {}
-    for record in records:
-        by_area.setdefault(record["research_area"], []).append(record)
-        by_layer.setdefault(record["layer"], []).append(record)
+    by_area, by_layer = _build_indexes(records)
 
     by_area_path = normalized_root / "by_area.json"
     by_area_path.write_text(json.dumps(by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -720,24 +735,108 @@ def save_normalized_collection_records(intermediate_root: Path | list[Path], out
     }
 
 
+def resolve_refresh_context(outputs_root: Path):
+    if outputs_root.parent.name == "calls":
+        target_funding_call_id = outputs_root.name
+        run_root = outputs_root.parent.parent
+        intermediate_roots = [run_root / "intermediate", outputs_root / "intermediate"]
+    else:
+        target_funding_call_id = None
+        intermediate_roots = [outputs_root / "intermediate"]
+
+    filter_func = None
+    if target_funding_call_id:
+        selected_path = outputs_root / "workflow" / "selected_funding_call.json"
+        if not selected_path.exists():
+            raise FileNotFoundError(f"Cannot safely refresh collection records for call '{target_funding_call_id}': {selected_path} is missing, so mission gate cannot be applied.")
+
+        from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
+        from core.mission_gate import relevance as mission_relevance
+        try:
+            import json
+            wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
+            record = wrapper.get("selected")
+            if not record:
+                raise ValueError("Missing 'selected' key in selected_funding_call.json")
+
+            scored = ScoredCall(
+                call_id=target_funding_call_id,
+                record=record,
+                score=10.0,
+                validation=ValidationResult(True, ["Reconstructed during refresh."]),
+            )
+            context = FundingCallContext.from_scored_call(scored, mode="autonomous_live", extra_reasons=["Reconstructed during refresh."])
+            def apply_gate(rec):
+                gate = mission_relevance(rec, context)
+                rec["mission_relevance"] = gate
+                return gate["passed"]
+            filter_func = apply_gate
+        except Exception as e:
+            raise RuntimeError(f"Cannot safely refresh collection records for call '{target_funding_call_id}': failed to reconstruct mission context. Details: {e}")
+
+    return intermediate_roots, target_funding_call_id, filter_func
+
+
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
-    intermediate_root = outputs_root / "intermediate"
+    intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
+
     newest_intermediate = 0.0
-    if intermediate_root.exists():
-        for path in intermediate_root.rglob("*.md"):
-            if path.name.lower() == "insights.md":
-                continue
-            try:
-                newest_intermediate = max(newest_intermediate, path.stat().st_mtime)
-            except OSError:
-                continue
+    for ir in intermediate_roots:
+        if ir.exists():
+            for path in ir.rglob("*.md"):
+                if path.name.lower() == "insights.md":
+                    continue
+                try:
+                    newest_intermediate = max(newest_intermediate, path.stat().st_mtime)
+                except OSError:
+                    continue
     try:
         records_mtime = records_path.stat().st_mtime
     except OSError:
         records_mtime = 0.0
+    force_refresh = False
     if not records_path.exists() or newest_intermediate > records_mtime:
-        return save_normalized_collection_records(intermediate_root, outputs_root)
+        force_refresh = True
+    elif filter_func:
+        import json
+        import copy
+        try:
+            cached = json.loads(records_path.read_text(encoding="utf-8"))
+            for r in cached:
+                if not filter_func(copy.deepcopy(r)):
+                    force_refresh = True
+                    break
+
+            if not force_refresh:
+                area_path = outputs_root / "normalized" / "by_area.json"
+                layer_path = outputs_root / "normalized" / "by_layer.json"
+
+                expected_by_area, expected_by_layer = _build_indexes(cached)
+
+                needs_repair = False
+                try:
+                    area_data = json.loads(area_path.read_text(encoding="utf-8"))
+                    if area_data != expected_by_area:
+                        needs_repair = True
+                except Exception:
+                    needs_repair = True
+
+                try:
+                    layer_data = json.loads(layer_path.read_text(encoding="utf-8"))
+                    if layer_data != expected_by_layer:
+                        needs_repair = True
+                except Exception:
+                    needs_repair = True
+
+                if needs_repair:
+                    area_path.write_text(json.dumps(expected_by_area, indent=2), encoding="utf-8")
+                    layer_path.write_text(json.dumps(expected_by_layer, indent=2), encoding="utf-8")
+        except Exception:
+            force_refresh = True
+
+    if force_refresh:
+        return save_normalized_collection_records(intermediate_roots, outputs_root, target_funding_call_id, filter_func=filter_func)
     return {
         "records": records_path,
         "by_area": outputs_root / "normalized" / "by_area.json",

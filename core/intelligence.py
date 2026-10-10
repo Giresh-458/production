@@ -592,7 +592,7 @@ def build_problem_clusters(
         supporting_layers = sorted({clean(member.get("layer")) for member in members if clean(member.get("layer"))})
         evidence_links = sorted({clean(member.get("file_path")) for member in members if clean(member.get("file_path"))})
         profile = corroboration_profile(members)
-        
+
         # Aggregate funding calls
         cluster_funding_calls = set()
         for member in members:
@@ -602,7 +602,7 @@ def build_problem_clusters(
             for c_id in member.get("funding_call_ids", []):
                 if c_id:
                     cluster_funding_calls.add(c_id)
-                    
+
         clusters.append({
             "cluster_id": f"{normalize_area(members[0].get('research_area')) or 'unscoped'}-{idx + 1}",
             "funding_call_id": members[0].get("funding_call_id"),
@@ -1077,8 +1077,35 @@ def build_operational_views(outputs_root: Path, structured_index: Iterable[Dict[
 
 def refresh_intelligence_views(outputs_root: Path) -> Dict[str, Path]:
     outputs_root.mkdir(parents=True, exist_ok=True)
-    normalized_outputs = save_normalized_collection_records(outputs_root, outputs_root)
-    normalized_records = build_normalized_collection_records(outputs_root)
+
+    from core.normalization import resolve_refresh_context
+    intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
+
+    normalized_outputs = save_normalized_collection_records(intermediate_roots, outputs_root, target_funding_call_id, filter_func=filter_func)
+
+    import json
+    records_path = normalized_outputs["records"]
+    try:
+        final_records = json.loads(records_path.read_text(encoding="utf-8"))
+        accepted_records_by_eid = {r["evidence_id"]: r for r in final_records}
+    except Exception as e:
+        raise RuntimeError(f"Failed to read or parse normalized records from {records_path}") from e
+
+    normalized_records = build_normalized_collection_records(intermediate_roots, target_funding_call_id)
+    if filter_func:
+        filtered_records = []
+        for r in normalized_records:
+            eid = r.get("evidence_id")
+            if eid in accepted_records_by_eid:
+                canonical = accepted_records_by_eid[eid]
+                safe_record = dict(canonical)
+                # Inject only valid physical identity and alternate URLs from the raw duplicate
+                for field in ["source_url", "linked_urls", "file_path", "canonical_url"]:
+                    if field in r:
+                        safe_record[field] = r[field]
+                filtered_records.append(safe_record)
+        normalized_records = filtered_records
+
     source_discovery = save_source_discovery_candidates(normalized_records)
     source_review_queue = build_source_review_queue()
     recursive_review_path = Path(ensure_recursive_review_log())
@@ -1184,7 +1211,7 @@ def detect_contradictions(entries: list[dict]) -> dict:
     contradicting = []
     qualifying = []
     unknown = []
-    
+
     polarity_map = {
         "increase": 1, "increases": 1, "decrease": -1, "decreases": -1,
         "successfully": 1, "cannot": -1, "fails": -1, "works": 1,
@@ -1194,10 +1221,10 @@ def detect_contradictions(entries: list[dict]) -> dict:
         "sustains": 1, "insufficient": -1,
         "stable": -1, "exceeds": 1, "below": -1
     }
-    
+
     qualifiers = {"only", "limited", "partially", "sometimes", "depends", "constrained"}
     stopwords = {"the", "a", "an", "is", "are", "was", "were", "and", "or", "but", "with", "for", "to", "in", "of", "on", "system", "platform", "company", "new", "round", "cannot"}
-    
+
     if not entries:
         return {"supporting_evidence": [], "contradicting_evidence": [], "qualifying_evidence": [], "unknown_evidence": []}
 
@@ -1207,7 +1234,7 @@ def detect_contradictions(entries: list[dict]) -> dict:
         if score > 0: return 1
         if score < 0: return -1
         return 0
-        
+
     def extract_numbers(text):
         import re
         return [float(n) for n in re.findall(r'\b\d+(?:\.\d+)?\b', text)]
@@ -1217,36 +1244,36 @@ def detect_contradictions(entries: list[dict]) -> dict:
     ref_entities = ref_words - stopwords
     ref_nums = extract_numbers(reference_text)
     ref_pol = get_polarity(reference_text)
-            
+
     supporting.append({
         "text": entries[0].get("problem_statement", ""),
         "provenance": "EVIDENCE",
         "source_url": entries[0].get("source_url", "")
     })
-    
+
     for i in range(1, len(entries)):
         entry = entries[i]
         text = entry.get("problem_statement", "").lower()
         source_url = entry.get("source_url", "")
-        
+
         words = set(re.findall(r'\b\w+\b', text))
         entities = words - stopwords
         nums = extract_numbers(text)
-        
+
         claim_obj = {
             "text": entry.get("problem_statement", ""),
             "provenance": "EVIDENCE",
             "source_url": source_url
         }
-        
+
         overlap = len(ref_entities.intersection(entities))
         if overlap == 0:
             unknown.append(claim_obj)
             continue
-            
+
         pol = get_polarity(text)
         has_qualifier = any(q in words for q in qualifiers)
-        
+
         num_contradiction = False
         if ref_nums and nums:
             # Simple heuristic: if numbers are entirely different and polarities differ, it's a contradiction.
@@ -1261,7 +1288,7 @@ def detect_contradictions(entries: list[dict]) -> dict:
             contradicting.append(claim_obj)
         else:
             supporting.append(claim_obj)
-            
+
     return {
         "supporting_evidence": supporting,
         "contradicting_evidence": contradicting,

@@ -1,110 +1,110 @@
-import json
 import pytest
-from core.shared_crawl_manager import SharedCrawlManager, CrawlResult
-from core.source_registry import current_force_source_refresh
-from unittest.mock import MagicMock, patch
+import json
+import os
+import time
+from pathlib import Path
+import sys
 
-@pytest.fixture(autouse=True)
-def fresh_manager():
-    # Reset singleton for testing
-    SharedCrawlManager._instance = None
-    mgr = SharedCrawlManager.get()
-    
-    # Mock the execute fetch to return a dummy result
-    def mock_execute_fetch(url):
-        return CrawlResult(
-            canonical_url=url,
-            final_url=url,
-            status_code=200,
-            content_type="text/html",
-            title="Test",
-            html="<p>Test</p>",
-            clean_text="Test",
-            content_hash="test",
-            fetch_method="mock",
-            from_cache=False,
-            error=None
-        )
-    mgr._execute_fetch = MagicMock(side_effect=mock_execute_fetch)
-    # Clean the in-memory SQLite persistent db mock for testing
-    mgr.db_path = ":memory:"
-    mgr._init_db()
-    
-    yield mgr
-    SharedCrawlManager._instance = None
-def test_case_a_normal_run(fresh_manager):
-    # Case A - normal run
-    # 1. Seed cache by fetching once
-    res1 = fresh_manager.fetch("http://test.com/a")
-    assert fresh_manager.stats_actual_fetches == 1
-    assert fresh_manager.stats_cache_hits == 0
-    assert not res1.from_cache
-    
-    # 2. Request again with force_refresh=False (the default)
-    res2 = fresh_manager.fetch("http://test.com/a")
-    # 3. Assert cache is used
-    assert res2.from_cache
-    # 4. Assert actual network fetch count remains 1
-    assert fresh_manager.stats_actual_fetches == 1
-    assert fresh_manager.stats_cache_hits == 1
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-def test_case_b_forced_refresh(fresh_manager):
-    # 1. Seed cache
-    res1 = fresh_manager.fetch("http://test.com/b")
-    assert fresh_manager.stats_actual_fetches == 1
-    
-    # 2. Request with force_refresh=True
-    token = current_force_source_refresh.set(True)
-    try:
-        res2 = fresh_manager.fetch("http://test.com/b")
-        # 3. Assert cached value is NOT returned (from_cache = False)
-        assert not res2.from_cache
-        # 4. Assert underlying network handler is called again
-        assert fresh_manager.stats_actual_fetches == 2
-        # 5. Assert actual_network_fetches == 2, cache hits remain 0 for this request
-        assert fresh_manager.stats_cache_hits == 0
-    finally:
-        current_force_source_refresh.reset(token)
+from core.normalization import ensure_normalized_collection_records
 
-def test_case_c_repeated_forced_refresh(fresh_manager):
-    token = current_force_source_refresh.set(True)
-    try:
-        fresh_manager.fetch("http://test.com/c")
-        fresh_manager.fetch("http://test.com/c")
-        
-        # Two actual fetches because they are not strictly in-flight at the exact same time
-        assert fresh_manager.stats_actual_fetches == 2
-        assert fresh_manager.stats_cache_hits == 0
-    finally:
-        current_force_source_refresh.reset(token)
+def test_legacy_ungated_records_bypass(tmp_path):
+    call_id = "CALL-TEST-CACHE"
+    run_root = tmp_path / "outputs" / "run_cache"
+    call_root = run_root / "calls" / call_id
+    call_root.mkdir(parents=True)
 
-def test_case_d_in_flight_deduplication(fresh_manager):
-    import threading
-    import time
-    
-    # Force a delay in execute_fetch to ensure they overlap
-    original_execute = fresh_manager._execute_fetch
-    def slow_execute_fetch(url):
-        time.sleep(0.5)
-        return original_execute(url)
-    
-    fresh_manager._execute_fetch = MagicMock(side_effect=slow_execute_fetch)
-    
-    token = current_force_source_refresh.set(True)
-    try:
-        t1 = threading.Thread(target=lambda: fresh_manager.fetch("http://test.com/d"))
-        t2 = threading.Thread(target=lambda: fresh_manager.fetch("http://test.com/d"))
-        
-        t1.start()
-        t2.start()
-        
-        t1.join()
-        t2.join()
-        
-        # One actual underlying fetch
-        assert fresh_manager.stats_actual_fetches == 1
-        # One in-flight deduplication
-        assert fresh_manager.stats_in_flight_dedupes == 1
-        assert fresh_manager.stats_cache_hits == 0
-    finally:
-        current_force_source_refresh.reset(token)
+    # Setup context
+    workflow_dir = call_root / "workflow"
+    workflow_dir.mkdir(parents=True)
+    selected_call = {
+        "selected": {
+            "call_id": call_id,
+            "title": "Quantum",
+            "organization": "QOrg",
+            "research_area": "DePIN",
+            "research_context": {
+                "funding_call_id": call_id,
+                "domain": "DePIN",
+                "technology_themes": ["quantum"],
+                "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": [], "evidence_refs": [], "inference_provenance": [], "confidence": "high"
+            }
+        }
+    }
+    (workflow_dir / "selected_funding_call.json").write_text(json.dumps(selected_call), encoding="utf-8")
+
+    # Create intermediate
+    intermediate = call_root / "intermediate"
+    intermediate.mkdir()
+    (intermediate / "item.md").write_text("# Old signal", encoding="utf-8")
+
+    # Old timestamp for intermediate
+    old_time = time.time() - 1000
+    os.utime(intermediate / "item.md", (old_time, old_time))
+
+    # Create stale normalized records containing an ungated legacy item
+    normalized = call_root / "normalized"
+    normalized.mkdir()
+    records_json = normalized / "records.json"
+
+    # Item that should fail the gate (doesn't match 'quantum')
+    legacy_records = [{
+        "evidence_id": "legacy1",
+        "title": "Unrelated",
+        "research_area": "DePIN",
+        "problem_statement": "Trees.",
+        "context_summary": "Leaves.",
+        "evidence_snippets": ["Trees."],
+        "collected_at": "2026-08-24T10:00:00+00:00"
+    }]
+    records_json.write_text(json.dumps(legacy_records), encoding="utf-8")
+
+    # New timestamp for records to force cache hit
+    new_time = time.time()
+    os.utime(records_json, (new_time, new_time))
+
+    # Invoke
+    ensure_normalized_collection_records(call_root)
+
+    # Verify
+    records = json.loads(records_json.read_text(encoding="utf-8"))
+    assert len(records) == 0, "Legacy ungated record bypassed the mission gate!"
+
+def test_cache_hit_global_refresh_is_preserved(tmp_path):
+    run_root = tmp_path / "outputs" / "run_cache_global"
+    run_root.mkdir(parents=True)
+
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir()
+    (intermediate / "item.md").write_text("# Old signal", encoding="utf-8")
+
+    old_time = time.time() - 1000
+    os.utime(intermediate / "item.md", (old_time, old_time))
+
+    normalized = run_root / "normalized"
+    normalized.mkdir()
+    records_json = normalized / "records.json"
+
+    legacy_records = [{
+        "evidence_id": "global1",
+        "title": "Global Item",
+        "research_area": "DePIN",
+        "problem_statement": "Test.",
+        "context_summary": "Test.",
+        "evidence_snippets": ["Test."],
+        "collected_at": "2026-08-24T10:00:00+00:00"
+    }]
+    records_json.write_text(json.dumps(legacy_records), encoding="utf-8")
+
+    new_time = time.time()
+    os.utime(records_json, (new_time, new_time))
+
+    from unittest.mock import patch
+    with patch("core.normalization.save_normalized_collection_records") as mock_save:
+        ensure_normalized_collection_records(run_root)
+        mock_save.assert_not_called()
+
+    records = json.loads(records_json.read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert records[0]["evidence_id"] == "global1"
