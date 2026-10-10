@@ -254,13 +254,7 @@ def main() -> int:
         print("❌ No funding opportunities were discovered.")
         return 2
 
-    if args.input_file:
-        valid_calls = [funding_result["outputs"][0]]
-        rejected = []
-    else:
-        valid_calls, rejected = get_all_open_funding_calls(funding_result)
-        if args.max_open_calls is not None and args.max_open_calls > 0:
-            valid_calls = valid_calls[:args.max_open_calls]
+    valid_calls, rejected = get_all_open_funding_calls(funding_result)
 
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}
@@ -269,7 +263,47 @@ def main() -> int:
         print("❌ Funding scan found no currently open call. Pipeline stopped before downstream research.")
         return 3
 
-    print(f"   ✅ Discovered {len(valid_calls)} valid open funding calls.")
+    research_calls = []
+    research_contexts = []
+    rejected_non_research = []
+
+    for call in valid_calls:
+        ctx = build__selected_call_context(call)
+
+        intent = getattr(ctx.research_context, "research_intent", None) if ctx.research_context else None
+        if intent != "research":
+            rejected_non_research.append({
+                "call": call,
+                "reason": "non_research" if intent == "non_research" else "unrecognized_intent",
+                "evidence": getattr(ctx.research_context, "research_intent_evidence", "") if ctx.research_context else ""
+            })
+        else:
+            research_calls.append(call)
+            research_contexts.append(ctx)
+
+    if args.max_open_calls is not None and args.max_open_calls > 0:
+        research_calls = research_calls[:args.max_open_calls]
+        research_contexts = research_contexts[:args.max_open_calls]
+
+    if not research_calls:
+        report = {
+            "run_id": run_id,
+            "status": "no_research_opportunity",
+            "funding_result": funding_result,
+            "rejected_calls": rejected,
+            "rejected_non_research": rejected_non_research
+        }
+        (root / "workflow").mkdir(parents=True, exist_ok=True)
+        (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        print("❌ Funding scan found open calls, but none had explicit research intent. Pipeline stopped before downstream research.")
+        return 3
+
+    if rejected_non_research:
+        print(f"   ⚠️ Filtered {len(rejected_non_research)} calls as non_research.")
+
+    valid_calls = research_calls
+    all_contexts = research_contexts
+    print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
 
     # Pre-sync registry ONCE before parallel operations
     try:
@@ -291,7 +325,7 @@ def main() -> int:
     print(f"▶️ GLOBAL SHARED COLLECTION FOR {len(valid_calls)} CALLS")
     print(f"==============================================")
 
-    all_contexts = [build__selected_call_context(c) for c in valid_calls]
+    # all_contexts is already built and validated above
     global_workflow = root / "workflow"
     global_workflow.mkdir(parents=True, exist_ok=True)
 
@@ -335,8 +369,7 @@ def main() -> int:
     global_exit_code = 0
     all_reports = []
 
-    for call_idx, selected in enumerate(valid_calls, 1):
-        context = build__selected_call_context(selected)
+    for call_idx, (selected, context) in enumerate(zip(valid_calls, all_contexts), 1):
         canonical_areas = select_collection_areas(selected, args.area)
         unknown_area = not canonical_areas or max((float(x.get("score", 0.0) or 0.0) for x in selected.get("domain_relevance", []) or []), default=0.0) < 0.10
 

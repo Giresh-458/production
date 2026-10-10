@@ -49,3 +49,37 @@ def test_local_novelty_does_not_claim_novelty():
     result = LocalKnowledgeBaseSearcher().search("example problem")
     assert result["similar_work"] == []
     assert result["search_coverage"] == 0.0
+
+
+def test_reconstructed_nonresearch_notice():
+    # Representative regression case, reconstructed from the scenario description.
+    # This is not the missing original notice.
+    notice = """
+    Fictional Administrative Workshop Notice
+
+    This announcement is for an administrative workshop. It is not a grant,
+    funding call, request for proposals (RFP), investment opportunity, prize,
+    or open application. It offers no funding, requests no research or
+    deliverables, and has no application process or deadline.
+    """
+    intent, evidence = detect_research_intent(notice)
+    assert intent == "non_research", f"Expected 'non_research' but got {intent}"
+
+
+def test_research_intent_handles_negated_exceptions():
+    # Research notice with a negative phrase about one condition
+    notice = "This research grant provides funding for scientific studies; applicants with no prior research experience may apply."
+    intent, evidence = detect_research_intent(notice)
+    assert intent == "research", f"Expected 'research' but got {intent}"
+
+
+def test_research_intent_no_application_fee():
+    notice = "There is no application fee for this research grant."
+    intent, evidence = detect_research_intent(notice)
+    assert intent == "research", f"Expected 'research' but got {intent}"
+
+
+def test_research_intent_modifying_negation():
+    notice = "This notice is not a grant for a research project; it is an administrative workshop."
+    intent, evidence = detect_research_intent(notice)
+    assert intent == "non_research", f"Expected 'non_research' but got {intent}"

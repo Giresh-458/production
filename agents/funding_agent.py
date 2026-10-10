@@ -969,11 +969,13 @@ def detect_research_intent(text: str, *, focus_area: str = "General", themes: li
         r"\b(?:research project|scientific research|research study|research proposal|principal investigator|research objectives|research questions)\b",
         r"\b(?:hypothesis|methodology|experimental evaluation)\b",
     )
+    negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't)\s+(?:offer|request|provide|require)\s+(?:funding|research|grant|deliverables?)\b"
     evidence: list[str] = []
     for chunk in chunks:
         if len(chunk.split()) < 5:
             continue
-        if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
+        scrubbed = re.sub(negation_pattern, " ", chunk, flags=re.IGNORECASE)
+        if any(re.search(pattern, scrubbed, flags=re.IGNORECASE) for pattern in patterns):
             evidence.append(chunk[:500])
     if evidence:
         return "research", list(dict.fromkeys(evidence))[:4]

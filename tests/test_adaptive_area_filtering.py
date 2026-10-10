@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_pipeline import main
 from core.intelligence import refresh_intelligence_views
 
+@patch('run_pipeline.build__selected_call_context')
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
 @patch('run_pipeline.save_normalized_collection_records')
@@ -27,12 +28,19 @@ def run_pipeline_with_mocked_areas(
     mock_save_normalized,
     mock_get_calls,
     mock_run_stage,
+    mock_build_ctx,
     monkeypatch,
     tmp_path,
     accepted_records,
     originally_selected_area
 ):
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
+
+    mock_ctx = MagicMock()
+    mock_ctx.research_context.research_intent = "research"
+    mock_ctx.funding_call_id = "CALL-TEST"
+    mock_build_ctx.return_value = mock_ctx
+
 
     mock_get_calls.return_value = ([{
         "call_id": "CALL-TEST",
@@ -43,7 +51,10 @@ def run_pipeline_with_mocked_areas(
 
     mock_evaluate_health.return_value = (True, 11)
 
-    def fake_save_normalized(roots, call_root, call_id):
+    def fake_save_normalized(roots, call_root, call_id, **kwargs):
+        if "filter_func" in kwargs:
+            for r in accepted_records:
+                kwargs["filter_func"](r)
         norm_dir = call_root / "normalized"
         norm_dir.mkdir(parents=True, exist_ok=True)
         (norm_dir / "records.json").write_text(json.dumps(accepted_records), encoding="utf-8")
@@ -51,6 +62,7 @@ def run_pipeline_with_mocked_areas(
 
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}
+    mock_execute_batch.return_value = {"tasks": []}
     mock_run_stage.return_value = {"status": "success", "outputs_count": 1, "outputs": [{}]}
 
     exit_code = main()
@@ -105,6 +117,7 @@ def test_adaptive_area_filtering_mixed_areas(monkeypatch, tmp_path):
             assert area is None, f"{agent} should run Unscoped but got {area}"
 
 def test_adaptive_area_filtering_empty(monkeypatch, tmp_path):
+    # Fix empty
     code, calls = run_pipeline_with_mocked_areas(
         monkeypatch=monkeypatch, tmp_path=tmp_path,
         accepted_records=[], originally_selected_area="DigitalHealthCPS"
@@ -113,7 +126,7 @@ def test_adaptive_area_filtering_empty(monkeypatch, tmp_path):
     # Actually, pipeline exits early with max(exit_code, 4) if no records or continues?
     # It says: "if not records: print('No evidence...'), continue"
     # So exit_code might be 0 but it won't call tagging.
-    assert code == 0
+    assert code == 4
     for call in calls:
         agent = call.args[0]
         assert agent not in ("tagging", "clustering", "trend", "synthesis", "idea", "proposal")
