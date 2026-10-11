@@ -105,6 +105,11 @@ def generate(prompt: str, model: str | None = None) -> str:
         "prompt": prompt.strip(),
         "stream": False,
     }
+    # Qwen3 may otherwise spend the response budget on thinking tokens,
+    # leaving the final response empty. Other model families keep their
+    # existing request behavior.
+    if selected_model.lower().startswith("qwen3"):
+        payload["think"] = False
 
     last_error: Exception | None = None
     for attempt in range(1, settings["retries"] + 1):
