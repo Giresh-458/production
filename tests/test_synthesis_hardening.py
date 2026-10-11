@@ -184,3 +184,31 @@ def test_cross_cluster_groups_do_not_mix_research_areas_or_funding_calls():
 
     assert len(groups) == 3
     assert all(len(group["source_cluster_ids"]) == 1 for group in groups)
+
+def test_cross_cluster_group_cap_never_forces_unrelated_tail_into_last_group():
+    clusters = [
+        _cross_cluster_fixture(
+            "gender-gap",
+            "Gender gap in educational attainment and participation",
+            ["gender", "education", "attainment", "participation"],
+        ),
+        _cross_cluster_fixture(
+            "cyber-warfare",
+            "Cyber warfare anomaly detection in military networks",
+            ["cyber", "warfare", "anomaly", "detection", "military", "networks"],
+        ),
+        _cross_cluster_fixture(
+            "financial-literacy",
+            "Financial literacy and household budgeting behavior",
+            ["financial", "literacy", "household", "budgeting", "behavior"],
+        ),
+    ]
+
+    groups = sa.build_cross_cluster_groups(clusters, max_groups=1, group_size=4)
+
+    assert len(groups) == 3
+    assert all(len(group["source_cluster_ids"]) == 1 for group in groups)
+    assert {group["source_cluster_ids"][0] for group in groups} == {
+        "gender-gap", "cyber-warfare", "financial-literacy"
+    }
+    assert sum(len(group["evidence_links"]) for group in groups) == 3
