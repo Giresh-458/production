@@ -13,7 +13,7 @@ STOP = {
     "program", "call", "application", "applicant", "applicants", "project",
     "projects", "barrier", "barriers", "deployment", "validation",
     "evaluation", "adoption", "existing", "solutions", "address", "problems",
-    "gaps", "gap", "technical", "transition", "commercialization",
+    "gaps", "gap", "technical", "transition", "commercialization", "tcup", "nsf",
     "investigate", "affecting", "unresolved", "limitations", "improving",
 }
 
