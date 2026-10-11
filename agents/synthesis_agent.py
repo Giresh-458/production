@@ -389,97 +389,158 @@ def _synthesis_decision(evidence_assessment: dict[str, Any], *, problem: str, ev
         "llm_review": review,
     }
 
+CROSS_CLUSTER_MIN_SHARED_TERMS = 2
+CROSS_CLUSTER_MIN_SIMILARITY = 0.20
+CROSS_CLUSTER_GENERIC_TERMS = {
+    "research", "problem", "signal", "evidence", "general", "unscoped",
+    "unknown", "pending", "synthesis", "system", "systems", "technology",
+    "technical", "study", "studies", "project", "projects", "solution",
+    "solutions", "approach", "implementation", "method", "methods", "model",
+    "models", "paper", "papers", "data", "based", "using", "gap", "gaps",
+    "issue", "issues", "general_signal", "funding_signal",
+    "compliance_requirement", "failure_mode", "prototype_challenge",
+    "market_need", "practitioner_pain_point", "engineering_gap",
+    "evaluation_support", "research_activity", "capital_signal",
+}
+
+
 def _cluster_terms(cluster: dict[str, Any]) -> set[str]:
+    # Use substantive problem text only. Signal labels and layer names describe
+    # the evidence source, not the research topic, and must not create affinity.
     text = " ".join([
         str(cluster.get("representative_problem", "")),
         " ".join(str(x) for x in cluster.get("top_terms", []) or []),
-        " ".join(str(x) for x in cluster.get("signal_types", []) or []),
     ]).lower()
-    return {t for t in re.findall(r"[a-z0-9]{4,}", text) if t not in {"research", "problem", "signal", "evidence"}}
+    return {
+        token for token in re.findall(r"[a-z0-9_]{4,}", text)
+        if token not in CROSS_CLUSTER_GENERIC_TERMS
+    }
+
+
+def _cross_cluster_similarity(seed: dict[str, Any], candidate: dict[str, Any]) -> float:
+    seed_area = normalize_area(seed.get("area")) or "Unscoped"
+    candidate_area = normalize_area(candidate.get("area")) or "Unscoped"
+    if seed_area != candidate_area:
+        return 0.0
+
+    seed_call = cleaned_text(str(seed.get("funding_call_id") or ""))
+    candidate_call = cleaned_text(str(candidate.get("funding_call_id") or ""))
+    if seed_call and candidate_call and seed_call != candidate_call:
+        return 0.0
+
+    seed_terms = _cluster_terms(seed)
+    candidate_terms = _cluster_terms(candidate)
+    shared_terms = seed_terms & candidate_terms
+    # One generic/overlapping word is not enough to establish a shared research
+    # problem. Keep uncertain pairs separate rather than manufacture a bundle.
+    if len(shared_terms) < CROSS_CLUSTER_MIN_SHARED_TERMS:
+        return 0.0
+    return len(shared_terms) / max(1, len(seed_terms | candidate_terms))
+
+
+def _build_cross_cluster_group(chosen: list[dict[str, Any]]) -> dict[str, Any]:
+    seed = chosen[0]
+    evidence_links = list(dict.fromkeys(
+        str(link) for cluster in chosen
+        for link in (cluster.get("evidence_links", []) or [])
+        if cleaned_text(str(link))
+    ))
+    members = [member for cluster in chosen for member in (cluster.get("members", []) or [])]
+    layers = list(dict.fromkeys(
+        cleaned_text(str(layer)) for cluster in chosen
+        for layer in (cluster.get("supporting_layers", []) or [])
+        if cleaned_text(str(layer))
+    ))
+    actors = list(dict.fromkeys(
+        cleaned_text(str(actor)) for cluster in chosen
+        for actor in (cluster.get("actors", []) or [])
+        if cleaned_text(str(actor))
+    ))
+    signals = list(dict.fromkeys(
+        cleaned_text(str(signal)) for cluster in chosen
+        for signal in (cluster.get("signal_types", []) or [])
+        if cleaned_text(str(signal))
+    ))
+    top_terms = list(dict.fromkeys(
+        cleaned_text(str(term)) for cluster in chosen
+        for term in (cluster.get("top_terms", []) or [])
+        if cleaned_text(str(term))
+    ))[:12]
+    area = normalize_area(seed.get("area")) or "Unscoped"
+    funding_call_ids = list(dict.fromkeys(
+        str(call_id)
+        for cluster in chosen
+        for call_id in (
+            [cluster.get("funding_call_id")]
+            + list(cluster.get("funding_call_ids", []) or [])
+        )
+        if str(call_id or "").strip()
+    ))
+    source_cluster_ids = [
+        cleaned_text(str(cluster.get("cluster_id", "")))
+        for cluster in chosen
+        if cleaned_text(str(cluster.get("cluster_id", "")))
+    ]
+    # Only use a strong call-specific ID if it was explicitly present in the seed.
+    # Do NOT invent strong call-specific ownership by picking from the array.
+    funding_call_id = seed.get("funding_call_id")
+    return {
+        "cluster_id": "cross-" + "-".join(source_cluster_ids[:3]),
+        "area": area,
+        "representative_problem": " | ".join(
+            cleaned_text(str(cluster.get("representative_problem", "")))
+            for cluster in chosen
+            if cleaned_text(str(cluster.get("representative_problem", "")))
+        )[:1200],
+        "supporting_layers": layers,
+        "signal_types": signals,
+        "evidence_types": list(dict.fromkeys(
+            str(x) for cluster in chosen
+            for x in (cluster.get("evidence_types", []) or [])
+        )),
+        "actors": actors,
+        "top_terms": top_terms,
+        "members": members,
+        "evidence_links": evidence_links,
+        "source_cluster_ids": source_cluster_ids,
+        "funding_call_id": funding_call_id,
+        "funding_call_ids": funding_call_ids,
+    }
 
 
 def build_cross_cluster_groups(clusters: list[dict[str, Any]], max_groups: int = 12, group_size: int = 4) -> list[dict[str, Any]]:
-    """Build bounded cross-cluster opportunity bundles without inventing evidence.
+    """Build cross-cluster bundles only when multiple clusters share a real topic.
 
-    Each bundle contains evidence from multiple independent clusters whenever the
-    corpus permits it. This prevents the old one-cluster -> one-synthesis -> one-idea
-    fan-out while preserving every underlying evidence link.
+    The cap limits multi-cluster grouping attempts. Clusters that are unrelated,
+    exceed the cap, or cannot be confidently grouped remain singleton groups so
+    their evidence is preserved without contaminating another research problem.
     """
-    remaining = list(sorted(clusters, key=lambda c: len(c.get("members", [])), reverse=True))
+    remaining = list(sorted(clusters, key=lambda cluster: len(cluster.get("members", [])), reverse=True))
     groups: list[dict[str, Any]] = []
     while remaining and len(groups) < max_groups:
         seed = remaining.pop(0)
-        seed_terms = _cluster_terms(seed)
         scored = []
         for idx, candidate in enumerate(remaining):
-            terms = _cluster_terms(candidate)
-            union = seed_terms | terms
-            similarity = len(seed_terms & terms) / max(1, len(union))
-            layer_bonus = len(set(seed.get("supporting_layers", []) or []) & set(candidate.get("supporting_layers", []) or [])) * 0.05
-            scored.append((similarity + layer_bonus, idx, candidate))
-        scored.sort(key=lambda x: x[0], reverse=True)
+            similarity = _cross_cluster_similarity(seed, candidate)
+            if similarity >= CROSS_CLUSTER_MIN_SIMILARITY:
+                scored.append((similarity, idx, candidate))
+        scored.sort(key=lambda item: item[0], reverse=True)
+
         chosen = [seed]
         chosen_indices = []
-        for _, idx, candidate in scored[: max(0, group_size - 1)]:
+        for _, idx, candidate in scored:
+            if len(chosen) >= max(1, group_size):
+                break
             chosen.append(candidate)
             chosen_indices.append(idx)
         for idx in sorted(chosen_indices, reverse=True):
             remaining.pop(idx)
+        groups.append(_build_cross_cluster_group(chosen))
 
-        evidence_links = list(dict.fromkeys(
-            str(link) for c in chosen for link in (c.get("evidence_links", []) or []) if cleaned_text(str(link))
-        ))
-        members = [m for c in chosen for m in (c.get("members", []) or [])]
-        layers = list(dict.fromkeys(
-            cleaned_text(str(layer)) for c in chosen for layer in (c.get("supporting_layers", []) or []) if cleaned_text(str(layer))
-        ))
-        actors = list(dict.fromkeys(
-            cleaned_text(str(actor)) for c in chosen for actor in (c.get("actors", []) or []) if cleaned_text(str(actor))
-        ))
-        signals = list(dict.fromkeys(
-            cleaned_text(str(signal)) for c in chosen for signal in (c.get("signal_types", []) or []) if cleaned_text(str(signal))
-        ))
-        top_terms = list(dict.fromkeys(
-            cleaned_text(str(term)) for c in chosen for term in (c.get("top_terms", []) or []) if cleaned_text(str(term))
-        ))[:12]
-        area = normalize_area(seed.get("area")) or "Unscoped"
-        funding_call_ids = list(dict.fromkeys(
-            str(x) for c in chosen for x in (c.get("funding_call_ids", []) or []) if str(x).strip()
-        ))
-
-        # Only use a strong call-specific ID if it was explicitly present in the seed.
-        # Do NOT invent strong call-specific ownership by picking from the array.
-        funding_call_id = seed.get("funding_call_id")
-
-        groups.append({
-            "cluster_id": "cross-" + "-".join(cleaned_text(str(c.get("cluster_id", ""))) for c in chosen[:3]),
-            "area": area,
-            "representative_problem": " | ".join(cleaned_text(str(c.get("representative_problem", ""))) for c in chosen if cleaned_text(str(c.get("representative_problem", ""))))[:1200],
-            "supporting_layers": layers,
-            "signal_types": signals,
-            "evidence_types": list(dict.fromkeys(str(x) for c in chosen for x in (c.get("evidence_types", []) or []))),
-            "actors": actors,
-            "top_terms": top_terms,
-            "members": members,
-            "evidence_links": evidence_links,
-            "source_cluster_ids": [cleaned_text(str(c.get("cluster_id", ""))) for c in chosen],
-            "funding_call_id": funding_call_id,
-            "funding_call_ids": funding_call_ids,
-        })
-    # If more clusters remain than the group cap, merge their evidence into the
-    # final group rather than silently dropping observations.
-    if remaining and groups:
-        tail = remaining
-        target = groups[-1]
-        for c in tail:
-            target["source_cluster_ids"].append(cleaned_text(str(c.get("cluster_id", ""))))
-            target["members"].extend(c.get("members", []) or [])
-            target["evidence_links"] = list(dict.fromkeys(target["evidence_links"] + [str(x) for x in c.get("evidence_links", []) if cleaned_text(str(x))]))
-            target["supporting_layers"] = list(dict.fromkeys(target["supporting_layers"] + [str(x) for x in c.get("supporting_layers", []) if cleaned_text(str(x))]))
-            if "funding_call_ids" in target:
-                target["funding_call_ids"] = list(dict.fromkeys(target["funding_call_ids"] + [str(x) for x in c.get("funding_call_ids", []) if str(x).strip()]))
+    # Never force unrelated tail clusters into the final synthesis bundle just
+    # to satisfy the group-count cap. Preserve each remaining cluster separately.
+    groups.extend(_build_cross_cluster_group([cluster]) for cluster in remaining)
     return groups
-
 
 def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, note: str | None = None) -> dict[str, Any]:
     evidence_links = [item for item in cluster.get("evidence_links", []) if cleaned_text(str(item))]
