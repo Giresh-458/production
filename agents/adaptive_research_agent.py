@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent_interface import finalize_collection_agent_response
-from core.schemas import create_error_response
+from core.schemas import create_error_response, create_partial_response
 from core.funding_selection import FundingCallContext
 from core.funding_context import generate_funding_queries
 from core.mission_gate import relevance
@@ -171,26 +171,52 @@ def run_agent(mode: str, area: str | None = None, input_data: dict[str, Any] | N
             unique.append(doc)
         unique = unique[:24]
 
-        response = finalize_collection_agent_response(
-            agent=AGENT_NAME,
-            layer=LAYER_NAME,
-            mode=mode,
-            area=area or "Unscoped",
-            documents=unique,
-            output_dir=output_dir,
-            started_at=started_at,
-            funding_context=funding_context,
-            funding_contexts=[funding_context] if funding_context else None,
-            run_id=payload.get("run_id"),
-            default_source=funding_context.source_url,
-            warnings=(
-                (["Adaptive mode is enabled because canonical research-area coverage may be incomplete; evidence remains explicitly marked Unscoped until domain normalization has evidence."] if (area or "Unscoped") == "Unscoped" else [])
-                + (["No retrieved document passed the mission relevance gate; no synthetic mission artifact was emitted."] if not unique else [])
-            ),
+        gate_report = {
+            "candidates": len(gate_meta),
+            "accepted": len(gated),
+            "rejected": max(0, len(gate_meta) - len(gated)),
+            "details": gate_meta[:50],
+        }
+        adaptive_warnings = (
+            ["Adaptive mode is enabled because canonical research-area coverage may be incomplete; evidence remains explicitly marked Unscoped until domain normalization has evidence."]
+            if (area or "Unscoped") == "Unscoped" else []
         )
+
+        if not unique:
+            adaptive_warnings.append(
+                "No retrieved document passed the mission relevance gate; no synthetic mission artifact was emitted."
+            )
+            response = create_partial_response(
+                agent=AGENT_NAME,
+                layer=LAYER_NAME,
+                mode=mode,
+                area=area or "Unscoped",
+                items_processed=len(gate_meta),
+                items_saved=0,
+                outputs=[],
+                warnings=adaptive_warnings,
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+            )
+        else:
+            response = finalize_collection_agent_response(
+                agent=AGENT_NAME,
+                layer=LAYER_NAME,
+                mode=mode,
+                area=area or "Unscoped",
+                documents=unique,
+                output_dir=output_dir,
+                started_at=started_at,
+                funding_context=funding_context,
+                funding_contexts=[funding_context] if funding_context else None,
+                run_id=payload.get("run_id"),
+                default_source=funding_context.source_url,
+                warnings=adaptive_warnings,
+            )
+
         response.setdefault("metadata", {})["adaptive_queries"] = queries
         response["metadata"]["selected_funding_call_id"] = funding_context.funding_call_id
-        response["metadata"]["mission_relevance_gate"] = {"candidates": len(gate_meta), "accepted": len(gated), "rejected": max(0, len(gate_meta)-len(gated)), "details": gate_meta[:50]}
+        response["metadata"]["mission_relevance_gate"] = gate_report
         return response
     except Exception as exc:
         LOGGER.exception("Adaptive research agent failed")
