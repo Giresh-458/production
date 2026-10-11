@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import core.llm_provider as llm_provider
 
+# tests/conftest.py has an autouse fixture that replaces llm_provider.generate
+# for the rest of the suite. Keep the real function before that fixture runs so
+# these provider-unit tests exercise the implementation instead of the global mock.
+_REAL_GENERATE = llm_provider.generate
+
 
 def test_qwen3_generation_disables_thinking(monkeypatch):
     captured: dict = {}
@@ -25,7 +30,7 @@ def test_qwen3_generation_disables_thinking(monkeypatch):
 
     monkeypatch.setattr(llm_provider, "_send_request", fake_send_request)
 
-    result = llm_provider.generate(" Say hello ")
+    result = _REAL_GENERATE(" Say hello ")
 
     assert result == "RIF_OK"
     assert captured["payload"]["model"] == "qwen3:14b"
@@ -55,7 +60,7 @@ def test_non_qwen3_generation_keeps_existing_payload(monkeypatch):
 
     monkeypatch.setattr(llm_provider, "_send_request", fake_send_request)
 
-    result = llm_provider.generate("Say hello")
+    result = _REAL_GENERATE("Say hello")
 
     assert result == "RIF_OK"
     assert "think" not in captured["payload"]
