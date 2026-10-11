@@ -149,27 +149,17 @@ def run_agent(mode: str, area: str | None = None, input_data: dict[str, Any] | N
         gated: list[AdaptiveDocument] = []
         gate_meta: list[dict[str, Any]] = []
         for doc in documents:
-            probe = {"title": doc.title, "problem_statement": doc.content[:1200], "context_summary": doc.content[:3000], "source_type": doc.source_type, "evidence_type": "adaptive", "keywords": doc.query.split()}
+            # Only source text is evidence. The search query and source metadata must
+            # not be fed back into the gate, or retrieval terms can validate themselves.
+            probe = {"title": doc.title, "problem_statement": doc.content[:1200], "context_summary": doc.content[:3000]}
             gate = relevance(probe, funding_context)
             gate_meta.append({"source": doc.source, "title": doc.title, **gate})
             if gate["passed"]:
                 gated.append(doc)
         documents = gated
 
-        # Always retain the funding mission itself as a grounding artifact if external
-        # discovery is temporarily unavailable. This prevents an empty pipeline from
-        # pretending that an unknown research area has no evidence.
-        if not documents:
-            rc = funding_context.research_context
-            mission = "\n".join(rc.investigation_questions if rc else [])
-            documents.append(AdaptiveDocument(
-                title=f"Adaptive research mission — {funding_context.call_title or funding_context.program_name}",
-                source=funding_context.application_url or funding_context.source_url or "funding-context://selected-call",
-                content=cleaned_text(f"Funding priorities: {', '.join(funding_context.research_priorities or [])}. {mission}"),
-                query="funding mission",
-                retrieved_at=datetime.now(UTC).isoformat(),
-            ))
-
+        # An empty gated set is an honest result, not a reason to manufacture a
+        # mission-shaped artifact and pass it downstream as external research evidence.
         # Deduplicate by title/source and cap the artifact set.
         seen: set[tuple[str, str]] = set()
         unique: list[AdaptiveDocument] = []
@@ -193,7 +183,10 @@ def run_agent(mode: str, area: str | None = None, input_data: dict[str, Any] | N
             funding_contexts=[funding_context] if funding_context else None,
             run_id=payload.get("run_id"),
             default_source=funding_context.source_url,
-            warnings=["Adaptive mode is enabled because canonical research-area coverage may be incomplete; evidence remains explicitly marked Unscoped until domain normalization has evidence."] if (area or "Unscoped") == "Unscoped" else [],
+            warnings=(
+                (["Adaptive mode is enabled because canonical research-area coverage may be incomplete; evidence remains explicitly marked Unscoped until domain normalization has evidence."] if (area or "Unscoped") == "Unscoped" else [])
+                + (["No retrieved document passed the mission relevance gate; no synthetic mission artifact was emitted."] if not unique else [])
+            ),
         )
         response.setdefault("metadata", {})["adaptive_queries"] = queries
         response["metadata"]["selected_funding_call_id"] = funding_context.funding_call_id
