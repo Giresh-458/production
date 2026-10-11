@@ -192,16 +192,15 @@ def generate_funding_queries(funding_context: FundingCallContext, max_queries: i
     return deduped
 
 
-def funding_context_relevance(text: str, *, min_matches: int = 2) -> bool:
-    """Check whether source text contains concrete terms from the selected funding mission.
+def _matches_funding_queries(text: str, queries: list[str] | None, *, min_matches: int = 2) -> bool:
+    """Match source text against one set of funding queries.
 
-    This is deliberately a retrieval gate, not a factual claim. It lets downstream
-    collectors operate outside the fixed eight-area taxonomy while still keeping
-    unscoped collection tied to the selected live call.
+    Each query is evaluated independently. Terms from separate calls/queries are
+    never combined to manufacture a match.
     """
     import re
+
     raw = str(text or "").lower()
-    queries = current_funding_queries.get() or []
     if not raw or not queries:
         return False
     stop = {
@@ -211,10 +210,43 @@ def funding_context_relevance(text: str, *, min_matches: int = 2) -> bool:
         "relevant", "related", "existing", "technology", "technologies",
     }
     for query in queries:
-        terms = [t for t in re.findall(r"[a-z0-9][a-z0-9_-]{3,}", str(query).lower()) if t not in stop]
-        if not terms:
+        terms = [
+            term
+            for term in re.findall(r"[a-z0-9][a-z0-9_-]{3,}", str(query).lower())
+            if term not in stop
+        ]
+        unique_terms = set(terms)
+        if len(unique_terms) < min_matches:
             continue
-        matches = sum(1 for term in set(terms) if term in raw)
+        matches = sum(1 for term in unique_terms if term in raw)
         if matches >= min_matches:
             return True
     return False
+
+
+def funding_context_relevance(text: str, *, min_matches: int = 2) -> bool:
+    """Check source text against the current worker's combined funding queries."""
+    return _matches_funding_queries(
+        text,
+        current_funding_queries.get(),
+        min_matches=min_matches,
+    )
+
+
+def funding_context_relevance_for_context(
+    text: str,
+    funding_context: FundingCallContext,
+    *,
+    min_matches: int = 2,
+) -> bool:
+    """Check source text against one specific funding call's queries.
+
+    This is used after shared collection to assign evidence to individual calls.
+    It avoids assigning a document to every call merely because it matched a
+    combined, multi-call query set.
+    """
+    return _matches_funding_queries(
+        text,
+        generate_funding_queries(funding_context),
+        min_matches=min_matches,
+    )
