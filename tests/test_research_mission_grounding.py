@@ -104,6 +104,23 @@ def test_generic_inferred_challenges_do_not_admit_unrelated_source():
     assert result["passed"] is False
 
 
+def test_sponsor_identifiers_are_not_substantive_research_anchors():
+    ctx = build_context(
+        themes=("tcup", "nsf"),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+    )
+    record = {
+        "title": "NSF TCUP program administration announcement",
+        "problem_statement": "This page describes grant administration and application processing.",
+        "context_summary": "The content concerns administrative procedures, not a substantive research topic.",
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is False
+
+
 def test_low_confidence_queries_do_not_use_generic_inferred_questions():
     ctx = build_context()
     queries = generate_funding_queries(ctx, max_queries=6)
