@@ -31,7 +31,7 @@ def _specific_area(value: Any) -> str:
     return "" if rendered.lower() in {"", "general", "unscoped", "unknown", "none", "null"} else rendered
 
 
-def _mission_anchor_text(ctx: FundingCallContext) -> str:
+def _mission_anchor_values(ctx: FundingCallContext) -> list[str]:
     """Build relevance anchors only from comparatively specific mission fields.
 
     Generated investigation questions and inferred challenges are deliberately
@@ -42,10 +42,10 @@ def _mission_anchor_text(ctx: FundingCallContext) -> str:
     values: list[str] = []
 
     if rc:
-        values.extend(str(v) for v in (rc.technology_themes or ()) if str(v).strip())
-        values.extend(str(v) for v in (rc.funding_priorities or ()) if str(v).strip())
-        values.extend(str(v) for v in (rc.target_outcomes or ()) if str(v).strip())
-        values.extend(str(v) for v in (rc.selected_domains or ()) if str(v).strip())
+        values.extend(str(v).strip() for v in (rc.technology_themes or ()) if str(v).strip())
+        values.extend(str(v).strip() for v in (rc.funding_priorities or ()) if str(v).strip())
+        values.extend(str(v).strip() for v in (rc.target_outcomes or ()) if str(v).strip())
+        values.extend(str(v).strip() for v in (rc.selected_domains or ()) if str(v).strip())
 
         rc_domain = _specific_area(getattr(rc, "domain", None))
         if rc_domain:
@@ -55,8 +55,12 @@ def _mission_anchor_text(ctx: FundingCallContext) -> str:
     if ctx_area:
         values.append(ctx_area)
 
-    values.extend(str(v) for v in (ctx.research_priorities or []) if str(v).strip())
-    return " ".join(values)
+    values.extend(str(v).strip() for v in (ctx.research_priorities or []) if str(v).strip())
+    return list(dict.fromkeys(values))
+
+
+def _mission_anchor_text(ctx: FundingCallContext) -> str:
+    return " ".join(_mission_anchor_values(ctx))
 
 
 def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]:
@@ -67,7 +71,8 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     document relevant because those fields may simply repeat the retrieval
     instructions rather than describe what the source actually says.
     """
-    anchor_text = _mission_anchor_text(ctx)
+    anchor_values = _mission_anchor_values(ctx)
+    anchor_text = " ".join(anchor_values)
     document_text = " ".join(
         str(record.get(key, ""))
         for key in ("title", "problem_statement", "context_summary")
@@ -86,13 +91,19 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
         }
 
     matches = sorted(mission_tokens & document_tokens)
-    raw_mission = anchor_text.lower()
     raw_document = document_text.lower()
     phrases: list[str] = []
-    for phrase in re.findall(r"[a-z0-9][a-z0-9 -]{5,}", raw_mission):
-        phrase = " ".join(phrase.split())
-        if len(phrase.split()) >= 2 and phrase in raw_document and phrase not in STOP:
-            phrases.append(phrase)
+    for anchor_value in anchor_values:
+        for phrase in re.findall(r"[a-z0-9][a-z0-9 -]{5,}", anchor_value.lower()):
+            phrase = " ".join(phrase.split())
+            phrase_tokens = _tokens(phrase)
+            if (
+                len(phrase.split()) >= 2
+                and phrase_tokens
+                and phrase in raw_document
+                and phrase not in STOP
+            ):
+                phrases.append(phrase)
 
     # One exact technical phrase or at least two non-boilerplate terms is
     # required. Funding-call identity and generated retrieval queries alone do
