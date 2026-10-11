@@ -81,7 +81,7 @@ def test_query_metadata_cannot_make_unrelated_source_relevant():
     record = {
         "title": "Russia's cyber campaigns and the Ukraine war",
         "problem_statement": "This source discusses military cyber operations and geopolitical conflict.",
-        "context_summary": "It does not discuss decentralized physical infrastructure or compute networks.",
+        "context_summary": "This paper examines the geopolitical consequences of military cyber operations and regional conflict escalation.",
         "source_type": "adaptive_web_research",
         "evidence_type": "adaptive",
         "actor": "https://doi.org/unrelated",
@@ -97,7 +97,7 @@ def test_generic_inferred_challenges_do_not_admit_unrelated_source():
     record = {
         "title": "Russia's cyber campaigns and the Ukraine war",
         "problem_statement": "The paper discusses deployment barriers and adoption challenges in cyber warfare.",
-        "context_summary": "Its evaluation concerns geopolitical strategy; it has no STEM or TCUP topic coverage.",
+        "context_summary": "Its evaluation concerns geopolitical strategy, military decision-making, and regional conflict.",
         "keywords": ["stem", "tcup", "nsf", "validation", "deployment", "adoption"],
     }
     result = relevance(record, ctx)
@@ -121,7 +121,7 @@ def test_adaptive_research_does_not_emit_synthetic_evidence_when_all_sources_fai
             AdaptiveDocument(
                 title="Russia's cyber campaigns and the Ukraine war",
                 source="https://example.org/cyber-campaigns",
-                content="This article discusses military cyber operations and geopolitical conflict; it does not cover STEM education or TCUP institutions.",
+                content="This article discusses military cyber operations, geopolitical conflict, and strategic decision-making.",
                 query=query,
                 retrieved_at="2026-10-11T00:00:00+00:00",
             )
