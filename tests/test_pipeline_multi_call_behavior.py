@@ -82,7 +82,9 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     with patch("run_pipeline.run_stage", mock_run_stage), \
          patch("run_pipeline.execute_batch_run", mock_execute_batch), \
          patch("run_pipeline.save_normalized_collection_records", mock_save_normalized), \
-         patch("run_pipeline.mission_relevance") as mock_mission:
+         patch("run_pipeline.mission_relevance") as mock_mission, \
+         patch("core.source_registry.sync_source_registry"), \
+         patch("core.source_registry.build_source_refresh_plan"):
 
         # Make the mission gate pass
         mock_mission.return_value = {"passed": True}
