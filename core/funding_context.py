@@ -97,32 +97,72 @@ def build_agent_specific_funding_context(agent_name: str, funding_context: Fundi
 
 
 def generate_funding_queries(funding_context: FundingCallContext, max_queries: int = 6) -> list[str]:
-    """Generate focused, mission-driven queries for downstream collection agents.
+    """Generate focused, mission-driven queries for downstream collection.
 
-    Investigation questions are the strongest signal, followed by technology
-    themes and funding priorities. Duplicates are removed while preserving order.
+    High-confidence contexts may use their investigation questions. For a low-
+    confidence or inference-only context, prefer the actual funding-call title
+    and extracted topic fields instead of turning generic inferred challenges
+    into broad searches such as "barriers to deployment/adoption".
     """
     max_queries = max(1, min(int(max_queries), 8))
     rc = funding_context.research_context
     candidates: list[str] = []
 
     if rc:
-        prefix_domains = tuple(rc.selected_domains) if rc.selected_domains else ((funding_context.research_area,) if funding_context.research_area else ())
-        domain_prefix = " / ".join(str(d) for d in prefix_domains if d)
-        for q in rc.investigation_questions:
-            q_text = q.strip() if q else ""
-            if not q_text:
-                continue
-            candidates.append(f"{domain_prefix}: {q_text}" if domain_prefix and domain_prefix.casefold() not in q_text.casefold() else q_text)
-        candidates.extend(t.strip() for t in rc.technology_themes if t and t.strip())
-        for priority in rc.funding_priorities:
-            priority_text = str(priority).strip()
-            if not priority_text:
-                continue
-            if funding_context.research_area and funding_context.research_area.casefold() not in priority_text.casefold():
-                candidates.append(f"{funding_context.research_area} {priority_text}")
-            else:
-                candidates.append(priority_text)
+        confidence = str(getattr(rc, "confidence", "") or "").strip().lower()
+        provenance = {
+            str(value).strip().upper()
+            for value in (getattr(rc, "inference_provenance", ()) or ())
+            if str(value).strip()
+        }
+        low_confidence = confidence in {"low", "unknown", "unassessed", "none", ""}
+        inference_only = bool(provenance) and provenance.issubset({"INFERENCE", "INFERRED"})
+
+        if low_confidence or inference_only:
+            # Keep low-confidence generic questions/challenges out of the query
+            # list. Start from the identified opportunity and its extracted
+            # topic terms, while keeping each search string bounded.
+            title = str(funding_context.call_title or funding_context.program_name or "").strip()
+            if title:
+                candidates.append(title)
+
+            topics: list[str] = []
+            for values in (
+                rc.technology_themes,
+                rc.funding_priorities,
+                rc.target_outcomes,
+                funding_context.research_priorities or (),
+            ):
+                for value in values or ():
+                    topic = str(value or "").strip()
+                    if topic and topic.casefold() not in {item.casefold() for item in topics}:
+                        topics.append(topic)
+
+            if title and topics:
+                candidates.append(f"{title}: {', '.join(topics[:5])}")
+            for topic in topics:
+                candidates.append(f"{title} {topic}".strip() if title else topic)
+        else:
+            prefix_domains = tuple(rc.selected_domains) if rc.selected_domains else ((funding_context.research_area,) if funding_context.research_area else ())
+            domain_prefix = " / ".join(str(d) for d in prefix_domains if d)
+            for question in rc.investigation_questions:
+                question_text = question.strip() if question else ""
+                if not question_text:
+                    continue
+                candidates.append(
+                    f"{domain_prefix}: {question_text}"
+                    if domain_prefix and domain_prefix.casefold() not in question_text.casefold()
+                    else question_text
+                )
+            candidates.extend(str(term).strip() for term in rc.technology_themes if term and str(term).strip())
+            for priority in rc.funding_priorities:
+                priority_text = str(priority).strip()
+                if not priority_text:
+                    continue
+                if funding_context.research_area and funding_context.research_area.casefold() not in priority_text.casefold():
+                    candidates.append(f"{funding_context.research_area} {priority_text}")
+                else:
+                    candidates.append(priority_text)
 
     if not candidates and funding_context.research_priorities:
         for priority in funding_context.research_priorities:
@@ -142,15 +182,14 @@ def generate_funding_queries(funding_context: FundingCallContext, max_queries: i
 
     deduped: list[str] = []
     seen: set[str] = set()
-    for q in candidates:
-        key = q.casefold()
+    for query in candidates:
+        key = query.casefold()
         if key not in seen:
             seen.add(key)
-            deduped.append(q)
+            deduped.append(query)
         if len(deduped) >= max_queries:
             break
     return deduped
-
 
 
 def funding_context_relevance(text: str, *, min_matches: int = 2) -> bool:
