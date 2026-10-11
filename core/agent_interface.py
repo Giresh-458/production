@@ -339,8 +339,17 @@ def _document_agent_specific_body(document: Any) -> Dict[str, Any]:
 
 
 def assign_funding_calls(title: str, content: str, funding_contexts: list[FundingCallContext]) -> list[str]:
-    """Assigns a document to specific funding calls using strict provenance rules."""
+    """Assign a document to calls using explicit identity or per-call content relevance.
+
+    Shared collectors often retrieve valid source evidence that discusses the
+    funding call's research mission without repeating the grant's own title or ID.
+    In that case, apply the same query-level relevance check used by unscoped
+    collectors, independently for each call. The later mission gate still checks
+    the substantive normalized source record before it can be used for synthesis.
+    """
     import re
+    from core.funding_context import funding_context_relevance_for_context
+
     matched_ids = []
     raw = (str(content) + " " + str(title)).lower()
 
@@ -367,6 +376,11 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
         if ctx.program_name and len(ctx.program_name) > 15 and ctx.program_name.lower() in raw:
             matched_ids.append(ctx.funding_call_id)
             continue
+
+        # The document has no literal call identifier. Attribute it only when
+        # its own title/content matches this specific call's research queries.
+        if funding_context_relevance_for_context(raw, ctx):
+            matched_ids.append(ctx.funding_call_id)
 
     return matched_ids
 
