@@ -2,10 +2,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import pytest
+from unittest.mock import patch
 from core.agent_registry import run_registered_agent
 from tests.test_multi_call_evidence_attribution import make_context
 
-def test_provenance_trace(tmp_path: Path):
+@patch("core.agent_registry.sync_source_registry")
+@patch("core.agent_registry.build_source_refresh_plan")
+@patch("core.agent_registry.mark_agent_sources_checked")
+def test_provenance_trace(
+    mock_mark_agent_sources_checked,
+    mock_build_source_refresh_plan,
+    mock_sync_source_registry,
+    tmp_path: Path,
+):
     root = tmp_path / "rif"
     root.mkdir()
     

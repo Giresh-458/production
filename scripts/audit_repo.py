@@ -2,8 +2,8 @@ import os
 import json
 from pathlib import Path
 
-def analyze_repo():
-    root = Path('.')
+def analyze_repo(root: str | Path = "."):
+    root = Path(root).resolve()
     audit_lines = ["# REPOSITORY CLEANUP AUDIT", ""]
     
     # Classifications
@@ -84,7 +84,7 @@ def analyze_repo():
             
         audit_lines.append(f"- `{rel_path}` {size_str} -> **{action}** ({reason})")
 
-    docs_dir = Path("docs")
+    docs_dir = root / "docs"
     docs_dir.mkdir(exist_ok=True)
     with open(docs_dir / "REPOSITORY_CLEANUP_AUDIT.md", "w", encoding="utf-8") as f:
         f.write("\n".join(audit_lines))

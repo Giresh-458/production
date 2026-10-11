@@ -60,14 +60,18 @@ def mock_pipeline_deps():
          patch("pathlib.Path.rglob") as mock_rglob, \
          patch("pathlib.Path.exists", return_value=True), \
          patch("pathlib.Path.write_text"), \
-         patch("pathlib.Path.read_text", return_value='[{"record_id": "r1", "title": "t", "research_area": "Unscoped", "source_url": "u", "funding_call_ids": ["test-123"]}]'):
+         patch("pathlib.Path.read_text", return_value='[{"record_id": "r1", "title": "t", "research_area": "Unscoped", "source_url": "u", "funding_call_ids": ["test-123"]}]'), \
+         patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
+         patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
 
         mock_exec_batch.return_value = {"tasks": []}
 
         yield {
             "run_stage": mock_run_stage,
             "rglob": mock_rglob,
-            "print": mock_print
+            "print": mock_print,
+            "sync_registry": mock_sync_registry,
+            "build_plan": mock_build_plan,
         }
 
 def test_pipeline_completed_no_proposal(tmp_path, mock_pipeline_deps):
@@ -119,3 +123,23 @@ def test_pipeline_unresolved_idea_stops_proposal(tmp_path, mock_pipeline_deps):
 
     assert exit_code == 0
     mock_pipeline_deps["print"].assert_any_call("⚠️ Zero proposals were generated because no candidate satisfied the proposal quality gate.")
+
+
+def test_pipeline_proposal_gates_does_not_mutate_default_registry(tmp_path, mock_pipeline_deps):
+    from core.source_registry import SOURCE_REGISTRY_PATH
+    initial_bytes = SOURCE_REGISTRY_PATH.read_bytes()
+    initial_mtime = SOURCE_REGISTRY_PATH.stat().st_mtime_ns
+
+    mock_pipeline_deps["run_stage"].side_effect = create_base_mock_stage(
+        {"status": "success", "outputs": ["proposal.md"], "errors": []}
+    )
+    mock_pipeline_deps["rglob"].return_value = [Path("proposal.md")]
+
+    with patch("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)]):
+        exit_code = run_pipeline.main()
+
+    assert exit_code == 0
+    assert mock_pipeline_deps["sync_registry"].call_count == 1
+    assert mock_pipeline_deps["build_plan"].call_count == 1
+    assert SOURCE_REGISTRY_PATH.stat().st_mtime_ns == initial_mtime
+    assert SOURCE_REGISTRY_PATH.read_bytes() == initial_bytes

@@ -71,9 +71,11 @@ def test_concurrent_registry_updates(tmp_path):
     data = json.loads(registry_file.read_text())
     assert data["count"] == 50
 
-def test_audit_script_execution():
-    analyze_repo()
-    assert os.path.exists("docs/REPOSITORY_CLEANUP_AUDIT.md")
+def test_audit_script_execution(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    analyze_repo(repo_root)
+    assert (repo_root / "docs" / "REPOSITORY_CLEANUP_AUDIT.md").exists()
 
 
 def test_normalization_behavior(tmp_path):
