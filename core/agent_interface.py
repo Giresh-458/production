@@ -339,48 +339,69 @@ def _document_agent_specific_body(document: Any) -> Dict[str, Any]:
 
 
 def assign_funding_calls(title: str, content: str, funding_contexts: list[FundingCallContext]) -> list[str]:
-    """Assign a document to calls using explicit identity or per-call content relevance.
+    """Assign evidence to explicitly identified calls before considering relevance.
 
-    Shared collectors often retrieve valid source evidence that discusses the
-    funding call's research mission without repeating the grant's own title or ID.
-    In that case, apply the same query-level relevance check used by unscoped
-    collectors, independently for each call. The later mission gate still checks
-    the substantive normalized source record before it can be used for synthesis.
+    If any call is identified by a literal identity signal (funding ID, URL,
+    call ID, exact call title, or exact program name), those explicit matches
+    take precedence globally. Relevance fallback is only used when no explicit
+    identity signal matches any context, preventing unrelated calls from being
+    added simply because their broad research queries share a few words.
     """
     import re
     from core.funding_context import funding_context_relevance_for_context
 
-    matched_ids = []
     raw = (str(content) + " " + str(title)).lower()
 
+    def has_explicit_identity(ctx: FundingCallContext) -> bool:
+        funding_call_id = str(ctx.funding_call_id or "").strip()
+        if funding_call_id and re.search(rf"\b{re.escape(funding_call_id.lower())}\b", raw):
+            return True
+
+        application_url = str(ctx.application_url or "").strip().lower()
+        if application_url and application_url in raw:
+            return True
+
+        call_id = str(ctx.call_id or "").strip()
+        if len(call_id) > 4 and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
+            return True
+
+        call_title = str(ctx.call_title or "").strip().lower()
+        if len(call_title) > 15 and call_title in raw:
+            return True
+
+        program_name = str(ctx.program_name or "").strip().lower()
+        if len(program_name) > 15 and program_name in raw:
+            return True
+
+        return False
+
+    # First pass: gather every explicit match across the full context list.
+    # Do not run relevance fallback while iterating: an explicit match for one
+    # call must prevent the fallback from appending loosely related calls.
+    explicit_ids: list[str] = []
+    seen_explicit_ids: set[str] = set()
     for ctx in funding_contexts:
-        # 1. Explicit ID
-        if ctx.funding_call_id and re.search(rf"\b{re.escape(ctx.funding_call_id.lower())}\b", raw):
-            matched_ids.append(ctx.funding_call_id)
+        funding_call_id = str(ctx.funding_call_id or "").strip()
+        if not funding_call_id or funding_call_id in seen_explicit_ids:
             continue
+        if has_explicit_identity(ctx):
+            explicit_ids.append(funding_call_id)
+            seen_explicit_ids.add(funding_call_id)
 
-        # 2. Exact URL
-        if ctx.application_url and ctx.application_url.lower() in raw:
-            matched_ids.append(ctx.funding_call_id)
-            continue
+    if explicit_ids:
+        return explicit_ids
 
-        # 3. Exact Program / Call Identifier
-        if ctx.call_id and len(ctx.call_id) > 4 and re.search(rf"\b{re.escape(ctx.call_id.lower())}\b", raw):
-            matched_ids.append(ctx.funding_call_id)
+    # Second pass: absent all explicit identity signals, assess relevance for
+    # each call independently. Keep results stable and deduplicate call IDs.
+    matched_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for ctx in funding_contexts:
+        funding_call_id = str(ctx.funding_call_id or "").strip()
+        if not funding_call_id or funding_call_id in seen_ids:
             continue
-
-        # 4. Strong textual match (e.g. exact title or program name if long enough)
-        if ctx.call_title and len(ctx.call_title) > 15 and ctx.call_title.lower() in raw:
-            matched_ids.append(ctx.funding_call_id)
-            continue
-        if ctx.program_name and len(ctx.program_name) > 15 and ctx.program_name.lower() in raw:
-            matched_ids.append(ctx.funding_call_id)
-            continue
-
-        # The document has no literal call identifier. Attribute it only when
-        # its own title/content matches this specific call's research queries.
         if funding_context_relevance_for_context(raw, ctx):
-            matched_ids.append(ctx.funding_call_id)
+            matched_ids.append(funding_call_id)
+            seen_ids.add(funding_call_id)
 
     return matched_ids
 
