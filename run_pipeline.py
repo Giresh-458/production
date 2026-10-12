@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,6 +91,38 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             continue
 
         program_name = str(record.get("program_name") or record.get("title") or "").strip()
+
+        # An RFI / sources-sought notice gathers information; it is not an
+        # actionable funding application, even if upstream extraction labels it OPEN_CALL.
+        notice_fields = [
+            record.get("title"),
+            record.get("program_name"),
+            record.get("opportunity_type"),
+            record.get("category_explanation"),
+        ]
+        evidence = record.get("evidence")
+        if isinstance(evidence, dict):
+            notice_fields.extend([
+                evidence.get("source_title"),
+                evidence.get("opportunity_type"),
+                evidence.get("category_explanation"),
+            ])
+        notice_text = " ".join(str(value) for value in notice_fields if value)
+        non_actionable_notice = re.search(
+            r"\brequest\s+for\s+information\b|\bRFI\b|"
+            r"\bsources?\s+sought\b|\brequest\s+for\s+comments?\b",
+            notice_text,
+            flags=re.IGNORECASE,
+        )
+        if non_actionable_notice:
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": ["informational notice is not an actionable funding application"],
+                "source_url": record.get("source_url"),
+            })
+            continue
+
         generic_names = {"how to apply", "apply", "request for proposals", "funding", "grants", "programs"}
         if program_name.lower().rstrip(" .:-") in generic_names:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})

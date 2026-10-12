@@ -152,3 +152,33 @@ def test_duplicate_call():
     assert len(selected) == 2
     assert set([s["call_id"] for s in selected]) == {"CALL-A", selected[1]["call_id"]}
     assert "duplicate of existing valid call" in str(rejected)
+
+def test_rejects_request_for_information_even_when_mislabeled_open_call():
+    now = datetime.now(UTC)
+    title = (
+        "National Defense Education Program STEM Consortia "
+        "Request for Information (RFI)"
+    )
+    records = {
+        "outputs": [
+            {
+                "title": title,
+                "program_name": title,
+                "status": "OPEN_CALL",
+                "deadline": (now + timedelta(days=30)).date().isoformat(),
+                "funding_amount": "$50,000",
+                "eligibility": "Qualified respondents",
+                "application_url": "https://example.org/rfi",
+                "source_url": "https://www.grants.gov/search-results-detail/123456",
+                "evidence": {"source_title": title},
+                "call_id": "CALL-RFI-NOT-APPLICATION",
+            }
+        ]
+    }
+
+    selected, rejected = get_all_open_funding_calls(records)
+
+    assert selected == []
+    assert len(rejected) == 1
+    assert "informational notice is not an actionable funding application" in rejected[0]["reasons"]
+
