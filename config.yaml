@@ -1,4 +1,4 @@
-model: qwen3.5:4b
+model: qwen3.5:9b
 endpoint: http://localhost:11434/api/generate
 timeout: 120
 
