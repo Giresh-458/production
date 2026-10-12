@@ -110,3 +110,42 @@ def make_context(cid: str, title: str, priorities: list[str]) -> FundingCallCont
         selection_score=0.0,
         selection_reasons=[],
     )
+
+
+def test_relevance_fallback_is_used_when_no_explicit_identity_matches():
+    relevant = _mock_ctx(
+        funding_call_id="CALL-FALLBACK-A",
+        call_title="A funding program for quantum systems",
+        program_name="Quantum Device Research Fund",
+        research_priorities=["quantum device coherence"],
+    )
+    unrelated = _mock_ctx(
+        funding_call_id="CALL-FALLBACK-B",
+        call_title="A fellowship for clinical research",
+        program_name="Clinical Trials Fellowship",
+        research_priorities=["clinical trials patient outcomes"],
+    )
+
+    ids = _get_matched_ids(
+        "Evidence on quantum device behavior",
+        "The quantum device maintains coherence across repeated measurements.",
+        [relevant, unrelated],
+    )
+
+    assert ids == ["CALL-FALLBACK-A"]
+
+
+def test_duplicate_explicit_matches_return_each_funding_call_once():
+    context = _mock_ctx(
+        funding_call_id="CALL-DEDUP-1",
+        call_title="A Specific Research Program With a Long Title",
+        program_name="A Specific Research Program",
+    )
+
+    ids = _get_matched_ids(
+        "A Specific Research Program With a Long Title",
+        "This evidence explicitly names CALL-DEDUP-1 and the A Specific Research Program.",
+        [context, context],
+    )
+
+    assert ids == ["CALL-DEDUP-1"]
