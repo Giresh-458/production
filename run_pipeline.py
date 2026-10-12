@@ -109,8 +109,8 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             ])
         notice_text = " ".join(str(value) for value in notice_fields if value)
         non_actionable_notice = re.search(
-            r"\brequest\\s+for\\s+information\\b|\\bRFI\\b|"
-            r"\\bsources?\\s+sought\\b|\\brequest\\s+for\\s+comments?\\b",
+            r"\brequest\s+for\s+information\b|\bRFI\b|"
+            r"\bsources?\s+sought\b|\brequest\s+for\s+comments?\b",
             notice_text,
             flags=re.IGNORECASE,
         )
