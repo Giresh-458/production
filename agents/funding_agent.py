@@ -936,6 +936,20 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     if any(x in lowered for x in ("will open", "coming soon", "opens on", "applications open on")):
         return "UPCOMING_CALL"
 
+    rolling_acceptance = bool(re.search(
+        r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+        r"(?:grant )?fellows are accepted on a rolling basis|"
+        r"proposals are accepted on a rolling basis)\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
+    grant_or_call_signal = any(
+        phrase in lowered or phrase in str(title or "").lower()
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal")
+    )
+    if rolling_acceptance and grant_or_call_signal:
+        return "OPEN_CALL"
+
     explicit_open = any(x in lowered for x in ("applications are open", "applications are now open", "now accepting applications", "accepting applications now", "open for applications", "call is open", "rfp is open"))
     call_signal = sum(1 for x in ("request for proposals", "call for proposals", "call for applications", "rfp", "application deadline", "submission deadline", "apply now", "submit a proposal", "invite you", "invite applications", "application link", "apply for") if x in lowered)
     if explicit_open and call_signal >= 1:
@@ -1438,7 +1452,16 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     eligible_costs = _extract_section_value(document.content, ("eligible costs", "allowable costs", "eligible expenses"))
 
     evidence = {
-        "status": _evidence_excerpt(document.content, [r"applications? (?:are|now) open", r"open for applications", r"request for proposals", r"call for proposals"]),
+        "status": _evidence_excerpt(document.content, [
+            r"applications? (?:are|now) open",
+            r"open for applications",
+            r"request for proposals",
+            r"call for proposals",
+            r"applications? can be submitted at any time",
+            r"applications? (?:are )?accepted on a rolling basis",
+            r"(?:grant )?fellows are accepted on a rolling basis",
+            r"proposals are accepted on a rolling basis",
+        ]),
         "opening_date": _evidence_excerpt(document.content, [r"opens?[^.\n]{0,120}20\d{2}", r"applications? open[^.\n]{0,120}20\d{2}"]),
         "deadline": _evidence_excerpt(document.content, [r"closes?[^.\n]{0,160}20\d{2}", r"deadline[^.\n]{0,160}20\d{2}", r"applications? close[^.\n]{0,160}20\d{2}"]),
         "funding_amount": _evidence_excerpt(document.content, [r"(?:funding|financial support|grant|award)[^.\n]{0,240}(?:₹|\$|€|£|USD|EUR|GBP|INR)\s*\d"]),
