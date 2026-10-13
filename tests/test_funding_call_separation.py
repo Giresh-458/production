@@ -218,7 +218,10 @@ def test_failed_fetches_still_consume_the_configured_page_budget():
     """A source with failing URLs cannot exceed max_pages by counting only successes."""
     from core.crawl4ai_web import crawl_funding_source
 
+    fetch_calls = []
+
     def fake_fetch(url):
+        fetch_calls.append(url)
         if url.endswith("/grants"):
             return {
                 "html": "<html><body>Grant funding call</body></html>",
@@ -242,7 +245,7 @@ def test_failed_fetches_still_consume_the_configured_page_budget():
             "url": url, "title": "", "links": [], "pagination_links": [],
         }
 
-    with patch("core.crawl4ai_web._fetch_sync", fake_fetch) as fetch:
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
         result = crawl_funding_source(
             "Test", "https://example.com/grants",
             {
@@ -253,7 +256,7 @@ def test_failed_fetches_still_consume_the_configured_page_budget():
             [],
         )
 
-    assert fetch.call_count == 2
+    assert len(fetch_calls) == 2
     assert result.pages_discovered == 2
     assert result.pages_fetched == 1
     assert result.pages_failed == 1
@@ -440,7 +443,10 @@ def test_crawler_downloads_docx_without_browser_navigation():
 
     docx_url = "https://example.com/docs/proposal-template.docx"
 
+    browser_calls = []
+
     def fake_fetch(url):
+        browser_calls.append(url)
         assert url == "https://example.com/grants"
         return {
             "html": "<html><body>Grant funding call</body></html>",
@@ -465,7 +471,7 @@ def test_crawler_downloads_docx_without_browser_navigation():
         "Eligible applicants: universities",
     ])
 
-    with patch("core.crawl4ai_web._fetch_sync", fake_fetch) as browser_fetch, \
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
          patch("core.crawl4ai_web.get_response", return_value=response):
         result = crawl_funding_source(
             "Test", "https://example.com/grants",
@@ -479,7 +485,7 @@ def test_crawler_downloads_docx_without_browser_navigation():
             [],
         )
 
-    assert browser_fetch.call_count == 1
+    assert browser_calls == ["https://example.com/grants"]
     assert result.documents_discovered == 1
     assert result.documents_fetched == 1
     assert result.documents_failed == 0
