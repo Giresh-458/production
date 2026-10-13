@@ -173,7 +173,8 @@ def grantsgov_paginated_search(
             "rows": limit_per_page,
             "startRecordNum": start_record,
             "keyword": keywords,
-            "oppStatuses": "open|forecasted|posted",
+            # Grants.gov's published status values are posted/forecasted/closed/archived.
+            "oppStatuses": "forecasted|posted",
         }
         try:
             data, _ = post_json(
