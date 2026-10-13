@@ -32,7 +32,7 @@ def test_funding_source_catalogue_has_unique_names_and_urls():
 
     # Keep the catalogue intentionally curated; additions require an explicit
     # domain mapping and a corresponding review of scope.
-    assert len(entries) == 14
+    assert len(entries) == 12
     assert all(names)
     assert all(urls)
     assert len(names) == len(set(names))
@@ -56,7 +56,7 @@ def test_every_funding_source_is_mapped_to_canonical_rif_domains():
     assert assigned_domains == expected_domains
 
 
-def test_curated_sources_are_scoped_to_the_eight_target_areas():
+def test_curated_sources_are_scoped_to_the_seven_target_areas():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected = {
         "Ethereum ESP RFPs": (
@@ -99,21 +99,13 @@ def test_curated_sources_are_scoped_to_the_eight_target_areas():
             "https://climatepitch.org/home/",
             {"ESG"},
         ),
-        "BIRAC Calls for Proposal": (
-            "https://www.birac.nic.in/cfp.php",
-            {"DigitalHealthCPS"},
-        ),
-        "ICMR Calls for Proposals": (
-            "https://www.icmr.gov.in/call-for-proposals",
-            {"DigitalHealthCPS"},
-        ),
         "NSF CPS Foundations and Connected Communities": (
             "https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities",
-            {"ZK-IoV", "DigitalHealthCPS"},
+            {"ZK-IoV"},
         ),
         "I-DAPT Hub Cyber-Physical Systems Calls": (
             "https://idapthub.org/applications/call_for_proposals",
-            {"ESG", "ZK-IoV", "DigitalHealthCPS"},
+            {"ESG", "ZK-IoV"},
         ),
     }
 
@@ -136,6 +128,8 @@ def test_broad_unscoped_portals_are_not_funding_roots():
         "arpa-e",
         "grants.gov public opportunities api",
         "ethereum road to devcon 8 india university program",
+        "birac calls for proposal",
+        "icmr calls for proposals",
         "polygon grants",
         "nist cps / iot testbed",
         "cisa ics",
