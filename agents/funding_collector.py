@@ -176,8 +176,9 @@ def _apply_grantsgov_structured_metadata(
         analysis.eligibility = None
         evidence.pop("eligibility", None)
 
-    if evidence:
-        analysis.evidence = evidence
+    # Always write back the copied evidence, even when cleanup removes its
+    # final entry; otherwise the original malformed dict remains attached.
+    analysis.evidence = evidence
 
 
 def collect_auto_sources(
