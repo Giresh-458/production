@@ -277,7 +277,7 @@ sources:
         pagination: true
   - name: ARPA-E
     url: https://arpa-e-foa.energy.gov/Default.aspx
-    focus: smart grid, energy systems, resilient infrastructure, control systems
+    focus: smart grid, energy systems, resilient infrastructure, control systems; verify opportunity-specific deadlines and applicant geography
     collection:
       mode: web
       engine: crawl4ai
@@ -287,6 +287,7 @@ sources:
         start_urls:
         - https://arpa-e-foa.energy.gov/Default.aspx
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
