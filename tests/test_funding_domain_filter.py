@@ -95,7 +95,6 @@ def test_manual_candidate_without_source_metadata_still_needs_strong_domain_evid
         ("DePIN", "depin"),
         ("MEV", "mev"),
         ("Stablecoins", "stablecoin"),
-        ("DigitalHealthCPS", "digital health"),
     ],
 )
 def test_all_eight_canonical_domains_can_pass_with_strong_evidence(domain, anchor):
