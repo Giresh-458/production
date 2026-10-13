@@ -94,7 +94,7 @@ FOCUSED_CONTENT_KEYWORDS = [
     "proposal",
     "rfp",
 ]
-FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"]
+FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]
 
 GENERIC_PAGE_TITLES = {
     "how to apply", "apply", "home", "overview", "open rounds",
@@ -1385,7 +1385,6 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         "DePIN": ["Decentralized Physical Infrastructure", "IoT"],
         "MEV": ["MEV", "Transaction Ordering"],
         "Stablecoins": ["Stablecoins", "Payment and Settlement"],
-        "DigitalHealthCPS": ["Cyber-Physical Systems", "Digital Healthcare"],
     }
     themes = list(domain_themes.get(focus_area, []))
     if focus_area == "General" or not themes:
@@ -1393,12 +1392,6 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         if extracted:
             themes = extracted
 
-    if top_domain == "DigitalHealthCPS":
-        if "cyber-physical systems" not in lowered and "cps" not in lowered and "Cyber-Physical Systems" in themes:
-            themes.remove("Cyber-Physical Systems")
-        if "digital healthcare" not in lowered and "Digital Healthcare" in themes:
-            themes.remove("Digital Healthcare")
-        
     priorities = []
     if "prototype refinement" in lowered: priorities.append("Prototype refinement")
     if "validation" in lowered: priorities.append("Testing and validation")
@@ -1524,7 +1517,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     )
 
 def build_domain_relevance(text: str) -> list[dict]:
-    """Return the canonical 8-domain relevance ranking for a funding call.
+    """Return the canonical seven-domain relevance ranking for a funding call.
 
     Funding relevance is call-level evidence: unlike downstream routing, it is allowed
     to rank multiple domains.  The same weighted scorer is used throughout RIF so
@@ -1537,7 +1530,7 @@ def build_domain_relevance(text: str) -> list[dict]:
 
 def build_tags(analysis: FundingOpportunity) -> list[str]:
     tags = ["#Funding"]
-    if analysis.focus_area != "DigitalHealthCPS" and analysis.focus_area in {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}:
+    if analysis.focus_area in {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}:
         tags.append("#Blockchain")
     focus_tag = normalize_tag(analysis.focus_area)
     if focus_tag and focus_tag not in tags:
