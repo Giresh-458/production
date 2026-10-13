@@ -312,28 +312,36 @@ def github_paginated_issues(
     rate_limited = False
     previous_ids: set[int] = set()
     source_max_pages = source_limits.get("max_pages") if source_limits else None
+    source_max_documents = (source_limits or {}).get("max_documents")
+    test_max_documents = (test_limits or {}).get("max_documents")
     configured_document_limits = [
         int(value)
-        for value in (
-            (source_limits or {}).get("max_documents"),
-            (test_limits or {}).get("max_documents"),
-        )
+        for value in (source_max_documents, test_max_documents)
         if value is not None
     ]
     max_documents = min(configured_document_limits) if configured_document_limits else None
+    document_limit_kind = (
+        "TEST_TRUNCATED"
+        if test_max_documents is not None
+        and (
+            source_max_documents is None
+            or int(test_max_documents) <= int(source_max_documents)
+        )
+        else "SOURCE_LIMIT_REACHED"
+    )
 
     while True:
         if source_max_pages is not None and pages_fetched >= source_max_pages:
             errors.append(f"SOURCE_LIMIT_REACHED: Max pages reached ({source_max_pages})")
             break
         if max_documents is not None and len(all_issues) >= max_documents:
-            errors.append(f"SOURCE_LIMIT_REACHED: Max documents reached ({max_documents})")
+            errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
             break
 
         remaining_documents = max_documents - len(all_issues) if max_documents is not None else 100
         per_page = min(100, remaining_documents)
         if per_page <= 0:
-            errors.append(f"SOURCE_LIMIT_REACHED: Max documents reached ({max_documents})")
+            errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
             break
 
         from core.crawl_context import current_crawl_context
@@ -397,7 +405,7 @@ def github_paginated_issues(
 
         if max_documents is not None and len(all_issues) >= max_documents:
             if has_next_page:
-                errors.append(f"SOURCE_LIMIT_REACHED: Max documents reached ({max_documents})")
+                errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
             else:
                 pagination_complete = True
             break
