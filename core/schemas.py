@@ -60,7 +60,7 @@ class CollectionResult:
 
 ALLOWED_STATUSES = {"success", "partial_success", "partial_limit", "error"}
 ALLOWED_MODES = {"configured_scan", "manual_url", "manual_text"}
-ALLOWED_RESEARCH_AREAS = {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"}
+ALLOWED_RESEARCH_AREAS = {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}
 AREA_ALIASES = {
     "rwa": "RWA",
     "esg": "ESG",
@@ -72,15 +72,6 @@ AREA_ALIASES = {
     "mev": "MEV",
     "stablecoins": "Stablecoins",
     "stablecoin": "Stablecoins",
-    "digitalhealthcps": "DigitalHealthCPS",
-    "digital-health-cps": "DigitalHealthCPS",
-    "digital_health_cps": "DigitalHealthCPS",
-    "digital healthcare cps": "DigitalHealthCPS",
-    "digital healthcare": "DigitalHealthCPS",
-    "healthcare cps": "DigitalHealthCPS",
-    "cps healthcare": "DigitalHealthCPS",
-    "cyber physical systems healthcare": "DigitalHealthCPS",
-    "cyber-physical systems healthcare": "DigitalHealthCPS",
 }
 AREA_KEYWORDS = {
     "RWA": [
@@ -155,26 +146,6 @@ AREA_KEYWORDS = {
         "depeg",
         "vault",
         "reserve",
-    ],
-    "DigitalHealthCPS": [
-        "digital healthcare",
-        "digital health",
-        "healthcare",
-        "cyber-physical systems",
-        "cyber physical systems",
-        "cps",
-        "medical device",
-        "clinical",
-        "patient",
-        "health",
-        "telemedicine",
-        "remote monitoring",
-        "wearable",
-        "diagnostic",
-        "hospital",
-        "validation",
-        "trl",
-        "technology translation",
     ],
 }
 
@@ -257,22 +228,14 @@ DOMAIN_TERM_WEIGHTS = {
         "payment rail": 2.0, "settlement": 1.5, "usdc": 3.0, "pyusd": 3.0,
         "depeg": 2.5, "reserve": 1.0, "vault": 0.8,
     },
-    "DigitalHealthCPS": {
-        "cyber-physical systems": 3.0, "cyber physical systems": 3.0,
-        "digital healthcare": 3.0, "digital health": 3.0, "medical device": 3.0,
-        "remote monitoring": 2.5, "technology translation": 2.5, "telemedicine": 2.5,
-        "clinical": 1.8, "patient": 1.5, "diagnostic": 2.0, "wearable": 2.0,
-        "hospital": 1.5, "cps": 1.0, "health": 0.7, "validation": 0.5, "trl": 1.0,
-    },
 }
 
 def rank_research_areas(text: str) -> list[Dict[str, Any]]:
     """Return an evidence-derived 0..1 ranking for all canonical research areas.
 
     This is deliberately independent from pipeline routing. The caller supplies only
-    the source/evidence text, not the already-selected route, so an artifact routed to
-    DigitalHealthCPS can still receive meaningful secondary-domain scores when its
-    content actually supports them.
+    the source/evidence text, not the already-selected route, so relevance is based on
+    source content rather than an already-selected route.
     """
     lowered = text or ""
     weighted: Dict[str, float] = {}
