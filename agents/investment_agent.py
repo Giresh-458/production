@@ -526,7 +526,7 @@ def build_analysis_prompt(document: InvestmentDocument) -> str:
 
         Rules:
         - source_type: VC Blog, Investment Memo, Funding Round, Market Report, Portfolio Page, Research Report, or Manual
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, or DigitalHealthCPS
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
         - market_validation: Strong, Moderate, Weak, or Unknown; this is commercial validation only, never scientific proof
@@ -796,7 +796,7 @@ def write_insights(connection: sqlite3.Connection, output_dir: Path) -> None:
         lines.append(f"- {item}: {count}")
 
     lines.extend(["", "## Area-wise Summary"])
-    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"]:
+    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]:
         summary = "; ".join(area_summary.get(area, [])[:3]) or "No processed entries yet."
         lines.append(f"- {area}: {summary}")
 
@@ -838,7 +838,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--investor-or-organization", help="Investor or organization for manual modes")
     parser.add_argument("--source-type", help="Optional source type override")
     parser.add_argument("--evidence-type", help="Optional evidence type override")
-    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"], help="Optional area override")
+    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"], help="Optional area override")
     parser.add_argument("--focus", help="Optional focus hint")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging verbosity")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for investment markdown outputs")
