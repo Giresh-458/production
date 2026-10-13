@@ -1376,7 +1376,6 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     top_raw = float(top_item.get("raw_score", 0.0) or 0.0)
     top_matches = list(top_item.get("matched_terms", []) or [])
     focus_area = (str(top_item.get("domain")) if top_score >= 0.30 and top_raw >= 4.0 and len(top_matches) >= 2 else "General")
-    top_domain = focus_area
     domain_themes = {
         "RWA": ["Real-World Assets", "Asset Tokenization"],
         "ESG": ["ESG", "Carbon and MRV"],
