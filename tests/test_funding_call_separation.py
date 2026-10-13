@@ -356,6 +356,123 @@ def test_errors_recorded_not_swallowed():
     assert result.final_status == "FAIL"
 
 
+def test_crawl_with_successful_and_failed_pages_is_partial():
+    """A drained queue is not verified when a discovered page failed to fetch."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    def fake_fetch(url):
+        if url.endswith("/rfp/details"):
+            return {
+                "html": "", "markdown": "", "success": False,
+                "error_message": "503 Service Unavailable", "status_code": 503,
+                "url": url, "title": "", "links": [], "pagination_links": [],
+            }
+        return {
+            "html": "<html><body>Funding grant</body></html>",
+            "markdown": (
+                "Grant funding opportunity. Eligibility requirements. "
+                "Submit a proposal before the application deadline."
+            ),
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Grant Program",
+            "links": [{
+                "url": "https://example.com/rfp/details",
+                "anchor_text": "RFP details",
+                "surrounding_text": "Grant funding proposal details",
+                "rel": "",
+            }],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Test", "https://example.com/grants",
+            {
+                "start_urls": ["https://example.com/grants"],
+                "max_depth": 1,
+                "follow_detail_pages": True,
+            },
+            [],
+        )
+
+    assert result.pages_fetched == 1
+    assert result.pages_failed == 1
+    assert result.discovery_exhausted is True
+    assert result.opportunities
+    assert result.errors
+    assert result.final_status == "PARTIAL"
+
+
+def test_web_collector_does_not_report_no_active_when_fetches_failed():
+    """A source with coverage errors and no records is partial, not confirmed empty."""
+    from agents.funding_agent import FundingSource
+    from agents.funding_collector import _collect_web_source
+
+    collected = CollectionResult(
+        source_id="Test",
+        method="web",
+        pages_fetched=1,
+        pages_failed=1,
+        discovery_exhausted=True,
+        final_status="PARTIAL",
+        errors=[{
+            "url": "https://example.com/grant",
+            "operation": "page_fetch",
+            "error": "503 Service Unavailable",
+        }],
+    )
+    source = FundingSource(
+        name="Test",
+        url="https://example.com/grants",
+        tier="tier_1",
+        collection={},
+    )
+
+    with patch("agents.funding_collector.crawl_funding_source", return_value=collected):
+        result = _collect_web_source(source, area=None, warnings=[])
+
+    assert result.final_status == "PARTIAL"
+    assert result.records_valid == 0
+    assert result.pages_failed == 1
+
+
+def test_web_normalization_failure_downgrades_verified_to_partial():
+    """One bad record must not leave a mixed-success source marked VERIFIED."""
+    from agents.funding_agent import FundingSource
+    from agents.funding_collector import _collect_web_source
+
+    collected = CollectionResult(
+        source_id="Test",
+        method="web",
+        pages_fetched=2,
+        discovery_exhausted=True,
+        final_status="VERIFIED",
+        opportunities=[
+            {"type": "html", "url": "https://example.com/grant-a", "title": "Grant A", "content": "Grant funding eligibility"},
+            {"type": "html", "url": "https://example.com/grant-b", "title": "Grant B", "content": "Grant funding eligibility"},
+        ],
+    )
+    source = FundingSource(
+        name="Test",
+        url="https://example.com/grants",
+        tier="tier_1",
+        collection={},
+    )
+
+    with patch(
+        "agents.funding_collector.crawl_funding_source",
+        return_value=collected,
+    ), patch(
+        "agents.funding_collector.analyze_document",
+        side_effect=[object(), RuntimeError("normalization failed")],
+    ):
+        result = _collect_web_source(source, area=None, warnings=[])
+
+    assert result.records_valid == 1
+    assert result.records_failed == 1
+    assert result.final_status == "PARTIAL"
+
+
 # ── Normalization tests ──────────────────────────────────────────────
 
 def test_web_collector_normalizes_raw_to_funding_document():
