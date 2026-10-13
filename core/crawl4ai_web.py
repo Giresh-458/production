@@ -269,7 +269,6 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
         "https://www.near.org": {"/funding"},
         "https://near.org": {"/funding"},
         "https://solana.org": {"/grants-funding", "/grants"},
-        "https://solana.com": {"/news/solana-foundation-convertible-grants-investments"},
     }
     origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
     if path not in known_hub_paths.get(origin, set()):
