@@ -146,7 +146,13 @@ def test_filecoin_source_uses_the_official_open_grants_program_page():
 def test_near_page_budget_is_larger_than_the_previous_exhausted_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 15
+    assert discovery["max_pages"] == 20
+
+
+def test_ripple_ubri_follows_discovered_pdf_evidence():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Ripple UBRI"]["collection"]["discovery"]
+    assert discovery["follow_pdfs"] is True
 
 
 def test_broad_unscoped_portals_are_not_funding_roots():
