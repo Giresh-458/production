@@ -72,7 +72,7 @@ def test_open_call_non_research_rejected(run_pipeline_mocks, tmp_path, monkeypat
 
     def mock_run_stage_func(agent, *args, **kwargs):
         if agent == "funding":
-            return {"outputs": [{"call_id": "call2", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}]}
+            return {"outputs": [{"call_id": "call2", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}]}
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
@@ -102,7 +102,7 @@ def test_open_call_unrecognized_intent_rejected(run_pipeline_mocks, tmp_path, mo
 
     def mock_run_stage_func(agent, *args, **kwargs):
         if agent == "funding":
-            return {"outputs": [{"call_id": "call_unrecognized", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}]}
+            return {"outputs": [{"call_id": "call_unrecognized", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}]}
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
@@ -132,7 +132,7 @@ def test_open_call_missing_intent_rejected(run_pipeline_mocks, tmp_path, monkeyp
 
     def mock_run_stage_func(agent, *args, **kwargs):
         if agent == "funding":
-            return {"outputs": [{"call_id": "call_missing", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}]}
+            return {"outputs": [{"call_id": "call_missing", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}]}
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
@@ -161,7 +161,7 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
 
     def mock_run_stage_func(agent, *args, **kwargs):
         if agent == "funding":
-            return {"outputs": [{"call_id": "call3", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}]}
+            return {"outputs": [{"call_id": "call3", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}]}
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
@@ -189,7 +189,7 @@ def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkey
 
     def mock_run_stage_func(agent, *args, **kwargs):
         if agent == "funding":
-            return {"outputs": [{"call_id": "call_good", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}, {"call_id": "call_bad", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL"}]}
+            return {"outputs": [{"call_id": "call_good", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}, {"call_id": "call_bad", "title": "Test Title", "source_url": "http://test", "application_url": "http://test/apply", "deadline": "2030-01-01", "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"]}]}
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
