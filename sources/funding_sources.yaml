@@ -204,7 +204,7 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: ANRF Research Funding
-    url: https://www.anrf.gov.in/
+    url: https://anrfonline.in/ANRF/HomePage
     focus: official India research funding calls in science, engineering, computer engineering, health sciences and mission-mode innovation; retain applicant and host-institution eligibility evidence
     collection:
       mode: web
@@ -216,7 +216,7 @@ sources:
       - www.anrfonline.in
       discovery:
         start_urls:
-        - https://www.anrf.gov.in/
+        - https://anrfonline.in/ANRF/HomePage
         max_depth: 3
         max_pages: 8
         follow_detail_pages: true
