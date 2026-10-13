@@ -23,7 +23,8 @@ def test_select_open_funding_call_rejects_closed_and_future_calls():
                 "program_name": "Open Call",
                 "status": "OPEN_CALL",
                 "deadline": open_deadline,
-                "domain_relevance": [{"domain": "RWA", "score": 0.8}],
+                "domain_relevance": [{"domain": "RWA", "score": 0.75, "raw_score": 3.0, "matched_terms": ["rwa"]}],
+                "source_research_domains": ["RWA"],
                 "application_url": "https://example.org/apply",
             },
             {
