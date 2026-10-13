@@ -92,8 +92,8 @@ sources:
         - https://www.near.org/funding
         max_depth: 3
         # The previous live batch hit this cap exactly (8 pages) and was marked PARTIAL.
-        # Raise the bounded breadth budget without allowing an unbounded crawl.
-        max_pages: 15
+        # Increase the bounded budget to allow more of the configured source frontier to be inspected.
+        max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -112,7 +112,7 @@ sources:
         max_depth: 2
         max_pages: 5
         follow_detail_pages: true
-        follow_pdfs: false
+        follow_pdfs: true
         pagination: true
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
