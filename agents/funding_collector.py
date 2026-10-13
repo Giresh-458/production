@@ -482,11 +482,26 @@ def _collect_grants_gov(
             ))
         ]
         app_err = api_shape_errors[0] if api_shape_errors else "none"
-        dtype = "unknown" if api_shape_errors else "dict"
+        request_failed = any("API request failed" in err["error"] for err in result.errors)
 
-        print("HTTP status: 200") # post_json raises on unsuccessful HTTP responses
-        print(f"JSON response: {'no' if any('non-JSON' in e for e in api_shape_errors) else 'yes'}")
-        print(f"Envelope: {'valid' if dtype == 'dict' else 'invalid'}")
+        if request_failed:
+            http_status = "unknown (request failed; exact status not retained)"
+            json_response = "unknown"
+            envelope = "unknown"
+            dtype = "unknown"
+        else:
+            http_status = "successful (exact HTTP code not retained)"
+            json_response = (
+                "unknown"
+                if any("non-JSON/non-dict response" in err for err in api_shape_errors)
+                else "yes"
+            )
+            envelope = "invalid" if api_shape_errors else "valid"
+            dtype = "unknown" if api_shape_errors else "dict"
+
+        print(f"HTTP status: {http_status}")
+        print(f"JSON response: {json_response}")
+        print(f"Envelope: {envelope}")
         print(f"data type: {dtype}")
         print(f"API/application error: {app_err}")
         print(f"records retrieved: {result.records_discovered}")
