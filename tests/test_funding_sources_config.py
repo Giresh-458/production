@@ -47,7 +47,7 @@ def test_priority_official_and_india_relevant_sources_are_configured():
         "MeitY Startup Hub": "https://msh.meity.gov.in/",
         "BIRAC Calls for Proposal": "https://www.birac.nic.in/cfp.php",
         "iDEX Defence Innovation Challenges": "https://www.idex.gov.in/challenges",
-        "ANRF Research Funding": "https://www.anrf.gov.in/",
+        "ANRF Research Funding": "https://anrfonline.in/ANRF/HomePage",
         "DST India Calls for Proposals": "https://onlinedst.gov.in/",
         "DARPA Research Opportunities": "https://www.darpa.mil/work-with-us/opportunities",
         "Grants.gov Public Opportunities API": "https://api.grants.gov/v1/api/search2",
