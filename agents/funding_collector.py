@@ -130,9 +130,51 @@ def _apply_grantsgov_structured_metadata(
         ("applicantEligibilityDesc", "applicantEligibilityDescription"),
     )
     eligibility = _clean_grantsgov_text(eligibility_raw)
-    if eligibility:
+
+    # Grants.gov exposes applicant categories as structured objects even when
+    # no free-text eligibility description is supplied.
+    if not eligibility:
+        applicant_types = _first_grantsgov_value(
+            details, hit, ("applicantTypes", "eligibleApplicantTypes")
+        )
+        if isinstance(applicant_types, list):
+            descriptions = []
+            for applicant_type in applicant_types:
+                if isinstance(applicant_type, dict):
+                    description = _clean_grantsgov_text(
+                        applicant_type.get("description") or applicant_type.get("name")
+                    )
+                    if description and description not in descriptions:
+                        descriptions.append(description)
+                elif isinstance(applicant_type, str):
+                    description = _clean_grantsgov_text(applicant_type)
+                    if description and description not in descriptions:
+                        descriptions.append(description)
+            if descriptions:
+                eligibility = "Eligible applicant types (Grants.gov): " + "; ".join(descriptions)
+        elif isinstance(applicant_types, str):
+            eligibility = _clean_grantsgov_text(applicant_types)
+
+    # The prose extractor can accidentally label a fragment of Python's
+    # serialized detail-response dictionary as eligibility (for example
+    # "Desc': 'N/A ...', 'estSynopsisPostingDate': ..."). Never expose that
+    # serialization as a real eligibility condition or evidence.
+    def looks_serialized(value: Any) -> bool:
+        candidate = str(value or "")
+        return bool(
+            re.search(r"(?i)\\bDesc['\"]\\s*:", candidate)
+            or re.search(
+                r"(?i)['\"](?:estSynopsisPostingDate|createTimeStamp|applicantTypes)['\"]\\s*:",
+                candidate,
+            )
+        )
+
+    if eligibility and not looks_serialized(eligibility):
         analysis.eligibility = eligibility
         evidence["eligibility"] = eligibility
+    elif looks_serialized(analysis.eligibility) or looks_serialized(evidence.get("eligibility")):
+        analysis.eligibility = None
+        evidence.pop("eligibility", None)
 
     if evidence:
         analysis.evidence = evidence

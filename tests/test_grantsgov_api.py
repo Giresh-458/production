@@ -122,3 +122,61 @@ def test_grantsgov_structured_metadata_prefers_detail_values_and_preserves_fallb
     assert analysis.eligibility == "Universities in the United States."
     assert analysis.deadline == original_deadline
 
+def test_grantsgov_metadata_replaces_serialized_eligibility_with_applicant_types():
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _apply_grantsgov_structured_metadata
+
+    document = FundingDocument(
+        organization="Grants.gov",
+        title="National Defense Education Program (NDEP) STEM Consortia RFI",
+        source="https://www.grants.gov/search-results-detail/334905",
+        source_type="Official API",
+        content="Title: National Defense Education Program STEM Consortia RFI.",
+        year=2026,
+    )
+    analysis = analyze_document(document)
+    malformed = (
+        "Desc': 'N/A - Request for Information', "
+        "'estSynopsisPostingDate': 'Nov 30, 2021', "
+        "'applicantTypes': [{'description': 'Others (see text field)'}]"
+    )
+    analysis.eligibility = malformed
+    analysis.evidence["eligibility"] = malformed
+
+    details = {
+        "applicantTypes": [
+            {"id": "25", "description": "Others (see text field entitled Additional Information on Eligibility)"},
+            {"id": "25", "description": "Others (see text field entitled Additional Information on Eligibility)"},
+        ]
+    }
+    _apply_grantsgov_structured_metadata(analysis, details, {"id": "334905"})
+
+    assert analysis.eligibility == (
+        "Eligible applicant types (Grants.gov): Others (see text field entitled Additional Information on Eligibility)"
+    )
+    assert "Desc':" not in analysis.eligibility
+    assert "eligibility" not in analysis.evidence or "Desc':" not in analysis.evidence["eligibility"]
+
+
+def test_grantsgov_metadata_discards_serialized_eligibility_when_no_fallback_exists():
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _apply_grantsgov_structured_metadata
+
+    document = FundingDocument(
+        organization="Grants.gov",
+        title="Example Research Notice",
+        source="https://www.grants.gov/search-results-detail/456",
+        source_type="Official API",
+        content="Research notice for institutions.",
+        year=2026,
+    )
+    analysis = analyze_document(document)
+    malformed = "Desc': 'N/A', 'estSynopsisPostingDate': 'Nov 30, 2021'"
+    analysis.eligibility = malformed
+    analysis.evidence["eligibility"] = malformed
+
+    _apply_grantsgov_structured_metadata(analysis, {}, {"id": "456"})
+
+    assert analysis.eligibility is None
+    assert "eligibility" not in analysis.evidence
+
