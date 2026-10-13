@@ -628,7 +628,6 @@ def crawl_funding_source(
             pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
             if pdf_result["success"]:
                 result.documents_fetched += 1
-                pages_fetched_count += 1
                 if ctx:
                     ctx.add_document()
                     ctx.add_page()
@@ -719,7 +718,6 @@ def crawl_funding_source(
             continue
 
         result.pages_fetched += 1
-        pages_fetched_count += 1
         if ctx:
             ctx.add_page()
 
