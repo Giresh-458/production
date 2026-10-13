@@ -162,9 +162,9 @@ def _apply_grantsgov_structured_metadata(
     def looks_serialized(value: Any) -> bool:
         candidate = str(value or "")
         return bool(
-            re.search(r"(?i)\\bDesc['\"]\\s*:", candidate)
+            re.search(r"(?i)\bDesc['\"]\s*:", candidate)
             or re.search(
-                r"(?i)['\"](?:estSynopsisPostingDate|createTimeStamp|applicantTypes)['\"]\\s*:",
+                r"(?i)['\"](?:estSynopsisPostingDate|createTimeStamp|applicantTypes)['\"]\s*:",
                 candidate,
             )
         )
