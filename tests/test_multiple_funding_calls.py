@@ -196,6 +196,9 @@ def test_does_not_treat_inferred_open_status_as_independent_evidence():
             "eligibility": "Universities and research organizations",
             "source_url": "https://example.org/calls/research-innovation",
             "evidence": {
+                # A classifier may record call-type language here without proving
+                # that applications are open now.
+                "status": "Request for Proposals",
                 "deadline": "Applications close 2027-01-30",
                 "funding_amount": "Awards up to $25,000",
                 "eligibility": "Universities and research organizations",
