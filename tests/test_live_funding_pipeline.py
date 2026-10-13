@@ -12,6 +12,20 @@ def test_live_date_extraction_marks_current_call_open():
     assert determine_status(None, opening, deadline, text) == "OPEN_CALL"
 
 
+def test_github_open_grant_proposal_issue_date_is_not_call_opening_date():
+    # GitHub's "opened on <date>" metadata is an issue creation timestamp,
+    # not the date that the grant program started accepting applications.
+    text = (
+        "[Open Grant Proposal] Example Filecoin project proposal. "
+        "submitted by an applicant; Alice opened on Oct 9, 2026."
+    )
+    opening, deadline = extract_call_dates(text)
+
+    assert opening is None
+    assert deadline is None
+    assert determine_status(None, opening, deadline, text, title="Open Grant Proposal") != "OPEN_CALL"
+
+
 def test_select_open_funding_call_rejects_closed_and_future_calls():
     now = datetime.now(UTC)
     open_deadline = (now + timedelta(days=14)).date().isoformat()
