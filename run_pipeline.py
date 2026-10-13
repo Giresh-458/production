@@ -19,7 +19,7 @@ from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCO
 from core.batch_runner import execute_batch_run
 from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
 from core.normalization import save_normalized_collection_records
-from core.schemas import ALLOWED_RESEARCH_AREAS, normalize_area
+from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, normalize_area
 from core.mission_gate import relevance as mission_relevance
 
 
@@ -59,8 +59,104 @@ def _parse_date(value: str | None, *, end_of_day: bool = False) -> datetime | No
         return None
 
 
-def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Select all genuinely open funding opportunities from the live funding scan."""
+def _supported_rif_funding_domains(
+    record: dict[str, Any],
+) -> tuple[list[str], float, str]:
+    """Return domain matches backed by strong source text, not broad keywords alone.
+
+    A canonical domain only qualifies when the content scorer reports at least
+    2.5 weighted points and at least one directly identifying term whose
+    canonical weight is >= 2.0. When source_research_domains is present, the
+    call must also match one of the configured domains for that source.
+    """
+    research_context = record.get("research_context")
+    context_ranking = (
+        research_context.get("domain_relevance")
+        if isinstance(research_context, dict) else None
+    )
+    ranking = record.get("domain_relevance") or context_ranking
+    if not isinstance(ranking, list) or not ranking:
+        return [], 0.0, "missing canonical RIF research-domain evidence"
+
+    source_domains_field_present = "source_research_domains" in record
+    raw_source_domains = record.get("source_research_domains")
+    source_domains: set[str] = set()
+    if isinstance(raw_source_domains, list):
+        source_domains = {
+            normalized
+            for value in raw_source_domains
+            if (normalized := normalize_area(str(value))) in ALLOWED_RESEARCH_AREAS
+        }
+    elif source_domains_field_present:
+        return [], 0.0, "configured funding source has invalid research-domain metadata"
+
+    if source_domains_field_present and not source_domains:
+        return [], 0.0, "configured funding source has no canonical RIF research-domain mapping"
+
+    matched_domains: list[str] = []
+    best_score = 0.0
+    source_domain_mismatch = False
+
+    for item in ranking:
+        if not isinstance(item, dict):
+            continue
+        domain = normalize_area(str(item.get("domain") or item.get("area") or ""))
+        if domain not in ALLOWED_RESEARCH_AREAS:
+            continue
+
+        try:
+            raw_score = float(item.get("raw_score", 0.0) or 0.0)
+            normalized_score = float(item.get("score", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+
+        matched_terms = item.get("matched_terms") or []
+        if not isinstance(matched_terms, (list, tuple, set)):
+            continue
+        term_weights = {
+            str(term).casefold(): float(weight)
+            for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items()
+        }
+        strong_terms = {
+            str(term).casefold()
+            for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items()
+            if float(weight) >= 2.0
+        }
+        supported_terms = {
+            str(term).casefold().strip()
+            for term in matched_terms
+            if str(term).casefold().strip() in strong_terms
+            and term_weights.get(str(term).casefold().strip(), 0.0) >= 2.0
+        }
+        if raw_score < 2.5 or not supported_terms:
+            continue
+
+        if source_domain_matches_present := source_domains_field_present:
+            if domain not in source_domains:
+                source_domain_mismatch = True
+                continue
+
+        if domain not in matched_domains:
+            matched_domains.append(domain)
+        best_score = max(best_score, normalized_score)
+
+    if matched_domains:
+        return matched_domains, best_score, ""
+
+    if source_domain_mismatch:
+        return [], 0.0, (
+            "strong call-content domain evidence does not match the configured "
+            "source's research-domain mapping"
+        )
+    return [], 0.0, (
+        "no sufficiently strong, domain-specific evidence for any canonical RIF research area"
+    )
+
+
+def get_all_open_funding_calls(
+    funding_result: dict[str, Any], *, require_domain_match: bool = False
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Select actionable open calls; optionally require strong canonical-domain evidence."""
     now = datetime.now(UTC)
     candidates: list[tuple[float, dict[str, Any]]] = []
     rejected: list[dict[str, Any]] = []
@@ -180,6 +276,21 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             })
             continue
 
+        matched_rif_domains: list[str] = []
+        matched_domain_score = 0.0
+        if require_domain_match:
+            matched_rif_domains, matched_domain_score, domain_reason = (
+                _supported_rif_funding_domains(record)
+            )
+            if not matched_rif_domains:
+                rejected.append({
+                    "title": record.get("title"),
+                    "status": status,
+                    "reasons": [domain_reason],
+                    "source_url": record.get("source_url"),
+                })
+                continue
+
         # Deduplication check
         call_id = record.get("call_id")
         if not call_id:
@@ -197,6 +308,8 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
 
         relevance = record.get("domain_relevance") or []
         top_score = max((float(item.get("score", 0.0) or 0.0) for item in relevance), default=0.0)
+        if require_domain_match:
+            top_score = matched_domain_score
         score = 0.55 + min(top_score, 0.30)
         if record.get("deadline"):
             score += 0.06
@@ -208,6 +321,8 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             days = max((deadline - now).total_seconds() / 86400.0, 0.0)
             score += max(0.0, min(0.08, 0.08 * (1.0 - min(days, 120.0) / 120.0)))
         record = dict(record)
+        if require_domain_match:
+            record["matched_rif_domains"] = matched_rif_domains
         record["selection_score"] = round(min(score, 0.99), 4)
         record["call_id"] = call_id
         candidates.append((score, record))
@@ -319,6 +434,7 @@ def main() -> int:
             "output_dir": str(root / "intermediate" / "funding"),
             "run_id": run_id,
             "force_refresh": bool(getattr(args, "force_refresh", False) or not getattr(args, "scheduled_refresh", False)),
+            "require_domain_mappings": True,
         }
         print("\n[1/6] Funding Agent — discovering LIVE OPEN CALLS from configured sources...")
 
@@ -330,7 +446,7 @@ def main() -> int:
         print("❌ No funding opportunities were discovered.")
         return 2
 
-    valid_calls, rejected = get_all_open_funding_calls(funding_result)
+    valid_calls, rejected = get_all_open_funding_calls(funding_result, require_domain_match=True)
 
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}
