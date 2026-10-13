@@ -1,257 +1,257 @@
 # research_domains are canonical RIF research areas; discovered calls must independently match their actual source evidence.
 sources:
   tier_1:
-    - name: Ethereum ESP RFPs
-      research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
-      url: https://esp.ethereum.foundation/applicants/rfp
-      focus: current Ethereum requests for proposals, research, security, cryptography,
-        protocol, academic and ecosystem infrastructure
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - esp.ethereum.foundation
-        discovery:
-          start_urls:
-          - https://esp.ethereum.foundation/applicants/rfp
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: Ethereum ESP Open Rounds
-      research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
-      url: https://esp.ethereum.foundation/applicants/open-rounds
-      focus: active Ethereum grant rounds and time-limited funding opportunities
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - esp.ethereum.foundation
-        discovery:
-          start_urls:
-          - https://esp.ethereum.foundation/applicants/open-rounds
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: Chainlink Grants
-      research_domains: [RWA, Stablecoins]
-      url: https://chain.link/community/grants
-      direct_page: true
-      focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - chain.link
-        discovery:
-          start_urls:
-          - https://chain.link/community/grants
-          max_depth: 2
-          max_pages: 6
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: Solana Grants and Funding
-      research_domains: [RWA, DePIN, MEV, Stablecoins]
-      url: https://solana.org/grants-funding
-      focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
-        apps
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - solana.org
-        - solana.com
-        - earn.superteam.fun
-        discovery:
-          start_urls:
-          - https://solana.org/grants-funding
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-  tier_2:
-    - name: NEAR Ecosystem Funding
-      research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
-      url: https://www.near.org/funding
-      focus: Official NEAR ecosystem grants; retain individual opportunities only when the call has direct evidence for RWA, DID, DePIN, MEV or stablecoins, with current status verified.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - near.org
-        - devhub.near.org
-        - docs.metapool.app
-        - potlock.org
-        discovery:
-          start_urls:
-          - https://www.near.org/funding
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: Ripple UBRI
-      research_domains: [RWA, DID, Stablecoins]
-      url: https://ripple.com/impact/ubri/
-      focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - ripple.com
-        discovery:
-          start_urls:
-          - https://ripple.com/impact/ubri/
-          max_depth: 2
-          max_pages: 5
-          follow_detail_pages: true
-          follow_pdfs: false
-          pagination: true
-    - name: XRPL Grants Program
-      research_domains: [RWA, Stablecoins]
-      url: https://xrplgrants.org/
-      focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - xrplgrants.org
-        discovery:
-          start_urls:
-          - https://xrplgrants.org/
-          max_depth: 2
-          max_pages: 6
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: Filecoin Grants and Funding
-      research_domains: [DePIN]
-      url: https://github.com/filecoin-project/devgrants
-      direct_page: true
-      focus: DePIN, decentralized storage, data infrastructure, retrieval, verifiable
-        compute
-      collection:
-        mode: api
-        provider: github
-        repo: filecoin-project/devgrants
+  - name: Ethereum ESP RFPs
+    research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://esp.ethereum.foundation/applicants/rfp
+    focus: current Ethereum requests for proposals, research, security, cryptography,
+      protocol, academic and ecosystem infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants/rfp
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
         pagination: true
-        detail_fetch: true
-        limits:
-          max_pages: 5
-          max_documents: 250
-    - name: Flashbots MEV Research Grants
-      research_domains: [MEV]
-      url: https://github.com/flashbots/mev-research/blob/main/grants.md
-      direct_page: true
-      focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - github.com
-        discovery:
-          start_urls:
-          - https://github.com/flashbots/mev-research/blob/main/grants.md
-          max_depth: 1
-          max_pages: 2
-          follow_detail_pages: false
-          follow_pdfs: false
-          pagination: false
+  - name: Ethereum ESP Open Rounds
+    research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://esp.ethereum.foundation/applicants/open-rounds
+    focus: active Ethereum grant rounds and time-limited funding opportunities
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - esp.ethereum.foundation
+      discovery:
+        start_urls:
+        - https://esp.ethereum.foundation/applicants/open-rounds
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Chainlink Grants
+    research_domains: [RWA, Stablecoins]
+    url: https://chain.link/community/grants
+    direct_page: true
+    focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - chain.link
+      discovery:
+        start_urls:
+        - https://chain.link/community/grants
+        max_depth: 2
+        max_pages: 6
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Solana Grants and Funding
+    research_domains: [RWA, DePIN, MEV, Stablecoins]
+    url: https://solana.org/grants-funding
+    focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
+      apps
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - solana.org
+      - solana.com
+      - earn.superteam.fun
+      discovery:
+        start_urls:
+        - https://solana.org/grants-funding
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  tier_2:
+  - name: NEAR Ecosystem Funding
+    research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
+    url: https://www.near.org/funding
+    focus: Official NEAR ecosystem grants; retain individual opportunities only when the call has direct evidence for RWA, DID, DePIN, MEV or stablecoins, with current status verified.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - near.org
+      - devhub.near.org
+      - docs.metapool.app
+      - potlock.org
+      discovery:
+        start_urls:
+        - https://www.near.org/funding
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Ripple UBRI
+    research_domains: [RWA, DID, Stablecoins]
+    url: https://ripple.com/impact/ubri/
+    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ripple.com
+      discovery:
+        start_urls:
+        - https://ripple.com/impact/ubri/
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: false
+        pagination: true
+  - name: XRPL Grants Program
+    research_domains: [RWA, Stablecoins]
+    url: https://xrplgrants.org/
+    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - xrplgrants.org
+      discovery:
+        start_urls:
+        - https://xrplgrants.org/
+        max_depth: 2
+        max_pages: 6
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: Filecoin Grants and Funding
+    research_domains: [DePIN]
+    url: https://github.com/filecoin-project/devgrants
+    direct_page: true
+    focus: DePIN, decentralized storage, data infrastructure, retrieval, verifiable
+      compute
+    collection:
+      mode: api
+      provider: github
+      repo: filecoin-project/devgrants
+      pagination: true
+      detail_fetch: true
+      limits:
+        max_pages: 5
+        max_documents: 250
+  - name: Flashbots MEV Research Grants
+    research_domains: [MEV]
+    url: https://github.com/flashbots/mev-research/blob/main/grants.md
+    direct_page: true
+    focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - github.com
+      discovery:
+        start_urls:
+        - https://github.com/flashbots/mev-research/blob/main/grants.md
+        max_depth: 1
+        max_pages: 2
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
   tier_3:
-    - name: Climate Pitch Climate-Tech Grants
-      research_domains: [ESG]
-      url: https://climatepitch.org/home/
-      direct_page: true
-      focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - climatepitch.org
-        discovery:
-          start_urls:
-          - https://climatepitch.org/home/
-          max_depth: 2
-          max_pages: 5
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: BIRAC Calls for Proposal
-      research_domains: [DigitalHealthCPS]
-      url: https://www.birac.nic.in/cfp.php
-      focus: Official biotech and health innovation calls; retain only calls with direct evidence for digital health, medical devices, diagnostics, bioinformatics, or health cyber-physical systems.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - birac.nic.in
-        - www.birac.nic.in
-        discovery:
-          start_urls:
-          - https://www.birac.nic.in/cfp.php
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-    - name: ICMR Calls for Proposals
-      research_domains: [DigitalHealthCPS]
-      url: https://www.icmr.gov.in/call-for-proposals
-      focus: Official Indian health research calls; retain only individual calls with direct digital-health, medical-device, remote-monitoring, diagnostic or health cyber-physical systems evidence.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - icmr.gov.in
-        - www.icmr.gov.in
-        discovery:
-          start_urls:
-          - https://www.icmr.gov.in/call-for-proposals
-          max_depth: 3
-          max_pages: 8
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
+  - name: Climate Pitch Climate-Tech Grants
+    research_domains: [ESG]
+    url: https://climatepitch.org/home/
+    direct_page: true
+    focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - climatepitch.org
+      discovery:
+        start_urls:
+        - https://climatepitch.org/home/
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: BIRAC Calls for Proposal
+    research_domains: [DigitalHealthCPS]
+    url: https://www.birac.nic.in/cfp.php
+    focus: Official biotech and health innovation calls; retain only calls with direct evidence for digital health, medical devices, diagnostics, bioinformatics, or health cyber-physical systems.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - birac.nic.in
+      - www.birac.nic.in
+      discovery:
+        start_urls:
+        - https://www.birac.nic.in/cfp.php
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: ICMR Calls for Proposals
+    research_domains: [DigitalHealthCPS]
+    url: https://www.icmr.gov.in/call-for-proposals
+    focus: Official Indian health research calls; retain only individual calls with direct digital-health, medical-device, remote-monitoring, diagnostic or health cyber-physical systems evidence.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - icmr.gov.in
+      - www.icmr.gov.in
+      discovery:
+        start_urls:
+        - https://www.icmr.gov.in/call-for-proposals
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
   cps_funding:
-    - name: NSF CPS Foundations and Connected Communities
-      research_domains: [ZK-IoV, DigitalHealthCPS]
-      url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
-      focus: Direct NSF cyber-physical systems program covering autonomy, security, transportation and community well-being; verify call-level fit and applicant eligibility.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - nsf.gov
-        - www.nsf.gov
-        discovery:
-          start_urls:
-          - https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
-          max_depth: 3
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
-          max_pages: 30
-    - name: I-DAPT Hub Cyber-Physical Systems Calls
-      research_domains: [ESG, ZK-IoV, DigitalHealthCPS]
-      url: https://idapthub.org/applications/call_for_proposals
-      direct_page: true
-      focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
-      collection:
-        mode: web
-        engine: crawl4ai
-        allowed_domains:
-        - idapthub.org
-        - www.idapthub.org
-        discovery:
-          start_urls:
-          - https://idapthub.org/applications/call_for_proposals
-          max_depth: 2
-          max_pages: 5
-          follow_detail_pages: true
-          follow_pdfs: true
-          pagination: true
+  - name: NSF CPS Foundations and Connected Communities
+    research_domains: [ZK-IoV, DigitalHealthCPS]
+    url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
+    focus: Direct NSF cyber-physical systems program covering autonomy, security, transportation and community well-being; verify call-level fit and applicant eligibility.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - nsf.gov
+      - www.nsf.gov
+      discovery:
+        start_urls:
+        - https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
+        max_depth: 3
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        max_pages: 30
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV, DigitalHealthCPS]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
