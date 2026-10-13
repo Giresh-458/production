@@ -14,7 +14,7 @@ def _doc(text: str) -> FundingDocument:
     )
 
 
-def test_funding_agent_detects_all_eight_canonical_domains():
+def test_funding_agent_detects_all_seven_canonical_domains():
     cases = {
         "RWA": "tokenized real-world asset infrastructure and oracle verification for tokenized securities",
         "ESG": "carbon credit MRV, emissions measurement, sustainability registry and climate reporting",
@@ -23,7 +23,6 @@ def test_funding_agent_detects_all_eight_canonical_domains():
         "DePIN": "decentralized physical infrastructure, wireless sensor networks and distributed compute",
         "MEV": "transaction ordering, block builders, relays and MEV mitigation",
         "Stablecoins": "stablecoin payment settlement, reserve management and depeg controls",
-        "DigitalHealthCPS": "digital healthcare cyber-physical systems, medical devices, clinical validation and remote monitoring",
     }
     assert ALLOWED_RESEARCH_AREAS == set(cases)
     for expected, text in cases.items():
@@ -35,9 +34,9 @@ def test_funding_agent_detects_all_eight_canonical_domains():
 
 def test_selected_collection_areas_use_material_relevance_only():
     ranking = [
-        {"domain": "DigitalHealthCPS", "score": 0.76},
+        {"domain": "RWA", "score": 0.76},
         {"domain": "DID", "score": 0.14},
-        {"domain": "RWA", "score": 0.03},
+        {"domain": "DePIN", "score": 0.03},
         {"domain": "ESG", "score": 0.02},
     ]
-    assert select_collection_areas({"domain_relevance": ranking}, "DigitalHealthCPS") == ["DigitalHealthCPS", "DID"]
+    assert select_collection_areas({"domain_relevance": ranking}, "RWA") == ["RWA", "DID"]
