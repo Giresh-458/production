@@ -709,12 +709,20 @@ def _collect_web_source(
             if warnings is not None:
                 warnings.append(f"Web analysis failed for {raw_url}: {e}")
 
-    # Adjust final status based on normalization outcomes
-    if result.records_valid == 0 and result.records_failed > 0:
-        result.final_status = "FAIL"
+    # Keep source status conservative after normalization. The crawl may have
+    # collected some evidence while another page or record failed; that is
+    # partial coverage, not a verified or empty source.
+    if result.records_failed > 0:
+        if result.final_status != "TEST_TRUNCATED":
+            result.final_status = "PARTIAL" if result.records_valid > 0 else "FAIL"
+    elif result.errors or result.pages_failed > 0 or result.documents_failed > 0:
+        if result.pages_fetched > 0 or result.documents_fetched > 0 or result.records_valid > 0:
+            if result.final_status != "TEST_TRUNCATED":
+                result.final_status = "PARTIAL"
+        elif result.final_status not in {"PARTIAL", "TEST_TRUNCATED"}:
+            result.final_status = "FAIL"
     elif result.records_valid == 0 and result.records_discovered == 0:
-        if result.pages_fetched > 0:
+        if result.pages_fetched > 0 and not result.truncated:
             result.final_status = "NO_ACTIVE_OPPORTUNITIES"
-        # else keep the status from crawl_funding_source
 
     return result

@@ -697,12 +697,22 @@ def crawl_funding_source(
             # no pagination was present to exhaustively prove completeness.
             result.pagination_complete = False
 
-    # Determine final status
-    if result.pages_failed > 0 and result.pages_fetched == 0:
+    # Determine final status conservatively. Exhausting the traversal queue does
+    # not prove complete coverage when discovered pages/documents failed to fetch.
+    successful_fetches = result.pages_fetched > 0 or result.documents_fetched > 0
+    has_collection_failures = bool(
+        result.errors or result.pages_failed > 0 or result.documents_failed > 0
+    )
+
+    if not successful_fetches and result.pages_failed > 0:
         result.final_status = "FAIL"
     elif result.truncated:
         result.final_status = "TEST_TRUNCATED" if test_limits else "PARTIAL"
-    elif result.pages_fetched > 0 or result.documents_fetched > 0:
+    elif has_collection_failures:
+        # Keep any successfully collected evidence, but never label it VERIFIED
+        # or NO_ACTIVE_OPPORTUNITIES when fetch failures leave a coverage gap.
+        result.final_status = "PARTIAL" if successful_fetches else "FAIL"
+    elif successful_fetches:
         if len(result.opportunities) > 0:
             if result.pagination_detected and result.pagination_complete:
                 result.final_status = "VERIFIED"
