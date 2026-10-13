@@ -132,9 +132,55 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
         has_submission_evidence = bool(record.get("application_url"))
         has_timeline_evidence = bool(record.get("deadline") or record.get("opening_date"))
         status_evidence = record.get("evidence", {}) if isinstance(record.get("evidence"), dict) else {}
-        has_explicit_open_evidence = bool(status_evidence.get("status")) or status == "OPEN_CALL"
-        if evidence_score < 1 or not has_call_identity or (not has_timeline_evidence and not has_explicit_open_evidence) or not (has_submission_evidence or has_explicit_open_evidence):
-            rejected.append({"title": record.get("title"), "status": status, "reasons": ["insufficient evidence for a verified individual call"], "source_url": record.get("source_url")})
+        # A classifier-produced OPEN_CALL label is not independent proof that
+        # applications are accepting submissions. Trust explicit source status,
+        # explicit current-acceptance language, or a concrete submission route
+        # paired with an unexpired timeline.
+        source_status = str(evidence.get("source_status") or "").strip().lower() if isinstance(evidence, dict) else ""
+        if source_status in {"forecasted", "upcoming", "upcoming_call"}:
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": ["source status is forecasted, not currently open"],
+                "source_url": record.get("source_url"),
+            })
+            continue
+        if source_status in {"closed", "archived", "closed_call", "expired"}:
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": ["source status is closed or archived"],
+                "source_url": record.get("source_url"),
+            })
+            continue
+
+        explicit_status_text = str(evidence.get("status") or "") if isinstance(evidence, dict) else ""
+        explicit_open_language = bool(re.search(
+            r"\\b(?:applications? (?:are|now) open|now accepting applications|"
+            r"accepting applications now|open for applications|call is open|"
+            r"rfp is open|currently accepting applications)\\b",
+            explicit_status_text,
+            flags=re.IGNORECASE,
+        ))
+        authoritative_open_status = source_status in {
+            "posted", "open", "open_call", "active", "accepting applications",
+        }
+        has_explicit_open_evidence = authoritative_open_status or explicit_open_language
+        has_submission_evidence = bool(record.get("application_url"))
+        has_timeline_evidence = bool(record.get("deadline") or record.get("opening_date"))
+        has_current_submission_window = has_submission_evidence and has_timeline_evidence
+        if evidence_score < 1 or not has_call_identity or not (
+            has_explicit_open_evidence or has_current_submission_window
+        ):
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": [
+                    "insufficient evidence for a verified individual call",
+                    "missing independent evidence that applications are currently open",
+                ],
+                "source_url": record.get("source_url"),
+            })
             continue
 
         # Deduplication check
