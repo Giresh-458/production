@@ -2,6 +2,18 @@ import pytest
 from core.crawl4ai_web import crawl_funding_source
 from core.crawl_context import CrawlContext, current_crawl_context
 
+@pytest.fixture(autouse=True)
+def bypass_live_robots_and_wait_in_crawl_unit_tests(monkeypatch):
+    """Keep deterministic crawler tests offline; policy behavior has its own tests."""
+    monkeypatch.setattr(
+        "core.crawl4ai_web._get_robots_policy",
+        lambda url: (True, 1.0, None),
+    )
+    monkeypatch.setattr(
+        "core.crawl4ai_web._wait_for_host_slot",
+        lambda url, delay_seconds: True,
+    )
+
 def test_funding_boundaries_respects_limits(monkeypatch):
     # Mock queue logic is not needed, we'll just return many links from fake_fetch_sync
     

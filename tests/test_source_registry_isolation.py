@@ -138,6 +138,7 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
             "title": "Test Call",
             "status": "OPEN_CALL",
             "source_url": "https://example.com/call",
+            "application_url": "https://example.com/call/apply",
             "deadline": "2030-01-01",
             "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {

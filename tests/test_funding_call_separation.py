@@ -13,6 +13,18 @@ import pytest
 
 from core.schemas import CollectionResult
 
+@pytest.fixture(autouse=True)
+def bypass_live_robots_and_wait_in_crawl_unit_tests(monkeypatch):
+    """Keep deterministic crawler tests offline; policy behavior has its own tests."""
+    monkeypatch.setattr(
+        "core.crawl4ai_web._get_robots_policy",
+        lambda url: (True, 1.0, None),
+    )
+    monkeypatch.setattr(
+        "core.crawl4ai_web._wait_for_host_slot",
+        lambda url, delay_seconds: True,
+    )
+
 
 # ── Grants.gov pagination tests ──────────────────────────────────────
 
