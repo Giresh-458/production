@@ -1,4 +1,4 @@
-# research_domains are canonical RIF research areas; discovered calls must independently match their actual source evidence.
+# Canonical research domains: RWA, ESG, ZK-IoV, DID, DePIN, MEV, and Stablecoins. Each discovered call must independently match source evidence.
 sources:
   tier_1:
   - name: Ethereum ESP RFPs
@@ -181,45 +181,9 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: BIRAC Calls for Proposal
-    research_domains: [DigitalHealthCPS]
-    url: https://www.birac.nic.in/cfp.php
-    focus: Official biotech and health innovation calls; retain only calls with direct evidence for digital health, medical devices, diagnostics, bioinformatics, or health cyber-physical systems.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - birac.nic.in
-      - www.birac.nic.in
-      discovery:
-        start_urls:
-        - https://www.birac.nic.in/cfp.php
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: ICMR Calls for Proposals
-    research_domains: [DigitalHealthCPS]
-    url: https://www.icmr.gov.in/call-for-proposals
-    focus: Official Indian health research calls; retain only individual calls with direct digital-health, medical-device, remote-monitoring, diagnostic or health cyber-physical systems evidence.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - icmr.gov.in
-      - www.icmr.gov.in
-      discovery:
-        start_urls:
-        - https://www.icmr.gov.in/call-for-proposals
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
   cps_funding:
   - name: NSF CPS Foundations and Connected Communities
-    research_domains: [ZK-IoV, DigitalHealthCPS]
+    research_domains: [ZK-IoV]
     url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
     focus: Direct NSF cyber-physical systems program covering autonomy, security, transportation and community well-being; verify call-level fit and applicant eligibility.
     collection:
@@ -237,7 +201,7 @@ sources:
         pagination: true
         max_pages: 30
   - name: I-DAPT Hub Cyber-Physical Systems Calls
-    research_domains: [ESG, ZK-IoV, DigitalHealthCPS]
+    research_domains: [ESG, ZK-IoV]
     url: https://idapthub.org/applications/call_for_proposals
     direct_page: true
     focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
