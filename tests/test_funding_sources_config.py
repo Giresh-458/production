@@ -117,6 +117,16 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
         assert entry.get("collection", {}).get("mode") in {"web", "api"}
 
 
+def test_idapt_config_enables_bounded_docx_document_collection():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]["collection"]["discovery"]
+
+    assert discovery["follow_documents"] is True
+    # Recent live diagnostics discovered 12 URLs on this source. Keep a finite
+    # budget but allow the discovered frontier to be inspected after fixing DOCX.
+    assert 12 <= discovery["max_pages"] <= 30
+
+
 def test_broad_unscoped_portals_are_not_funding_roots():
     names = {str(entry.get("name", "")).casefold() for entry in _entries()}
     forbidden_names = {
