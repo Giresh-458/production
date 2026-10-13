@@ -97,7 +97,7 @@ def test_manual_candidate_without_source_metadata_still_needs_strong_domain_evid
         ("Stablecoins", "stablecoin"),
     ],
 )
-def test_all_eight_canonical_domains_can_pass_with_strong_evidence(domain, anchor):
+def test_all_seven_canonical_domains_can_pass_with_strong_evidence(domain, anchor):
     selected, rejected = get_all_open_funding_calls(
         _candidate(domain=domain, term=anchor, source_domains=[domain]),
         require_domain_match=True,
@@ -113,7 +113,7 @@ def test_explicit_rolling_fellowship_is_accepted_without_a_deadline():
 
     page_text = (
         "MEV Fellowship Grants support MEV research. "
-        "No, grant fellows are accepted on a rolling basis. "
+        "Grant fellows are accepted on a rolling basis. "
         "Submit a research proposal for review."
     )
     assert determine_status(
