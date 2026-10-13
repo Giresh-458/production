@@ -14,6 +14,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
+import threading
+from urllib.robotparser import RobotFileParser
 from collections import deque
 from datetime import UTC, datetime
 from io import BytesIO
@@ -29,6 +32,106 @@ except ImportError:
     PdfReader = None
 
 LOGGER = logging.getLogger("rif.crawl4ai_web")
+
+# Be an identifiable, polite crawler rather than cycling identities or solving
+# site challenges. Cache robots policy per origin and throttle consecutive
+# requests to the same host. A robots fetch failure is handled conservatively.
+_ROBOTS_USER_AGENT = "RIF/3.1"
+_ROBOTS_CACHE_TTL = 6 * 60 * 60
+_ROBOTS_FAILURE_TTL = 5 * 60
+_DEFAULT_HOST_DELAY = 1.0
+_ROBOTS_CACHE: dict[str, tuple[float, RobotFileParser | None, bool, float, str | None]] = {}
+_ROBOTS_LOCK = threading.Lock()
+_HOST_LAST_REQUEST: dict[str, float] = {}
+_HOST_LOCK = threading.Lock()
+
+
+def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
+    """Return (allowed, minimum_delay_seconds, reason) for a URL."""
+    parts = urlparse(url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        return False, _DEFAULT_HOST_DELAY, "unsupported URL scheme or missing host"
+
+    origin = f"{parts.scheme}://{parts.netloc.lower()}"
+    now = time.monotonic()
+    with _ROBOTS_LOCK:
+        cached = _ROBOTS_CACHE.get(origin)
+        if cached and cached[0] > now:
+            _, parser, allow_all, delay, error = cached
+            if error:
+                return False, delay, error
+            if allow_all:
+                return True, delay, None
+            assert parser is not None
+            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+            return allowed, delay, None if allowed else "robots.txt disallows this URL"
+
+    robots_url = f"{origin}/robots.txt"
+    try:
+        response = get_response(
+            robots_url,
+            headers={"User-Agent": _ROBOTS_USER_AGENT},
+            timeout=(5.0, 10.0),
+            retries=1,
+            expected_status=(200, 404, 410),
+        )
+        status_code = int(response.status_code)
+        if status_code in {404, 410}:
+            with _ROBOTS_LOCK:
+                _ROBOTS_CACHE[origin] = (
+                    time.monotonic() + _ROBOTS_CACHE_TTL, None, True,
+                    _DEFAULT_HOST_DELAY, None,
+                )
+            return True, _DEFAULT_HOST_DELAY, None
+        if status_code != 200:
+            raise RuntimeError(f"robots.txt returned HTTP {status_code}")
+
+        parser = RobotFileParser(robots_url)
+        parser.parse(str(response.text or "").splitlines())
+        delays = [float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
+                  float(parser.crawl_delay("*") or 0.0)]
+        request_rates = [parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")]
+        for rate in request_rates:
+            if rate and rate.requests > 0:
+                delays.append(float(rate.seconds) / float(rate.requests))
+        delay = max([_DEFAULT_HOST_DELAY, *delays])
+        with _ROBOTS_LOCK:
+            _ROBOTS_CACHE[origin] = (
+                time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
+            )
+        allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+        return allowed, delay, None if allowed else "robots.txt disallows this URL"
+    except Exception as exc:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        # A missing robots file is handled above. Authentication, rate limiting,
+        # server errors, and network failures do not authorize us to ignore rules.
+        reason = f"could not verify robots.txt policy ({status_code or type(exc).__name__}: {exc})"
+        with _ROBOTS_LOCK:
+            _ROBOTS_CACHE[origin] = (
+                time.monotonic() + _ROBOTS_FAILURE_TTL, None, False,
+                _DEFAULT_HOST_DELAY, reason,
+            )
+        return False, _DEFAULT_HOST_DELAY, reason
+
+
+def _wait_for_host_slot(url: str, delay_seconds: float) -> bool:
+    """Wait between same-host page starts; return False if the crawl deadline forbids waiting."""
+    host = urlparse(url).netloc.lower()
+    with _HOST_LOCK:
+        wait_seconds = max(
+            0.0,
+            _HOST_LAST_REQUEST.get(host, 0.0) + max(delay_seconds, _DEFAULT_HOST_DELAY)
+            - time.monotonic(),
+        )
+        if wait_seconds:
+            from core.crawl_context import current_crawl_context
+            ctx = current_crawl_context.get(None)
+            if ctx and ctx.deadline and time.time() + wait_seconds >= ctx.deadline:
+                return False
+            time.sleep(wait_seconds)
+        _HOST_LAST_REQUEST[host] = time.monotonic()
+    return True
 
 # --- Stage B funding classifier keywords (used on page CONTENT, not just URLs) ---
 FUNDING_CONTENT_SIGNALS = [
@@ -405,6 +508,41 @@ def crawl_funding_source(
             result.pagination_complete = False
             LOGGER.info("Source %s: reached configured max_pages=%d, marking PARTIAL",
                         source_id, configured_max_pages)
+            break
+
+        # Respect publisher robots.txt and request pacing before fetching any
+        # HTML/PDF page. A denial or unknown policy is a transparent partial
+        # collection result, never an invitation to bypass the block.
+        respect_robots = bool(discovery_config.get("respect_robots_txt", True))
+        delay_seconds = max(
+            _DEFAULT_HOST_DELAY,
+            float(discovery_config.get("minimum_delay_seconds", _DEFAULT_HOST_DELAY) or _DEFAULT_HOST_DELAY),
+        )
+        if respect_robots:
+            permitted, robots_delay, robots_reason = _get_robots_policy(current_url)
+            delay_seconds = max(delay_seconds, robots_delay)
+            if not permitted:
+                result.urls_skipped += 1
+                result.truncated = True
+                result.pagination_complete = False
+                result.errors.append({
+                    "url": current_url,
+                    "operation": "robots_txt_policy",
+                    "error": robots_reason or "robots.txt does not permit this URL",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                LOGGER.info("Skipping %s for %s: %s", current_url, source_id, robots_reason)
+                continue
+
+        if not _wait_for_host_slot(current_url, delay_seconds):
+            result.truncated = True
+            result.pagination_complete = False
+            result.errors.append({
+                "url": current_url,
+                "operation": "host_politeness_delay",
+                "error": "Required host delay would exceed the crawl deadline",
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
             break
 
         result.pages_discovered += 1
