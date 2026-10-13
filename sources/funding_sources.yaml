@@ -231,6 +231,7 @@ sources:
       allowed_domains:
       - dst.gov.in
       - www.dst.gov.in
+      - onlinedst.gov.in
       discovery:
         start_urls:
         - https://onlinedst.gov.in/
