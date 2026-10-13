@@ -48,7 +48,7 @@ def test_priority_official_and_india_relevant_sources_are_configured():
         "BIRAC Calls for Proposal": "https://www.birac.nic.in/cfp.php",
         "iDEX Defence Innovation Challenges": "https://www.idex.gov.in/challenges",
         "ANRF Research Funding": "https://www.anrf.gov.in/",
-        "DST India Calls for Proposals": "https://dst.gov.in/callforproposals",
+        "DST India Calls for Proposals": "https://www.dst.gov.in/offerings/call-for-proposals",
         "DARPA Research Opportunities": "https://www.darpa.mil/work-with-us/opportunities",
         "Grants.gov Public Opportunities API": "https://api.grants.gov/v1/api/search2",
     }
