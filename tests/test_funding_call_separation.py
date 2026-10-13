@@ -217,7 +217,7 @@ def test_github_document_test_limit_is_reported_as_test_truncated():
 
     assert mock_get.call_args.kwargs["params"]["per_page"] == 2
     assert len(result["issues"]) == 2
-    assert result.pagination_complete is False if hasattr(result, "pagination_complete") else True
+    assert result["pagination_complete"] is False
     assert any("TEST_TRUNCATED: Max documents reached (2)" in err for err in result["errors"])
 
 
