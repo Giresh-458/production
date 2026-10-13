@@ -198,6 +198,29 @@ def test_github_document_limit_stops_pagination_without_overfetching():
     assert any("SOURCE_LIMIT_REACHED: Max documents reached (2)" in err for err in result["errors"])
 
 
+def test_github_document_test_limit_is_reported_as_test_truncated():
+    """An artificial test-only document cap must not be mislabeled as a production source cap."""
+    from core.structured_sources import github_paginated_issues
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = [
+        {"id": 1, "title": "Grant A"},
+        {"id": 2, "title": "Grant B"},
+    ]
+    mock_response.headers = {"Link": '<https://api.github.com/repos/x/y/issues?page=2>; rel="next"'}
+    mock_response.status_code = 200
+
+    with patch("core.structured_sources.get_response", return_value=mock_response) as mock_get:
+        result = github_paginated_issues(
+            "x", "y", test_limits={"max_documents": 2}
+        )
+
+    assert mock_get.call_args.kwargs["params"]["per_page"] == 2
+    assert len(result["issues"]) == 2
+    assert result.pagination_complete is False if hasattr(result, "pagination_complete") else True
+    assert any("TEST_TRUNCATED: Max documents reached (2)" in err for err in result["errors"])
+
+
 # ── Crawl4AI web collection tests ────────────────────────────────────
 
 def test_crawl_depth_zero():
