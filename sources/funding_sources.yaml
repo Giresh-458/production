@@ -200,10 +200,12 @@ sources:
       discovery:
         start_urls:
         - https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation
-        max_depth: 1
-        max_pages: 3
-        follow_detail_pages: true
-        follow_pdfs: true
+        # This official solicitation contains the CPS track in its own body. Stay on
+        # that canonical document instead of crawling unrelated Future CoRe tracks.
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
         pagination: false
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
