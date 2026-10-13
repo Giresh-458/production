@@ -30,7 +30,7 @@ from core.schemas import AREA_KEYWORDS
 DEFAULT_OUTPUT_DIR = Path("outputs/labs")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "labs_memory.db"
 DEFAULT_SOURCES_PATH = Path("sources/labs_sources.yaml")
-FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS", "General"]
+FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "General"]
 THEME_KEYWORDS = AREA_KEYWORDS
 LOGGER = logging.getLogger("rif.lab_agent")
 
