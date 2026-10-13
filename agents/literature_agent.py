@@ -61,7 +61,6 @@ BLOCKCHAIN_TERMS = {
 STATIC_TAGS = {
     "RWA": "#RWA", "ESG": "#ESG", "ZK-IoV": "#ZK", "DID": "#DID",
     "DePIN": "#DePIN", "MEV": "#MEV", "Stablecoins": "#Stablecoins",
-    "DigitalHealthCPS": "#DigitalHealthCPS",
 }
 CONCEPT_VOCAB = [
     "trust", "verification", "privacy", "scalability", "compliance", "identity",
@@ -145,7 +144,7 @@ def build_query(research_area: str | None) -> str:
     query_terms = list(dict.fromkeys(terms + funding_queries[:4]))
     base_terms = " OR ".join(f'all:"{term}"' for term in query_terms)
     # Blockchain context is required only for blockchain-native domains.
-    # DigitalHealthCPS must remain a genuine healthcare/CPS search.
+    # Queries are restricted to the remaining canonical RIF domains.
     if research_area in {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}:
         context_terms = " OR ".join(f'all:"{term}"' for term in BLOCKCHAIN_CONTEXT_TERMS)
         return f"({base_terms}) AND ({context_terms})"
