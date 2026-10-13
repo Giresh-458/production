@@ -4,23 +4,27 @@ from core.structured_sources import grantsgov_paginated_search, collect_structur
 
 
 def test_grantsgov_search_success(monkeypatch):
-    monkeypatch.setattr(
-        "core.structured_sources.post_json",
-        lambda *a, **k: (
+    captured_payloads = []
+
+    def fake_post_json(url, json_body=None, **kwargs):
+        captured_payloads.append(json_body)
+        return (
             {"data": {"hitCount": 1, "oppHits": [
                 {"title": "Fake Grant", "number": "123", "agencyName": "Test",
                  "openDate": "2026-01-01", "closeDate": "2026-12-31",
                  "oppStatus": "posted", "id": "999"}
             ]}},
             "https://api.grants.gov/v1/api/search2",
-        ),
-    )
+        )
+
+    monkeypatch.setattr("core.structured_sources.post_json", fake_post_json)
 
     result = grantsgov_paginated_search("research")
     assert result["pagination_complete"] is True
     assert len(result["hits"]) == 1
     assert result["hits"][0]["title"] == "Fake Grant"
     assert result["total_expected"] == 1
+    assert captured_payloads[0]["oppStatuses"] == "forecasted|posted"
 
 
 def test_grantsgov_search_zero_results(monkeypatch):
