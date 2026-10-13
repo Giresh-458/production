@@ -330,6 +330,161 @@ def test_pdf_extraction_failure():
     assert result["error"] is not None
 
 
+def _minimal_docx_bytes(paragraphs):
+    """Build a small DOCX-compatible archive for offline extraction tests."""
+    from io import BytesIO
+    from zipfile import ZipFile
+    import xml.etree.ElementTree as ET
+
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    document = ET.Element(f"{ns}document")
+    body = ET.SubElement(document, f"{ns}body")
+    for value in paragraphs:
+        paragraph = ET.SubElement(body, f"{ns}p")
+        run = ET.SubElement(paragraph, f"{ns}r")
+        text = ET.SubElement(run, f"{ns}t")
+        text.text = value
+
+    xml = ET.tostring(document, encoding="utf-8", xml_declaration=True)
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    return buffer.getvalue()
+
+
+def test_docx_fetch_extracts_paragraph_text():
+    """DOCX text is downloaded and extracted without a browser dependency."""
+    from core.crawl4ai_web import _fetch_docx
+
+    response = MagicMock()
+    response.content = _minimal_docx_bytes([
+        "Call for research proposals",
+        "Eligibility: universities and research teams",
+        "Submission deadline: 30 November 2026",
+    ])
+
+    with patch("core.crawl4ai_web.get_response", return_value=response):
+        result = _fetch_docx("https://example.com/call.docx")
+
+    assert result["success"] is True
+    assert result["paragraphs_extracted"] == 3
+    assert "Call for research proposals" in result["content"]
+    assert "Submission deadline: 30 November 2026" in result["content"]
+    assert result["truncated"] is False
+
+
+def test_docx_fetch_reports_invalid_archive():
+    """Invalid DOCX files must be surfaced as failures, not empty evidence."""
+    from core.crawl4ai_web import _fetch_docx
+
+    response = MagicMock()
+    response.content = b"not a zip archive"
+
+    with patch("core.crawl4ai_web.get_response", return_value=response):
+        result = _fetch_docx("https://example.com/call.docx")
+
+    assert result["success"] is False
+    assert result["error"]
+
+
+def test_crawler_downloads_docx_without_browser_navigation():
+    """Configured DOCX links use direct download and count as fetched documents."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    docx_url = "https://example.com/docs/proposal-template.docx"
+
+    def fake_fetch(url):
+        assert url == "https://example.com/grants"
+        return {
+            "html": "<html><body>Grant funding call</body></html>",
+            "markdown": (
+                "Grant funding call. Eligibility requirements. "
+                "Submit a proposal before the application deadline."
+            ),
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Research Funding",
+            "links": [{
+                "url": docx_url,
+                "anchor_text": "Download proposal document",
+                "surrounding_text": "Grant funding application proposal",
+                "rel": "",
+            }],
+            "pagination_links": [],
+        }
+
+    response = MagicMock()
+    response.content = _minimal_docx_bytes([
+        "Cyber-physical systems research call",
+        "Eligible applicants: universities",
+    ])
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch) as browser_fetch, \
+         patch("core.crawl4ai_web.get_response", return_value=response):
+        result = crawl_funding_source(
+            "Test", "https://example.com/grants",
+            {
+                "start_urls": ["https://example.com/grants"],
+                "max_depth": 1,
+                "max_pages": 10,
+                "follow_detail_pages": True,
+                "follow_documents": True,
+            },
+            [],
+        )
+
+    assert browser_fetch.call_count == 1
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert any(item.get("type") == "docx" for item in result.opportunities)
+    assert any("Cyber-physical systems research call" in item.get("content", "") for item in result.opportunities)
+    assert result.final_status == "VERIFIED"
+
+
+def test_docx_download_failure_is_recorded_and_source_partial():
+    """A failed DOCX download is visible and downgrades an otherwise useful crawl."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    docx_url = "https://example.com/docs/proposal-template.docx"
+
+    def fake_fetch(url):
+        return {
+            "html": "<html><body>Grant funding call</body></html>",
+            "markdown": (
+                "Grant funding call. Eligibility requirements. "
+                "Submit a proposal before the application deadline."
+            ),
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Research Funding",
+            "links": [{
+                "url": docx_url,
+                "anchor_text": "Download proposal document",
+                "surrounding_text": "Grant funding application proposal",
+                "rel": "",
+            }],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
+         patch("core.crawl4ai_web.get_response", side_effect=ConnectionError("download timeout")):
+        result = crawl_funding_source(
+            "Test", "https://example.com/grants",
+            {
+                "start_urls": ["https://example.com/grants"],
+                "max_depth": 1,
+                "max_pages": 10,
+                "follow_detail_pages": True,
+                "follow_documents": True,
+            },
+            [],
+        )
+
+    assert result.documents_discovered == 1
+    assert result.documents_failed == 1
+    assert result.errors[-1]["operation"] == "docx_fetch"
+    assert result.final_status == "PARTIAL"
+
+
 # ── Error handling tests ─────────────────────────────────────────────
 
 def test_errors_recorded_not_swallowed():
