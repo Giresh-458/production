@@ -21,19 +21,35 @@ def _funding_sources():
     return out
 
 
-def test_funding_registry_uses_current_first_party_program_pages():
+def test_funding_registry_uses_current_domain_scoped_program_pages():
     sources = dict(_funding_sources())
 
     assert sources['Chainlink Grants'] == 'https://chain.link/community/grants'
     assert sources['Filecoin Grants and Funding'] == 'https://github.com/filecoin-project/devgrants'
-    assert sources['MeitY Startup Hub'] == 'https://msh.meity.gov.in/'
+    assert sources['Flashbots MEV Research Grants'] == 'https://github.com/flashbots/mev-research/blob/main/grants.md'
+    assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/home/'
     assert sources['BIRAC Calls for Proposal'] == 'https://www.birac.nic.in/cfp.php'
-    assert sources['iDEX Defence Innovation Challenges'] == 'https://www.idex.gov.in/challenges'
+    assert sources['ICMR Calls for Proposals'] == 'https://www.icmr.gov.in/call-for-proposals'
+    assert sources['I-DAPT Hub Cyber-Physical Systems Calls'] == 'https://idapthub.org/applications/call_for_proposals'
 
-    # These sources were intentionally removed from the curated catalogue.
-    assert 'Polygon Grants' not in sources
-    assert 'Ethereum Foundation Academic Grants' not in sources
-    assert 'Filecoin ProPGF Batch 2' not in sources
+    # Broad, unscoped portals and known stale/general sources were deliberately
+    # removed. The dedicated current catalog tests verify every remaining
+    # source has a canonical RIF research-domain mapping.
+    removed_names = {
+        'MeitY Startup Hub',
+        'iDEX Defence Innovation Challenges',
+        'ANRF Research Funding',
+        'DST India Calls for Proposals',
+        'DARPA Research Opportunities',
+        'ARPA-E',
+        'Grants.gov Public Opportunities API',
+        'Ethereum Road to Devcon 8 India University Program',
+        'Polygon Grants',
+        'Ethereum Foundation Academic Grants',
+        'NIST CPS / IoT Testbed',
+        'CISA ICS',
+    }
+    assert removed_names.isdisjoint(sources)
 
     assert not any('/archives/community/grants' in url for url in sources.values())
     assert not any('/grants/grantees' in url for url in sources.values())

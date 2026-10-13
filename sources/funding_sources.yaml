@@ -1,6 +1,8 @@
+# research_domains are canonical RIF research areas; discovered calls must independently match their actual source evidence.
 sources:
   tier_1:
   - name: Ethereum ESP RFPs
+    research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://esp.ethereum.foundation/applicants/rfp
     focus: current Ethereum requests for proposals, research, security, cryptography,
       protocol, academic and ecosystem infrastructure
@@ -18,6 +20,7 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: Ethereum ESP Open Rounds
+    research_domains: [RWA, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://esp.ethereum.foundation/applicants/open-rounds
     focus: active Ethereum grant rounds and time-limited funding opportunities
     collection:
@@ -33,24 +36,8 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: Ethereum Road to Devcon 8 India University Program
-    url: https://esp.ethereum.foundation/applicants/rfp/rtd8_india_academic
-    focus: India universities, faculty, academic engagement, Ethereum research and
-      education
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - esp.ethereum.foundation
-      discovery:
-        start_urls:
-        - https://esp.ethereum.foundation/applicants/rfp/rtd8_india_academic
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
   - name: Chainlink Grants
+    research_domains: [RWA, Stablecoins]
     url: https://chain.link/community/grants
     direct_page: true
     focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
@@ -68,6 +55,7 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: Solana Grants and Funding
+    research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
@@ -88,8 +76,9 @@ sources:
         pagination: true
   tier_2:
   - name: NEAR Ecosystem Funding
+    research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
     url: https://www.near.org/funding
-    focus: official NEAR ecosystem grants, protocol rewards, developer tooling, public goods and builder funding; follow only linked grant destinations
+    focus: Official NEAR ecosystem grants; retain individual opportunities only when the call has direct evidence for RWA, DID, DePIN, MEV or stablecoins, with current status verified.
     collection:
       mode: web
       engine: crawl4ai
@@ -107,8 +96,9 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: Ripple UBRI
+    research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
-    focus: university partnership-based blockchain research, digital assets, payments and identity; research/impact PDFs are not funding calls by themselves
+    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research.
     collection:
       mode: web
       engine: crawl4ai
@@ -123,8 +113,9 @@ sources:
         follow_pdfs: false
         pagination: true
   - name: XRPL Grants Program
+    research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
-    focus: official XRPL builder grants, developer tooling, tokenization, stablecoins and payments; validate current round/acceptance dates
+    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details.
     collection:
       mode: web
       engine: crawl4ai
@@ -139,6 +130,7 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: Filecoin Grants and Funding
+    research_domains: [DePIN]
     url: https://github.com/filecoin-project/devgrants
     direct_page: true
     focus: DePIN, decentralized storage, data infrastructure, retrieval, verifiable
@@ -152,26 +144,47 @@ sources:
       limits:
         max_pages: 5
         max_documents: 250
-  tier_3:
-  - name: MeitY Startup Hub
-    url: https://msh.meity.gov.in/
-    focus: official India technology startup schemes and current calls, including GENESIS EIR, early-stage/pilot funding, deep-tech support and incubator-linked programs
+  - name: Flashbots MEV Research Grants
+    research_domains: [MEV]
+    url: https://github.com/flashbots/mev-research/blob/main/grants.md
+    direct_page: true
+    focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - msh.meity.gov.in
+      - github.com
       discovery:
         start_urls:
-        - https://msh.meity.gov.in/
-        max_depth: 3
-        max_pages: 8
+        - https://github.com/flashbots/mev-research/blob/main/grants.md
+        max_depth: 1
+        max_pages: 2
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  tier_3:
+  - name: Climate Pitch Climate-Tech Grants
+    research_domains: [ESG]
+    url: https://climatepitch.org/home/
+    direct_page: true
+    focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - climatepitch.org
+      discovery:
+        start_urls:
+        - https://climatepitch.org/home/
+        max_depth: 2
+        max_pages: 5
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
   - name: BIRAC Calls for Proposal
+    research_domains: [DigitalHealthCPS]
     url: https://www.birac.nic.in/cfp.php
-    focus: official biotech and health innovation calls, medical devices, diagnostics, bioinformatics, AI/IoT/automation for health and undergraduate E-YUVA fellowships
+    focus: Official biotech and health innovation calls; retain only calls with direct evidence for digital health, medical devices, diagnostics, bioinformatics, or health cyber-physical systems.
     collection:
       mode: web
       engine: crawl4ai
@@ -186,54 +199,19 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: iDEX Defence Innovation Challenges
-    url: https://www.idex.gov.in/challenges
-    focus: official Indian defence/security innovation challenges, robotics, autonomy, sensors, embedded systems, cyber-physical systems and prototype commercialization
+  - name: ICMR Calls for Proposals
+    research_domains: [DigitalHealthCPS]
+    url: https://www.icmr.gov.in/call-for-proposals
+    focus: Official Indian health research calls; retain only individual calls with direct digital-health, medical-device, remote-monitoring, diagnostic or health cyber-physical systems evidence.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - idex.gov.in
-      - www.idex.gov.in
+      - icmr.gov.in
+      - www.icmr.gov.in
       discovery:
         start_urls:
-        - https://www.idex.gov.in/challenges
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: ANRF Research Funding
-    url: https://www.anrf.gov.in/
-    focus: official India research funding calls in science, engineering, computer engineering, health sciences and mission-mode innovation; retain applicant and host-institution eligibility evidence
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - anrf.gov.in
-      - www.anrf.gov.in
-      - anrfonline.in
-      - www.anrfonline.in
-      discovery:
-        start_urls:
-        - https://www.anrf.gov.in/
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: DST India Calls for Proposals
-    url: https://dst.gov.in/callforproposals
-    focus: official India science funding and calls for proposals in research, engineering, cybersecurity and digital systems
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - dst.gov.in
-      - www.dst.gov.in
-      discovery:
-        start_urls:
-        - https://dst.gov.in/callforproposals
+        - https://www.icmr.gov.in/call-for-proposals
         max_depth: 3
         max_pages: 8
         follow_detail_pages: true
@@ -241,9 +219,9 @@ sources:
         pagination: true
   cps_funding:
   - name: NSF CPS Foundations and Connected Communities
+    research_domains: [ZK-IoV, DigitalHealthCPS]
     url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
-    focus: cyber-physical systems, AI-enabled autonomy, formal methods, safety, security,
-      privacy, trustworthiness, IoT, CPS platforms
+    focus: Direct NSF cyber-physical systems program covering autonomy, security, transportation and community well-being; verify call-level fit and applicant eligibility.
     collection:
       mode: web
       engine: crawl4ai
@@ -258,49 +236,22 @@ sources:
         follow_pdfs: true
         pagination: true
         max_pages: 30
-  - name: DARPA Research Opportunities
-    url: https://www.darpa.mil/work-with-us/opportunities
-    focus: official U.S. defense R&D solicitations, autonomous systems, cyber-physical security, critical infrastructure, robotics and embedded systems; verify foreign-partner eligibility
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - darpa.mil
-      - www.darpa.mil
-      discovery:
-        start_urls:
-        - https://www.darpa.mil/work-with-us/opportunities
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: ARPA-E
-    url: https://arpa-e-foa.energy.gov/Default.aspx
-    focus: smart grid, energy systems, resilient infrastructure, control systems; verify opportunity-specific deadlines and applicant geography
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - arpa-e-foa.energy.gov
-      discovery:
-        start_urls:
-        - https://arpa-e-foa.energy.gov/Default.aspx
-        max_depth: 3
-        max_pages: 8
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: Grants.gov Public Opportunities API
-    url: https://api.grants.gov/v1/api/search2
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV, DigitalHealthCPS]
+    url: https://idapthub.org/applications/call_for_proposals
     direct_page: true
-    focus: U.S. federal research and technology funding opportunities, open and forecasted
-      grants
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
     collection:
-      mode: api
-      provider: grants_gov
-      pagination: true
-      detail_fetch: true
-      limits:
-        max_pages: 10
-        max_documents: 500
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true

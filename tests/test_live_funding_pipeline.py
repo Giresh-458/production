@@ -23,7 +23,8 @@ def test_select_open_funding_call_rejects_closed_and_future_calls():
                 "program_name": "Open Call",
                 "status": "OPEN_CALL",
                 "deadline": open_deadline,
-                "domain_relevance": [{"domain": "RWA", "score": 0.8}],
+                "domain_relevance": [{"domain": "RWA", "score": 0.75, "raw_score": 3.0, "matched_terms": ["rwa"]}],
+                "source_research_domains": ["RWA"],
                 "application_url": "https://example.org/apply",
             },
             {
@@ -109,3 +110,28 @@ def test_literature_unscoped_mode_uses_funding_mission_terms():
     assert "privacy" in terms
     assert "clinical" in terms
     assert "privacy" in query.lower()
+
+
+
+def test_rolling_mev_grant_language_survives_funding_extraction():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Flashbots MEV Research Grants",
+        title="MEV Fellowship Grants",
+        source="https://github.com/flashbots/mev-research/blob/main/grants.md",
+        source_type="html",
+        content=(
+            "MEV Fellowship Grants. The MEV fellowship supports research on MEV. "
+            "The grant is a total of $15k. No, grant fellows are accepted on a "
+            "rolling basis. Submit a research proposal describing the approach. "
+            "A research blog post or academic paper is an expected deliverable."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.status == "OPEN_CALL"
+    assert "rolling basis" in opportunity.evidence.get("status", "").lower()
+    assert opportunity.funding_amount
