@@ -215,7 +215,11 @@ sources:
         start_urls:
         - https://idapthub.org/applications/call_for_proposals
         max_depth: 2
-        max_pages: 5
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
+        follow_documents: true
         pagination: true

@@ -16,6 +16,8 @@ import logging
 import re
 import time
 import threading
+import zipfile
+import xml.etree.ElementTree as ET
 from urllib.robotparser import RobotFileParser
 from collections import deque
 from datetime import UTC, datetime
@@ -422,6 +424,59 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
         }
 
 
+def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
+    """Download a DOCX directly and extract paragraph text without browser navigation."""
+    try:
+        response = get_response(url, timeout=(8.0, 30.0), retries=2)
+        with zipfile.ZipFile(BytesIO(response.content)) as archive:
+            try:
+                document_xml = archive.read("word/document.xml")
+            except KeyError as exc:
+                raise ValueError("DOCX archive has no word/document.xml") from exc
+
+        root = ET.fromstring(document_xml)
+        word_ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        paragraphs: list[str] = []
+        for paragraph in root.iter(f"{word_ns}p"):
+            parts: list[str] = []
+            for node in paragraph.iter():
+                if node.tag == f"{word_ns}t":
+                    parts.append(node.text or "")
+                elif node.tag == f"{word_ns}tab":
+                    parts.append("\t")
+                elif node.tag in {f"{word_ns}br", f"{word_ns}cr"}:
+                    parts.append("\n")
+            value = "".join(parts).strip()
+            if value:
+                paragraphs.append(value)
+
+        content = "\n".join(paragraphs).strip()
+        if not content:
+            raise ValueError("DOCX downloaded successfully but contained no extractable paragraph text")
+
+        truncated = len(content) > max_chars
+        if truncated:
+            content = content[:max_chars]
+
+        return {
+            "success": True,
+            "url": url,
+            "content": content,
+            "paragraphs_extracted": len(paragraphs),
+            "truncated": truncated,
+            "error": None,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "url": url,
+            "content": "",
+            "paragraphs_extracted": 0,
+            "truncated": False,
+            "error": str(exc),
+        }
+
+
 def crawl_funding_source(
     source_id: str,
     url: str,
@@ -454,6 +509,7 @@ def crawl_funding_source(
     configured_max_depth = discovery_config.get("max_depth", 2)
     configured_max_pages = discovery_config.get("max_pages")  # None = no ceiling
     follow_pdfs = discovery_config.get("follow_pdfs", True)
+    follow_documents = bool(discovery_config.get("follow_documents", False))
     follow_detail = discovery_config.get("follow_detail_pages", True)
     max_pdf_pages = discovery_config.get("max_pdf_pages")  # None = process all
 
@@ -478,7 +534,9 @@ def crawl_funding_source(
             queue.append((normalized, 0))
             visited.add(normalized)
 
-    pages_fetched_count = 0
+    # max_pages is a request-attempt budget, not a successful-fetch budget.
+    # Count failures too so repeated network errors cannot evade the source cap.
+    pages_attempted_count = 0
 
     while queue:
         current_url, depth = queue.popleft()
@@ -510,7 +568,7 @@ def crawl_funding_source(
             break
 
         # Check configured page ceiling (fallback if context isn't used)
-        if configured_max_pages is not None and pages_fetched_count >= configured_max_pages:
+        if configured_max_pages is not None and pages_attempted_count >= configured_max_pages:
             result.truncated = True
             result.pagination_complete = False
             LOGGER.info("Source %s: reached configured max_pages=%d, marking PARTIAL",
@@ -552,6 +610,7 @@ def crawl_funding_source(
             })
             break
 
+        pages_attempted_count += 1
         result.pages_discovered += 1
 
         # Track max depth reached
@@ -569,7 +628,6 @@ def crawl_funding_source(
             pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
             if pdf_result["success"]:
                 result.documents_fetched += 1
-                pages_fetched_count += 1
                 if ctx:
                     ctx.add_document()
                     ctx.add_page()
@@ -591,6 +649,45 @@ def crawl_funding_source(
                     "url": current_url,
                     "operation": "pdf_fetch",
                     "error": pdf_result["error"],
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+            continue
+
+        # DOCX links are downloads, not browser pages. Use the direct document
+        # path only for sources which explicitly opt in to document following.
+        is_docx = urlparse(current_url).path.lower().endswith(".docx")
+        if is_docx:
+            if not follow_documents:
+                result.urls_skipped += 1
+                result.truncated = True
+                result.pagination_complete = False
+                continue
+
+            result.documents_discovered += 1
+            docx_result = _fetch_docx(current_url)
+            if docx_result["success"]:
+                result.documents_fetched += 1
+                if ctx:
+                    ctx.add_document()
+                    ctx.add_page()
+                if docx_result["truncated"]:
+                    result.truncated = True
+                result.opportunities.append({
+                    "type": "docx",
+                    "url": current_url,
+                    "content": docx_result["content"],
+                    "title": urlparse(current_url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("-", " ").replace("_", " "),
+                    "paragraphs_extracted": docx_result["paragraphs_extracted"],
+                    "truncated": docx_result["truncated"],
+                    "retrieved_at": datetime.now(UTC).isoformat(),
+                })
+            else:
+                result.documents_failed += 1
+                result.failed_urls.append(current_url)
+                result.errors.append({
+                    "url": current_url,
+                    "operation": "docx_fetch",
+                    "error": docx_result["error"],
                     "timestamp": datetime.now(UTC).isoformat(),
                 })
             continue
@@ -621,7 +718,6 @@ def crawl_funding_source(
             continue
 
         result.pages_fetched += 1
-        pages_fetched_count += 1
         if ctx:
             ctx.add_page()
 
