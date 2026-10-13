@@ -4,23 +4,27 @@ from core.structured_sources import grantsgov_paginated_search, collect_structur
 
 
 def test_grantsgov_search_success(monkeypatch):
-    monkeypatch.setattr(
-        "core.structured_sources.post_json",
-        lambda *a, **k: (
+    captured_payloads = []
+
+    def fake_post_json(url, json_body=None, **kwargs):
+        captured_payloads.append(json_body)
+        return (
             {"data": {"hitCount": 1, "oppHits": [
                 {"title": "Fake Grant", "number": "123", "agencyName": "Test",
                  "openDate": "2026-01-01", "closeDate": "2026-12-31",
                  "oppStatus": "posted", "id": "999"}
             ]}},
             "https://api.grants.gov/v1/api/search2",
-        ),
-    )
+        )
+
+    monkeypatch.setattr("core.structured_sources.post_json", fake_post_json)
 
     result = grantsgov_paginated_search("research")
     assert result["pagination_complete"] is True
     assert len(result["hits"]) == 1
     assert result["hits"][0]["title"] == "Fake Grant"
     assert result["total_expected"] == 1
+    assert captured_payloads[0]["oppStatuses"] == "forecasted|posted"
 
 
 def test_grantsgov_search_zero_results(monkeypatch):
@@ -180,3 +184,35 @@ def test_grantsgov_metadata_discards_serialized_eligibility_when_no_fallback_exi
     assert analysis.eligibility is None
     assert "eligibility" not in analysis.evidence
 
+
+
+@pytest.mark.parametrize(
+    ("source_status", "expected_status"),
+    [
+        ("posted", "OPEN_CALL"),
+        ("forecasted", "UPCOMING_CALL"),
+        ("closed", "CLOSED_CALL"),
+        ("archived", "CLOSED_CALL"),
+    ],
+)
+def test_grantsgov_api_status_is_preserved_and_mapped(source_status, expected_status):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _apply_grantsgov_structured_metadata
+
+    document = FundingDocument(
+        organization="Grants.gov",
+        title="Research Innovation Challenge",
+        source="https://www.grants.gov/search-results-detail/123456",
+        source_type="Official API",
+        content="Research grant. Deadline: 2027-01-30.",
+        year=2026,
+    )
+    analysis = analyze_document(document)
+
+    _apply_grantsgov_structured_metadata(
+        analysis, details={}, hit={"id": "123456", "oppStatus": source_status}
+    )
+
+    assert analysis.status == expected_status
+    assert analysis.evidence["source_status"] == source_status
+    assert analysis.evidence["source_status_provenance"] == "Grants.gov API oppStatus field"
