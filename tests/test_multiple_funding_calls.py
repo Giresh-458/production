@@ -182,3 +182,81 @@ def test_rejects_request_for_information_even_when_mislabeled_open_call():
     assert len(rejected) == 1
     assert "informational notice is not an actionable funding application" in rejected[0]["reasons"]
 
+
+
+def test_does_not_treat_inferred_open_status_as_independent_evidence():
+    now = datetime.now(UTC)
+    records = {
+        "outputs": [{
+            "title": "Research Innovation Challenge 2027",
+            "program_name": "Research Innovation Challenge 2027",
+            "status": "OPEN_CALL",
+            "deadline": (now + timedelta(days=30)).date().isoformat(),
+            "funding_amount": "$25,000",
+            "eligibility": "Universities and research organizations",
+            "source_url": "https://example.org/calls/research-innovation",
+            "evidence": {
+                "deadline": "Applications close 2027-01-30",
+                "funding_amount": "Awards up to $25,000",
+                "eligibility": "Universities and research organizations",
+            },
+        }]
+    }
+
+    selected, rejected = get_all_open_funding_calls(records)
+
+    assert selected == []
+    assert len(rejected) == 1
+    assert "missing independent evidence that applications are currently open" in rejected[0]["reasons"]
+
+
+def test_grantsgov_posted_source_status_is_independent_open_evidence():
+    now = datetime.now(UTC)
+    records = {
+        "outputs": [{
+            "title": "Research Innovation Challenge 2027",
+            "program_name": "Research Innovation Challenge 2027",
+            "status": "OPEN_CALL",
+            "deadline": (now + timedelta(days=30)).date().isoformat(),
+            "funding_amount": "$25,000",
+            "eligibility": "Eligible research organizations",
+            "source_url": "https://www.grants.gov/search-results-detail/123456",
+            "evidence": {
+                "source_status": "posted",
+                "source_status_provenance": "Grants.gov API oppStatus field",
+                "funding_amount": "Structured award metadata",
+            },
+        }]
+    }
+
+    selected, rejected = get_all_open_funding_calls(records)
+
+    assert len(selected) == 1
+    assert selected[0]["program_name"] == "Research Innovation Challenge 2027"
+    assert rejected == []
+
+
+def test_forecasted_source_status_cannot_pass_as_open_call():
+    now = datetime.now(UTC)
+    records = {
+        "outputs": [{
+            "title": "Research Innovation Challenge 2027",
+            "program_name": "Research Innovation Challenge 2027",
+            "status": "OPEN_CALL",
+            "deadline": (now + timedelta(days=30)).date().isoformat(),
+            "funding_amount": "$25,000",
+            "eligibility": "Eligible research organizations",
+            "application_url": "https://example.org/apply",
+            "source_url": "https://example.org/calls/research-innovation",
+            "evidence": {
+                "source_status": "forecasted",
+                "funding_amount": "Funding up to $25,000",
+            },
+        }]
+    }
+
+    selected, rejected = get_all_open_funding_calls(records)
+
+    assert selected == []
+    assert len(rejected) == 1
+    assert "source status is forecasted, not currently open" in rejected[0]["reasons"]
