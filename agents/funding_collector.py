@@ -46,13 +46,19 @@ def _first_grantsgov_value(
     for mapping in (details, hit):
         if not isinstance(mapping, dict):
             continue
-        for key in keys:
-            value = mapping.get(key)
-            if value is None:
-                continue
-            if isinstance(value, str) and value.strip().lower() in {"", "null", "none", "unknown"}:
-                continue
-            return value
+        # The public fetchOpportunity response nests award and eligibility
+        # metadata inside its "synopsis" object. Prefer that structured detail
+        # object, but keep root-level and search-hit fallbacks for API variations.
+        synopsis = mapping.get("synopsis")
+        candidates = [synopsis, mapping] if isinstance(synopsis, dict) else [mapping]
+        for candidate in candidates:
+            for key in keys:
+                value = candidate.get(key)
+                if value is None:
+                    continue
+                if isinstance(value, str) and value.strip().lower() in {"", "null", "none", "unknown"}:
+                    continue
+                return value
     return None
 
 

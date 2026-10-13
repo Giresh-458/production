@@ -64,16 +64,18 @@ def test_grantsgov_structured_metadata_preserves_award_range_and_eligibility():
     )
     analysis = analyze_document(document)
     details = {
-        "awardFloor": "50000",
-        "awardFloorFormatted": "50,000",
-        "awardCeiling": "1200000",
-        "awardCeilingFormatted": "1,200,000",
-        "estimatedFunding": "60000000",
-        "estimatedFundingFormatted": "60,000,000",
-        "applicantEligibilityDesc": (
-            "<p>Proposals may only be submitted by <b>eligible organizations</b> "
-            "located in the U.S.</p>"
-        ),
+        "synopsis": {
+            "awardFloor": "50000",
+            "awardFloorFormatted": "50,000",
+            "awardCeiling": "1200000",
+            "awardCeilingFormatted": "1,200,000",
+            "estimatedFunding": "60000000",
+            "estimatedFundingFormatted": "60,000,000",
+            "applicantEligibilityDesc": (
+                "<p>Proposals may only be submitted by <b>eligible organizations</b> "
+                "located in the U.S.</p>"
+            ),
+        }
     }
 
     _apply_grantsgov_structured_metadata(analysis, details, {"id": "357554"})
@@ -104,8 +106,10 @@ def test_grantsgov_structured_metadata_prefers_detail_values_and_preserves_fallb
     analysis = analyze_document(document)
     original_deadline = analysis.deadline
     detail = {
-        "awardCeilingFormatted": "250,000",
-        "applicantEligibilityDesc": "Universities in the United States.",
+        "synopsis": {
+            "awardCeilingFormatted": "250,000",
+            "applicantEligibilityDesc": "Universities in the United States.",
+        }
     }
     hit = {
         "awardCeilingFormatted": "900,000",
