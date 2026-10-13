@@ -1868,6 +1868,38 @@ def main() -> int:
     return 0
 
 
+def _funding_sources_fingerprint(
+    sources: list[FundingSource],
+    *,
+    area: str | None = None,
+    is_test_mode: bool = False,
+) -> str:
+    """Fingerprint the source configuration and collection mode for checkpoint safety."""
+    manifest = {
+        "area": area,
+        "is_test_mode": bool(is_test_mode),
+        "sources": [
+            {
+                "name": source.name,
+                "url": source.url,
+                "tier": source.tier,
+                "focus": source.focus,
+                "collection": source.collection,
+                "research_domains": source.research_domains,
+            }
+            for source in sources
+        ],
+    }
+    serialized = json.dumps(
+        manifest,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def run_agent(mode: str, area: str | None = None, input_data: dict | None = None, funding_context: FundingCallContext | None = None, funding_contexts: list[FundingCallContext] | None = None) -> dict:
     from datetime import UTC, datetime, date
     from core.agent_interface import (
@@ -1881,9 +1913,11 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     agent_name = "funding"
     layer = "Funding"
     payload = input_data or {}
-    run_id = payload.get("run_id")
-    analysis_mode = str(payload.get("analysis_mode", "collect_only")).strip().lower()
     started_at = datetime.now(UTC)
+    # Every independent invocation gets a distinct checkpoint identity. A
+    # supplied run_id stays stable across retries of that same pipeline run.
+    run_id = str(payload.get("run_id") or started_at.strftime("%Y%m%dT%H%M%S%fZ"))
+    analysis_mode = str(payload.get("analysis_mode", "collect_only")).strip().lower()
     configure_logging(payload.get("log_level", "INFO"))
     
     validation_errors = validate_run_input(mode, payload)
@@ -1932,41 +1966,66 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                             "Funding sources missing canonical research-domain mappings: "
                             + ", ".join(unmapped_sources)
                         )
-                collection_iterator = collect_auto_sources(
-                    sources, 
-                    area, 
-                    warnings=extra_warnings, 
-                    is_test_mode=payload.get("is_test_mode", False)
+                is_test_mode = bool(payload.get("is_test_mode", False))
+                source_fingerprint = _funding_sources_fingerprint(
+                    sources,
+                    area=area,
+                    is_test_mode=is_test_mode,
                 )
-                
+                collection_iterator = collect_auto_sources(
+                    sources,
+                    area,
+                    warnings=extra_warnings,
+                    is_test_mode=payload.get("is_test_mode", False),
+                )
+
                 collection_results = []
                 documents = []
-                
+
                 import pickle
-                checkpoint_path = Path("scratch/funding_checkpoint.pkl")
+                checkpoint_override = payload.get("checkpoint_path")
+                checkpoint_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", run_id).strip("._") or "run"
+                checkpoint_path = (
+                    Path(checkpoint_override)
+                    if checkpoint_override
+                    else Path("scratch") / f"funding_checkpoint_{checkpoint_key}.pkl"
+                )
+                completed_sources = set()
                 if checkpoint_path.exists():
                     try:
                         ckpt = pickle.loads(checkpoint_path.read_bytes())
-                        completed_sources = ckpt.get("completed_sources", set())
-                        collection_results = ckpt.get("collection_results", [])
-                        documents = ckpt.get("documents", [])
-                        LOGGER.info(f"Loaded checkpoint with {len(completed_sources)} completed sources and {len(documents)} documents.")
-                        
-                        # Filter sources
-                        sources = [s for s in sources if s.name not in completed_sources]
-                        
-                        # Recreate iterator with remaining sources
-                        collection_iterator = collect_auto_sources(
-                            sources, 
-                            area, 
-                            warnings=extra_warnings, 
-                            is_test_mode=payload.get("is_test_mode", False)
+                        checkpoint_matches = (
+                            isinstance(ckpt, dict)
+                            and ckpt.get("run_id") == run_id
+                            and ckpt.get("source_fingerprint") == source_fingerprint
                         )
+                        if not checkpoint_matches:
+                            LOGGER.info(
+                                "Ignoring stale or incompatible funding checkpoint: %s",
+                                checkpoint_path,
+                            )
+                        else:
+                            completed_sources = set(ckpt.get("completed_sources", set()))
+                            collection_results = list(ckpt.get("collection_results", []))
+                            documents = list(ckpt.get("documents", []))
+                            LOGGER.info(
+                                "Resuming funding checkpoint with %d completed sources and %d documents.",
+                                len(completed_sources),
+                                len(documents),
+                            )
+
+                            # A checkpoint is resumable only for the same run
+                            # and exactly the same source configuration.
+                            sources = [s for s in sources if s.name not in completed_sources]
+                            collection_iterator = collect_auto_sources(
+                                sources,
+                                area,
+                                warnings=extra_warnings,
+                                is_test_mode=payload.get("is_test_mode", False),
+                            )
                     except Exception as e:
-                        LOGGER.warning(f"Failed to load checkpoint: {e}")
+                        LOGGER.warning("Failed to load funding checkpoint %s: %s", checkpoint_path, e)
                         completed_sources = set()
-                else:
-                    completed_sources = set()
 
                 # Process and save progressively to avoid data loss on crash
                 for res in collection_iterator:
@@ -1982,9 +2041,11 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     completed_sources.add(res.source_id)
                     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
                     checkpoint_path.write_bytes(pickle.dumps({
+                        "run_id": run_id,
+                        "source_fingerprint": source_fingerprint,
                         "completed_sources": completed_sources,
                         "collection_results": collection_results,
-                        "documents": documents
+                        "documents": documents,
                     }))
             finally:
                 current_force_source_refresh.reset(token)
