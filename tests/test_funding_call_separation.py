@@ -415,6 +415,15 @@ def test_solana_and_near_funding_directories_are_not_individual_calls():
         "Apply here for NEAR grants to fund your project.",
     )
 
+    # The same copy can appear in shared chrome on a genuine detail page; it must
+    # not suppress the detail page merely because its URL is below the root.
+    assert _classify_page_stage_b(
+        "https://www.near.org/funding/privacy-preserving-credentials",
+        "Privacy-Preserving Credential Grants",
+        "Grant funding for privacy-preserving credentials. Eligible applicants. "
+        "Apply now. Explore grants, incentives, and community-backed resources on NEAR.",
+    )
+
 
 def test_skipped_pdf_is_counted_as_a_document_and_makes_coverage_partial():
     """A discovered but intentionally unprocessed PDF must not look like a complete empty crawl."""
