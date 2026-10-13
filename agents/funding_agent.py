@@ -35,7 +35,7 @@ from core.recursive_collection import (
     save_recursive_review,
     update_recursive_review,
 )
-from core.schemas import resolve_research_area
+from core.schemas import ALLOWED_RESEARCH_AREAS, normalize_area, resolve_research_area
 from core.source_registry import apply_refresh_policy
 from core.structured_sources import collect_structured_source
 from core.web_collection import collect_source
@@ -165,6 +165,7 @@ class FundingSource:
     tier: str
     focus: str = ""
     collection: dict = field(default_factory=dict)
+    research_domains: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -417,8 +418,31 @@ def load_sources(sources_path: Path) -> list[FundingSource]:
             url = cleaned_text(str(entry.get("url", "")))
             focus = cleaned_text(str(entry.get("focus", "")))
             collection = entry.get("collection", {})
+            raw_domains = entry.get("research_domains", [])
+            if raw_domains is None:
+                raw_domains = []
+            if not isinstance(raw_domains, list):
+                raise FundingAgentError(
+                    f"Funding source '{name or url}' has invalid research_domains; expected a list."
+                )
+            research_domains: list[str] = []
+            for raw_domain in raw_domains:
+                domain = normalize_area(cleaned_text(str(raw_domain)))
+                if domain not in ALLOWED_RESEARCH_AREAS:
+                    raise FundingAgentError(
+                        f"Funding source '{name or url}' has non-canonical research domain: {raw_domain!r}."
+                    )
+                if domain not in research_domains:
+                    research_domains.append(domain)
             if name and url:
-                sources.append(FundingSource(name=name, url=url, tier=str(tier), focus=focus, collection=collection))
+                sources.append(FundingSource(
+                    name=name,
+                    url=url,
+                    tier=str(tier),
+                    focus=focus,
+                    collection=collection,
+                    research_domains=research_domains,
+                ))
     if not sources:
         raise FundingAgentError("No funding sources were loaded from sources/funding_sources.yaml.")
     return apply_refresh_policy("funding", sources)
@@ -1864,6 +1888,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
     extra_warnings: list[str] = []
+    source_domain_map: dict[str, list[str]] = {}
     
     LOGGER.info("Starting funding agent run: mode=%s area=%s", mode, area)
     
@@ -1878,6 +1903,20 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             try:
                 from agents.funding_collector import collect_auto_sources
                 sources = load_sources(sources_path)
+                source_domain_map = {
+                    source.name: list(source.research_domains)
+                    for source in sources
+                }
+                if payload.get("require_domain_mappings", False):
+                    unmapped_sources = sorted(
+                        source_name for source_name, domains in source_domain_map.items()
+                        if not domains
+                    )
+                    if unmapped_sources:
+                        raise FundingAgentError(
+                            "Funding sources missing canonical research-domain mappings: "
+                            + ", ".join(unmapped_sources)
+                        )
                 collection_iterator = collect_auto_sources(
                     sources, 
                     area, 
@@ -1991,6 +2030,10 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "research_area": analysis.focus_area,
                 "research_priorities": analysis.research_priorities,
                 "domain_relevance": domains,
+                **(
+                    {"source_research_domains": list(source_domain_map[doc.organization])}
+                    if doc.organization in source_domain_map else {}
+                ),
                 "primary_domain": analysis.focus_area if analysis.focus_area in FOCUS_AREAS else None,
                 "secondary_domains": [item["domain"] for item in domains[1:3] if float(item.get("score", 0.0) or 0.0) > 0.0] if len(domains) > 1 else [],
                 "required_partners": analysis.required_partners,
