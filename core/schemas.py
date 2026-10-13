@@ -119,6 +119,7 @@ AREA_KEYWORDS = {
     "DePIN": [
         "depin",
         "decentralized physical infrastructure",
+        "filecoin network",
         "wireless",
         "storage network",
         "mapping",
@@ -216,7 +217,8 @@ DOMAIN_TERM_WEIGHTS = {
     },
     "DePIN": {
         "decentralized physical infrastructure": 3.0, "compute network": 2.5,
-        "storage network": 2.5, "depin": 3.0, "wireless": 1.5, "mapping": 1.5,
+        "storage network": 2.5, "filecoin network": 3.0, "depin": 3.0,
+        "wireless": 1.5, "mapping": 1.5,
         "sensor": 0.8, "iot": 0.8,
     },
     "MEV": {
