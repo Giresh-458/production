@@ -1,7 +1,9 @@
-"""Regression checks for the curated funding-source catalogue."""
+"""Regression tests for RIF's domain-scoped funding-source catalogue."""
 from pathlib import Path
 
 import yaml
+
+from core.schemas import ALLOWED_RESEARCH_AREAS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,48 +30,115 @@ def test_funding_source_catalogue_has_unique_names_and_urls():
     names = [str(entry.get("name", "")).strip().casefold() for entry in entries]
     urls = [str(entry.get("url", "")).strip().rstrip("/").casefold() for entry in entries]
 
-    assert len(entries) >= 15
+    # Keep the catalogue intentionally curated; additions require an explicit
+    # domain mapping and a corresponding review of scope.
+    assert len(entries) == 14
     assert all(names)
     assert all(urls)
     assert len(names) == len(set(names))
     assert len(urls) == len(set(urls))
 
 
-def test_priority_official_and_india_relevant_sources_are_configured():
+def test_every_funding_source_is_mapped_to_canonical_rif_domains():
+    entries = _entries()
+    expected_domains = set(ALLOWED_RESEARCH_AREAS)
+    assigned_domains = set()
+
+    for entry in entries:
+        domains = entry.get("research_domains")
+        assert isinstance(domains, list) and domains, (
+            f"{entry.get('name')} must declare research_domains"
+        )
+        invalid = set(domains) - expected_domains
+        assert not invalid, f"{entry.get('name')} has non-canonical domains: {sorted(invalid)}"
+        assigned_domains.update(domains)
+
+    assert assigned_domains == expected_domains
+
+
+def test_curated_sources_are_scoped_to_the_eight_target_areas():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected = {
-        "Ethereum ESP RFPs": "https://esp.ethereum.foundation/applicants/rfp",
-        "Ethereum ESP Open Rounds": "https://esp.ethereum.foundation/applicants/open-rounds",
-        "Chainlink Grants": "https://chain.link/community/grants",
-        "Solana Grants and Funding": "https://solana.org/grants-funding",
-        "XRPL Grants Program": "https://xrplgrants.org/",
-        "Filecoin Grants and Funding": "https://github.com/filecoin-project/devgrants",
-        "MeitY Startup Hub": "https://msh.meity.gov.in/",
-        "BIRAC Calls for Proposal": "https://www.birac.nic.in/cfp.php",
-        "iDEX Defence Innovation Challenges": "https://www.idex.gov.in/challenges",
-        "ANRF Research Funding": "https://www.anrf.gov.in/",
-        "DST India Calls for Proposals": "https://dst.gov.in/callforproposals",
-        "DARPA Research Opportunities": "https://www.darpa.mil/work-with-us/opportunities",
-        "Grants.gov Public Opportunities API": "https://api.grants.gov/v1/api/search2",
+        "Ethereum ESP RFPs": (
+            "https://esp.ethereum.foundation/applicants/rfp",
+            {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
+        ),
+        "Ethereum ESP Open Rounds": (
+            "https://esp.ethereum.foundation/applicants/open-rounds",
+            {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
+        ),
+        "Chainlink Grants": (
+            "https://chain.link/community/grants",
+            {"RWA", "Stablecoins"},
+        ),
+        "Solana Grants and Funding": (
+            "https://solana.org/grants-funding",
+            {"RWA", "DePIN", "MEV", "Stablecoins"},
+        ),
+        "NEAR Ecosystem Funding": (
+            "https://www.near.org/funding",
+            {"RWA", "DID", "DePIN", "MEV", "Stablecoins"},
+        ),
+        "Ripple UBRI": (
+            "https://ripple.com/impact/ubri/",
+            {"RWA", "DID", "Stablecoins"},
+        ),
+        "XRPL Grants Program": (
+            "https://xrplgrants.org/",
+            {"RWA", "Stablecoins"},
+        ),
+        "Filecoin Grants and Funding": (
+            "https://github.com/filecoin-project/devgrants",
+            {"DePIN"},
+        ),
+        "Flashbots MEV Research Grants": (
+            "https://github.com/flashbots/mev-research/blob/main/grants.md",
+            {"MEV"},
+        ),
+        "Climate Pitch Climate-Tech Grants": (
+            "https://climatepitch.org/home/",
+            {"ESG"},
+        ),
+        "BIRAC Calls for Proposal": (
+            "https://www.birac.nic.in/cfp.php",
+            {"DigitalHealthCPS"},
+        ),
+        "ICMR Calls for Proposals": (
+            "https://www.icmr.gov.in/call-for-proposals",
+            {"DigitalHealthCPS"},
+        ),
+        "NSF CPS Foundations and Connected Communities": (
+            "https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities",
+            {"ZK-IoV", "DigitalHealthCPS"},
+        ),
+        "I-DAPT Hub Cyber-Physical Systems Calls": (
+            "https://idapthub.org/applications/call_for_proposals",
+            {"ESG", "ZK-IoV", "DigitalHealthCPS"},
+        ),
     }
 
-    for name, url in expected.items():
-        assert name in by_name, f"Missing source: {name}"
-        assert by_name[name]["url"].rstrip("/") == url.rstrip("/")
+    assert set(by_name) == set(expected)
+    for name, (url, domains) in expected.items():
+        entry = by_name[name]
+        assert entry["url"].rstrip("/") == url.rstrip("/")
+        assert set(entry["research_domains"]) == domains
+        assert entry.get("collection", {}).get("mode") in {"web", "api"}
 
-    assert by_name["Chainlink Grants"]["collection"]["mode"] == "web"
-    assert by_name["Grants.gov Public Opportunities API"]["collection"]["limits"]["max_pages"] >= 5
-    assert by_name["Filecoin Grants and Funding"]["collection"]["limits"]["max_pages"] >= 3
 
-
-def test_information_only_or_known_stale_sources_are_not_treated_as_funding_roots():
+def test_broad_unscoped_portals_are_not_funding_roots():
     names = {str(entry.get("name", "")).casefold() for entry in _entries()}
     forbidden_names = {
-        "ethereum foundation esp",
+        "meity startup hub",
+        "idex defence innovation challenges",
+        "anrf research funding",
+        "dst india calls for proposals",
+        "darpa research opportunities",
+        "arpa-e",
+        "grants.gov public opportunities api",
+        "ethereum road to devcon 8 india university program",
         "polygon grants",
         "nist cps / iot testbed",
         "cisa ics",
-        "nsf cyber physical and intelligent systems",
     }
     assert names.isdisjoint(forbidden_names)
 
