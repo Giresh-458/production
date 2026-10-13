@@ -162,7 +162,7 @@ def test_structured_problem_signals_are_evidence_grounded():
 
 def test_structured_problem_signal_does_not_promote_generic_prose():
     text = "One of the key concepts of Construction 4.0 is cyber-physical systems and connected infrastructure."
-    intel = extract_problem_intelligence(text, "Background", {}, agent_name="hackathon", research_area="DigitalHealthCPS", allow_llm_refinement=False)
+    intel = extract_problem_intelligence(text, "Background", {}, agent_name="hackathon", research_area="DePIN", allow_llm_refinement=False)
     assert intel["selected_problem"] is None
 
 
