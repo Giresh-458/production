@@ -129,9 +129,6 @@ def get_all_open_funding_calls(funding_result: dict[str, Any]) -> tuple[list[dic
             continue
         evidence_score = sum(1 for f in ["deadline", "application_url", "funding_amount", "eligibility", "evaluation_criteria"] if record.get(f))
         has_call_identity = program_name.lower() not in generic_names
-        has_submission_evidence = bool(record.get("application_url"))
-        has_timeline_evidence = bool(record.get("deadline") or record.get("opening_date"))
-        status_evidence = record.get("evidence", {}) if isinstance(record.get("evidence"), dict) else {}
         # A classifier-produced OPEN_CALL label is not independent proof that
         # applications are accepting submissions. Trust explicit source status,
         # explicit current-acceptance language, or a concrete submission route
