@@ -9,7 +9,7 @@ def test_multiple_open_calls():
             {
                 "title": "Call A",
                 "program_name": "Call A",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
@@ -17,7 +17,7 @@ def test_multiple_open_calls():
             {
                 "title": "Call B",
                 "program_name": "Call B",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=20)).date().isoformat(),
                 "application_url": "https://b.org",
                 "call_id": "CALL-B"
@@ -25,7 +25,7 @@ def test_multiple_open_calls():
             {
                 "title": "Call C",
                 "program_name": "Call C",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=30)).date().isoformat(),
                 "application_url": "https://c.org",
                 "call_id": "CALL-C"
@@ -44,7 +44,7 @@ def test_mixed_candidates():
             {
                 "title": "Call A",
                 "program_name": "Call A",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
@@ -59,7 +59,7 @@ def test_mixed_candidates():
             {
                 "title": "Call C",
                 "program_name": "Call C",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=30)).date().isoformat(),
                 "application_url": "https://c.org",
                 "call_id": "CALL-C"
@@ -94,7 +94,7 @@ def test_one_valid_call():
             {
                 "title": "Call A",
                 "program_name": "Call A",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
@@ -113,7 +113,7 @@ def test_duplicate_call():
             {
                 "title": "Call A",
                 "program_name": "Call A",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://a.org",
                 "call_id": "CALL-A" # Explicit ID duplicate
@@ -121,7 +121,7 @@ def test_duplicate_call():
             {
                 "title": "Call A duplicate",
                 "program_name": "Call A",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://a.org",
                 "call_id": "CALL-A" # Same explicit ID
@@ -129,7 +129,7 @@ def test_duplicate_call():
             {
                 "title": "Call B",
                 "program_name": "Call B",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://b.org",
                 "source_url": "https://news1.org",
@@ -138,7 +138,7 @@ def test_duplicate_call():
             {
                 "title": "Call B",
                 "program_name": "Call B",
-                "status": "OPEN_CALL",
+                "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
                 "application_url": "https://b.org",
                 "source_url": "https://news2.org",
@@ -219,7 +219,7 @@ def test_grantsgov_posted_source_status_is_independent_open_evidence():
         "outputs": [{
             "title": "Research Innovation Challenge 2027",
             "program_name": "Research Innovation Challenge 2027",
-            "status": "OPEN_CALL",
+            "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
             "deadline": (now + timedelta(days=30)).date().isoformat(),
             "funding_amount": "$25,000",
             "eligibility": "Eligible research organizations",
