@@ -15,9 +15,11 @@ def test_live_date_extraction_marks_current_call_open():
 def test_github_open_grant_proposal_issue_date_is_not_call_opening_date():
     # GitHub's "opened on <date>" metadata is an issue creation timestamp,
     # not the date that the grant program started accepting applications.
+    # The title and GitHub metadata can become adjacent after whitespace cleanup,
+    # so no punctuation separates "Open Grant Proposal" from "opened on".
     text = (
-        "[Open Grant Proposal] Example Filecoin project proposal. "
-        "submitted by an applicant; Alice opened on Oct 9, 2026."
+        "[Open Grant Proposal] Example Filecoin project proposal "
+        "Alice opened on Oct 9, 2026."
     )
     opening, deadline = extract_call_dates(text)
 
