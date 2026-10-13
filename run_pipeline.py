@@ -20,6 +20,42 @@ from core.batch_runner import execute_batch_run
 from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
 from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, normalize_area
+
+# Strong area anchors distinguish actual research-domain relevance from broad
+# terms such as "technology", "health", "sensor", or "security".
+RIF_DOMAIN_DIRECT_TERMS = {
+    "RWA": {
+        "rwa", "real-world asset", "real world asset", "tokenized treasury",
+        "tokenized fund", "tokenized security", "asset tokenization", "proof of reserve",
+    },
+    "ESG": {
+        "esg", "carbon credit", "mrv", "sustainability", "emissions", "climate", "carbon",
+    },
+    "ZK-IoV": {
+        "zero-knowledge", "zero knowledge", "zkvm", "internet of vehicles",
+        "vehicular", "v2x", "iov", "zk",
+    },
+    "DID": {
+        "decentralized identity", "verifiable credential", "verifiable credentials",
+        "identity wallet", "did", "attestation",
+    },
+    "DePIN": {
+        "depin", "decentralized physical infrastructure", "compute network",
+        "storage network", "wireless",
+    },
+    "MEV": {
+        "mev", "transaction ordering", "order flow", "block builder",
+        "liquidation cascade", "sequencer",
+    },
+    "Stablecoins": {
+        "stablecoin", "stablecoins", "tokenized deposit", "usdc", "pyusd", "depeg",
+    },
+    "DigitalHealthCPS": {
+        "digital healthcare", "digital health", "cyber-physical systems",
+        "cyber physical systems", "medical device", "remote monitoring",
+        "technology translation", "telemedicine", "diagnostic", "wearable", "cps",
+    },
+}
 from core.mission_gate import relevance as mission_relevance
 
 
@@ -65,9 +101,9 @@ def _supported_rif_funding_domains(
     """Return domain matches backed by strong source text, not broad keywords alone.
 
     A canonical domain only qualifies when the content scorer reports at least
-    2.5 weighted points and at least one directly identifying term whose
-    canonical weight is >= 2.0. When source_research_domains is present, the
-    call must also match one of the configured domains for that source.
+    2.5 weighted points and at least one area-specific anchor term. When
+    source_research_domains is present, the call must also match one of the
+    configured domains for that source.
     """
     research_context = record.get("research_context")
     context_ranking = (
@@ -117,21 +153,17 @@ def _supported_rif_funding_domains(
             str(term).casefold(): float(weight)
             for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items()
         }
-        strong_terms = {
-            str(term).casefold()
-            for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items()
-            if float(weight) >= 2.0
-        }
+        direct_terms = RIF_DOMAIN_DIRECT_TERMS.get(domain, set())
         supported_terms = {
             str(term).casefold().strip()
             for term in matched_terms
-            if str(term).casefold().strip() in strong_terms
-            and term_weights.get(str(term).casefold().strip(), 0.0) >= 2.0
+            if str(term).casefold().strip() in direct_terms
+            and str(term).casefold().strip() in term_weights
         }
         if raw_score < 2.5 or not supported_terms:
             continue
 
-        if source_domain_matches_present := source_domains_field_present:
+        if source_domains_field_present:
             if domain not in source_domains:
                 source_domain_mismatch = True
                 continue
