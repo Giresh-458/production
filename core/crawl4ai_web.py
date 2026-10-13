@@ -66,6 +66,11 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             return allowed, delay, None if allowed else "robots.txt disallows this URL"
 
     robots_url = f"{origin}/robots.txt"
+    # Count/police the robots request too. The first content fetch for a new
+    # host must still wait at least one configured interval after robots.txt.
+    if not _wait_for_host_slot(robots_url, _DEFAULT_HOST_DELAY):
+        return False, _DEFAULT_HOST_DELAY, "host delay would exceed the crawl deadline before robots.txt could be checked"
+
     try:
         response = get_response(
             robots_url,
