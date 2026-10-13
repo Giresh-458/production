@@ -110,3 +110,28 @@ def test_literature_unscoped_mode_uses_funding_mission_terms():
     assert "privacy" in terms
     assert "clinical" in terms
     assert "privacy" in query.lower()
+
+
+
+def test_rolling_mev_grant_language_survives_funding_extraction():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Flashbots MEV Research Grants",
+        title="MEV Fellowship Grants",
+        source="https://github.com/flashbots/mev-research/blob/main/grants.md",
+        source_type="html",
+        content=(
+            "MEV Fellowship Grants. The MEV fellowship supports research on MEV. "
+            "The grant is a total of $15k. No, grant fellows are accepted on a "
+            "rolling basis. Submit a research proposal describing the approach. "
+            "A research blog post or academic paper is an expected deliverable."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.status == "OPEN_CALL"
+    assert "rolling basis" in opportunity.evidence.get("status", "").lower()
+    assert opportunity.funding_amount
