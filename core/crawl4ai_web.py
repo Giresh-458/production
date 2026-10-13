@@ -223,22 +223,33 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     return min(score, 1.0)
 
 
-def _reports_no_active_funding(title: str, content: str) -> bool:
-    """Detect publisher text that explicitly says a funding list is empty or closed."""
+def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
+    """Detect empty-state messages on the configured source's actual listing page.
+
+    Keep URL scoping tight: publishers sometimes repeat notice text in a site-wide
+    modal/footer, so a message on one programme must not erase evidence from every
+    detail page on the same domain.
+    """
+    path = urlparse(url).path.rstrip("/").lower()
     combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
-    patterns = (
-        r"\bno rfp items available\b",
-        r"\bthere are no active grant rounds?\b",
-        r"\bthere are no active rounds? at this time\b",
-        r"\bthere are currently no active requests? for proposals? available for application\b",
-        r"\bno active (?:grant|funding|rfp|request for proposals?) (?:opportunit(?:y|ies)|rounds?|items?)\b",
-        r"\bcurrently not accepting any (?:new|fresh) applications\b",
-    )
-    return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in patterns)
+    if path == "/applicants/rfp" and re.search(
+        r"\bno rfp items available\b|\bthere are currently no active requests? for proposals? available for application\b",
+        combined,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    if path == "/applicants/open-rounds" and re.search(
+        r"\bthere are no active grant rounds?\b|\bthere are no active rounds? at this time\b",
+        combined,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    return False
 
 
 def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     """Keep funding directories as traversal roots, not individual grant records."""
+    path = urlparse(url).path.rstrip("/").lower()
     title_lower = re.sub(r"\s+", " ", (title or "").lower()).strip()
     title_root = re.split(r"\s+[|·]\s+", title_lower, maxsplit=1)[0].strip()
     generic_titles = {
@@ -252,12 +263,23 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     ):
         return True
 
-    combined = re.sub(r"\s+", " ", f"{url} {content}".lower())
+    # Use directory copy only for known landing-page URLs. A detail page may
+    # include this language in a reused footer or navigation section.
+    known_hub_paths = {
+        "https://www.near.org": {"/funding"},
+        "https://near.org": {"/funding"},
+        "https://solana.org": {"/grants-funding", "/grants"},
+        "https://solana.com": {"/news/solana-foundation-convertible-grants-investments"},
+    }
+    origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
+    if path not in known_hub_paths.get(origin, set()):
+        return False
     directory_markers = (
         r"\bexplore grants, incentives, and community-backed resources\b",
         r"\bthere are numerous grants programs run by teams\b",
         r"\bfollowing ecosystem teams run their own grants programs\b",
     )
+    combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
     return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in directory_markers)
 
 
@@ -268,7 +290,7 @@ def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
 
     # Explicitly empty listings and ecosystem directories are traversal roots,
     # not individual applications. Their links are still explored below.
-    if _reports_no_active_funding(title, content) or _is_generic_funding_hub(url, title, content):
+    if _reports_no_active_funding(url, title, content) or _is_generic_funding_hub(url, title, content):
         return False
     
     # 1. Broad generic hubs and search forms
