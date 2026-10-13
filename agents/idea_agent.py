@@ -52,7 +52,6 @@ AREA_DATASET_HINTS = {
     "DePIN": "Node uptime data, device telemetry, explorer metrics, storage retrieval traces, and service-level reliability logs.",
     "MEV": "Block/transaction ordering traces, relay data, bundle outcomes, builder telemetry, and execution simulations.",
     "Stablecoins": "Reserve attestations, vault telemetry, payment-rail events, explorer traces, and depeg/liquidity histories.",
-    "DigitalHealthCPS": "Clinical workflow traces, de-identified patient telemetry, device logs, validation datasets, hospital deployment metrics, safety events, and regulatory evaluation records.",
 }
 
 
@@ -146,8 +145,6 @@ def infer_hypothesis(problem: str, gap: str, area: str) -> str:
         return f"If we make {focus.lower()} machine-verifiable across registry and MRV flows, then carbon-tokenization systems can reduce trust gaps and double-counting risk."
     if area == "MEV":
         return f"If we expose measurable controls around {focus.lower()}, then builders and searchers can reduce hidden market-structure risk and improve fairness diagnostics."
-    if area == "DigitalHealthCPS":
-        return f"If we design and validate a cyber-physical healthcare intervention around {focus.lower()}, then the project can move from prototype evidence toward clinically meaningful deployment readiness."
     return f"If we design a focused intervention around {focus.lower()}, then the observed gap can be turned into a testable prototype and benchmarked research program."
 
 
@@ -177,10 +174,6 @@ def infer_prototype_scope(area: str, sections: dict[str, str]) -> str:
     if area == "MEV":
         return (
             "Prototype a replay and monitoring tool that compares transaction-ordering outcomes across relay, builder, and block data."
-        )
-    if area == "DigitalHealthCPS":
-        return (
-            "Prototype a validated digital-health CPS workflow that joins device or software telemetry, clinical-user feedback, safety checks, and deployment-readiness metrics."
         )
     if idea:
         return f"Prototype the narrowest demonstrable slice of this direction first: {idea[:260]}"

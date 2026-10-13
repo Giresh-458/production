@@ -74,7 +74,7 @@ def test_adaptive_area_filtering_only_unscoped(monkeypatch, tmp_path):
     records = [{"record_id": "1", "research_area": "Unscoped"}]
     code, calls = run_pipeline_with_mocked_areas(
         monkeypatch=monkeypatch, tmp_path=tmp_path,
-        accepted_records=records, originally_selected_area="DigitalHealthCPS"
+        accepted_records=records, originally_selected_area="DePIN"
     )
     assert code == 0
     # verify tagging/clustering/etc run with None (Unscoped)
@@ -86,28 +86,28 @@ def test_adaptive_area_filtering_only_unscoped(monkeypatch, tmp_path):
 
 def test_adaptive_area_filtering_single_recognized(monkeypatch, tmp_path):
     records = [
-        {"record_id": "1", "research_area": "DigitalHealthCPS"},
-        {"record_id": "2", "research_area": "DigitalHealthCPS"}
+        {"record_id": "1", "research_area": "DePIN"},
+        {"record_id": "2", "research_area": "DePIN"}
     ]
     code, calls = run_pipeline_with_mocked_areas(
         monkeypatch=monkeypatch, tmp_path=tmp_path,
-        accepted_records=records, originally_selected_area="DigitalHealthCPS"
+        accepted_records=records, originally_selected_area="DePIN"
     )
     assert code == 0
     for call in calls:
         agent = call.args[0]
         if agent in ("tagging", "clustering", "trend", "synthesis", "idea", "proposal"):
             area = call.args[2]
-            assert area == "DigitalHealthCPS", f"{agent} should run DigitalHealthCPS but got {area}"
+            assert area == "DePIN", f"{agent} should run DePIN but got {area}"
 
 def test_adaptive_area_filtering_mixed_areas(monkeypatch, tmp_path):
     records = [
-        {"record_id": "1", "research_area": "DigitalHealthCPS"},
+        {"record_id": "1", "research_area": "DePIN"},
         {"record_id": "2", "research_area": "DID"}
     ]
     code, calls = run_pipeline_with_mocked_areas(
         monkeypatch=monkeypatch, tmp_path=tmp_path,
-        accepted_records=records, originally_selected_area="DigitalHealthCPS"
+        accepted_records=records, originally_selected_area="DePIN"
     )
     assert code == 0
     for call in calls:
@@ -120,7 +120,7 @@ def test_adaptive_area_filtering_empty(monkeypatch, tmp_path):
     # Fix empty
     code, calls = run_pipeline_with_mocked_areas(
         monkeypatch=monkeypatch, tmp_path=tmp_path,
-        accepted_records=[], originally_selected_area="DigitalHealthCPS"
+        accepted_records=[], originally_selected_area="DePIN"
     )
     # The pipeline should handle empty records safely (code 4 or 0 depending on where it bails)
     # Actually, pipeline exits early with max(exit_code, 4) if no records or continues?

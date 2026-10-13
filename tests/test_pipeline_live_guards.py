@@ -9,14 +9,14 @@ def _sample_doc():
         ("title", str), ("url", str), ("content", str), ("area_hint", str)
     ])
     return Doc(
-        title="Digital Health CPS test",
-        url="https://example.org/digital-health-cps",
+        title="ESG MRV test",
+        url="https://example.org/carbon-mrv",
         content=(
-            "Digital healthcare cyber-physical systems face interoperability and "
-            "validation challenges. Clinical monitoring devices require reliable "
-            "integration and safety validation before deployment."
+            "Carbon credit MRV systems face interoperability and "
+            "validation challenges. Emissions monitoring datasets require reliable "
+            "integration and verification before deployment."
         ),
-        area_hint="DigitalHealthCPS",
+        area_hint="ESG",
     )
 
 
@@ -41,14 +41,14 @@ def test_collection_artifact_builder_does_not_call_llm_when_disabled(monkeypatch
         agent="company",
         layer="Company",
         mode="configured_scan",
-        area="DigitalHealthCPS",
-        title="Digital Health CPS test",
-        source="https://example.org/digital-health-cps",
-        content="Digital healthcare cyber-physical systems face interoperability and validation challenges.",
+        area="ESG",
+        title="ESG MRV test",
+        source="https://example.org/carbon-mrv",
+        content="Carbon credit MRV systems face interoperability and validation challenges.",
         allow_llm_refinement=False,
     )
     assert calls == [False]
-    assert payload["shared_header"]["research_area"] == "DigitalHealthCPS"
+    assert payload["shared_header"]["research_area"] == "ESG"
 
 
 def test_finalize_collection_defaults_to_deterministic(monkeypatch, tmp_path: Path):
@@ -66,7 +66,7 @@ def test_finalize_collection_defaults_to_deterministic(monkeypatch, tmp_path: Pa
         agent="company",
         layer="Company",
         mode="configured_scan",
-        area="DigitalHealthCPS",
+        area="ESG",
         documents=[_sample_doc()],
         output_dir=tmp_path,
         started_at=ai.datetime.now(ai.UTC),
@@ -88,20 +88,20 @@ def test_normal_clustering_does_not_use_hidden_provenance_llm(monkeypatch):
     records = [
         {
             "record_id": "a",
-            "research_area": "DigitalHealthCPS",
-            "title": "Clinical device validation",
-            "problem": "Clinical devices need reliable validation.",
-            "problem_statement": "Clinical devices need reliable validation.",
+            "research_area": "ESG",
+            "title": "Carbon credit MRV",
+            "problem": "Carbon accounting data needs reliable verification.",
+            "problem_statement": "Carbon accounting data needs reliable verification.",
             "source_url": "https://example.org/a",
             "file_path": "/a",
             "layer": "Literature",
         },
         {
             "record_id": "b",
-            "research_area": "DigitalHealthCPS",
-            "title": "Clinical monitoring reliability",
-            "problem": "Clinical monitoring systems need reliable validation.",
-            "problem_statement": "Clinical monitoring systems need reliable validation.",
+            "research_area": "ESG",
+            "title": "Emissions reporting reliability",
+            "problem": "Emissions monitoring systems need reliable verification.",
+            "problem_statement": "Emissions monitoring systems need reliable verification.",
             "source_url": "https://example.org/b",
             "file_path": "/b",
             "layer": "Company",

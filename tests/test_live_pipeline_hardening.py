@@ -13,12 +13,12 @@ def test_finalizer_is_deterministic_by_default(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(ai, "build_intermediate_artifact_payload", wrapped)
     Doc = type("Doc", (), {})
     doc = Doc()
-    doc.title = "Digital Health CPS test"
-    doc.url = "https://example.org/dhcps"
-    doc.content = "Digital healthcare cyber-physical systems face interoperability and clinical validation challenges."
-    doc.area_hint = "DigitalHealthCPS"
+    doc.title = "ESG MRV test"
+    doc.url = "https://example.org/mrv"
+    doc.content = "Climate MRV systems face interoperability and emissions verification challenges."
+    doc.area_hint = "ESG"
     response = ai.finalize_collection_agent_response(
-        agent="company", layer="Company", mode="configured_scan", area="DigitalHealthCPS",
+        agent="company", layer="Company", mode="configured_scan", area="ESG",
         documents=[doc], output_dir=tmp_path, started_at=ai.datetime.now(ai.UTC),
     )
     assert response["status"] in {"success", "partial_success"}
@@ -38,14 +38,14 @@ def test_all_collection_agents_default_to_no_llm_refinement():
         assert 'allow_llm_refinement=bool(payload.get("allow_llm_refinement", False))' in text, name
 
 
-def test_literature_query_uses_funding_questions_without_blockchain_context_for_dhcp():
+def test_literature_query_uses_funding_questions_with_blockchain_context_for_esg():
     import agents.literature_agent as lit
-    token = lit.current_funding_queries.set(["clinical device validation", "hospital deployment safety"])
+    token = lit.current_funding_queries.set(["carbon credit MRV validation", "emissions reporting verification"])
     try:
-        q = lit.build_query("DigitalHealthCPS")
-        assert "clinical device validation" in q
-        assert "hospital deployment safety" in q
-        assert not q.endswith('AND (all:"blockchain" OR all:"smart contract" OR all:"ethereum" OR all:"web3" OR all:"crypto")')
+        q = lit.build_query("ESG")
+        assert "carbon credit MRV validation" in q
+        assert "emissions reporting verification" in q
+        assert 'all:"blockchain"' in q
     finally:
         lit.current_funding_queries.reset(token)
 
@@ -57,11 +57,11 @@ def test_source_router_does_not_accept_contaminated_low_signal_hint(tmp_path: Pa
     registry.write_text(json.dumps({"entries": [{
         "source_id": "regulation:sbti", "agent_name": "regulation",
         "name": "SBTi", "url": "https://sciencebasedtargets.org/",
-        "status": "active", "area_hints": ["DigitalHealthCPS", "ESG"],
+        "status": "active", "area_hints": ["RWA", "ESG"],
         "source_path": "regulation_sources.esg_reporting.[5]",
     }]}), encoding="utf-8")
     token_force = sr.current_force_source_refresh.set(True)
-    token_area = sr.current_source_area.set("DigitalHealthCPS")
+    token_area = sr.current_source_area.set("RWA")
     try:
         assert sr.apply_refresh_policy("regulation", [{"name":"SBTi","url":"https://sciencebasedtargets.org/"}], registry_path=registry) == []
     finally:

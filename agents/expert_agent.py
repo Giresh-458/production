@@ -641,7 +641,7 @@ def build_analysis_prompt(document: ExpertDocument) -> str:
 
         Rules:
         - role: Faculty, Research Scientist, Lab Lead, Postdoc, Doctoral Researcher, or Expert
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, or DigitalHealthCPS
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
         - recent_publication_signal: summarize evidence of recent activity (recent papers/projects, year if available)
@@ -922,7 +922,7 @@ def write_insights(connection: sqlite3.Connection, output_dir: Path) -> None:
         lines.append(f"- {item}: {count}")
 
     lines.extend(["", "## Area-wise Summary"])
-    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"]:
+    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]:
         summary = "; ".join(area_summary.get(area, [])[:5]) or "No processed entries yet."
         lines.append(f"- {area}: {summary}")
 
@@ -963,7 +963,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-type", help="Optional source type override")
     parser.add_argument("--evidence-type", help="Optional evidence type override")
     parser.add_argument("--role", help="Optional role override")
-    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"], help="Optional area override")
+    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"], help="Optional area override")
     parser.add_argument("--focus", help="Optional focus hint")
     parser.add_argument("--source", help="Optional original source reference for manual text mode")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging verbosity")

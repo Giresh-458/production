@@ -7,12 +7,12 @@ from core.http_client import canonicalize_url
 
 def test_authoritative_routed_area_cannot_be_contaminated_by_keywords():
     resolved, warnings, _ = resolve_research_area(
-        explicit_area="DigitalHealthCPS",
-        title="Healthcare CPS",
+        explicit_area="DePIN",
+        title="DePIN network",
         raw_content="carbon carbon carbon stablecoin zero-knowledge token ESG emissions",
         authoritative_explicit=True,
     )
-    assert resolved == "DigitalHealthCPS"
+    assert resolved == "DePIN"
     assert any("retained authoritative routed research area" in w for w in warnings)
 
 
@@ -28,13 +28,13 @@ def test_non_authoritative_schema_inference_can_still_reclassify():
 def test_legacy_literature_h1_preserves_area():
     path = Path("/tmp/rif_literature_gap.md")
     path.write_text(
-        "# Research Gap: DigitalHealthCPS\n\n"
-        "## Problem\nHealthcare CPS problem.\n\n"
+        "# Research Gap: DePIN\n\n"
+        "## Problem\nDePIN network problem.\n\n"
         "## Gap\nRemaining evaluation gap.\n",
         encoding="utf-8",
     )
     record = normalize_intermediate_artifact(path)
-    assert record["research_area"] == "DigitalHealthCPS"
+    assert record["research_area"] == "DePIN"
 
 
 def test_broken_duplicate_source_urls_are_absent_from_registry_files():

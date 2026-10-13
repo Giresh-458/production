@@ -24,12 +24,12 @@ def test_refresh_preserves_mission_gate(tmp_path):
     selected_call = {
         "selected": {
             "call_id": call_id,
-            "title": "Blockchain for Healthcare",
+            "title": "Blockchain for DePIN",
             "organization": "Test Org",
-            "research_area": "DigitalHealthCPS",
+            "research_area": "DePIN",
             "research_context": {
                 "funding_call_id": call_id,
-                "domain": "Healthcare",
+                "domain": "DePIN",
                 "technology_themes": ["blockchain", "distributed ledger"],
                 "funding_priorities": [],
                 "target_outcomes": [],
@@ -55,15 +55,15 @@ def test_refresh_preserves_mission_gate(tmp_path):
 - source: https://example.org/1
 - layer: Literature
 - funding_call_id: CALL-TEST-99
-- research_area: DigitalHealthCPS
+- research_area: DePIN
 - collected_at: 2026-08-24T10:00:00+00:00
 
 ## Problem Preview
-This discusses distributed blockchain in healthcare, which matches the mission gate exactly.
+This discusses distributed blockchain in DePIN infrastructure, which matches the mission gate exactly.
 
 ## Evidence Bundle
 ### Evidence Snippets
-- This discusses distributed blockchain in healthcare, which matches the mission gate exactly.
+- This discusses distributed blockchain in DePIN infrastructure, which matches the mission gate exactly.
 """, encoding="utf-8")
 
     # 2. Rejected record (missing all substantive keywords, won't pass mission gate)
@@ -120,7 +120,7 @@ This is just an empty document about random trees and leaves and sunshine.
 
     # Also verify that by_area and by_layer agree
     by_area = json.loads((call_root / "normalized" / "by_area.json").read_text(encoding="utf-8"))
-    assert len(by_area.get("DigitalHealthCPS", [])) == 1
+    assert len(by_area.get("DePIN", [])) == 1
     assert "Unscoped" not in by_area or len(by_area["Unscoped"]) == 0
 
     by_layer = json.loads((call_root / "normalized" / "by_layer.json").read_text(encoding="utf-8"))

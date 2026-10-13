@@ -353,15 +353,11 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     # LiteratureAgent historically wrote `# Research Gap: <AREA>` without a
     # Shared Metadata block. Recover the canonical routed area from that title
     # before falling back to content keyword inference.
-    if not any(normalize_area(value) in {
-        "RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"
-    } for value in area_candidates if value):
+    if not any(normalize_area(value) in ALLOWED_RESEARCH_AREAS for value in area_candidates if value):
         h1_title = _clean(artifact.get("title", ""))
         if ":" in h1_title:
             area_candidates.append(h1_title.split(":", 1)[1].strip())
-    research_area = next((normalize_area(value) for value in area_candidates if normalize_area(value) in {
-        "RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"
-    }), "Unscoped")
+    research_area = next((normalize_area(value) for value in area_candidates if normalize_area(value) in ALLOWED_RESEARCH_AREAS), "Unscoped")
     source_url = _coalesce(provenance.get("source_url", ""), shared_header.get("source", ""))
     canonical_url = canonicalize_url(source_url)
     collected_at = _coalesce(shared_header.get("collected_at", ""), provenance.get("collected_at", ""))

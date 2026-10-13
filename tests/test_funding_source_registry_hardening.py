@@ -28,8 +28,6 @@ def test_funding_registry_uses_current_domain_scoped_program_pages():
     assert sources['Filecoin Grants and Funding'] == 'https://github.com/filecoin-project/devgrants'
     assert sources['Flashbots MEV Research Grants'] == 'https://github.com/flashbots/mev-research/blob/main/grants.md'
     assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/home/'
-    assert sources['BIRAC Calls for Proposal'] == 'https://www.birac.nic.in/cfp.php'
-    assert sources['ICMR Calls for Proposals'] == 'https://www.icmr.gov.in/call-for-proposals'
     assert sources['I-DAPT Hub Cyber-Physical Systems Calls'] == 'https://idapthub.org/applications/call_for_proposals'
 
     # Broad, unscoped portals and known stale/general sources were deliberately
@@ -44,6 +42,8 @@ def test_funding_registry_uses_current_domain_scoped_program_pages():
         'ARPA-E',
         'Grants.gov Public Opportunities API',
         'Ethereum Road to Devcon 8 India University Program',
+        'BIRAC Calls for Proposal',
+        'ICMR Calls for Proposals',
         'Polygon Grants',
         'Ethereum Foundation Academic Grants',
         'NIST CPS / IoT Testbed',

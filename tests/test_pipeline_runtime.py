@@ -21,7 +21,7 @@ def _registry_payload(url: str, *, area_hints=None, last_checked=None):
             "agent_name": "company",
             "name": "Test Source",
             "url": url,
-            "area_hints": area_hints or ["DigitalHealthCPS"],
+            "area_hints": area_hints or ["DePIN"],
             "status": "active",
             "fetch_frequency": "weekly",
             "last_checked": last_checked or datetime.now(UTC).isoformat(),
@@ -35,7 +35,7 @@ def test_live_pipeline_context_forces_recent_sources_and_routes_by_area(tmp_path
     registry_path.write_text(json.dumps(_registry_payload(url)), encoding="utf-8")
     src = FakeSource(url)
 
-    source_registry.current_source_area.set("DigitalHealthCPS")
+    source_registry.current_source_area.set("DePIN")
     source_registry.current_force_source_refresh.set(True)
     try:
         selected = source_registry.apply_refresh_policy("company", [src], registry_path=registry_path)
@@ -52,7 +52,7 @@ def test_area_routing_rejects_registry_source_from_wrong_domain(tmp_path: Path):
     registry_path.write_text(json.dumps(_registry_payload(url, area_hints=["RWA"])), encoding="utf-8")
     src = FakeSource(url)
 
-    token = source_registry.current_source_area.set("DigitalHealthCPS")
+    token = source_registry.current_source_area.set("DePIN")
     try:
         selected = source_registry.apply_refresh_policy("company", [src], registry_path=registry_path, force=True)
     finally:
@@ -64,7 +64,7 @@ def test_area_routing_rejects_registry_source_from_wrong_domain(tmp_path: Path):
 def test_batch_task_preserves_explicit_force_refresh_flag():
     tasks = build_batch_tasks(
         agent_names=["lab"],
-        area_names=["DigitalHealthCPS"],
+        area_names=["DePIN"],
         mode="configured_scan",
         base_input_data={"force_refresh": True},
     )
@@ -75,9 +75,9 @@ def test_legacy_funding_markdown_focus_area_is_not_normalized_as_unscoped(tmp_pa
     artifact = tmp_path / "disha.md"
     artifact.write_text(
         "\n".join([
-            "        # Grant: DISHA 3.0",
+            "        # Grant: DePIN Research Call",
             "        ## Focus Area",
-            "        DigitalHealthCPS",
+            "        DePIN",
             "        ## Source Details",
             "        Source: manual://test",
             "        ## Layer",
@@ -86,7 +86,7 @@ def test_legacy_funding_markdown_focus_area_is_not_normalized_as_unscoped(tmp_pa
         encoding="utf-8",
     )
     normalized = normalize_intermediate_artifact(artifact)
-    assert normalized["research_area"] == "DigitalHealthCPS"
+    assert normalized["research_area"] == "DePIN"
 
 
 def test_funding_refresh_never_returns_empty_when_all_registry_sources_are_recent(tmp_path: Path):

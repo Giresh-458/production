@@ -745,7 +745,7 @@ def build_analysis_prompt(document: OpenSourceDocument) -> str:
         evidence_type
 
         Rules:
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, or DigitalHealthCPS
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
         - signal_class: bug, feature, documentation, engineering_task, performance_limitation, security_problem, architecture_limitation, research_problem
@@ -974,7 +974,7 @@ def write_insights(connection: sqlite3.Connection, output_dir: Path) -> None:
         lines.append(f"- {item}: {count}")
 
     lines.extend(["", "## Area-wise Summary"])
-    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"]:
+    for area in ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]:
         summary = "; ".join(area_summary.get(area, [])[:3]) or "No processed entries yet."
         lines.append(f"- {area}: {summary}")
 
@@ -1015,7 +1015,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project-name", help="Project or repository name for manual modes")
     parser.add_argument("--source-type", help="Optional source type override")
     parser.add_argument("--evidence-type", help="Optional evidence type override")
-    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins", "DigitalHealthCPS"], help="Optional area override")
+    parser.add_argument("--area", choices=["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"], help="Optional area override")
     parser.add_argument("--focus", help="Optional focus hint")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging verbosity")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for open-source markdown outputs")

@@ -32,7 +32,6 @@ AREA_FUNDING_ALIGNMENT = {
     "DePIN": "Align with storage, wireless, device, and decentralized infrastructure ecosystem grant programs.",
     "MEV": "Align with market-structure, relay, builder, block-production, and execution-integrity research programs.",
     "Stablecoins": "Align with payment-rail, reserve-transparency, settlement, and stable-value infrastructure funders.",
-    "DigitalHealthCPS": "Align with digital-health CPS funders focused on clinical validation, product translation, safety, deployment readiness, commercialization, and healthcare stakeholder adoption.",
 }
 
 
