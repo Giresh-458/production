@@ -174,6 +174,30 @@ def test_github_repeated_page():
     assert len(result["errors"]) >= 1
 
 
+def test_github_document_limit_stops_pagination_without_overfetching():
+    """GitHub API max_documents constrains request page size and reports a coverage gap."""
+    from core.structured_sources import github_paginated_issues
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = [
+        {"id": 1, "title": "Grant A"},
+        {"id": 2, "title": "Grant B"},
+    ]
+    mock_response.headers = {"Link": '<https://api.github.com/repos/x/y/issues?page=2>; rel="next"'}
+    mock_response.status_code = 200
+
+    with patch("core.structured_sources.get_response", return_value=mock_response) as mock_get:
+        result = github_paginated_issues(
+            "x", "y", source_limits={"max_pages": 5, "max_documents": 2}
+        )
+
+    assert mock_get.call_args.kwargs["params"]["per_page"] == 2
+    assert len(result["issues"]) == 2
+    assert result["pages_fetched"] == 1
+    assert result["pagination_complete"] is False
+    assert any("SOURCE_LIMIT_REACHED: Max documents reached (2)" in err for err in result["errors"])
+
+
 # ── Crawl4AI web collection tests ────────────────────────────────────
 
 def test_crawl_depth_zero():
@@ -319,6 +343,89 @@ def test_crawl_external_domain_skipped():
 
     assert result.urls_skipped >= 1
     assert result.pages_fetched == 1  # only the start page
+
+
+def test_empty_ethereum_rfp_page_is_not_normalized_as_a_grant():
+    """Explicit no-active language must not become a generic funding record."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    def fake_fetch(url):
+        return {
+            "html": "<html><body>No RFP Items Available</body></html>",
+            "markdown": (
+                "Request for Proposals (RFPs). No RFP Items Available. "
+                "There are currently no active Request for Proposals available for application."
+            ),
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Request for Proposals (RFPs)",
+            "links": [], "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Ethereum ESP RFPs",
+            "https://esp.ethereum.foundation/applicants/rfp",
+            {"start_urls": ["https://esp.ethereum.foundation/applicants/rfp"],
+             "max_depth": 1, "max_pages": 2},
+            ["esp.ethereum.foundation"],
+        )
+
+    assert result.pages_fetched == 1
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+
+def test_solana_and_near_funding_directories_are_not_individual_calls():
+    """Known ecosystem-directory copy should be traversed, not emitted as a call."""
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    assert not _classify_page_stage_b(
+        "https://solana.org/grants-funding",
+        "different grant and funding opportunities within the Solana ecosystem",
+        "There are numerous grant programs in the ecosystem.",
+    )
+    assert not _classify_page_stage_b(
+        "https://www.near.org/funding",
+        "NEAR House of Stake: A New Governance Model",
+        "Explore grants, incentives, and community-backed resources on NEAR. "
+        "Apply here for NEAR grants to fund your project.",
+    )
+
+
+def test_skipped_pdf_is_counted_as_a_document_and_makes_coverage_partial():
+    """A discovered but intentionally unprocessed PDF must not look like a complete empty crawl."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    pdf_url = "https://example.com/reports/annual-funding-report.pdf"
+
+    def fake_fetch(url):
+        return {
+            "html": "<html><body>Funding programme overview</body></html>",
+            "markdown": "Funding programme overview.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Funding programme overview",
+            "links": [{
+                "url": pdf_url, "anchor_text": "Grant programme report",
+                "surrounding_text": "Funding report", "rel": "",
+            }],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Test", "https://example.com/grants",
+            {"start_urls": ["https://example.com/grants"], "max_depth": 1,
+             "max_pages": 5, "follow_detail_pages": True, "follow_pdfs": False},
+            [],
+        )
+
+    assert result.pages_discovered == 1
+    assert result.pages_fetched == 1
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 0
+    assert result.truncated is True
+    assert result.final_status == "PARTIAL"
 
 
 # ── PDF tests ────────────────────────────────────────────────────────
