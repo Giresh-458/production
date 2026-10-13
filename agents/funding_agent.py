@@ -1868,19 +1868,28 @@ def main() -> int:
     return 0
 
 
-def _funding_sources_fingerprint(sources: list[FundingSource]) -> str:
-    """Fingerprint the source configuration used by a resumable funding scan."""
-    manifest = [
-        {
-            "name": source.name,
-            "url": source.url,
-            "tier": source.tier,
-            "focus": source.focus,
-            "collection": source.collection,
-            "research_domains": source.research_domains,
-        }
-        for source in sources
-    ]
+def _funding_sources_fingerprint(
+    sources: list[FundingSource],
+    *,
+    area: str | None = None,
+    is_test_mode: bool = False,
+) -> str:
+    """Fingerprint the source configuration and collection mode for checkpoint safety."""
+    manifest = {
+        "area": area,
+        "is_test_mode": bool(is_test_mode),
+        "sources": [
+            {
+                "name": source.name,
+                "url": source.url,
+                "tier": source.tier,
+                "focus": source.focus,
+                "collection": source.collection,
+                "research_domains": source.research_domains,
+            }
+            for source in sources
+        ],
+    }
     serialized = json.dumps(
         manifest,
         sort_keys=True,
@@ -1957,7 +1966,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                             "Funding sources missing canonical research-domain mappings: "
                             + ", ".join(unmapped_sources)
                         )
-                source_fingerprint = _funding_sources_fingerprint(sources)
+                is_test_mode = bool(payload.get("is_test_mode", False))
+                source_fingerprint = _funding_sources_fingerprint(
+                    sources,
+                    area=area,
+                    is_test_mode=is_test_mode,
+                )
                 collection_iterator = collect_auto_sources(
                     sources,
                     area,
