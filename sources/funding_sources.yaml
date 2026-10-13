@@ -223,7 +223,7 @@ sources:
         follow_pdfs: true
         pagination: true
   - name: DST India Calls for Proposals
-    url: https://www.dst.gov.in/offerings/call-for-proposals
+    url: https://onlinedst.gov.in/
     focus: official India science funding and calls for proposals in research, engineering, cybersecurity and digital systems
     collection:
       mode: web
@@ -233,7 +233,7 @@ sources:
       - www.dst.gov.in
       discovery:
         start_urls:
-        - https://www.dst.gov.in/offerings/call-for-proposals
+        - https://onlinedst.gov.in/
         max_depth: 3
         max_pages: 8
         follow_detail_pages: true
