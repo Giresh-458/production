@@ -102,6 +102,28 @@ def _apply_grantsgov_structured_metadata(
     estimated = _grantsgov_money_number(estimated_raw)
 
     evidence = dict(analysis.evidence or {})
+
+    # Preserve the official Grants.gov opportunity status separately from the
+    # language-based status classifier. In search2, "posted" means the FOA is
+    # announced and accepting applications; "forecasted" is not yet an FOA.
+    source_status_raw = _first_grantsgov_value(
+        details, hit, ("oppStatus", "opportunityStatus")
+    )
+    source_status = _clean_grantsgov_text(source_status_raw).lower()
+    if source_status:
+        evidence["source_status"] = source_status
+        evidence["source_status_provenance"] = "Grants.gov API oppStatus field"
+        status_map = {
+            "posted": "OPEN_CALL",
+            "open": "OPEN_CALL",
+            "forecasted": "UPCOMING_CALL",
+            "upcoming": "UPCOMING_CALL",
+            "closed": "CLOSED_CALL",
+            "archived": "CLOSED_CALL",
+        }
+        if source_status in status_map:
+            analysis.status = status_map[source_status]
+
     if floor and ceiling:
         analysis.funding_amount = (
             f"${floor}–${ceiling} per award "
@@ -449,14 +471,21 @@ def _collect_grants_gov(
     if test_limits:
         print("\nGrants.gov API diagnostic")
         print("-------------------------")
-        app_err = next((err["error"] for err in result.errors if "Grants.gov returned" in err["error"]), "none")
-        if app_err != "none":
-            dtype = "string" if "non-dict data block" in app_err else "unknown"
-        else:
-            dtype = "dict" if not result.errors else "unknown"
-            
-        print("HTTP status: 200") # We know post_json handled it safely
-        print(f"JSON response: {'yes' if 'non-JSON' not in str(result.errors) else 'no'}")
+        # Collection-limit warnings are not API-envelope failures. Only API
+        # transport/shape errors should affect the envelope diagnostic.
+        api_shape_errors = [
+            err["error"] for err in result.errors
+            if any(marker in err["error"] for marker in (
+                "API request failed", "Grants.gov returned",
+                "non-JSON/non-dict", "malformed", "Pagination stalled",
+                "repeated page content",
+            ))
+        ]
+        app_err = api_shape_errors[0] if api_shape_errors else "none"
+        dtype = "unknown" if api_shape_errors else "dict"
+
+        print("HTTP status: 200") # post_json raises on unsuccessful HTTP responses
+        print(f"JSON response: {'no' if any('non-JSON' in e for e in api_shape_errors) else 'yes'}")
         print(f"Envelope: {'valid' if dtype == 'dict' else 'invalid'}")
         print(f"data type: {dtype}")
         print(f"API/application error: {app_err}")
