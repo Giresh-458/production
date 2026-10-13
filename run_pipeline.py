@@ -23,44 +23,6 @@ from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, normalize_
 from core.mission_gate import relevance as mission_relevance
 
 
-# Strong area anchors distinguish actual research-domain relevance from broad
-# terms such as "technology", "health", "sensor", or "security".
-RIF_DOMAIN_DIRECT_TERMS = {
-    "RWA": {
-        "rwa", "real-world asset", "real world asset", "tokenized treasury",
-        "tokenized fund", "tokenized security", "asset tokenization", "proof of reserve",
-    },
-    "ESG": {
-        "esg", "carbon credit", "mrv", "sustainability", "emissions", "climate", "carbon",
-    },
-    "ZK-IoV": {
-        "zero-knowledge", "zero knowledge", "zkvm", "internet of vehicles",
-        "vehicular", "v2x", "iov", "zk",
-    },
-    "DID": {
-        "decentralized identity", "verifiable credential", "verifiable credentials",
-        "identity wallet", "did", "attestation",
-    },
-    "DePIN": {
-        "depin", "decentralized physical infrastructure", "compute network",
-        "storage network", "wireless",
-    },
-    "MEV": {
-        "mev", "transaction ordering", "order flow", "block builder",
-        "liquidation cascade", "sequencer",
-    },
-    "Stablecoins": {
-        "stablecoin", "stablecoins", "tokenized deposit", "usdc", "pyusd", "depeg",
-    },
-    "DigitalHealthCPS": {
-        "digital healthcare", "digital health", "cyber-physical systems",
-        "cyber physical systems", "medical device", "remote monitoring",
-        "technology translation", "telemedicine", "diagnostic", "wearable", "cps",
-    },
-}
-
-
-
 def evaluate_collection_health(collection_tasks: list[dict], min_required_agents: int) -> tuple[bool, int]:
     healthy_agents = set()
     for t in collection_tasks:
@@ -154,12 +116,15 @@ def _supported_rif_funding_domains(
             str(term).casefold(): float(weight)
             for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items()
         }
-        direct_terms = RIF_DOMAIN_DIRECT_TERMS.get(domain, set())
+        # Ignore broad, low-weight terms; require a domain-specific canonical
+        # term (weight >= 2.0) as well as the minimum aggregate raw score.
+        strong_terms = {
+            term for term, weight in term_weights.items() if weight >= 2.0
+        }
         supported_terms = {
             str(term).casefold().strip()
             for term in matched_terms
-            if str(term).casefold().strip() in direct_terms
-            and str(term).casefold().strip() in term_weights
+            if str(term).casefold().strip() in strong_terms
         }
         if raw_score < 2.5 or not supported_terms:
             continue
