@@ -20,6 +20,8 @@ from core.batch_runner import execute_batch_run
 from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
 from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, normalize_area
+from core.mission_gate import relevance as mission_relevance
+
 
 # Strong area anchors distinguish actual research-domain relevance from broad
 # terms such as "technology", "health", "sensor", or "security".
@@ -56,7 +58,6 @@ RIF_DOMAIN_DIRECT_TERMS = {
         "technology translation", "telemedicine", "diagnostic", "wearable", "cps",
     },
 }
-from core.mission_gate import relevance as mission_relevance
 
 
 
@@ -186,7 +187,7 @@ def _supported_rif_funding_domains(
 
 
 def get_all_open_funding_calls(
-    funding_result: dict[str, Any], *, require_domain_match: bool = False
+    funding_result: dict[str, Any], *, require_domain_match: bool = True
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Select actionable open calls; optionally require strong canonical-domain evidence."""
     now = datetime.now(UTC)
