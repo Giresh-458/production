@@ -76,5 +76,5 @@ def test_same_host_request_waits_for_minimum_delay(monkeypatch):
     allowed = crawl4ai_web._wait_for_host_slot("https://example.test/page", 1.0)
 
     assert allowed is True
-    assert sleeps == [0.2]
+    assert sleeps == [0.8]
     assert crawl4ai_web._HOST_LAST_REQUEST["example.test"] == 100.8
