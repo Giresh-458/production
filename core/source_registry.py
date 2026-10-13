@@ -999,20 +999,14 @@ def apply_refresh_policy(
             requested = normalize_area(str(requested_area))
 
             def _registry_entry_matches_area(entry: dict[str, Any]) -> bool:
-                # Prefer the configured YAML category when it maps cleanly to a
-                # canonical domain (e.g. *.cps.[n] -> DigitalHealthCPS). This is
-                # stronger than inferred keyword hints and avoids broad terms such
-                # as "sensor", "security", or "research" leaking other domains.
+                # Prefer a configured YAML category when it maps cleanly to a
+                # canonical research domain. This avoids broad terms such as
+                # "sensor", "security", or "research" leaking across domains.
                 source_path = str(entry.get("source_path", ""))
                 category_aliases = {
                     "rwa": "RWA", "esg_carbon": "ESG", "esg_reporting": "ESG",
                     "zk_iov": "ZK-IoV", "did": "DID", "depin": "DePIN", "mev": "MEV",
-                    "stablecoins": "Stablecoins", "cps": "DigitalHealthCPS",
-                    "digitalhealthcps": "DigitalHealthCPS", "cps_failures": "DigitalHealthCPS",
-                    "cps_challenges": "DigitalHealthCPS", "cps_investment": "DigitalHealthCPS",
-                    "cps_experts": "DigitalHealthCPS", "cps_standards": "DigitalHealthCPS",
-                    "cps_practitioners": "DigitalHealthCPS", "cps_data": "DigitalHealthCPS",
-                    "cps_sources": "DigitalHealthCPS", "cps_labs": "DigitalHealthCPS",
+                    "stablecoins": "Stablecoins",
                     "climate_carbon": "ESG", "global_finance": "RWA",
                     "global_payments": "Stablecoins", "stablecoin": "Stablecoins",
                 }
