@@ -214,6 +214,53 @@ def test_crawl_depth_zero():
     assert result.discovery_exhausted is True
 
 
+def test_failed_fetches_still_consume_the_configured_page_budget():
+    """A source with failing URLs cannot exceed max_pages by counting only successes."""
+    from core.crawl4ai_web import crawl_funding_source
+
+    def fake_fetch(url):
+        if url.endswith("/grants"):
+            return {
+                "html": "<html><body>Grant funding call</body></html>",
+                "markdown": "Grant funding call. Eligibility requirements. Apply now.",
+                "success": True, "error_message": None, "status_code": 200,
+                "url": url, "title": "Grant Program",
+                "links": [
+                    {
+                        "url": f"https://example.com/grants/child-{index}",
+                        "anchor_text": "Grant details",
+                        "surrounding_text": "funding grant application",
+                        "rel": "",
+                    }
+                    for index in range(10)
+                ],
+                "pagination_links": [],
+            }
+        return {
+            "html": "", "markdown": "", "success": False,
+            "error_message": "503 Service Unavailable", "status_code": 503,
+            "url": url, "title": "", "links": [], "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch) as fetch:
+        result = crawl_funding_source(
+            "Test", "https://example.com/grants",
+            {
+                "start_urls": ["https://example.com/grants"],
+                "max_depth": 1,
+                "max_pages": 2,
+            },
+            [],
+        )
+
+    assert fetch.call_count == 2
+    assert result.pages_discovered == 2
+    assert result.pages_fetched == 1
+    assert result.pages_failed == 1
+    assert result.truncated is True
+    assert result.final_status == "PARTIAL"
+
+
 def test_crawl_duplicate_links():
     """Duplicate links: discovered once, not fetched twice."""
     from core.crawl4ai_web import crawl_funding_source
