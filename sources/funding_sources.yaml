@@ -13,6 +13,7 @@ sources:
         start_urls:
         - https://esp.ethereum.foundation/applicants/rfp
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -28,6 +29,7 @@ sources:
         start_urls:
         - https://esp.ethereum.foundation/applicants/open-rounds
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -44,43 +46,24 @@ sources:
         start_urls:
         - https://esp.ethereum.foundation/applicants/rfp/rtd8_india_academic
         max_depth: 3
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: Ethereum Foundation ESP
-    url: https://esp.ethereum.foundation/applicants
-    focus: protocol research, identity, zero-knowledge, public goods, security, infrastructure
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - esp.ethereum.foundation
-      discovery:
-        start_urls:
-        - https://esp.ethereum.foundation/applicants
-        max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
   - name: Chainlink Grants
     url: https://chain.link/community/grants
     direct_page: true
-    focus: oracles, RWA, proof of reserve, data feeds, cross-chain, stablecoins
-    collection:
-      mode: url_validation
-  - name: Polygon Grants
-    url: https://polygon.technology/village/startups
-    focus: zero-knowledge, RWA, identity, scalability, consumer applications
+    focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - polygon.technology
-      - hadronfc.com
+      - chain.link
       discovery:
         start_urls:
-        - https://polygon.technology/village/startups
-        max_depth: 3
+        - https://chain.link/community/grants
+        max_depth: 2
+        max_pages: 6
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -99,30 +82,33 @@ sources:
         start_urls:
         - https://solana.org/grants-funding
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
   tier_2:
-  - name: NEAR Funding
+  - name: NEAR Ecosystem Funding
     url: https://www.near.org/funding
-    focus: identity, usability, chain abstraction, payments, consumer blockchain infrastructure
+    focus: official NEAR ecosystem grants, protocol rewards, developer tooling, public goods and builder funding; follow only linked grant destinations
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - near.org
+      - devhub.near.org
       - docs.metapool.app
+      - potlock.org
       discovery:
         start_urls:
         - https://www.near.org/funding
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
   - name: Ripple UBRI
     url: https://ripple.com/impact/ubri/
-    focus: university blockchain research, payments, stablecoins, digital assets,
-      identity
+    focus: university partnership-based blockchain research, digital assets, payments and identity; research/impact PDFs are not funding calls by themselves
     collection:
       mode: web
       engine: crawl4ai
@@ -131,23 +117,24 @@ sources:
       discovery:
         start_urls:
         - https://ripple.com/impact/ubri/
-        max_depth: 3
+        max_depth: 2
+        max_pages: 5
         follow_detail_pages: true
-        follow_pdfs: true
+        follow_pdfs: false
         pagination: true
-  - name: Ripple XRPL Builder Funding
-    url: https://ripple.com/insights/supporting-innovation-on-the-xrp-ledger/
-    focus: XRPL builders, tokenization, stablecoins, payments, financial infrastructure
+  - name: XRPL Grants Program
+    url: https://xrplgrants.org/
+    focus: official XRPL builder grants, developer tooling, tokenization, stablecoins and payments; validate current round/acceptance dates
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - ripple.com
       - xrplgrants.org
       discovery:
         start_urls:
-        - https://ripple.com/insights/supporting-innovation-on-the-xrp-ledger/
-        max_depth: 3
+        - https://xrplgrants.org/
+        max_depth: 2
+        max_pages: 6
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -163,41 +150,95 @@ sources:
       pagination: true
       detail_fetch: true
       limits:
-        max_pages: 1
-        max_documents: 50
+        max_pages: 5
+        max_documents: 250
   tier_3:
-  - name: MeitY
-    url: https://www.meity.gov.in/whats-new
-    focus: India digital public infrastructure, identity, trust, policy-linked funding
+  - name: MeitY Startup Hub
+    url: https://msh.meity.gov.in/
+    focus: official India technology startup schemes and current calls, including GENESIS EIR, early-stage/pilot funding, deep-tech support and incubator-linked programs
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - meity.gov.in
+      - msh.meity.gov.in
       discovery:
         start_urls:
-        - https://www.meity.gov.in/whats-new
+        - https://msh.meity.gov.in/
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: DST India
-    url: https://dst.gov.in/
-    focus: India science funding, academic research, frontier technology, cybersecurity,
-      digital systems
+  - name: BIRAC Calls for Proposal
+    url: https://www.birac.nic.in/cfp.php
+    focus: official biotech and health innovation calls, medical devices, diagnostics, bioinformatics, AI/IoT/automation for health and undergraduate E-YUVA fellowships
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - birac.nic.in
+      - www.birac.nic.in
+      discovery:
+        start_urls:
+        - https://www.birac.nic.in/cfp.php
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: iDEX Defence Innovation Challenges
+    url: https://www.idex.gov.in/challenges
+    focus: official Indian defence/security innovation challenges, robotics, autonomy, sensors, embedded systems, cyber-physical systems and prototype commercialization
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idex.gov.in
+      - www.idex.gov.in
+      discovery:
+        start_urls:
+        - https://www.idex.gov.in/challenges
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: ANRF Research Funding
+    url: https://www.anrf.gov.in/
+    focus: official India research funding calls in science, engineering, computer engineering, health sciences and mission-mode innovation; retain applicant and host-institution eligibility evidence
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - anrf.gov.in
+      - www.anrf.gov.in
+      - anrfonline.in
+      - www.anrfonline.in
+      discovery:
+        start_urls:
+        - https://www.anrf.gov.in/
+        max_depth: 3
+        max_pages: 8
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: DST India Calls for Proposals
+    url: https://dst.gov.in/callforproposals
+    focus: official India science funding and calls for proposals in research, engineering, cybersecurity and digital systems
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - dst.gov.in
+      - www.dst.gov.in
       discovery:
         start_urls:
-        - https://dst.gov.in/
+        - https://dst.gov.in/callforproposals
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-        max_pages: 50
   cps_funding:
   - name: NSF CPS Foundations and Connected Communities
     url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
@@ -217,45 +258,9 @@ sources:
         follow_pdfs: true
         pagination: true
         max_pages: 30
-  - name: NSF Cyber Physical and Intelligent Systems
-    url: https://www.nsf.gov/cise/cyber-physical-intelligent-systems
-    focus: robotics, CPS, intelligent systems, security, privacy, trust, safe and
-      reliable systems
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - nsf.gov
-      - www.nsf.gov
-      discovery:
-        start_urls:
-        - https://www.nsf.gov/cise/cyber-physical-intelligent-systems
-        max_depth: 3
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: NIST CPS / IoT Testbed
-    url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
-    focus: CPS testbeds, IoT, smart grid, SCADA, robotics, transportation, autonomous
-      vehicles, smart cities, cybersecurity
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - nist.gov
-      - www.nist.gov
-      discovery:
-        start_urls:
-        - https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
-        max_depth: 3
-        max_pages: 4
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-  - name: DARPA
-    url: https://www.darpa.mil/
-    focus: resilient autonomous systems, cyber-physical security, critical infrastructure,
-      robotics, embedded systems
+  - name: DARPA Research Opportunities
+    url: https://www.darpa.mil/work-with-us/opportunities
+    focus: official U.S. defense R&D solicitations, autonomous systems, cyber-physical security, critical infrastructure, robotics and embedded systems; verify foreign-partner eligibility
     collection:
       mode: web
       engine: crawl4ai
@@ -264,8 +269,9 @@ sources:
       - www.darpa.mil
       discovery:
         start_urls:
-        - https://www.darpa.mil/
+        - https://www.darpa.mil/work-with-us/opportunities
         max_depth: 3
+        max_pages: 8
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -284,22 +290,6 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: CISA ICS
-    url: https://www.cisa.gov/topics/industrial-control-systems
-    focus: industrial control systems, critical infrastructure security, OT security
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - cisa.gov
-      - www.cisa.gov
-      discovery:
-        start_urls:
-        - https://www.cisa.gov/topics/industrial-control-systems
-        max_depth: 3
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
   - name: Grants.gov Public Opportunities API
     url: https://api.grants.gov/v1/api/search2
     direct_page: true
@@ -311,5 +301,5 @@ sources:
       pagination: true
       detail_fetch: true
       limits:
-        max_pages: 2
-        max_documents: 100
+        max_pages: 10
+        max_documents: 500
