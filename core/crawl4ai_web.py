@@ -114,22 +114,25 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
 
 
 def _wait_for_host_slot(url: str, delay_seconds: float) -> bool:
-    """Wait between same-host page starts; stop rather than overrun crawl deadline."""
+    """Reserve a per-host request slot without serializing unrelated hosts."""
     host = urlparse(url).netloc.lower()
+    now = time.monotonic()
     with _HOST_LOCK:
-        wait_seconds = max(
-            0.0,
-            _HOST_LAST_REQUEST.get(host, 0.0)
-            + max(delay_seconds, _DEFAULT_HOST_DELAY)
-            - time.monotonic(),
+        last = _HOST_LAST_REQUEST.get(host)
+        request_start = now if last is None else max(
+            now, last + max(delay_seconds, _DEFAULT_HOST_DELAY)
         )
-        if wait_seconds:
-            from core.crawl_context import current_crawl_context
-            ctx = current_crawl_context.get(None)
-            if ctx and ctx.deadline and time.time() + wait_seconds >= ctx.deadline:
-                return False
-            time.sleep(wait_seconds)
-        _HOST_LAST_REQUEST[host] = time.monotonic()
+        # Reserve before sleeping so concurrent workers cannot launch multiple
+        # requests to the same host at once. Different hosts are not serialized.
+        _HOST_LAST_REQUEST[host] = request_start
+
+    wait_seconds = max(0.0, request_start - now)
+    if wait_seconds:
+        from core.crawl_context import current_crawl_context
+        ctx = current_crawl_context.get(None)
+        if ctx and ctx.deadline and time.time() + wait_seconds >= ctx.deadline:
+            return False
+        time.sleep(wait_seconds)
     return True
 
 # --- Stage B funding classifier keywords (used on page CONTENT, not just URLs) ---
