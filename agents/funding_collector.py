@@ -12,6 +12,8 @@ tuples, never raw crawler dicts.
 from __future__ import annotations
 
 import logging
+import re
+from html import unescape
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, List, Optional, Iterator
@@ -33,6 +35,101 @@ from agents.funding_agent import (
 )
 
 LOGGER = logging.getLogger("rif.funding_collector")
+
+
+def _first_grantsgov_value(
+    details: Any,
+    hit: dict[str, Any],
+    keys: tuple[str, ...],
+) -> Any:
+    """Return the first populated structured value, preferring the detail response."""
+    for mapping in (details, hit):
+        if not isinstance(mapping, dict):
+            continue
+        for key in keys:
+            value = mapping.get(key)
+            if value is None:
+                continue
+            if isinstance(value, str) and value.strip().lower() in {"", "null", "none", "unknown"}:
+                continue
+            return value
+    return None
+
+
+def _clean_grantsgov_text(value: Any) -> str:
+    """Convert a Grants.gov text/HTML field to readable plain text."""
+    if value is None:
+        return ""
+    text = unescape(str(value))
+    text = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _grantsgov_money_number(value: Any) -> str | None:
+    """Normalize a numeric Grants.gov award field while retaining its magnitude."""
+    text = _clean_grantsgov_text(value)
+    text = re.sub(r"^(?:USD\s*)?\$?\s*", "", text, flags=re.IGNORECASE)
+    if not re.fullmatch(r"\d[\d,]*(?:\.\d+)?", text):
+        return None
+    return text
+
+
+def _apply_grantsgov_structured_metadata(
+    analysis: FundingOpportunity,
+    details: Any,
+    hit: dict[str, Any],
+) -> None:
+    """Prefer source-labelled Grants.gov award/eligibility fields over ambiguous prose."""
+    floor_raw = _first_grantsgov_value(
+        details, hit, ("awardFloorFormatted", "awardFloor")
+    )
+    ceiling_raw = _first_grantsgov_value(
+        details, hit, ("awardCeilingFormatted", "awardCeiling")
+    )
+    estimated_raw = _first_grantsgov_value(
+        details, hit, ("estimatedFundingFormatted", "estimatedFunding")
+    )
+
+    floor = _grantsgov_money_number(floor_raw)
+    ceiling = _grantsgov_money_number(ceiling_raw)
+    estimated = _grantsgov_money_number(estimated_raw)
+
+    evidence = dict(analysis.evidence or {})
+    if floor and ceiling:
+        analysis.funding_amount = (
+            f"${floor}–${ceiling} per award "
+            "(Grants.gov award floor–ceiling; verify designation-specific limits in the solicitation)"
+        )
+        evidence["funding_amount"] = (
+            f"Grants.gov structured metadata: award floor ${floor}; award ceiling ${ceiling}. "
+            "These bounds may not replace designation-specific limits in the solicitation."
+        )
+    elif ceiling:
+        analysis.funding_amount = (
+            f"Up to ${ceiling} per award "
+            "(Grants.gov award ceiling; verify the solicitation for category-specific limits)"
+        )
+        evidence["funding_amount"] = f"Grants.gov structured metadata: award ceiling ${ceiling}."
+
+    if estimated:
+        evidence["estimated_program_funding"] = (
+            f"Grants.gov estimated program funding: ${estimated} "
+            "(aggregate program metadata, not an individual-award amount)"
+        )
+
+    eligibility_raw = _first_grantsgov_value(
+        details,
+        hit,
+        ("applicantEligibilityDesc", "applicantEligibilityDescription"),
+    )
+    eligibility = _clean_grantsgov_text(eligibility_raw)
+    if eligibility:
+        analysis.eligibility = eligibility
+        evidence["eligibility"] = eligibility
+
+    if evidence:
+        analysis.evidence = evidence
 
 
 def collect_auto_sources(
@@ -234,8 +331,9 @@ def _collect_grants_gov(
             continue
         seen_ids.add(opp_id)
 
-        # Fetch detail if configured
+        # Fetch detail if configured; keep the structured payload for field-specific normalization.
         detail_content = ""
+        details: Any = None
         if source.collection.get("detail_fetch", False) and opp_id:
             details = grantsgov_fetch_opportunity(opp_id)
             if details:
@@ -274,6 +372,7 @@ def _collect_grants_gov(
 
         try:
             analysis = analyze_document(doc)
+            _apply_grantsgov_structured_metadata(analysis, details, hit)
             result.opportunities.append((doc, analysis))
             result.records_valid += 1
         except Exception as e:
