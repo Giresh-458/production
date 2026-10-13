@@ -88,7 +88,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             {"RWA", "Stablecoins"},
         ),
         "Filecoin Grants and Funding": (
-            "https://github.com/filecoin-project/devgrants",
+            "https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md",
             {"DePIN"},
         ),
         "Flashbots MEV Research Grants": (
@@ -100,7 +100,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             {"ESG"},
         ),
         "NSF CPS Foundations and Connected Communities": (
-            "https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities",
+            "https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation",
             {"ZK-IoV"},
         ),
         "I-DAPT Hub Cyber-Physical Systems Calls": (
@@ -125,6 +125,28 @@ def test_idapt_config_enables_bounded_docx_document_collection():
     # Recent live diagnostics discovered 12 URLs on this source. Keep a finite
     # budget but allow the discovered frontier to be inspected after fixing DOCX.
     assert 12 <= discovery["max_pages"] <= 30
+
+
+def test_filecoin_source_uses_the_official_open_grants_program_page():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    expected_url = (
+        "https://github.com/filecoin-project/devgrants/blob/master/"
+        "Program%20Resources/Open%20Grants%20README.md"
+    )
+    entry = by_name["Filecoin Grants and Funding"]
+    assert entry["url"] == expected_url
+    collection = entry["collection"]
+    assert collection["mode"] == "web"
+    discovery = collection["discovery"]
+    assert discovery["start_urls"] == [expected_url]
+    assert discovery["max_pages"] == 1
+    assert discovery["follow_detail_pages"] is False
+
+
+def test_near_page_budget_is_larger_than_the_previous_exhausted_cap():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
+    assert discovery["max_pages"] == 15
 
 
 def test_broad_unscoped_portals_are_not_funding_roots():
