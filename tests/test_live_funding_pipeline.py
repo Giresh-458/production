@@ -129,7 +129,7 @@ def test_official_filecoin_open_grants_welcome_language_is_a_live_call():
     )
     document = FundingDocument(
         organization="Filecoin Grants and Funding",
-        title="Open Grants README.md at master · filecoin-project/devgrants · GitHub",
+        title="Open Grants",
         source=(
             "https://github.com/filecoin-project/devgrants/blob/master/"
             "Program%20Resources/Open%20Grants%20README.md"
@@ -162,8 +162,8 @@ def test_filecoin_open_grants_pass_strict_gate_with_depin_evidence():
     )
     doc = FundingDocument(
         organization="Filecoin Grants and Funding",
-        title="Open Grants README.md at master · filecoin-project/devgrants · GitHub",
-        source="https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md",
+        title="Open Grants",
+        source="https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md",
         source_type="html",
         content=content,
         year=2026,
@@ -209,7 +209,7 @@ def test_rolling_mev_grant_language_survives_funding_extraction():
     document = FundingDocument(
         organization="Flashbots MEV Research Grants",
         title="MEV Fellowship Grants",
-        source="https://github.com/flashbots/mev-research/blob/main/grants.md",
+        source="https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
         source_type="html",
         content=(
             "MEV Fellowship Grants. The MEV fellowship supports research on MEV. "
