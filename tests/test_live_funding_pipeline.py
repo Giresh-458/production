@@ -131,7 +131,7 @@ def test_official_filecoin_open_grants_welcome_language_is_a_live_call():
         organization="Filecoin Grants and Funding",
         title="Open Grants",
         source=(
-            "https://github.com/filecoin-project/devgrants/blob/master/"
+            "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
             "Program%20Resources/Open%20Grants%20README.md"
         ),
         source_type="html",
@@ -213,7 +213,7 @@ def test_rolling_mev_grant_language_survives_funding_extraction():
         source_type="html",
         content=(
             "MEV Fellowship Grants. The MEV fellowship supports research on MEV. "
-            "The grant is a total of $15k. No, grant fellows are accepted on a "
+            "The grant is a total of $15k. There is no deadline; fellows are accepted on a "
             "rolling basis. Submit a research proposal describing the approach. "
             "A research blog post or academic paper is an expected deliverable."
         ),
