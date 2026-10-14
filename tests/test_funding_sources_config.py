@@ -196,15 +196,25 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert solana.get("direct_page") is True
     assert solana["url"] == "https://solana.org/grants-funding"
     assert any("/news/" in pattern for pattern in solana["collection"]["discovery"]["exclude_url_patterns"])
+    assert "airtable.com" in solana["collection"]["allowed_domains"]
 
-    near = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
+    near_entry = by_name["NEAR Ecosystem Funding"]
+    near = near_entry["collection"]["discovery"]
     assert near["max_pages"] == 20
     assert near["exclude_url_patterns"]
+    assert "nearn.io" in near_entry["collection"]["allowed_domains"]
+    assert "app.potlock.org" in near_entry["collection"]["allowed_domains"]
+    assert "https://nearn.io/devhub/" in near["start_urls"]
+    assert "https://app.potlock.org/pots" in near["start_urls"]
 
     xrpl = by_name["XRPL Grants Program"]["collection"]
     assert {"xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
     assert xrpl["discovery"]["max_depth"] == 1
     assert xrpl["discovery"]["max_pages"] == 10
+    xrpl_discovery = xrpl["discovery"]
+    assert "https://brinc.io/xrpl-program" in xrpl_discovery["start_urls"]
+    assert "https://www.tenity.com/program/sfiip-2026/" in xrpl_discovery["start_urls"]
+    assert any("awardees" in pattern for pattern in xrpl_discovery["exclude_url_patterns"])
 
     climate_pitch = by_name["Climate Pitch Climate-Tech Grants"]
     assert climate_pitch["url"] == "https://climatepitch.org/"
