@@ -253,3 +253,6 @@ sources:
         follow_pdfs: true
         follow_documents: true
         pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
