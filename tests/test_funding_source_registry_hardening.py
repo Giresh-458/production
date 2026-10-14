@@ -24,7 +24,7 @@ def _funding_sources():
 def test_funding_registry_uses_current_domain_scoped_program_pages():
     sources = dict(_funding_sources())
 
-    assert sources['Chainlink Grants'] == 'https://chain.link/community/grants'
+    assert sources['Chainlink Build Program Status'] == 'https://chain.link/blog/build-program-evolution'
     assert sources['Filecoin Grants and Funding'] == 'https://github.com/filecoin-project/devgrants'
     assert sources['Flashbots MEV Research Grants'] == 'https://github.com/flashbots/mev-research/blob/main/grants.md'
     assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/home/'
