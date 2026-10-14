@@ -425,9 +425,10 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
         return []
 
     pattern = re.compile(
-        r'(?<!!)\\[([^]\\n]{1,300})\\]\\(\\s*(?:<([^>]+)>|([^\\s)]+))'
-        r'(?:\\s+"[^"]*")?\\s*\\)'
+        r'(?<!!)\[([^\n]{1,300}?)\]\(\s*(?:<([^>]+)>|([^\s)]+))'
+        r'(?:\s+"[^"]*")?\s*\)'
     )
+
     links: list[dict] = []
     seen: set[str] = set()
     excluded_assets = (".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf")
