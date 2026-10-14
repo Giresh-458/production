@@ -1059,3 +1059,43 @@ def test_near_listing_roots_are_hubs_and_child_urls_are_discoverable():
     assert _classify_link_stage_a("https://nearn.io/devhub/123", "", "") >= 0.4
     assert _classify_link_stage_a("https://app.potlock.org/campaign/91", "", "") >= 0.4
 
+
+def test_markdown_links_are_extracted_when_js_cards_have_no_html_anchors():
+    from core.crawl4ai_web import _extract_markdown_links
+
+    markdown = (
+        "Build for Breakpoint: Agentic Grants\n"
+        "[Build for Breakpoint: Agentic Grants]"
+        "(https://superteam.fun/earn/grants/build-for-breakpoint-agentic/)\n"
+        "[Agentic Engineering Grants](/earn/grants/agentic-engineering/)\n"
+    )
+    links = _extract_markdown_links(
+        markdown, "https://superteam.fun/earn/opportunities/development-grants/"
+    )
+    urls = {item["url"] for item in links}
+
+    assert "https://superteam.fun/earn/grants/build-for-breakpoint-agentic/" in urls
+    assert "https://superteam.fun/earn/grants/agentic-engineering/" in urls
+    assert all("anchor_text" in item and "surrounding_text" in item for item in links)
+
+
+def test_if_awarded_boilerplate_does_not_mean_a_funded_project():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "Any breach may result in rejection of my application or "
+        "revocation of the fellowship, if awarded."
+    )
+    assert determine_status(
+        None, None, None, content, "CHANAKYA UG Fellowship I"
+    ) == "UNKNOWN"
+
+
+def test_explicit_past_tense_award_can_still_identify_funded_project():
+    from agents.funding_agent import determine_status
+
+    assert determine_status(
+        None, None, None, "The fellowship was awarded in September 2026.",
+        "CHANAKYA UG Fellowship I"
+    ) == "FUNDED_PROJECT"
+
