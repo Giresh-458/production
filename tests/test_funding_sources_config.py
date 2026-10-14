@@ -217,7 +217,10 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         assert discovery.get("max_pages") is not None, (
             f"{entry.get('name')} is missing a configured page cap"
         )
-        assert 1 <= int(discovery["max_pages"]) <= 30
+        # Solana's live Superteam frontier exceeded 30 pages; keep its higher
+        # cap an explicit source-specific exception. All other web sources stay <=30.
+        page_cap = 60 if entry.get("name") == "Solana Grants and Funding" else 30
+        assert 1 <= int(discovery["max_pages"]) <= page_cap
         assert 0 <= int(discovery.get("max_depth", 0)) <= 4
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
@@ -239,7 +242,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "superteam.fun" in solana["collection"]["allowed_domains"]
     solana_discovery = solana["collection"]["discovery"]
     assert "https://superteam.fun/earn/opportunities/development-grants/" in solana_discovery["start_urls"]
-    assert solana_discovery["max_pages"] == 30
+    assert solana_discovery["max_pages"] == 60
     import re
     legacy_superteam_url = "https://earn.superteam.fun/grants/?utm_medium=em&utm_content=161969574&utm_source=hs_automation"
     assert any(
