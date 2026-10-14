@@ -959,6 +959,22 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     if hard_closed or normalized_explicit == "CLOSED_CALL":
         return "CLOSED_CALL"
 
+    # Individual Superteam listings expose a structured badge such as
+    # "Grant | Open | UK". Trust that badge only when the extracted title itself
+    # identifies a specific call, not when a broad listing contains many cards.
+    normalized_title = re.sub(r"\s+", " ", str(title or "").lower()).strip().rstrip(" .:-")
+    title_has_call_identity = bool(re.search(
+        r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+        normalized_title,
+    ))
+    open_listing_badge = bool(re.search(
+        r"\b(?:grant|fellowship)\s*\|\s*open\s*\|\s*[a-z][a-z-]*\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
+    if open_listing_badge and title_has_call_identity and normalized_title not in GENERIC_PAGE_TITLES:
+        return "OPEN_CALL"
+
     if opening_dt and opening_dt > now:
         return "UPCOMING_CALL"
     if normalized_explicit == "UPCOMING_CALL":
