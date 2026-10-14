@@ -39,7 +39,6 @@ sources:
   - name: Chainlink Grants
     research_domains: [RWA, Stablecoins]
     url: https://chain.link/community/grants
-    direct_page: true
     focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
     collection:
       mode: web
