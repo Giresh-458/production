@@ -478,6 +478,18 @@ def test_superteam_grant_directories_are_traversal_roots_not_opportunities():
 
 
 
+def test_paused_applications_override_rolling_acceptance_language():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "Grant fellows are accepted on a rolling basis. "
+        "Applications Paused."
+    )
+    assert determine_status(
+        None, None, None, content, "Agentic Engineering Grants"
+    ) == "CLOSED_CALL"
+
+
 def test_fresh_application_closure_overrides_anytime_submission_language():
     from agents.funding_agent import determine_status
 
