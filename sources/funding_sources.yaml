@@ -267,3 +267,5 @@ sources:
         # This navigation target is stale (HTTP 404), not an application call.
         exclude_url_patterns:
           - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
