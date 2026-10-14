@@ -186,3 +186,24 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         )
         assert 1 <= int(discovery["max_pages"]) <= 30
         assert 0 <= int(discovery.get("max_depth", 0)) <= 4
+
+def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
+    by_name = {entry["name"]: entry for entry in _entries()}
+
+    solana = by_name["Solana Grants and Funding"]
+    assert solana.get("direct_page") is True
+    assert solana["url"] == "https://solana.org/grants-funding"
+    assert any("/news/" in pattern for pattern in solana["collection"]["discovery"]["exclude_url_patterns"])
+
+    near = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
+    assert near["max_pages"] == 20
+    assert near["exclude_url_patterns"]
+
+    xrpl = by_name["XRPL Grants Program"]["collection"]
+    assert {"xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
+    assert xrpl["discovery"]["max_depth"] == 1
+    assert xrpl["discovery"]["max_pages"] == 10
+
+    climate_pitch = by_name["Climate Pitch Climate-Tech Grants"]
+    assert climate_pitch["url"] == "https://climatepitch.org/"
+    assert climate_pitch["collection"]["discovery"]["start_urls"] == ["https://climatepitch.org/"]
