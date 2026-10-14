@@ -217,7 +217,7 @@ def collect_auto_sources(
         test_source_names = [
             "Grants.gov Public Opportunities API", 
             "Filecoin Grants and Funding", 
-            "Chainlink Grants", 
+            "Chainlink Build Program Status", 
             "NSF Cyber Physical and Intelligent Systems",
             "Ethereum ESP RFPs",
         ]
