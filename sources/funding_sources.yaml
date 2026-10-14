@@ -73,11 +73,12 @@ sources:
       discovery:
         start_urls:
         - https://solana.org/grants-funding
-        # The Superteam portal moved to superteam.fun. Prefer its current grant directory
-        # over the dead legacy /earn/grants route exposed by older navigation links.
+        # Keep the current directory as a bounded seed. Some old navigation links still
+        # point to the broad earn.superteam.fun/grants/ listing; skip that hub while retaining
+          - '^https?://earn\\.superteam\\.fun/(?:earn/)?grants/?(?:[?#].*)?$'
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 20
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
