@@ -166,6 +166,7 @@ class FundingSource:
     focus: str = ""
     collection: dict = field(default_factory=dict)
     research_domains: list[str] = field(default_factory=list)
+    direct_page: bool = False
 
 
 @dataclass(slots=True)
@@ -418,6 +419,11 @@ def load_sources(sources_path: Path) -> list[FundingSource]:
             url = cleaned_text(str(entry.get("url", "")))
             focus = cleaned_text(str(entry.get("focus", "")))
             collection = entry.get("collection", {})
+            raw_direct_page = entry.get("direct_page", False)
+            if not isinstance(raw_direct_page, bool):
+                raise FundingAgentError(
+                    f"Funding source '{name or url}' has invalid direct_page; expected a boolean."
+                )
             raw_domains = entry.get("research_domains", [])
             if raw_domains is None:
                 raw_domains = []
@@ -442,6 +448,7 @@ def load_sources(sources_path: Path) -> list[FundingSource]:
                     focus=focus,
                     collection=collection,
                     research_domains=research_domains,
+                    direct_page=raw_direct_page,
                 ))
     if not sources:
         raise FundingAgentError("No funding sources were loaded from sources/funding_sources.yaml.")
@@ -918,8 +925,13 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         if normalized in {"FUNDED_PROJECT", "CLOSED_CALL", "UPCOMING_CALL", "OPEN_CALL", "GENERAL_FUNDING_PROGRAM", "FUNDING_NEWS"}:
             return normalized
     lowered = re.sub(r"\s+", " ", (content or "").lower())
-    if any(x in lowered for x in ("awarded", "selected projects", "fund recipients", "startups selected", "grant recipients")) and not any(x in lowered for x in ("applications are open", "now accepting applications")):
-        return "FUNDED_PROJECT"
+    # Programme pages may mention recipients as part of the process while also
+    # carrying current-call evidence. Defer this fallback until dates and
+    # acceptance language have been checked.
+    funded_project_hint = any(
+        phrase in lowered
+        for phrase in ("awarded", "selected projects", "fund recipients", "startups selected", "grant recipients")
+    )
 
     opening_dt = _parse_date(opening)
     deadline_dt = _parse_date(deadline, end_of_day=True)
@@ -943,6 +955,11 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         lowered,
         flags=re.IGNORECASE,
     ))
+    rolling_review_with_application = bool(re.search(
+        r"\bapplications? (?:are )?reviewed on a rolling basis\b",
+        lowered,
+        flags=re.IGNORECASE,
+    )) and bool(_extract_application_url(content))
     open_grants_applications_welcome = bool(re.search(
         r"\bopen grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome\b",
         lowered,
@@ -952,11 +969,17 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         phrase in lowered or phrase in str(title or "").lower()
         for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal")
     )
-    if (rolling_acceptance or open_grants_applications_welcome) and grant_or_call_signal:
+    if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
 
-    explicit_open = any(x in lowered for x in ("applications are open", "applications are now open", "now accepting applications", "accepting applications now", "open for applications", "call is open", "rfp is open"))
-    call_signal = sum(1 for x in ("request for proposals", "call for proposals", "call for applications", "rfp", "application deadline", "submission deadline", "apply now", "submit a proposal", "invite you", "invite applications", "application link", "apply for") if x in lowered)
+    explicit_open = bool(re.search(
+        r"\b(?:applications? (?:are )?now open|applications? are open|now accepting applications|"
+        r"accepting applications now|currently accepting applications|open for applications|"
+        r"call is open|rfp is open)\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
+    call_signal = sum(1 for x in ("request for proposals", "call for proposals", "call for applications", "rfp", "application deadline", "submission deadline", "apply now", "submit a proposal", "invite you", "invite applications", "application link", "application form", "apply for") if x in lowered)
     if explicit_open and call_signal >= 1:
         status = "OPEN_CALL"
     elif call_signal >= 2 and (explicit_open or ("application link" in lowered and any(x in lowered for x in ("apply for", "apply now", "submit")))):
@@ -976,6 +999,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         if is_generic and not deadline_dt and not explicit_status:
             return "UNKNOWN"
             
+    if status == "UNKNOWN" and funded_project_hint:
+        return "FUNDED_PROJECT"
     return status
 
 
@@ -1095,6 +1120,7 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 def _extract_program_name(text: str, fallback: str) -> str:
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
+        r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
         r"(?im)^\s*#{1,3}\s*(Open Grants?)\s*$",
         r"participate in\s+(.{3,140}?)(?:,\s*an initiative|,\s*a program)",
         r"About\s+([A-Z][A-Za-z0-9 .&()\-]{2,120})(?:\n|$)",
@@ -1191,7 +1217,14 @@ def _extract_application_url(text: str) -> str | None:
             "new issue" in label
             and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
         )
-        if is_application_label or is_grant_issue_template:
+        # Some official pages label the endpoint "here"; the preceding sentence
+        # can still identify that link as the application endpoint.
+        is_contextual_application_link = bool(re.search(
+            r"\b(?:application|apply|submit|submission)\b[^.!?\n]{0,100}$",
+            before,
+            flags=re.IGNORECASE,
+        ))
+        if is_application_label or is_grant_issue_template or is_contextual_application_link:
             return match.group(2).rstrip(".,")
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
@@ -1444,7 +1477,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
 
     program_name = _extract_program_name(document.content, document.title)
     status = determine_status(None, opening_date, deadline, document.content, program_name)
-    opp_type = "FUNDED_PROJECT" if "awarded" in lowered or "selected projects" in lowered else "FUNDING_CALL"
+    opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)
     application_url = _extract_application_url(document.content)
@@ -1473,6 +1506,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     evidence = {
         "status": _evidence_excerpt(document.content, [
             r"applications? (?:are|now) open",
+            r"applications? (?:are )?reviewed on a rolling basis",
             r"open for applications",
             r"applications? can be submitted at any time",
             r"applications? (?:are )?accepted on a rolling basis",
@@ -1914,6 +1948,7 @@ def _funding_sources_fingerprint(
                 "focus": source.focus,
                 "collection": source.collection,
                 "research_domains": source.research_domains,
+                "direct_page": source.direct_page,
             }
             for source in sources
         ],
