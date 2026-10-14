@@ -99,8 +99,8 @@ sources:
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
         max_depth: 3
-        # The previous live batch hit this cap exactly (8 pages) and was marked PARTIAL.
-        # Increase the bounded budget to allow more of the configured source frontier to be inspected.
+        # The previous live run exhausted 20 pages and was marked PARTIAL.
+        # URL exclusions and targeted portals should reduce waste before raising this cap.
         max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
