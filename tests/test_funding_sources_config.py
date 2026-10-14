@@ -235,11 +235,17 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "superteam.fun" in solana["collection"]["allowed_domains"]
     solana_discovery = solana["collection"]["discovery"]
     assert "https://superteam.fun/earn/opportunities/development-grants/" in solana_discovery["start_urls"]
-    assert solana_discovery["max_pages"] == 20
+    assert solana_discovery["max_pages"] == 30
     import re
-    legacy_superteam_url = "https://earn.superteam.fun/earn/grants"
+    legacy_superteam_url = "https://earn.superteam.fun/grants/?utm_medium=em&utm_content=161969574&utm_source=hs_automation"
     assert any(
         re.search(pattern, legacy_superteam_url)
+        for pattern in solana_discovery["exclude_url_patterns"]
+    )
+    # Exclude only the broad listing route, not individual opportunity pages.
+    individual_grant_url = "https://superteam.fun/earn/grants/solana-foundation-india-grants/"
+    assert not any(
+        re.search(pattern, individual_grant_url)
         for pattern in solana_discovery["exclude_url_patterns"]
     )
 
