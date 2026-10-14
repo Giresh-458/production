@@ -1874,6 +1874,23 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
     return created
 
 
+def _format_collection_error(error: Any) -> str:
+    """Format one source-collection error for actionable CLI diagnostics."""
+    if isinstance(error, dict):
+        operation = str(error.get("operation") or "collection")
+        url = str(error.get("url") or "")
+        reason = str(error.get("error") or error.get("reason") or "Unknown error")
+        parts = [operation]
+        if url:
+            parts.append(url)
+        if reason:
+            parts.append(reason)
+        message = " | ".join(parts)
+    else:
+        message = str(error)
+    return message if len(message) <= 600 else message[:597] + "..."
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Collect and structure funding opportunities for RIF.")
     parser.add_argument("--mode", choices=["auto", "url", "text"], required=True, help="Input mode")
@@ -1910,23 +1927,37 @@ def main() -> int:
             if "collection_results" in response:
                 print("\nCollection Metrics:")
                 header = (
-                    f"{'Source':<35} | {'Method':<6} | {'Pages':<5} | {'Detail':<6} | "
-                    f"{'Docs':<4} | {'Disc':<5} | {'Valid':<5} | {'Fail':<4} | "
-                    f"{'PagComplete':<11} | {'Trunc':<5} | {'Status':<25}"
+                    f"{'Source':<35} | {'Method':<6} | {'Pages':<5} | {'PgFail':<6} | "
+                    f"{'Detail':<6} | {'Docs':<4} | {'DocFail':<7} | {'Disc':<5} | "
+                    f"{'Valid':<5} | {'RecFail':<7} | {'PagComplete':<11} | "
+                    f"{'Trunc':<5} | {'Errs':<4} | {'Status':<25}"
                 )
                 print(header)
                 print("-" * len(header))
-                for res in response["collection_results"]:
+                collection_results = response["collection_results"]
+                for res in collection_results:
                     pag_str = str(res['pagination_complete']) if res.get('pagination_detected', True) else "N/A"
+                    errors = res.get("errors") or []
                     print(
                         f"{res['source_id'][:35]:<35} | {res['method']:<6} | "
-                        f"{res['pages_fetched']:<5} | {res['detail_pages_fetched']:<6} | "
-                        f"{res['documents_fetched']:<4} | {res['records_discovered']:<5} | "
-                        f"{res['records_valid']:<5} | {res['records_failed']:<4} | "
-                        f"{pag_str:<11} | {str(res['truncated']):<5} | "
-                        f"{res['final_status']:<25}"
+                        f"{res.get('pages_fetched', 0):<5} | {res.get('pages_failed', 0):<6} | "
+                        f"{res.get('detail_pages_fetched', 0):<6} | "
+                        f"{res.get('documents_fetched', 0):<4} | {res.get('documents_failed', 0):<7} | "
+                        f"{res.get('records_discovered', 0):<5} | {res.get('records_valid', 0):<5} | "
+                        f"{res.get('records_failed', 0):<7} | {pag_str:<11} | "
+                        f"{str(res.get('truncated', False)):<5} | {len(errors):<4} | "
+                        f"{res.get('final_status', 'UNKNOWN'):<25}"
                     )
-                    
+                for res in collection_results:
+                    errors = res.get("errors") or []
+                    if not errors:
+                        continue
+                    print(f"\nCollection errors — {res['source_id']} ({len(errors)}):")
+                    for index, error in enumerate(errors[:5], start=1):
+                        print(f"  {index}. {_format_collection_error(error)}")
+                    if len(errors) > 5:
+                        print(f"  ... {len(errors) - 5} additional error(s) omitted")
+
         elif args.mode == "url":
             if not args.url:
                 parser.error("--url is required for mode=url")
