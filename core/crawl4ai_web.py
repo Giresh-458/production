@@ -373,10 +373,33 @@ def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
     action_hits = sum(1 for s in action_signals if s in combined)
     context_hits = sum(1 for s in context_signals if s in combined)
     
+    # Superteam Earn's individual grant pages are structured opportunity records.
+    # Some (including paused calls) lack generic action phrases, so retain them when
+    # both the URL and title identify a specific grant and the page has funding context.
+    # The generic category hub is excluded earlier by _is_generic_funding_hub.
+    parsed_url = urlparse(url_lower)
+    origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    path = parsed_url.path.rstrip("/")
+    title_identity = re.split(r"\s+[|·]\s+", (title or "").lower(), maxsplit=1)[0].strip().rstrip(" .:-")
+    generic_titles = {
+        "grant", "grants", "funding", "funding opportunities",
+        "grants and funding", "funding and grants",
+    }
+    is_superteam_detail = (
+        origin in {"https://superteam.fun", "https://www.superteam.fun"}
+        and bool(re.fullmatch(r"/earn/grants/[^/]+", path))
+    )
+    has_specific_grant_title = (
+        title_identity not in generic_titles
+        and bool(re.search(r"\b(?:grant|grants|funding|fellowship|bounty|challenge)\b", title_identity))
+    )
+    if is_superteam_detail and has_specific_grant_title and context_hits >= 1:
+        return True
+
     if is_hub:
         # A hub needs strong proof to be classified as a detail opportunity
         return action_hits >= 3 and context_hits >= 2
-        
+
     # Detail page needs both context and some actionable requirement language
     return action_hits >= 1 and context_hits >= 2
 
