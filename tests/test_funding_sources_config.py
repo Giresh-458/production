@@ -137,7 +137,7 @@ def test_idapt_stale_awards_navigation_route_is_excluded():
 def test_filecoin_source_uses_the_official_open_grants_program_page():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected_url = (
-        "https://github.com/filecoin-project/devgrants/blob/master/"
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
     entry = by_name["Filecoin Grants and Funding"]
@@ -148,8 +148,6 @@ def test_filecoin_source_uses_the_official_open_grants_program_page():
     assert discovery["start_urls"] == [expected_url]
     assert discovery["max_pages"] == 1
     assert discovery["follow_detail_pages"] is False
-
-
 
 
 def test_github_markdown_sources_use_bounded_raw_content_endpoints():
