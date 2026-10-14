@@ -985,7 +985,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # identifies a specific call, not when a broad listing contains many cards.
     normalized_title = re.sub(r"\s+", " ", str(title or "").lower()).strip().rstrip(" .:-")
     title_has_call_identity = bool(re.search(
-        r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+        r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
         normalized_title,
     ))
     open_listing_badge = bool(re.search(
@@ -1197,7 +1197,7 @@ def _extract_program_name(text: str, fallback: str) -> str:
     title = re.sub(r"\s*[|–-]\s*(?:Ethereum Foundation|ESP|Ecosystem Support Program).*$", "", title, flags=re.IGNORECASE)
     normalized_title = title.lower().rstrip(" .:-")
     title_has_call_identity = bool(re.search(
-        r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+        r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
         normalized_title,
     ))
     if normalized_title not in GENERIC_PAGE_TITLES and title_has_call_identity and len(title) <= 180:
@@ -1213,7 +1213,7 @@ def _extract_program_name(text: str, fallback: str) -> str:
         if not candidate or normalized in GENERIC_PAGE_TITLES:
             continue
         if re.search(
-            r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+            r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
             candidate,
             flags=re.IGNORECASE,
         ):
