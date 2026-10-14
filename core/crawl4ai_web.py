@@ -276,13 +276,7 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     # XRPL's home page is a multi-program directory. Its current-looking
     # headline can conflict with linked application pages whose deadlines have
     # passed, so verify each linked programme instead of normalizing the hub.
-    if (
-        origin == "https://xrplgrants.org"
-        and path in {"", "/"}
-        and "applications now open for fall accelerator programs" in combined
-        and "brinc hong kong financial innovation program" in combined
-        and "tenity singapore financial infrastructure innovation program" in combined
-    ):
+    if origin == "https://xrplgrants.org" and path in {"", "/"}:
         return True
     # Awardee listings are historical output, not individual application calls.
     if origin == "https://xrplgrants.org" and path == "/awardees":
