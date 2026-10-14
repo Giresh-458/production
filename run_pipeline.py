@@ -247,7 +247,7 @@ def get_all_open_funding_calls(
 
         explicit_status_text = str(evidence.get("status") or "") if isinstance(evidence, dict) else ""
         explicit_open_language = bool(re.search(
-            r"\b(?:applications? (?:are|now) open|now accepting applications|"
+            r"\b(?:applications? (?:are|now) open|applications? (?:are )?reviewed on a rolling basis|now accepting applications|"
             r"accepting applications now|open for applications|call is open|"
             r"rfp is open|currently accepting applications|"
             r"open grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome|"
