@@ -207,3 +207,33 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     climate_pitch = by_name["Climate Pitch Climate-Tech Grants"]
     assert climate_pitch["url"] == "https://climatepitch.org/"
     assert climate_pitch["collection"]["discovery"]["start_urls"] == ["https://climatepitch.org/"]
+
+def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from agents.funding_agent import load_sources, _funding_sources_fingerprint
+
+    catalogue = {
+        "sources": {
+            "tier_1": [{
+                "name": "Explicit Direct Program",
+                "url": "https://example.com/grants",
+                "direct_page": True,
+                "research_domains": ["DePIN"],
+                "collection": {
+                    "mode": "web",
+                    "discovery": {"start_urls": ["https://example.com/grants"], "max_depth": 0, "max_pages": 1},
+                },
+            }]
+        }
+    }
+    path = tmp_path / "funding_sources.yaml"
+    path.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+    monkeypatch.setattr("agents.funding_agent.apply_refresh_policy", lambda _agent, sources: sources)
+
+    sources = load_sources(path)
+    assert len(sources) == 1
+    assert sources[0].direct_page is True
+    assert _funding_sources_fingerprint(sources) != _funding_sources_fingerprint(
+        [replace(sources[0], direct_page=False)]
+    )
