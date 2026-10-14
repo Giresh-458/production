@@ -1037,3 +1037,25 @@ def test_non_2xx_http_response_is_a_fetch_failure_even_if_browser_says_success()
     assert result.final_status == "FAIL"
     assert result.opportunities == []
 
+
+def test_near_listing_roots_are_hubs_and_child_urls_are_discoverable():
+    from core.crawl4ai_web import _classify_link_stage_a, _is_generic_funding_hub
+
+    assert _is_generic_funding_hub(
+        "https://nearn.io/devhub/",
+        "NEAR DevHub Opportunities | NEARN",
+        "Earning Opportunities. Open In Review Completed.",
+    )
+    assert _is_generic_funding_hub(
+        "https://app.potlock.org/campaigns",
+        "POTLOCK",
+        "Fund ideas, people, projects. Campaigns.",
+    )
+    assert _is_generic_funding_hub(
+        "https://app.potlock.org/pots",
+        "POTLOCK",
+        "Explore Pots. Active Pots 0. No results.",
+    )
+    assert _classify_link_stage_a("https://nearn.io/devhub/123", "", "") >= 0.4
+    assert _classify_link_stage_a("https://app.potlock.org/campaign/91", "", "") >= 0.4
+
