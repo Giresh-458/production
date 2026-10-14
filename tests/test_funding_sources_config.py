@@ -96,7 +96,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             {"MEV"},
         ),
         "Climate Pitch Climate-Tech Grants": (
-            "https://climatepitch.org/home/",
+            "https://climatepitch.org/",
             {"ESG"},
         ),
         "NSF CPS Foundations and Connected Communities": (
