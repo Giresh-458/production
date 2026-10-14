@@ -190,6 +190,8 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     by_name = {entry["name"]: entry for entry in _entries()}
 
+    assert by_name["Chainlink Grants"].get("direct_page", False) is False
+
     solana = by_name["Solana Grants and Funding"]
     assert solana.get("direct_page") is True
     assert solana["url"] == "https://solana.org/grants-funding"
