@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from agents.funding_agent import determine_status, extract_call_dates
+from agents.funding_agent import _format_collection_error, determine_status, extract_call_dates
 from run_pipeline import get_all_open_funding_calls
 
 
@@ -303,4 +303,19 @@ def test_explicit_funded_status_does_not_hide_verified_rolling_application():
     assert determine_status(
         "FUNDED_PROJECT", None, None, content, "Research Grant"
     ) == "OPEN_CALL"
+
+
+def test_collection_error_formatter_exposes_operation_url_and_reason():
+    error = {
+        "operation": "page_fetch",
+        "url": "https://chain.link/community/grants",
+        "error": "HTTP 404",
+    }
+    assert _format_collection_error(error) == (
+        "page_fetch | https://chain.link/community/grants | HTTP 404"
+    )
+    assert _format_collection_error("robots.txt disallows this URL") == (
+        "robots.txt disallows this URL"
+    )
+    assert len(_format_collection_error({"error": "x" * 700})) <= 600
 
