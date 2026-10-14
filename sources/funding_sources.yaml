@@ -75,7 +75,7 @@ sources:
         - https://solana.org/grants-funding
         # Keep the current directory as a bounded seed. Some old navigation links still
         # point to the broad earn.superteam.fun/grants/ listing; skip that hub while retaining
-          - '^https?://earn\\.superteam\\.fun/(?:earn/)?grants/?(?:[?#].*)?$'
+        # individual listings under superteam.fun/earn/grants/<slug>.
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
         max_pages: 30
@@ -84,7 +84,7 @@ sources:
         pagination: true
         exclude_url_patterns:
           - '^https?://solana\.com/news/'
-          - '^https?://earn\.superteam\.fun/earn/grants/?(?:[?#].*)?$'
+          - '^https?://earn\.superteam\.fun/(?:earn/)?grants/?(?:[?#].*)?$'
           - '^https?://superteam\.fun/earn/grants/?(?:[?#].*)?$'
   tier_2:
   - name: NEAR Ecosystem Funding
