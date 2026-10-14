@@ -127,11 +127,15 @@ def test_idapt_config_enables_bounded_docx_document_collection():
     assert 12 <= discovery["max_pages"] <= 30
 
 
-def test_idapt_stale_awards_navigation_route_is_excluded():
+def test_idapt_stale_awards_and_historical_fellows_are_excluded():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]["collection"]["discovery"]
     patterns = discovery.get("exclude_url_patterns", [])
     assert any("idapthub" in pattern and "/awards" in pattern for pattern in patterns)
+
+    import re
+    historical_fellows_url = "https://idapthub.org/portfolio/chanakya_fellowships"
+    assert any(re.search(pattern, historical_fellows_url) for pattern in patterns)
 
 
 def test_filecoin_source_uses_the_official_open_grants_program_page():
