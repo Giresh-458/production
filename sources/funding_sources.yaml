@@ -98,7 +98,8 @@ sources:
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
-        max_depth: 3
+        # Explicit portal roots allow shallow traversal to current individual calls.
+        max_depth: 2
         # The previous live run exhausted 20 pages and was marked PARTIAL.
         # URL exclusions and targeted portals should reduce waste before raising this cap.
         max_pages: 20
