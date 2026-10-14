@@ -446,3 +446,32 @@ def test_collection_error_formatter_exposes_operation_url_and_reason():
     )
     assert len(_format_collection_error({"error": "x" * 700})) <= 600
 
+
+
+def test_superteam_grant_directories_are_traversal_roots_not_opportunities():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_generic_funding_hub
+
+    samples = [
+        (
+            "https://superteam.fun/earn/opportunities/development-grants/",
+            "Development Grants | Superteam Earn",
+            "Browse development grants and funding opportunities. Apply for a grant. "
+            "View grants, deadlines, eligibility and application instructions.",
+        ),
+        (
+            "https://earn.superteam.fun/grants/?utm_source=hs_automation",
+            "Grants | Superteam Earn",
+            "Browse grants and funding opportunities. Apply for grants. "
+            "View individual grant listings and their eligibility requirements.",
+        ),
+        (
+            "https://superteam.fun/earn/regions/india/",
+            "Welcome to Superteam Earn India",
+            "Browse opportunities and grants available to the Indian community. "
+            "Apply for grants and review individual listing details.",
+        ),
+    ]
+
+    for url, title, content in samples:
+        assert _is_generic_funding_hub(url, title, content)
+        assert not _classify_page_stage_b(url, title, content)
