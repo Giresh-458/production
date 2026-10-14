@@ -1099,3 +1099,41 @@ def test_explicit_past_tense_award_can_still_identify_funded_project():
         "CHANAKYA UG Fellowship I"
     ) == "FUNDED_PROJECT"
 
+
+
+def test_superteam_paused_grant_detail_is_retained_for_status_classification():
+    from core.crawl4ai_web import _classify_page_stage_b
+    from agents.funding_agent import determine_status
+
+    url = "https://superteam.fun/earn/grants/agentic-engineering"
+    title = "Agentic Engineering Grants | Superteam Earn"
+    content = (
+        "Grant\nGlobal\n$200 USDG cheque size\n"
+        "Apply on Superteam Earn with a clear description of your project.\n"
+        "Applications Paused"
+    )
+
+    assert _classify_page_stage_b(url, title, content) is True
+    assert determine_status(None, None, None, content, title) == "CLOSED_CALL"
+
+
+def test_open_superteam_listing_is_used_when_apply_cta_has_no_extracted_href():
+    from agents.funding_agent import _resolve_application_url
+
+    source_url = "https://superteam.fun/earn/grants/build-for-breakpoint"
+    content = (
+        "Build for Breakpoint: Agentic Grants\n"
+        "Applications: Sep 14 - Nov 14.\n"
+        "Apply Now"
+    )
+
+    assert _resolve_application_url(content, source_url, "OPEN_CALL") == source_url
+
+
+def test_closed_superteam_listing_does_not_get_an_active_application_url_fallback():
+    from agents.funding_agent import _resolve_application_url
+
+    source_url = "https://superteam.fun/earn/grants/agentic-engineering"
+    content = "Agentic Engineering Grants\nApplications Paused\nApply Now"
+
+    assert _resolve_application_url(content, source_url, "CLOSED_CALL") is None
