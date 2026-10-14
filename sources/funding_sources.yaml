@@ -78,7 +78,10 @@ sources:
         # individual listings under superteam.fun/earn/grants/<slug>.
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 30
+        # A live validation on 2026-10-14 reached 30/30 pages with the discovery queue
+        # still populated and 13 records found. Raise only this source's bounded cap so
+        # the current Superteam listing frontier can be inspected without masking truncation.
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
