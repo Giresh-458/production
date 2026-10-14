@@ -66,17 +66,23 @@ sources:
       - solana.org
       - solana.com
       - earn.superteam.fun
+      - superteam.fun
       - airtable.com
       discovery:
         start_urls:
         - https://solana.org/grants-funding
+        # The Superteam portal moved to superteam.fun. Prefer its current grant directory
+        # over the dead legacy /earn/grants route exposed by older navigation links.
+        - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 8
+        max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
           - '^https?://solana\.com/news/'
+          - '^https?://earn\.superteam\.fun/earn/grants/?(?:[?#].*)?$'
+          - '^https?://superteam\.fun/earn/grants/?(?:[?#].*)?$'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
