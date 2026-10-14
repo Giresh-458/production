@@ -99,6 +99,7 @@ FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]
 GENERIC_PAGE_TITLES = {
     "how to apply", "apply", "home", "overview", "open rounds",
     "request for proposals", "rpf", "funding", "grants", "programs",
+    "grants and funding", "development grants", "this listing", "yourself",
 }
 
 def extract_page_title(soup: Any, fallback: str) -> str:
@@ -947,6 +948,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             "not accepting new applications", "not accepting applications",
         )
     ) or bool(re.search(
+        r"\bnot accepting (?:any )?(?:new|fresh) applications\b",
+        lowered,
+        flags=re.IGNORECASE,
+    )) or bool(re.search(
         r"\b(?:currently|temporarily|is|are|remains?) paused\b",
         lowered,
         flags=re.IGNORECASE,
@@ -964,6 +969,22 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # Preserve a validated explicit open label only after date and closure
     # checks, not before them.
     if normalized_explicit == "OPEN_CALL":
+        return "OPEN_CALL"
+
+    # Individual Superteam listings expose a structured badge such as
+    # "Grant | Open | UK". Trust that badge only when the extracted title itself
+    # identifies a specific call, not when a broad listing contains many cards.
+    normalized_title = re.sub(r"\s+", " ", str(title or "").lower()).strip().rstrip(" .:-")
+    title_has_call_identity = bool(re.search(
+        r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+        normalized_title,
+    ))
+    open_listing_badge = bool(re.search(
+        r"\b(?:grant|fellowship)\s*\|\s*open\s*\|\s*[a-z][a-z-]*\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
+    if open_listing_badge and title_has_call_identity and normalized_title not in GENERIC_PAGE_TITLES:
         return "OPEN_CALL"
 
     funded_project_hint = any(
@@ -1165,7 +1186,31 @@ def _extract_program_name(text: str, fallback: str) -> str:
     title = cleaned_text(fallback)
     title = re.sub(r"^apply\s+for\s+", "", title, flags=re.IGNORECASE)
     title = re.sub(r"\s*[|–-]\s*(?:Ethereum Foundation|ESP|Ecosystem Support Program).*$", "", title, flags=re.IGNORECASE)
-    if title and title.lower().rstrip(" .:-") not in GENERIC_PAGE_TITLES and len(title) <= 180:
+    normalized_title = title.lower().rstrip(" .:-")
+    title_has_call_identity = bool(re.search(
+        r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+        normalized_title,
+    ))
+    if normalized_title not in GENERIC_PAGE_TITLES and title_has_call_identity and len(title) <= 180:
+        return title.rstrip(" .:-")
+
+    # Browser-rendered sites sometimes expose app-shell titles such as
+    # "this listing" while the actual record name is the page's Markdown H1.
+    # Prefer a specific H1 with explicit call/program language instead of saving
+    # a generic title or the organization's site-wide brand as the opportunity.
+    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
+        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
+        normalized = candidate.lower().rstrip(" .:-")
+        if not candidate or normalized in GENERIC_PAGE_TITLES:
+            continue
+        if re.search(
+            r"\b(?:grant|funding|call|fellowship|challenge|proposal|rfp|program|programme)\b",
+            candidate,
+            flags=re.IGNORECASE,
+        ):
+            return candidate
+
+    if title and normalized_title not in GENERIC_PAGE_TITLES and len(title) <= 180:
         return title.rstrip(" .:-")
     return title or fallback
 
@@ -1313,7 +1358,12 @@ def _application_evidence(text: str) -> str | None:
 def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int = 900) -> str | None:
     """Extract a bounded value from a labelled funding section without inventing text."""
     chunks = [cleaned_text(c) for c in re.split(r"\n+|(?<=[.!?])\s+", text) if cleaned_text(c)]
-    label_re = re.compile(r"(?:" + "|".join(re.escape(x) for x in labels) + r")\s*[:\-]?\s*(.+)$", re.I)
+    label_re = re.compile(
+        r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?(?:"
+        + "|".join(re.escape(x) for x in labels)
+        + r")\s*[:?\-]?\s*(.+)$",
+        re.I,
+    )
     hits: list[str] = []
     for chunk in chunks:
         m = label_re.search(chunk)

@@ -475,3 +475,61 @@ def test_superteam_grant_directories_are_traversal_roots_not_opportunities():
     for url, title, content in samples:
         assert _is_generic_funding_hub(url, title, content)
         assert not _classify_page_stage_b(url, title, content)
+
+
+
+def test_fresh_application_closure_overrides_anytime_submission_language():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "Call for Innovative and Entrepreneurial Research Projects. "
+        "Applications can be submitted at any time. "
+        "Important: I-DAPT-Hub Foundation is currently not accepting any fresh "
+        "applications for Research Projects and Post-Doctoral Chanakya Fellowships."
+    )
+    assert determine_status(
+        None, None, None, content,
+        "Call for Innovative and Entrepreneurial Research Projects",
+    ) == "CLOSED_CALL"
+
+
+def test_program_name_uses_specific_markdown_h1_over_generic_listing_title():
+    from agents.funding_agent import _extract_program_name
+
+    content = (
+        "[Grants](https://superteam.fun/earn/grants) "
+        "![grant](https://superteam.fun/assets/grant-icon.svg) Grant | Open | UK\n"
+        "# Build for Breakpoint: Agentic Grants\n"
+        "Applications: Sep 14 - Nov 14. Eligible applicants: United Kingdom."
+    )
+    assert _extract_program_name(content, "this listing") == "Build for Breakpoint: Agentic Grants"
+
+
+def test_section_extraction_ignores_incidental_geography_mentions():
+    from agents.funding_agent import _extract_section_value
+
+    incidental = (
+        "If none of these fit your needs by geography, sector, or vertical, "
+        "some of these options might suit you."
+    )
+    labels = ("geographic eligibility", "geography", "eligible countries", "eligible regions")
+    assert _extract_section_value(incidental, labels) is None
+    assert _extract_section_value("Geography: United Kingdom", labels) == "United Kingdom"
+
+
+
+def test_specific_open_grant_listing_badge_sets_open_status_without_guessing_dates():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "Grant | Open | UK. Applications: Sep 14 - Nov 14. "
+        "Approved builders receive 50% upfront and 50% once the demo is live."
+    )
+    assert determine_status(
+        None, None, None, content,
+        "Build for Breakpoint: Agentic Grants",
+    ) == "OPEN_CALL"
+
+    # The same badge can appear on a card inside a directory; a generic page title
+    # must not inherit an individual card's status.
+    assert determine_status(None, None, None, content, "Development Grants") == "UNKNOWN"
