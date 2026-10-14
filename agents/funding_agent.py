@@ -1925,7 +1925,7 @@ def main() -> int:
                 "is_test_mode": args.test
             })
             if "collection_results" in response:
-                print("\\nCollection Metrics:")
+                print("\nCollection Metrics:")
                 header = (
                     f"{'Source':<35} | {'Method':<6} | {'Pages':<5} | {'PgFail':<6} | "
                     f"{'Detail':<6} | {'Docs':<4} | {'DocFail':<7} | {'Disc':<5} | "
@@ -1952,7 +1952,7 @@ def main() -> int:
                     errors = res.get("errors") or []
                     if not errors:
                         continue
-                    print(f"\\nCollection errors — {res['source_id']} ({len(errors)}):")
+                    print(f"\nCollection errors — {res['source_id']} ({len(errors)}):")
                     for index, error in enumerate(errors[:5], start=1):
                         print(f"  {index}. {_format_collection_error(error)}")
                     if len(errors) > 5:
