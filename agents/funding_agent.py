@@ -959,6 +959,18 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     if hard_closed or normalized_explicit == "CLOSED_CALL":
         return "CLOSED_CALL"
 
+    if opening_dt and opening_dt > now:
+        return "UPCOMING_CALL"
+    if normalized_explicit == "UPCOMING_CALL":
+        return "UPCOMING_CALL"
+    if opening_dt and opening_dt <= now and (deadline_dt is None or deadline_dt >= now):
+        return "OPEN_CALL"
+
+    # Preserve a validated explicit open label only after date and closure
+    # checks, not before them.
+    if normalized_explicit == "OPEN_CALL":
+        return "OPEN_CALL"
+
     # Individual Superteam listings expose a structured badge such as
     # "Grant | Open | UK". Trust that badge only when the extracted title itself
     # identifies a specific call, not when a broad listing contains many cards.
@@ -973,18 +985,6 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         flags=re.IGNORECASE,
     ))
     if open_listing_badge and title_has_call_identity and normalized_title not in GENERIC_PAGE_TITLES:
-        return "OPEN_CALL"
-
-    if opening_dt and opening_dt > now:
-        return "UPCOMING_CALL"
-    if normalized_explicit == "UPCOMING_CALL":
-        return "UPCOMING_CALL"
-    if opening_dt and opening_dt <= now and (deadline_dt is None or deadline_dt >= now):
-        return "OPEN_CALL"
-
-    # Preserve a validated explicit open label only after date and closure
-    # checks, not before them.
-    if normalized_explicit == "OPEN_CALL":
         return "OPEN_CALL"
 
     funded_project_hint = any(
