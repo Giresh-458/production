@@ -300,6 +300,19 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     if origin == "https://app.potlock.org" and path in {"/campaigns", "/pots"}:
         return True
 
+    # Superteam Earn landing/category pages list many individual grants. Keep them
+    # as traversal roots; classify the linked /earn/grants/<slug> pages independently.
+    superteam_hub_paths = {
+        "https://superteam.fun": {
+            "/earn",
+            "/earn/opportunities/development-grants",
+            "/earn/regions/india",
+        },
+        "https://earn.superteam.fun": {"", "/grants", "/regions/india"},
+    }
+    if path in superteam_hub_paths.get(origin, set()):
+        return True
+
     if title_root in generic_titles or re.fullmatch(
         r"different grants? and funding opportunities within .+ ecosystem",
         title_root,
