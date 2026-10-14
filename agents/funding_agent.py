@@ -957,6 +957,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             "not accepting new applications", "not accepting applications",
         )
     ) or bool(re.search(
+        r"\bapplications?\s+(?:(?:are|have been|remain|are temporarily)\s+)?paused\b",
+        lowered,
+        flags=re.IGNORECASE,
+    )) or bool(re.search(
         r"\bnot accepting (?:any )?(?:new|fresh) applications\b",
         lowered,
         flags=re.IGNORECASE,
