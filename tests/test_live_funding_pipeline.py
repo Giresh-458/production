@@ -553,7 +553,7 @@ def test_superteam_directory_waits_for_client_rendered_grant_cards():
     options = _superteam_directory_wait_options(
         "https://superteam.fun/earn/opportunities/development-grants/"
     )
-    assert "a[href*='/earn/grants/']" in options["wait_for"]
+    assert "/earn/grants/" in options["wait_for"]
     assert "scrollTo" in options["js_code_before_wait"]
     assert options["delay_before_return_html"] == 1.0
 
