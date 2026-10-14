@@ -297,9 +297,18 @@ def init_funding_db(connection: sqlite3.Connection) -> None:
 
 
 def funding_exists(connection: sqlite3.Connection, title: str, source_url: str) -> bool:
+    """Return whether this source URL is already stored.
+
+    Titles are not unique identifiers: separate opportunities can share the
+    same title (for example, recurring rounds or records from different
+    agencies). The database enforces uniqueness on ``url``, so the existence
+    check must use that same identity and must not suppress a distinct URL
+    merely because its title matches an existing row.
+    """
+    del title  # Retained in the signature for backwards compatibility.
     row = connection.execute(
-        "SELECT 1 FROM funding_data WHERE title = ? OR url = ?",
-        (title, source_url),
+        "SELECT 1 FROM funding_data WHERE url = ?",
+        (source_url,),
     ).fetchone()
     return row is not None
 
