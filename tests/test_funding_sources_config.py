@@ -208,7 +208,12 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     solana_discovery = solana["collection"]["discovery"]
     assert "https://superteam.fun/earn/opportunities/development-grants/" in solana_discovery["start_urls"]
     assert solana_discovery["max_pages"] == 20
-    assert any("earn.superteam.fun/earn/grants" in pattern for pattern in solana_discovery["exclude_url_patterns"])
+    import re
+    legacy_superteam_url = "https://earn.superteam.fun/earn/grants"
+    assert any(
+        re.search(pattern, legacy_superteam_url)
+        for pattern in solana_discovery["exclude_url_patterns"]
+    )
 
     near_entry = by_name["NEAR Ecosystem Funding"]
     near = near_entry["collection"]["discovery"]
