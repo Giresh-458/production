@@ -275,3 +275,32 @@ def test_explicit_current_acceptance_language_takes_precedence_over_awardee_copy
         "XRPL programme landing page",
     )
     assert status == "OPEN_CALL"
+
+
+def test_paused_submission_text_overrides_rolling_acceptance_and_explicit_open_status():
+    content = (
+        "Flashbots MEV Research Proposals. Proposals are accepted on a rolling basis. "
+        "FRP is currently paused, so new submissions will not be processed."
+    )
+    assert determine_status("OPEN_CALL", None, None, content, "MEV Research Grants") == "CLOSED_CALL"
+    assert determine_status(None, None, None, content, "MEV Research Grants") == "CLOSED_CALL"
+
+
+def test_past_deadline_overrides_explicit_open_status():
+    past = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    assert determine_status(
+        "OPEN_CALL", None, past,
+        "Applications are now open. Submit a funding proposal.",
+        "Test Grant",
+    ) == "CLOSED_CALL"
+
+
+def test_explicit_funded_status_does_not_hide_verified_rolling_application():
+    content = (
+        "Research Grant. Applications are accepted on a rolling basis. "
+        "Submit a research proposal to the programme."
+    )
+    assert determine_status(
+        "FUNDED_PROJECT", None, None, content, "Research Grant"
+    ) == "OPEN_CALL"
+
