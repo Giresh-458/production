@@ -416,6 +416,22 @@ def test_direct_page_override_applies_only_to_primary_start_url():
     assert [item["url"] for item in result.opportunities] == [primary]
 
 
+def test_chainlink_status_announcement_is_not_misclassified_as_a_funding_call():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    title = "Evolving the Chainlink Build Program"
+    content = (
+        "The Chainlink ecosystem is continually evolving how it supports early and mid-stage projects. "
+        "Existing arrangements under the Build program are being concluded, while new commercial "
+        "agreements are established on a case-by-case basis. The latest season of Build-related token "
+        "rewards marked the conclusion of those rewards, with claims ending July 7, 2026. "
+        "This announcement is a program-status update, not an open application call."
+    )
+    assert _classify_page_stage_b(
+        "https://chain.link/blog/build-program-evolution", title, content
+    ) is False
+
+
 def test_collection_error_formatter_exposes_operation_url_and_reason():
     error = {
         "operation": "page_fetch",
