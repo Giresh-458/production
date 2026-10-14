@@ -968,10 +968,7 @@ def test_direct_page_source_keeps_an_identified_start_page_as_evidence():
     def fake_fetch(fetched_url):
         return {
             "html": "<html><body>Grants and Funding</body></html>",
-            "markdown": (
-                "## Example Research Grants\n"
-                "Open applications. Grant funding eligibility and application process."
-            ),
+            "markdown": "Welcome to our ecosystem. Our mission supports builders.",
             "success": True, "error_message": None, "status_code": 200,
             "url": fetched_url, "title": "Grants and Funding",
             "links": [], "pagination_links": [],
