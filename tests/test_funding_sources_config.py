@@ -96,7 +96,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             {"MEV"},
         ),
         "Climate Pitch Climate-Tech Grants": (
-            "https://climatepitch.org/home/",
+            "https://climatepitch.org/",
             {"ESG"},
         ),
         "NSF CPS Foundations and Connected Communities": (
@@ -186,3 +186,67 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         )
         assert 1 <= int(discovery["max_pages"]) <= 30
         assert 0 <= int(discovery.get("max_depth", 0)) <= 4
+
+def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
+    by_name = {entry["name"]: entry for entry in _entries()}
+
+    assert by_name["Chainlink Grants"].get("direct_page", False) is False
+
+    solana = by_name["Solana Grants and Funding"]
+    assert solana.get("direct_page") is True
+    assert solana["url"] == "https://solana.org/grants-funding"
+    assert any("/news/" in pattern for pattern in solana["collection"]["discovery"]["exclude_url_patterns"])
+    assert "airtable.com" in solana["collection"]["allowed_domains"]
+
+    near_entry = by_name["NEAR Ecosystem Funding"]
+    near = near_entry["collection"]["discovery"]
+    assert near["max_pages"] == 20
+    assert near["max_depth"] == 2
+    assert near["exclude_url_patterns"]
+    assert "nearn.io" in near_entry["collection"]["allowed_domains"]
+    assert "app.potlock.org" in near_entry["collection"]["allowed_domains"]
+    assert "https://nearn.io/devhub/" in near["start_urls"]
+    assert "https://app.potlock.org/pots" in near["start_urls"]
+
+    xrpl = by_name["XRPL Grants Program"]["collection"]
+    assert {"xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
+    assert xrpl["discovery"]["max_depth"] == 1
+    assert xrpl["discovery"]["max_pages"] == 10
+    xrpl_discovery = xrpl["discovery"]
+    assert "https://brinc.io/xrpl-program" in xrpl_discovery["start_urls"]
+    assert "https://www.tenity.com/program/sfiip-2026/" in xrpl_discovery["start_urls"]
+    assert any("awardees" in pattern for pattern in xrpl_discovery["exclude_url_patterns"])
+
+    climate_pitch = by_name["Climate Pitch Climate-Tech Grants"]
+    assert climate_pitch["url"] == "https://climatepitch.org/"
+    assert climate_pitch["collection"]["discovery"]["start_urls"] == ["https://climatepitch.org/"]
+
+def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from agents.funding_agent import load_sources, _funding_sources_fingerprint
+
+    catalogue = {
+        "sources": {
+            "tier_1": [{
+                "name": "Explicit Direct Program",
+                "url": "https://example.com/grants",
+                "direct_page": True,
+                "research_domains": ["DePIN"],
+                "collection": {
+                    "mode": "web",
+                    "discovery": {"start_urls": ["https://example.com/grants"], "max_depth": 0, "max_pages": 1},
+                },
+            }]
+        }
+    }
+    path = tmp_path / "funding_sources.yaml"
+    path.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+    monkeypatch.setattr("agents.funding_agent.apply_refresh_policy", lambda _agent, sources: sources)
+
+    sources = load_sources(path)
+    assert len(sources) == 1
+    assert sources[0].direct_page is True
+    assert _funding_sources_fingerprint(sources) != _funding_sources_fingerprint(
+        [replace(sources[0], direct_page=False)]
+    )

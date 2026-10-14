@@ -157,7 +157,7 @@ DISCOVERY_PATH_SIGNALS = [
     "grant", "funding", "rfp", "apply", "call", "opportunit",
     "award", "fellowship", "challenge", "bounty", "proposal", "foa",
     "open-call", "accelerat", "builder-fund", "devgrant",
-    "prize", "competition",
+    "prize", "competition", "devhub", "campaign", "sponsorship", "pots",
 ]
 
 # --- Pagination link signals ---
@@ -188,6 +188,19 @@ def _is_allowed_domain(url: str, base_domain: str, allowed_domains: list[str]) -
         return False
     allowed = {base_domain.lower()} | {d.lower() for d in allowed_domains}
     return any(host == d or host.endswith("." + d) for d in allowed)
+
+
+def _matches_excluded_url(url: str, patterns: list[str]) -> bool:
+    """Return True when a configured source-specific exclusion matches a URL."""
+    for pattern in patterns:
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        try:
+            if re.search(pattern, url, flags=re.IGNORECASE):
+                return True
+        except re.error as exc:
+            LOGGER.warning("Ignoring invalid exclude_url_patterns regex %r: %s", pattern, exc)
+    return False
 
 
 def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) -> float:
@@ -257,6 +270,25 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
         "grants and funding", "funding and grants", "open rounds",
         "request for proposals", "request for proposals (rfps)", "rfps",
     }
+    origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
+    combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+
+    # XRPL's home page is a multi-program directory. Its current-looking
+    # headline can conflict with linked application pages whose deadlines have
+    # passed, so verify each linked programme instead of normalizing the hub.
+    if origin == "https://xrplgrants.org" and path in {"", "/"}:
+        return True
+    # Awardee listings are historical output, not individual application calls.
+    if origin == "https://xrplgrants.org" and path == "/awardees":
+        return True
+
+    # NEARN and POTLOCK pages below are opportunity directories. Keep them as
+    # traversal roots and let their individual child pages provide call evidence.
+    if origin == "https://nearn.io" and path in {"/", "/devhub", "/infra-committee", "/nf-bo"}:
+        return True
+    if origin == "https://app.potlock.org" and path in {"/campaigns", "/pots"}:
+        return True
+
     if title_root in generic_titles or re.fullmatch(
         r"different grants? and funding opportunities within .+ ecosystem",
         title_root,
@@ -575,6 +607,11 @@ def crawl_funding_source(
     follow_pdfs = discovery_config.get("follow_pdfs", True)
     follow_documents = bool(discovery_config.get("follow_documents", False))
     follow_detail = discovery_config.get("follow_detail_pages", True)
+    direct_page = bool(discovery_config.get("direct_page", False))
+    raw_exclusion_patterns = discovery_config.get("exclude_url_patterns", []) or []
+    if isinstance(raw_exclusion_patterns, str):
+        raw_exclusion_patterns = [raw_exclusion_patterns]
+    exclude_url_patterns = [p for p in raw_exclusion_patterns if isinstance(p, str) and p]
     max_pdf_pages = discovery_config.get("max_pdf_pages")  # None = process all
 
     if test_limits:
@@ -776,13 +813,23 @@ def crawl_funding_source(
             })
             continue
 
-        if not res["success"]:
+        status_code = res.get("status_code")
+        status_error = None
+        if status_code is not None:
+            try:
+                numeric_status = int(status_code)
+            except (TypeError, ValueError):
+                numeric_status = None
+            if numeric_status is not None and not (200 <= numeric_status < 300):
+                status_error = f"HTTP {numeric_status}"
+
+        if not res["success"] or status_error:
             result.pages_failed += 1
             result.failed_urls.append(current_url)
             result.errors.append({
                 "url": current_url,
                 "operation": "page_fetch",
-                "error": res.get("error_message") or "fetch failed",
+                "error": res.get("error_message") or status_error or "fetch failed",
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
@@ -796,6 +843,11 @@ def crawl_funding_source(
 
         # Stage B: classify this page
         is_funding_page = _classify_page_stage_b(current_url, page_title, page_content)
+        # direct_page explicitly identifies the configured starting URL as a
+        # programme-level record, even when its page title looks like a hub.
+        # Known empty-state listings remain excluded.
+        if depth == 0 and direct_page and not _reports_no_active_funding(current_url, page_title, page_content):
+            is_funding_page = True
 
         if is_funding_page:
             if depth > 0:
@@ -818,6 +870,9 @@ def crawl_funding_source(
             if discovery_config.get("pagination", False):
                 for pag_url in res.get("pagination_links", []):
                     normalized_pag = _normalize_url(pag_url)
+                    if _matches_excluded_url(normalized_pag, exclude_url_patterns):
+                        result.urls_skipped += 1
+                        continue
                     if normalized_pag not in visited:
                         if _is_allowed_domain(normalized_pag, base_domain, allowed_domains):
                             result.pagination_detected = True
@@ -830,6 +885,9 @@ def crawl_funding_source(
             if follow_detail:
                 for link_info in res.get("links", []):
                     link_url = _normalize_url(link_info["url"])
+                    if _matches_excluded_url(link_url, exclude_url_patterns):
+                        result.urls_skipped += 1
+                        continue
                     if link_url in visited:
                         result.duplicates_removed += 1
                         continue

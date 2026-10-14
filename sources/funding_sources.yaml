@@ -39,7 +39,6 @@ sources:
   - name: Chainlink Grants
     research_domains: [RWA, Stablecoins]
     url: https://chain.link/community/grants
-    direct_page: true
     focus: official Chainlink grant program, oracle tooling, RWA, data feeds, cross-chain and stablecoin infrastructure
     collection:
       mode: web
@@ -57,6 +56,7 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
+    direct_page: true
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
@@ -66,6 +66,7 @@ sources:
       - solana.org
       - solana.com
       - earn.superteam.fun
+      - airtable.com
       discovery:
         start_urls:
         - https://solana.org/grants-funding
@@ -74,6 +75,8 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        exclude_url_patterns:
+          - '^https?://solana\.com/news/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
@@ -85,18 +88,30 @@ sources:
       allowed_domains:
       - near.org
       - devhub.near.org
+      - nearn.io
       - docs.metapool.app
       - potlock.org
+      - app.potlock.org
       discovery:
         start_urls:
         - https://www.near.org/funding
-        max_depth: 3
-        # The previous live batch hit this cap exactly (8 pages) and was marked PARTIAL.
-        # Increase the bounded budget to allow more of the configured source frontier to be inspected.
+        - https://nearn.io/devhub/
+        - https://app.potlock.org/campaigns
+        - https://app.potlock.org/pots
+        # Explicit portal roots allow shallow traversal to current individual calls.
+        max_depth: 2
+        # The previous live run exhausted 20 pages and was marked PARTIAL.
+        # URL exclusions and targeted portals should reduce waste before raising this cap.
         max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
+        exclude_url_patterns:
+          - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
+          - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
+          - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
+          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -117,20 +132,28 @@ sources:
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
-    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details.
+    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details from programme-level pages.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - xrplgrants.org
+      - brinc.io
+      - tenity.com
       discovery:
+        # Treat the homepage as a directory and verify each linked accelerator on
+        # its own official programme page; the homepage banner can be stale.
         start_urls:
         - https://xrplgrants.org/
-        max_depth: 2
-        max_pages: 6
+        - https://brinc.io/xrpl-program
+        - https://www.tenity.com/program/sfiip-2026/
+        max_depth: 1
+        max_pages: 10
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        exclude_url_patterns:
+          - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
     url: https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md
@@ -170,7 +193,7 @@ sources:
   tier_3:
   - name: Climate Pitch Climate-Tech Grants
     research_domains: [ESG]
-    url: https://climatepitch.org/home/
+    url: https://climatepitch.org/
     direct_page: true
     focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
     collection:
@@ -180,7 +203,7 @@ sources:
       - climatepitch.org
       discovery:
         start_urls:
-        - https://climatepitch.org/home/
+        - https://climatepitch.org/
         max_depth: 2
         max_pages: 5
         follow_detail_pages: true

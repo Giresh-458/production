@@ -225,3 +225,82 @@ def test_rolling_mev_grant_language_survives_funding_extraction():
     assert opportunity.status == "OPEN_CALL"
     assert "rolling basis" in opportunity.evidence.get("status", "").lower()
     assert opportunity.funding_amount
+
+def test_solana_current_program_uses_contextual_application_link_and_rolling_review():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    application_url = "https://share.hsforms.com/example-solana-grant-application"
+    content = (
+        "# Grants and Funding\n"
+        "## Solana Foundation Funding\n"
+        "The Solana Foundation supports public goods through grants and funding.\n"
+        "All funding applicants are required to fill out the application [here]("
+        + application_url
+        + ").\n"
+        "All applications are reviewed on a rolling basis.\n"
+        "Applicants should provide a project overview, budget, and milestones."
+    )
+    opportunity = analyze_document(FundingDocument(
+        organization="Solana Grants and Funding",
+        title="Grants and Funding | Solana",
+        source="https://solana.org/grants-funding",
+        source_type="html",
+        content=content,
+        year=2026,
+    ))
+
+    assert opportunity.program_name == "Solana Foundation Funding"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.application_url == application_url
+    assert "rolling basis" in opportunity.evidence.get("status", "").lower()
+
+
+def test_past_deadline_takes_precedence_over_awardee_copy():
+    status = determine_status(
+        None,
+        None,
+        "2026-05-27",
+        "Climate Pitch grants. Grant recipients: 8 startups. Last Date to Apply – 27 May 2026.",
+        "Climate Pitch",
+    )
+    assert status == "CLOSED_CALL"
+
+
+def test_explicit_current_acceptance_language_takes_precedence_over_awardee_copy():
+    status = determine_status(
+        None,
+        None,
+        None,
+        "Grant recipients are published separately. Applications now open for fall accelerator programs. Submit an application form.",
+        "XRPL programme landing page",
+    )
+    assert status == "OPEN_CALL"
+
+
+def test_paused_submission_text_overrides_rolling_acceptance_and_explicit_open_status():
+    content = (
+        "Flashbots MEV Research Proposals. Proposals are accepted on a rolling basis. "
+        "FRP is currently paused, so new submissions will not be processed."
+    )
+    assert determine_status("OPEN_CALL", None, None, content, "MEV Research Grants") == "CLOSED_CALL"
+    assert determine_status(None, None, None, content, "MEV Research Grants") == "CLOSED_CALL"
+
+
+def test_past_deadline_overrides_explicit_open_status():
+    past = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    assert determine_status(
+        "OPEN_CALL", None, past,
+        "Applications are now open. Submit a funding proposal.",
+        "Test Grant",
+    ) == "CLOSED_CALL"
+
+
+def test_explicit_funded_status_does_not_hide_verified_rolling_application():
+    content = (
+        "Research Grant. Applications are accepted on a rolling basis. "
+        "Submit a research proposal to the programme."
+    )
+    assert determine_status(
+        "FUNDED_PROJECT", None, None, content, "Research Grant"
+    ) == "OPEN_CALL"
+

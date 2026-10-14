@@ -911,3 +911,151 @@ def test_generic_apply_heading_does_not_hide_specific_call_title():
     )
     title = extract_page_title(soup, 'fallback')
     assert 'Road to Devcon 8 India - University Program' in title
+
+def test_exclude_url_patterns_skip_irrelevant_links_without_marking_truncation():
+    from core.crawl4ai_web import crawl_funding_source
+
+    fetched = []
+
+    def fake_fetch(url):
+        fetched.append(url)
+        if url == "https://example.com/funding":
+            return {
+                "html": "<html><body>Funding root</body></html>",
+                "markdown": "Funding directory with grant links.",
+                "success": True, "error_message": None, "status_code": 200,
+                "url": url, "title": "Funding",
+                "links": [
+                    {"url": "https://example.com/grants/call", "anchor_text": "Grant call details", "surrounding_text": "Grant funding opportunity details", "rel": ""},
+                    {"url": "https://docs.metapool.app/master/example/call.md", "anchor_text": "Grant details", "surrounding_text": "Grant funding proposal", "rel": ""},
+                    {"url": "https://docs.metapool.app/master/tokenomics-and-governance/proposal", "anchor_text": "Proposal", "surrounding_text": "Funding proposal", "rel": ""},
+                ],
+                "pagination_links": [],
+            }
+        return {
+            "html": "<html><body>Grant Call</body></html>",
+            "markdown": "Grant funding opportunity. Eligibility requirements. Submit a proposal.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": url, "title": "Grant Call", "links": [], "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Test", "https://example.com/funding",
+            {
+                "start_urls": ["https://example.com/funding"],
+                "max_depth": 1,
+                "max_pages": 5,
+                "exclude_url_patterns": [
+                    r"^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$",
+                    r"^https?://docs\.metapool\.app/master/tokenomics-and-governance/",
+                ],
+            },
+            ["example.com", "docs.metapool.app"],
+        )
+
+    assert fetched == ["https://example.com/funding", "https://example.com/grants/call"]
+    assert result.pages_fetched == 2
+    assert result.truncated is False
+    assert result.discovery_exhausted is True
+
+
+def test_direct_page_source_keeps_an_identified_start_page_as_evidence():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://example.com/grants-funding"
+
+    def fake_fetch(fetched_url):
+        return {
+            "html": "<html><body>Grants and Funding</body></html>",
+            "markdown": "Welcome to our ecosystem. Our mission supports builders.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": fetched_url, "title": "Grants and Funding",
+            "links": [], "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Test", url,
+            {"start_urls": [url], "max_depth": 0, "max_pages": 1, "direct_page": True},
+            [],
+        )
+
+    assert len(result.opportunities) == 1
+    assert result.opportunities[0]["url"] == url
+
+
+def test_xrpl_homepage_and_awardee_directory_are_not_individual_calls():
+    from core.crawl4ai_web import _is_generic_funding_hub
+
+    homepage = (
+        "Applications now open for fall accelerator programs: "
+        "Brinc Hong Kong Financial Innovation Program (HFIP) - Apply now. "
+        "Tenity Singapore Financial Infrastructure Innovation Program (SFFIP) - Apply now. "
+        "By applying via a single unified application form, you will be considered for all programs."
+    )
+    assert _is_generic_funding_hub(
+        "https://xrplgrants.org/",
+        "Software Developer Grants Program - XRPLGrants.org",
+        homepage,
+    )
+    assert _is_generic_funding_hub(
+        "https://xrplgrants.org/awardees",
+        "XRPL Award Recipients - XRPLGrants.org",
+        "Awardees. Showing 199 Results. Project Status Complete.",
+    )
+
+
+def test_non_2xx_http_response_is_a_fetch_failure_even_if_browser_says_success():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://chain.link/community/grants"
+
+    def fake_fetch(fetched_url):
+        return {
+            "html": "<html><body>404 Not Found</body></html>",
+            "markdown": "404 Not Found. No active grants listed.",
+            "success": True,
+            "error_message": None,
+            "status_code": 404,
+            "url": fetched_url,
+            "title": "Not Found",
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Chainlink Grants",
+            url,
+            {"start_urls": [url], "max_depth": 0, "max_pages": 1},
+            [],
+        )
+
+    assert result.pages_failed == 1
+    assert result.pages_fetched == 0
+    assert result.final_status == "FAIL"
+    assert result.opportunities == []
+
+
+def test_near_listing_roots_are_hubs_and_child_urls_are_discoverable():
+    from core.crawl4ai_web import _classify_link_stage_a, _is_generic_funding_hub
+
+    assert _is_generic_funding_hub(
+        "https://nearn.io/devhub/",
+        "NEAR DevHub Opportunities | NEARN",
+        "Earning Opportunities. Open In Review Completed.",
+    )
+    assert _is_generic_funding_hub(
+        "https://app.potlock.org/campaigns",
+        "POTLOCK",
+        "Fund ideas, people, projects. Campaigns.",
+    )
+    assert _is_generic_funding_hub(
+        "https://app.potlock.org/pots",
+        "POTLOCK",
+        "Explore Pots. Active Pots 0. No results.",
+    )
+    assert _classify_link_stage_a("https://nearn.io/devhub/123", "", "") >= 0.4
+    assert _classify_link_stage_a("https://app.potlock.org/campaign/91", "", "") >= 0.4
+
