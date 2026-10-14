@@ -356,6 +356,66 @@ def test_successful_redirect_uses_destination_status_and_final_url():
     assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
 
 
+def test_final_page_url_prefers_redirect_destination_for_relative_links():
+    from types import SimpleNamespace
+    from urllib.parse import urljoin
+    from core.crawl4ai_web import _get_final_page_url
+
+    result = SimpleNamespace(
+        url="https://earn.superteam.fun/grants/",
+        redirected_url="https://superteam.fun/earn/",
+    )
+    page_url = _get_final_page_url(result, "https://earn.superteam.fun/grants/")
+    assert page_url == "https://superteam.fun/earn/"
+    assert urljoin(page_url, "opportunities/development-grants/") == (
+        "https://superteam.fun/earn/opportunities/development-grants/"
+    )
+
+
+def test_direct_page_override_applies_only_to_primary_start_url():
+    from unittest.mock import patch
+    from core.crawl4ai_web import crawl_funding_source
+
+    primary = "https://solana.org/grants-funding"
+    secondary = "https://superteam.fun/earn/opportunities/development-grants/"
+
+    def fake_fetch(url):
+        if url == primary:
+            title = "Grants and Funding"
+            markdown = "A generic funding directory without specific application instructions."
+        else:
+            title = "Development Grants | Superteam Earn"
+            markdown = "Find remote web3 development grants on Solana. Grants. Development."
+        return {
+            "html": "<html><body>Funding directory</body></html>",
+            "markdown": markdown,
+            "success": True,
+            "error_message": None,
+            "status_code": 200,
+            "url": url,
+            "title": title,
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
+         patch("core.crawl4ai_web._wait_for_host_slot", return_value=True):
+        result = crawl_funding_source(
+            "Solana",
+            primary,
+            {
+                "start_urls": [primary, secondary],
+                "max_depth": 0,
+                "max_pages": 2,
+                "direct_page": True,
+                "respect_robots_txt": False,
+            },
+            ["solana.org", "superteam.fun"],
+        )
+
+    assert [item["url"] for item in result.opportunities] == [primary]
+
+
 def test_collection_error_formatter_exposes_operation_url_and_reason():
     error = {
         "operation": "page_fetch",

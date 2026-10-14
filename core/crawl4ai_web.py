@@ -384,6 +384,15 @@ def _is_pagination_link(anchor_text: str, rel: str, url: str) -> bool:
     return False
 
 
+def _get_final_page_url(result: Any, requested_url: str) -> str:
+    """Prefer Crawl4AI's explicit redirect destination over the original request URL."""
+    return (
+        getattr(result, "redirected_url", None)
+        or getattr(result, "url", None)
+        or requested_url
+    )
+
+
 async def _fetch_url(url: str) -> dict:
     """Fetch a single URL using Crawl4AI and extract links with context."""
     from core.crawl_context import current_crawl_context
@@ -408,11 +417,7 @@ async def _fetch_url(url: str) -> dict:
                 markdown_v2 = type("M", (), {"raw_markdown": ""})
             result = DummyResult()
 
-        page_url = (
-            getattr(result, "url", None)
-            or getattr(result, "redirected_url", None)
-            or url
-        )
+        page_url = _get_final_page_url(result, url)
         links = []
         pagination_links = []
         title = ""
@@ -879,7 +884,12 @@ def crawl_funding_source(
         # direct_page explicitly identifies the configured starting URL as a
         # programme-level record, even when its page title looks like a hub.
         # Known empty-state listings remain excluded.
-        if depth == 0 and direct_page and not _reports_no_active_funding(page_url, page_title, page_content):
+        if (
+            depth == 0
+            and direct_page
+            and _url_dedupe_key(page_url) == _url_dedupe_key(url)
+            and not _reports_no_active_funding(page_url, page_title, page_content)
+        ):
             is_funding_page = True
 
         if is_funding_page:

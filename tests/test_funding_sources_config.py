@@ -204,6 +204,11 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert solana["url"] == "https://solana.org/grants-funding"
     assert any("/news/" in pattern for pattern in solana["collection"]["discovery"]["exclude_url_patterns"])
     assert "airtable.com" in solana["collection"]["allowed_domains"]
+    assert "superteam.fun" in solana["collection"]["allowed_domains"]
+    solana_discovery = solana["collection"]["discovery"]
+    assert "https://superteam.fun/earn/opportunities/development-grants/" in solana_discovery["start_urls"]
+    assert solana_discovery["max_pages"] == 20
+    assert any("earn.superteam.fun/earn/grants" in pattern for pattern in solana_discovery["exclude_url_patterns"])
 
     near_entry = by_name["NEAR Ecosystem Funding"]
     near = near_entry["collection"]["discovery"]
