@@ -1332,6 +1332,30 @@ def _extract_application_url(text: str) -> str | None:
 
 
 
+def _resolve_application_url(content: str, source_url: str, status: str) -> str | None:
+    """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
+    extracted = _extract_application_url(content)
+    if extracted:
+        return extracted
+
+    # Superteam processes applications on the individual Earn listing. Crawl4AI may
+    # render the visible "Apply Now" CTA as text without its client-side href, so
+    # the listing URL itself is the correct destination when the call is open.
+    parsed = urlparse(source_url or "")
+    is_superteam_detail = (
+        parsed.netloc.lower() in {"superteam.fun", "www.superteam.fun"}
+        and bool(re.fullmatch(r"/earn/grants/[^/]+", parsed.path.rstrip("/")))
+    )
+    has_on_page_cta = bool(re.search(
+        r"\b(?:apply now|apply on superteam earn|apply on this listing)\b",
+        content or "",
+        flags=re.IGNORECASE,
+    ))
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_superteam_detail and has_on_page_cta:
+        return source_url
+    return None
+
+
 def _evidence_excerpt(text: str, patterns: list[str], window: int = 240) -> str | None:
     chunks = [cleaned_text(c) for c in re.split(r"(?<=[.!?])\s+|\n+", text) if cleaned_text(c)]
     for pattern in patterns:
@@ -1579,7 +1603,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)
-    application_url = _extract_application_url(document.content)
+    application_url = _resolve_application_url(document.content, document.source, status)
     funding_body = _extract_funding_body(document.content, document.organization)
     
     # A future deadline plus a contextual application endpoint is strong current
