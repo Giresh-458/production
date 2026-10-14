@@ -668,7 +668,9 @@ def _collect_web_source(
 ) -> CollectionResult:
     """Collect from a web source using Crawl4AI with BFS traversal."""
     allowed_domains = source.collection.get("allowed_domains", [])
-    config = source.collection.get("discovery", {})
+    config = dict(source.collection.get("discovery", {}) or {})
+    if source.direct_page:
+        config["direct_page"] = True
 
     # crawl_funding_source returns raw opportunities as dicts
     result = crawl_funding_source(
