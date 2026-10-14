@@ -429,6 +429,30 @@ def _get_final_page_url(result: Any, requested_url: str) -> str:
     )
 
 
+def _superteam_directory_wait_options(url: str) -> dict[str, Any]:
+    """Wait for current grant-card anchors on known Superteam directory routes."""
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.rstrip("/") or "/"
+    directory_paths = {
+        "/earn",
+        "/earn/opportunities/development-grants",
+        "/earn/regions/india",
+    }
+    if host not in {"superteam.fun", "www.superteam.fun"} or path not in directory_paths:
+        return {}
+
+    # Superteam loads individual grant cards client-side and may populate them after
+    # DOMContentLoaded. Scroll to trigger lazy-loaded cards, then wait specifically
+    # for detail links before extracting HTML/Markdown; do not apply this delay to
+    # ordinary opportunity detail pages or unrelated funding sources.
+    return {
+        "js_code_before_wait": "window.scrollTo(0, document.body.scrollHeight);",
+        "wait_for": 'js:() => document.querySelectorAll(\'a[href*="/earn/grants/"]\').length > 0',
+        "delay_before_return_html": 1.0,
+    }
+
+
 def _raw_markdown_text(result: Any) -> str:
     """Read the generated Markdown across Crawl4AI result API variants."""
     for attribute in ("markdown", "markdown_v2"):
@@ -500,7 +524,12 @@ async def _fetch_url(url: str) -> dict:
         timeout = max(5.0, ctx.deadline - time.time())
         
     browser_config = BrowserConfig(headless=True)
-    run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, page_timeout=int(timeout * 1000))
+    run_options = {
+        "cache_mode": CacheMode.BYPASS,
+        "page_timeout": int(timeout * 1000),
+        **_superteam_directory_wait_options(url),
+    }
+    run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
         try:
             result = await asyncio.wait_for(crawler.arun(url=url, config=run_config), timeout=timeout + 5.0)

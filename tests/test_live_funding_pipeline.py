@@ -545,3 +545,30 @@ def test_specific_open_grant_listing_badge_sets_open_status_without_guessing_dat
     # The same badge can appear on a card inside a directory; a generic page title
     # must not inherit an individual card's status.
     assert determine_status(None, None, None, content, "Development Grants") == "UNKNOWN"
+
+
+def test_superteam_directory_waits_for_client_rendered_grant_cards():
+    from core.crawl4ai_web import _superteam_directory_wait_options
+
+    options = _superteam_directory_wait_options(
+        "https://superteam.fun/earn/opportunities/development-grants/"
+    )
+    assert "/earn/grants/" in options["wait_for"]
+    assert "scrollTo" in options["js_code_before_wait"]
+    assert options["delay_before_return_html"] == 1.0
+
+
+def test_superteam_detail_page_does_not_wait_for_directory_cards():
+    from core.crawl4ai_web import _superteam_directory_wait_options
+
+    assert _superteam_directory_wait_options(
+        "https://superteam.fun/earn/grants/agentic-engineering"
+    ) == {}
+
+
+def test_non_superteam_page_does_not_use_superteam_wait_options():
+    from core.crawl4ai_web import _superteam_directory_wait_options
+
+    assert _superteam_directory_wait_options(
+        "https://solana.org/grants-funding"
+    ) == {}

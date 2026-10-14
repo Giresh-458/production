@@ -69,7 +69,9 @@ sources:
       - solana.com
       - earn.superteam.fun
       - superteam.fun
-      - airtable.com
+      # Airtable URLs on the Solana page are submission forms, not detail-call
+      # directories. Keep them as evidence/application endpoints in page content,
+      # but do not navigate into these forms as crawler candidates.
       discovery:
         start_urls:
         - https://solana.org/grants-funding
