@@ -806,13 +806,23 @@ def crawl_funding_source(
             })
             continue
 
-        if not res["success"]:
+        status_code = res.get("status_code")
+        status_error = None
+        if status_code is not None:
+            try:
+                numeric_status = int(status_code)
+            except (TypeError, ValueError):
+                numeric_status = None
+            if numeric_status is not None and not (200 <= numeric_status < 300):
+                status_error = f"HTTP {numeric_status}"
+
+        if not res["success"] or status_error:
             result.pages_failed += 1
             result.failed_urls.append(current_url)
             result.errors.append({
                 "url": current_url,
                 "operation": "page_fetch",
-                "error": res.get("error_message") or "fetch failed",
+                "error": res.get("error_message") or status_error or "fetch failed",
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
