@@ -175,9 +175,20 @@ except ImportError:
 
 
 def _normalize_url(url: str) -> str:
-    """Remove fragment, strip trailing slash for dedup."""
+    """Remove fragments without changing the requested path or trailing slash."""
     defragged, _ = urldefrag(url)
-    return defragged.rstrip("/")
+    return defragged
+
+
+def _url_dedupe_key(url: str) -> str:
+    """Normalize slash variants for identity checks, not for the URL we fetch."""
+    parsed = urlparse(_normalize_url(url))
+    path = parsed.path.rstrip("/") or "/"
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=parsed.netloc.lower(),
+        path=path,
+    ).geturl()
 
 
 def _is_allowed_domain(url: str, base_domain: str, allowed_domains: list[str]) -> bool:
@@ -397,6 +408,11 @@ async def _fetch_url(url: str) -> dict:
                 markdown_v2 = type("M", (), {"raw_markdown": ""})
             result = DummyResult()
 
+        page_url = (
+            getattr(result, "url", None)
+            or getattr(result, "redirected_url", None)
+            or url
+        )
         links = []
         pagination_links = []
         title = ""
@@ -432,7 +448,7 @@ async def _fetch_url(url: str) -> dict:
                             surrounding = container_text
 
                     # Resolve relative URLs
-                    resolved = urljoin(url, href)
+                    resolved = urljoin(page_url, href)
                     resolved = _normalize_url(resolved)
 
                     if not resolved.startswith("http"):
@@ -465,8 +481,12 @@ async def _fetch_url(url: str) -> dict:
             "markdown": result.markdown,
             "success": result.success,
             "error_message": getattr(result, "error_message", None),
+            # Crawl4AI exposes first-response and final redirect statuses separately.
             "status_code": getattr(result, "status_code", None),
-            "url": url,
+            "redirected_status_code": getattr(result, "redirected_status_code", None),
+            "url": page_url,
+            "requested_url": url,
+            "redirected_url": getattr(result, "redirected_url", None),
             "title": title,
             "links": links,
             "pagination_links": pagination_links,
@@ -631,9 +651,10 @@ def crawl_funding_source(
 
     for start in start_urls:
         normalized = _normalize_url(start)
-        if normalized not in visited:
+        dedupe_key = _url_dedupe_key(normalized)
+        if dedupe_key not in visited:
             queue.append((normalized, 0))
-            visited.add(normalized)
+            visited.add(dedupe_key)
 
     # max_pages is a request-attempt budget, not a successful-fetch budget.
     # Count failures too so repeated network errors cannot evade the source cap.
@@ -813,6 +834,10 @@ def crawl_funding_source(
             })
             continue
 
+        page_url = res.get("url") or current_url
+        # Record the final URL too, preventing redirects from being fetched again.
+        visited.add(_url_dedupe_key(page_url))
+
         status_code = res.get("status_code")
         status_error = None
         if status_code is not None:
@@ -820,6 +845,14 @@ def crawl_funding_source(
                 numeric_status = int(status_code)
             except (TypeError, ValueError):
                 numeric_status = None
+            # Crawl4AI reports the first 3xx status separately from the
+            # destination's final status. Judge the response that was crawled.
+            final_redirect_status = res.get("redirected_status_code")
+            if numeric_status is not None and 300 <= numeric_status < 400 and final_redirect_status is not None:
+                try:
+                    numeric_status = int(final_redirect_status)
+                except (TypeError, ValueError):
+                    pass
             if numeric_status is not None and not (200 <= numeric_status < 300):
                 status_error = f"HTTP {numeric_status}"
 
@@ -842,11 +875,11 @@ def crawl_funding_source(
         page_title = res.get("title", "")
 
         # Stage B: classify this page
-        is_funding_page = _classify_page_stage_b(current_url, page_title, page_content)
+        is_funding_page = _classify_page_stage_b(page_url, page_title, page_content)
         # direct_page explicitly identifies the configured starting URL as a
         # programme-level record, even when its page title looks like a hub.
         # Known empty-state listings remain excluded.
-        if depth == 0 and direct_page and not _reports_no_active_funding(current_url, page_title, page_content):
+        if depth == 0 and direct_page and not _reports_no_active_funding(page_url, page_title, page_content):
             is_funding_page = True
 
         if is_funding_page:
@@ -857,7 +890,7 @@ def crawl_funding_source(
                 
             result.opportunities.append({
                 "type": "html",
-                "url": current_url,
+                "url": page_url,
                 "content": page_content,
                 "title": page_title,
                 "depth": depth,
@@ -870,13 +903,14 @@ def crawl_funding_source(
             if discovery_config.get("pagination", False):
                 for pag_url in res.get("pagination_links", []):
                     normalized_pag = _normalize_url(pag_url)
+                    pag_key = _url_dedupe_key(normalized_pag)
                     if _matches_excluded_url(normalized_pag, exclude_url_patterns):
                         result.urls_skipped += 1
                         continue
-                    if normalized_pag not in visited:
+                    if pag_key not in visited:
                         if _is_allowed_domain(normalized_pag, base_domain, allowed_domains):
                             result.pagination_detected = True
-                            visited.add(normalized_pag)
+                            visited.add(pag_key)
                             queue.append((normalized_pag, depth))  # same depth for pagination
                         else:
                             result.urls_skipped += 1
@@ -885,10 +919,11 @@ def crawl_funding_source(
             if follow_detail:
                 for link_info in res.get("links", []):
                     link_url = _normalize_url(link_info["url"])
+                    link_key = _url_dedupe_key(link_url)
                     if _matches_excluded_url(link_url, exclude_url_patterns):
                         result.urls_skipped += 1
                         continue
-                    if link_url in visited:
+                    if link_key in visited:
                         result.duplicates_removed += 1
                         continue
 
@@ -905,7 +940,7 @@ def crawl_funding_source(
                     if score >= 0.4:
                         child_depth = depth + 1
                         if child_depth <= configured_max_depth:
-                            visited.add(link_url)
+                            visited.add(link_key)
                             queue.append((link_url, child_depth))
                         else:
                             result.urls_skipped += 1
