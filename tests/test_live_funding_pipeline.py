@@ -305,6 +305,57 @@ def test_explicit_funded_status_does_not_hide_verified_rolling_application():
     ) == "OPEN_CALL"
 
 
+def test_crawler_url_normalization_preserves_trailing_slashes_but_dedupes_aliases():
+    from core.crawl4ai_web import _normalize_url, _url_dedupe_key
+
+    canonical = "https://nearn.io/devhub/"
+    assert _normalize_url(canonical) == canonical
+    assert _normalize_url(canonical + "#opportunities") == canonical
+    assert _url_dedupe_key(canonical) == _url_dedupe_key("https://nearn.io/devhub")
+
+
+def test_successful_redirect_uses_destination_status_and_final_url():
+    from unittest.mock import patch
+    from core.crawl4ai_web import crawl_funding_source
+
+    requested_url = "https://nearn.io/devhub"
+    final_url = "https://nearn.io/devhub/"
+
+    def fake_fetch(url):
+        assert url == requested_url
+        return {
+            "html": "<html><body>NEARN opportunity directory</body></html>",
+            "markdown": "NEARN DevHub Opportunities. Earning opportunities.",
+            "success": True,
+            "error_message": None,
+            "status_code": 308,
+            "redirected_status_code": 200,
+            "url": final_url,
+            "title": "NEAR DevHub Opportunities | NEARN",
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
+         patch("core.crawl4ai_web._wait_for_host_slot", return_value=True):
+        result = crawl_funding_source(
+            "NEAR",
+            requested_url,
+            {
+                "start_urls": [requested_url],
+                "max_depth": 0,
+                "max_pages": 1,
+                "respect_robots_txt": False,
+            },
+            ["nearn.io"],
+        )
+
+    assert result.pages_fetched == 1
+    assert result.pages_failed == 0
+    assert result.errors == []
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+
 def test_collection_error_formatter_exposes_operation_url_and_reason():
     error = {
         "operation": "page_fetch",
