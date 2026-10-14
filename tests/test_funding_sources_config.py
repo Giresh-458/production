@@ -201,6 +201,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     near_entry = by_name["NEAR Ecosystem Funding"]
     near = near_entry["collection"]["discovery"]
     assert near["max_pages"] == 20
+    assert near["max_depth"] == 2
     assert near["exclude_url_patterns"]
     assert "nearn.io" in near_entry["collection"]["allowed_domains"]
     assert "app.potlock.org" in near_entry["collection"]["allowed_domains"]
