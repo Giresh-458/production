@@ -67,8 +67,8 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             "https://esp.ethereum.foundation/applicants/open-rounds",
             {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
         ),
-        "Chainlink Grants": (
-            "https://chain.link/community/grants",
+        "Chainlink Build Program Status": (
+            "https://chain.link/blog/build-program-evolution",
             {"RWA", "Stablecoins"},
         ),
         "Solana Grants and Funding": (
@@ -197,7 +197,13 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     by_name = {entry["name"]: entry for entry in _entries()}
 
-    assert by_name["Chainlink Grants"].get("direct_page", False) is False
+    chainlink_status = by_name["Chainlink Build Program Status"]
+    assert chainlink_status.get("direct_page", False) is False
+    chainlink_discovery = chainlink_status["collection"]["discovery"]
+    assert chainlink_discovery["start_urls"] == ["https://chain.link/blog/build-program-evolution"]
+    assert chainlink_discovery["max_depth"] == 0
+    assert chainlink_discovery["max_pages"] == 1
+    assert chainlink_discovery["follow_detail_pages"] is False
 
     solana = by_name["Solana Grants and Funding"]
     assert solana.get("direct_page") is True
