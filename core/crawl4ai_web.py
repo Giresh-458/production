@@ -157,7 +157,7 @@ DISCOVERY_PATH_SIGNALS = [
     "grant", "funding", "rfp", "apply", "call", "opportunit",
     "award", "fellowship", "challenge", "bounty", "proposal", "foa",
     "open-call", "accelerat", "builder-fund", "devgrant",
-    "prize", "competition",
+    "prize", "competition", "devhub", "campaign", "sponsorship", "pots",
 ]
 
 # --- Pagination link signals ---
@@ -280,6 +280,13 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
         return True
     # Awardee listings are historical output, not individual application calls.
     if origin == "https://xrplgrants.org" and path == "/awardees":
+        return True
+
+    # NEARN and POTLOCK pages below are opportunity directories. Keep them as
+    # traversal roots and let their individual child pages provide call evidence.
+    if origin == "https://nearn.io" and path in {"/", "/devhub", "/infra-committee", "/nf-bo"}:
+        return True
+    if origin == "https://app.potlock.org" and path in {"/campaigns", "/pots"}:
         return True
 
     if title_root in generic_titles or re.fullmatch(
