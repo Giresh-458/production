@@ -1004,3 +1004,36 @@ def test_xrpl_homepage_and_awardee_directory_are_not_individual_calls():
         "XRPL Award Recipients - XRPLGrants.org",
         "Awardees. Showing 199 Results. Project Status Complete.",
     )
+
+
+def test_non_2xx_http_response_is_a_fetch_failure_even_if_browser_says_success():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://chain.link/community/grants"
+
+    def fake_fetch(fetched_url):
+        return {
+            "html": "<html><body>404 Not Found</body></html>",
+            "markdown": "404 Not Found. No active grants listed.",
+            "success": True,
+            "error_message": None,
+            "status_code": 404,
+            "url": fetched_url,
+            "title": "Not Found",
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Chainlink Grants",
+            url,
+            {"start_urls": [url], "max_depth": 0, "max_pages": 1},
+            [],
+        )
+
+    assert result.pages_failed == 1
+    assert result.pages_fetched == 0
+    assert result.final_status == "FAIL"
+    assert result.opportunities == []
+
