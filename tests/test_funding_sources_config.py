@@ -88,11 +88,11 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             {"RWA", "Stablecoins"},
         ),
         "Filecoin Grants and Funding": (
-            "https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md",
+            "https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md",
             {"DePIN"},
         ),
         "Flashbots MEV Research Grants": (
-            "https://github.com/flashbots/mev-research/blob/main/grants.md",
+            "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
             {"MEV"},
         ),
         "Climate Pitch Climate-Tech Grants": (
@@ -137,7 +137,7 @@ def test_idapt_stale_awards_navigation_route_is_excluded():
 def test_filecoin_source_uses_the_official_open_grants_program_page():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected_url = (
-        "https://github.com/filecoin-project/devgrants/blob/master/"
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
     entry = by_name["Filecoin Grants and Funding"]
@@ -148,6 +148,28 @@ def test_filecoin_source_uses_the_official_open_grants_program_page():
     assert discovery["start_urls"] == [expected_url]
     assert discovery["max_pages"] == 1
     assert discovery["follow_detail_pages"] is False
+
+
+def test_github_markdown_sources_use_bounded_raw_content_endpoints():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    expected = {
+        "Filecoin Grants and Funding": "https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md",
+        "Flashbots MEV Research Grants": "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
+    }
+
+    for name, url in expected.items():
+        entry = by_name[name]
+        collection = entry["collection"]
+        discovery = collection["discovery"]
+        assert entry["url"] == url
+        assert entry.get("direct_page") is True
+        assert discovery["start_urls"] == [url]
+        assert "raw.githubusercontent.com" in collection["allowed_domains"]
+        assert discovery["max_depth"] == 0
+        assert discovery["max_pages"] == 1
+        assert discovery["follow_detail_pages"] is False
+        assert discovery["follow_pdfs"] is False
+        assert discovery["pagination"] is False
 
 
 def test_near_page_budget_is_larger_than_the_previous_exhausted_cap():

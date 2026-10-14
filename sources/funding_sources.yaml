@@ -164,7 +164,7 @@ sources:
           - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
-    url: https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md
+    url: https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
     direct_page: true
     focus: Official Filecoin Open Grants programme page; extract the programme-level amount and continuous-application evidence rather than treating each applicant's GitHub issue as a separate funding call.
     collection:
@@ -172,17 +172,18 @@ sources:
       engine: crawl4ai
       allowed_domains:
       - github.com
+      - raw.githubusercontent.com
       discovery:
         start_urls:
-        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md
-        max_depth: 1
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        max_depth: 0
         max_pages: 1
         follow_detail_pages: false
         follow_pdfs: false
         pagination: false
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
-    url: https://github.com/flashbots/mev-research/blob/main/grants.md
+    url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
     direct_page: true
     focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
     collection:
@@ -190,11 +191,12 @@ sources:
       engine: crawl4ai
       allowed_domains:
       - github.com
+      - raw.githubusercontent.com
       discovery:
         start_urls:
-        - https://github.com/flashbots/mev-research/blob/main/grants.md
-        max_depth: 1
-        max_pages: 2
+        - https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
+        max_depth: 0
+        max_pages: 1
         follow_detail_pages: false
         follow_pdfs: false
         pagination: false
