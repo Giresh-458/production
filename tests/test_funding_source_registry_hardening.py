@@ -25,9 +25,9 @@ def test_funding_registry_uses_current_domain_scoped_program_pages():
     sources = dict(_funding_sources())
 
     assert sources['Chainlink Build Program Status'] == 'https://chain.link/blog/build-program-evolution'
-    assert sources['Filecoin Grants and Funding'] == 'https://github.com/filecoin-project/devgrants'
-    assert sources['Flashbots MEV Research Grants'] == 'https://github.com/flashbots/mev-research/blob/main/grants.md'
-    assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/home/'
+    assert sources['Filecoin Grants and Funding'] == 'https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md'
+    assert sources['Flashbots MEV Research Grants'] == 'https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md'
+    assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/'
     assert sources['I-DAPT Hub Cyber-Physical Systems Calls'] == 'https://idapthub.org/applications/call_for_proposals'
 
     # Broad, unscoped portals and known stale/general sources were deliberately
