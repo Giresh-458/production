@@ -101,7 +101,7 @@ sources:
         pagination: true
         # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
         exclude_url_patterns:
-          - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?
+          - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
