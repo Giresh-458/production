@@ -190,6 +190,19 @@ def _is_allowed_domain(url: str, base_domain: str, allowed_domains: list[str]) -
     return any(host == d or host.endswith("." + d) for d in allowed)
 
 
+def _matches_excluded_url(url: str, patterns: list[str]) -> bool:
+    """Return True when a configured source-specific exclusion matches a URL."""
+    for pattern in patterns:
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        try:
+            if re.search(pattern, url, flags=re.IGNORECASE):
+                return True
+        except re.error as exc:
+            LOGGER.warning("Ignoring invalid exclude_url_patterns regex %r: %s", pattern, exc)
+    return False
+
+
 def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) -> float:
     """Stage A: high-recall scoring. Returns a 0-1 relevance score."""
     score = 0.0
@@ -257,6 +270,24 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
         "grants and funding", "funding and grants", "open rounds",
         "request for proposals", "request for proposals (rfps)", "rfps",
     }
+    origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
+    combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+
+    # XRPL's home page is a multi-program directory. Its current-looking
+    # headline can conflict with linked application pages whose deadlines have
+    # passed, so verify each linked programme instead of normalizing the hub.
+    if (
+        origin == "https://xrplgrants.org"
+        and path in {"", "/"}
+        and "applications now open for fall accelerator programs" in combined
+        and "brinc hong kong financial innovation program" in combined
+        and "tenity singapore financial infrastructure innovation program" in combined
+    ):
+        return True
+    # Awardee listings are historical output, not individual application calls.
+    if origin == "https://xrplgrants.org" and path == "/awardees":
+        return True
+
     if title_root in generic_titles or re.fullmatch(
         r"different grants? and funding opportunities within .+ ecosystem",
         title_root,
@@ -575,6 +606,11 @@ def crawl_funding_source(
     follow_pdfs = discovery_config.get("follow_pdfs", True)
     follow_documents = bool(discovery_config.get("follow_documents", False))
     follow_detail = discovery_config.get("follow_detail_pages", True)
+    direct_page = bool(discovery_config.get("direct_page", False))
+    raw_exclusion_patterns = discovery_config.get("exclude_url_patterns", []) or []
+    if isinstance(raw_exclusion_patterns, str):
+        raw_exclusion_patterns = [raw_exclusion_patterns]
+    exclude_url_patterns = [p for p in raw_exclusion_patterns if isinstance(p, str) and p]
     max_pdf_pages = discovery_config.get("max_pdf_pages")  # None = process all
 
     if test_limits:
@@ -796,6 +832,11 @@ def crawl_funding_source(
 
         # Stage B: classify this page
         is_funding_page = _classify_page_stage_b(current_url, page_title, page_content)
+        # direct_page explicitly identifies the configured starting URL as a
+        # programme-level record, even when its page title looks like a hub.
+        # Known empty-state listings remain excluded.
+        if depth == 0 and direct_page and not _reports_no_active_funding(current_url, page_title, page_content):
+            is_funding_page = True
 
         if is_funding_page:
             if depth > 0:
@@ -818,6 +859,9 @@ def crawl_funding_source(
             if discovery_config.get("pagination", False):
                 for pag_url in res.get("pagination_links", []):
                     normalized_pag = _normalize_url(pag_url)
+                    if _matches_excluded_url(normalized_pag, exclude_url_patterns):
+                        result.urls_skipped += 1
+                        continue
                     if normalized_pag not in visited:
                         if _is_allowed_domain(normalized_pag, base_domain, allowed_domains):
                             result.pagination_detected = True
@@ -830,6 +874,9 @@ def crawl_funding_source(
             if follow_detail:
                 for link_info in res.get("links", []):
                     link_url = _normalize_url(link_info["url"])
+                    if _matches_excluded_url(link_url, exclude_url_patterns):
+                        result.urls_skipped += 1
+                        continue
                     if link_url in visited:
                         result.duplicates_removed += 1
                         continue
