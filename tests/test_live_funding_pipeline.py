@@ -515,3 +515,21 @@ def test_section_extraction_ignores_incidental_geography_mentions():
     labels = ("geographic eligibility", "geography", "eligible countries", "eligible regions")
     assert _extract_section_value(incidental, labels) is None
     assert _extract_section_value("Geography: United Kingdom", labels) == "United Kingdom"
+
+
+
+def test_specific_open_grant_listing_badge_sets_open_status_without_guessing_dates():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "Grant | Open | UK. Applications: Sep 14 - Nov 14. "
+        "Approved builders receive 50% upfront and 50% once the demo is live."
+    )
+    assert determine_status(
+        None, None, None, content,
+        "Build for Breakpoint: Agentic Grants",
+    ) == "OPEN_CALL"
+
+    # The same badge can appear on a card inside a directory; a generic page title
+    # must not inherit an individual card's status.
+    assert determine_status(None, None, None, content, "Development Grants") == "UNKNOWN"
