@@ -312,10 +312,36 @@ def github_paginated_issues(
     rate_limited = False
     previous_ids: set[int] = set()
     source_max_pages = source_limits.get("max_pages") if source_limits else None
+    source_max_documents = (source_limits or {}).get("max_documents")
+    test_max_documents = (test_limits or {}).get("max_documents")
+    configured_document_limits = [
+        int(value)
+        for value in (source_max_documents, test_max_documents)
+        if value is not None
+    ]
+    max_documents = min(configured_document_limits) if configured_document_limits else None
+    document_limit_kind = (
+        "TEST_TRUNCATED"
+        if test_max_documents is not None
+        and (
+            source_max_documents is None
+            or int(test_max_documents) <= int(source_max_documents)
+        )
+        else "SOURCE_LIMIT_REACHED"
+    )
 
     while True:
         if source_max_pages is not None and pages_fetched >= source_max_pages:
             errors.append(f"SOURCE_LIMIT_REACHED: Max pages reached ({source_max_pages})")
+            break
+        if max_documents is not None and len(all_issues) >= max_documents:
+            errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
+            break
+
+        remaining_documents = max_documents - len(all_issues) if max_documents is not None else 100
+        per_page = min(100, remaining_documents)
+        if per_page <= 0:
+            errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
             break
 
         from core.crawl_context import current_crawl_context
@@ -325,7 +351,7 @@ def github_paginated_issues(
             break
 
         url = f"https://api.github.com/repos/{owner}/{repo}/issues"
-        params = {"state": "all", "per_page": 100, "page": page}
+        params = {"state": "all", "per_page": per_page, "page": page}
 
         try:
             r = get_response(url, params=params, headers=headers, timeout=(8, 25), retries=2)
@@ -356,6 +382,9 @@ def github_paginated_issues(
             pagination_complete = True
             break
 
+        # Respect the requested page size even for a malformed/nonconforming response.
+        issues = issues[:per_page]
+
         # Repeated page detection
         current_ids = {i.get("id", 0) for i in issues}
         if current_ids and current_ids.issubset(previous_ids):
@@ -370,13 +399,22 @@ def github_paginated_issues(
             errors.append(f"TEST_TRUNCATED: Max pages reached ({test_limits['max_pages']})")
             break
 
-        # Check Link header for next page
+        # Check Link header before deciding whether a document cap leaves a coverage gap.
         link_header = str(r.headers.get("Link", ""))
+        has_next_page = 'rel="next"' in link_header if link_header else len(issues) >= per_page
+
+        if max_documents is not None and len(all_issues) >= max_documents:
+            if has_next_page:
+                errors.append(f"{document_limit_kind}: Max documents reached ({max_documents})")
+            else:
+                pagination_complete = True
+            break
+
         if link_header:
-            if 'rel="next"' not in link_header:
+            if not has_next_page:
                 pagination_complete = True
                 break
-        elif len(issues) < 100:
+        elif len(issues) < per_page:
             pagination_complete = True
             break
 

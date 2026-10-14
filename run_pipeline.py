@@ -250,6 +250,7 @@ def get_all_open_funding_calls(
             r"\b(?:applications? (?:are|now) open|now accepting applications|"
             r"accepting applications now|open for applications|call is open|"
             r"rfp is open|currently accepting applications|"
+            r"open grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome|"
             r"applications? can be submitted at any time|"
             r"applications? (?:are )?accepted on a rolling basis|"
             r"(?:grant )?fellows are accepted on a rolling basis|"

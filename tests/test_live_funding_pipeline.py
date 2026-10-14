@@ -114,6 +114,80 @@ def test_open_call_with_future_deadline_and_application_url_is_current_call():
     assert result.application_url
 
 
+def test_official_filecoin_open_grants_welcome_language_is_a_live_call():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    content = (
+        "# Open Grants\n"
+        "Open Grants applications for funding up to $50,000 are welcome in the following categories:\n"
+        "Developer and Data Tooling; Integrations; Research & protocols; Storage; Retrieval; FVM.\n"
+        "The program supports projects that advance the Filecoin ecosystem and directly advance the Filecoin mission statement.\n"
+        "Note: The Devgrants program will prioritize functionality for Filecoin Network.\n"
+        "To submit an Open Grant proposal, use [create a new issue]"
+        "(https://github.com/filecoin-project/devgrants/issues/new?assignees=&labels=Open+Grant&template=open_grant.yml&title=Open+Grant+Proposal%3A).\n"
+        "We review grant proposals continuously."
+    )
+    document = FundingDocument(
+        organization="Filecoin Grants and Funding",
+        title="Open Grants README.md at master · filecoin-project/devgrants · GitHub",
+        source=(
+            "https://github.com/filecoin-project/devgrants/blob/master/"
+            "Program%20Resources/Open%20Grants%20README.md"
+        ),
+        source_type="html",
+        content=content,
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+
+    assert opportunity.status == "OPEN_CALL"
+    assert "welcome" in opportunity.evidence.get("status", "").lower()
+    assert opportunity.funding_amount
+    assert opportunity.application_url
+    assert "/issues/new" in opportunity.application_url
+
+
+def test_filecoin_open_grants_pass_strict_gate_with_depin_evidence():
+    from agents.funding_agent import FundingDocument, analyze_document, build_domain_relevance
+
+    content = (
+        "# Open Grants\n"
+        "Open Grants applications for funding up to $50,000 are welcome in the following categories:\n"
+        "Developer and Data Tooling; Integrations; Research & protocols; Storage; Retrieval; FVM.\n"
+        "The program supports projects that advance the Filecoin ecosystem and directly advance the Filecoin mission statement.\n"
+        "The Devgrants program will prioritize functionality for Filecoin Network.\n"
+        "To submit an Open Grant proposal, use [create a new issue]"
+        "(https://github.com/filecoin-project/devgrants/issues/new?labels=Open+Grant&template=open_grant.yml).\n"
+        "We review grant proposals continuously."
+    )
+    doc = FundingDocument(
+        organization="Filecoin Grants and Funding",
+        title="Open Grants README.md at master · filecoin-project/devgrants · GitHub",
+        source="https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md",
+        source_type="html",
+        content=content,
+        year=2026,
+    )
+    opportunity = analyze_document(doc)
+    record = {
+        "title": opportunity.program_name,
+        "program_name": opportunity.program_name,
+        "status": opportunity.status,
+        "source_url": opportunity.source_url,
+        "application_url": opportunity.application_url,
+        "funding_amount": opportunity.funding_amount,
+        "eligibility": opportunity.eligibility,
+        "evaluation_criteria": opportunity.evaluation_criteria,
+        "evidence": opportunity.evidence,
+        "domain_relevance": build_domain_relevance(content),
+        "source_research_domains": ["DePIN"],
+    }
+    selected, rejected = get_all_open_funding_calls({"outputs": [record]}, require_domain_match=True)
+
+    assert len(selected) == 1, rejected
+    assert selected[0]["matched_rif_domains"] == ["DePIN"]
+
+
 def test_literature_unscoped_mode_uses_funding_mission_terms():
     from agents.literature_agent import get_keywords, build_query
     from core.funding_context import current_funding_queries

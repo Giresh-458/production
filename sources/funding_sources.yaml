@@ -91,7 +91,9 @@ sources:
         start_urls:
         - https://www.near.org/funding
         max_depth: 3
-        max_pages: 8
+        # The previous live batch hit this cap exactly (8 pages) and was marked PARTIAL.
+        # Increase the bounded budget to allow more of the configured source frontier to be inspected.
+        max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -110,7 +112,7 @@ sources:
         max_depth: 2
         max_pages: 5
         follow_detail_pages: true
-        follow_pdfs: false
+        follow_pdfs: true
         pagination: true
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
@@ -131,19 +133,22 @@ sources:
         pagination: true
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
-    url: https://github.com/filecoin-project/devgrants
+    url: https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md
     direct_page: true
-    focus: DePIN, decentralized storage, data infrastructure, retrieval, verifiable
-      compute
+    focus: Official Filecoin Open Grants programme page; extract the programme-level amount and continuous-application evidence rather than treating each applicant's GitHub issue as a separate funding call.
     collection:
-      mode: api
-      provider: github
-      repo: filecoin-project/devgrants
-      pagination: true
-      detail_fetch: true
-      limits:
-        max_pages: 5
-        max_documents: 250
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - github.com
+      discovery:
+        start_urls:
+        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Open%20Grants%20README.md
+        max_depth: 1
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://github.com/flashbots/mev-research/blob/main/grants.md
@@ -184,8 +189,8 @@ sources:
   cps_funding:
   - name: NSF CPS Foundations and Connected Communities
     research_domains: [ZK-IoV]
-    url: https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
-    focus: Direct NSF cyber-physical systems program covering autonomy, security, transportation and community well-being; verify call-level fit and applicant eligibility.
+    url: https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation
+    focus: Official current NSF 25-543 solicitation containing the Cyber-Physical Systems Foundations and Connected Communities programme track; use this canonical solicitation instead of the programme endpoint that returned HTTP 403 in the last live run.
     collection:
       mode: web
       engine: crawl4ai
@@ -194,12 +199,14 @@ sources:
       - www.nsf.gov
       discovery:
         start_urls:
-        - https://www.nsf.gov/funding/opportunities/cps-cyber-physical-system-foundations-connected-communities
-        max_depth: 3
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
-        max_pages: 30
+        - https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation
+        # This official solicitation contains the CPS track in its own body. Stay on
+        # that canonical document instead of crawling unrelated Future CoRe tracks.
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
     url: https://idapthub.org/applications/call_for_proposals

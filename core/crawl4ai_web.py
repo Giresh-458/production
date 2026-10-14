@@ -223,10 +223,74 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     return min(score, 1.0)
 
 
+def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
+    """Detect empty-state messages on the configured source's actual listing page.
+
+    Keep URL scoping tight: publishers sometimes repeat notice text in a site-wide
+    modal/footer, so a message on one programme must not erase evidence from every
+    detail page on the same domain.
+    """
+    path = urlparse(url).path.rstrip("/").lower()
+    combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+    if path == "/applicants/rfp" and re.search(
+        r"\bno rfp items available\b|\bthere are currently no active requests? for proposals? available for application\b",
+        combined,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    if path == "/applicants/open-rounds" and re.search(
+        r"\bthere are no active grant rounds?\b|\bthere are no active rounds? at this time\b",
+        combined,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
+def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
+    """Keep funding directories as traversal roots, not individual grant records."""
+    path = urlparse(url).path.rstrip("/").lower()
+    title_lower = re.sub(r"\s+", " ", (title or "").lower()).strip()
+    title_root = re.split(r"\s+[|·]\s+", title_lower, maxsplit=1)[0].strip()
+    generic_titles = {
+        "grant", "grants", "funding", "funding opportunities",
+        "grants and funding", "funding and grants", "open rounds",
+        "request for proposals", "request for proposals (rfps)", "rfps",
+    }
+    if title_root in generic_titles or re.fullmatch(
+        r"different grants? and funding opportunities within .+ ecosystem",
+        title_root,
+    ):
+        return True
+
+    # Use directory copy only for known landing-page URLs. A detail page may
+    # include this language in a reused footer or navigation section.
+    known_hub_paths = {
+        "https://www.near.org": {"/funding"},
+        "https://near.org": {"/funding"},
+        "https://solana.org": {"/grants-funding", "/grants"},
+    }
+    origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
+    if path not in known_hub_paths.get(origin, set()):
+        return False
+    directory_markers = (
+        r"\bexplore grants, incentives, and community-backed resources\b",
+        r"\bthere are numerous grants programs run by teams\b",
+        r"\bfollowing ecosystem teams run their own grants programs\b",
+    )
+    combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+    return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in directory_markers)
+
+
 def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
     """Stage B: high-precision funding classification on actual page content."""
     url_lower = url.lower()
     combined = f"{title}\n{content}".lower()
+
+    # Explicitly empty listings and ecosystem directories are traversal roots,
+    # not individual applications. Their links are still explored below.
+    if _reports_no_active_funding(url, title, content) or _is_generic_funding_hub(url, title, content):
+        return False
     
     # 1. Broad generic hubs and search forms
     index_patterns = [
@@ -611,7 +675,6 @@ def crawl_funding_source(
             break
 
         pages_attempted_count += 1
-        result.pages_discovered += 1
 
         # Track max depth reached
         if depth > result.max_depth_reached:
@@ -621,10 +684,14 @@ def crawl_funding_source(
         is_pdf = current_url.lower().split("?", 1)[0].endswith(".pdf")
 
         if is_pdf:
-            if not follow_pdfs:
-                result.urls_skipped += 1
-                continue
             result.documents_discovered += 1
+            if not follow_pdfs:
+                # A discovered document may contain the only current call details.
+                # Do not claim a complete/empty source when its content was skipped.
+                result.urls_skipped += 1
+                result.truncated = True
+                result.pagination_complete = False
+                continue
             pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
             if pdf_result["success"]:
                 result.documents_fetched += 1
@@ -657,13 +724,13 @@ def crawl_funding_source(
         # path only for sources which explicitly opt in to document following.
         is_docx = urlparse(current_url).path.lower().endswith(".docx")
         if is_docx:
+            result.documents_discovered += 1
             if not follow_documents:
                 result.urls_skipped += 1
                 result.truncated = True
                 result.pagination_complete = False
                 continue
 
-            result.documents_discovered += 1
             docx_result = _fetch_docx(current_url)
             if docx_result["success"]:
                 result.documents_fetched += 1
@@ -691,6 +758,9 @@ def crawl_funding_source(
                     "timestamp": datetime.now(UTC).isoformat(),
                 })
             continue
+
+        # Page counters intentionally exclude PDFs/DOCX; those use document counters.
+        result.pages_discovered += 1
 
         # Fetch HTML page
         try:

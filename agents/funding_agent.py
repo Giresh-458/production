@@ -943,11 +943,16 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         lowered,
         flags=re.IGNORECASE,
     ))
+    open_grants_applications_welcome = bool(re.search(
+        r"\bopen grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
         for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal")
     )
-    if rolling_acceptance and grant_or_call_signal:
+    if (rolling_acceptance or open_grants_applications_welcome) and grant_or_call_signal:
         return "OPEN_CALL"
 
     explicit_open = any(x in lowered for x in ("applications are open", "applications are now open", "now accepting applications", "accepting applications now", "open for applications", "call is open", "rfp is open"))
@@ -1090,6 +1095,7 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 def _extract_program_name(text: str, fallback: str) -> str:
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
+        r"(?im)^\s*#{1,3}\s*(Open Grants?)\s*$",
         r"participate in\s+(.{3,140}?)(?:,\s*an initiative|,\s*a program)",
         r"About\s+([A-Z][A-Za-z0-9 .&()\-]{2,120})(?:\n|$)",
         r"selected RFP[:\s]+([A-Z][A-Za-z0-9 .&()\-]{2,120})",
@@ -1173,9 +1179,26 @@ def _extract_duration(text: str) -> str | None:
 
 
 def _extract_application_url(text: str) -> str | None:
-    """Return a URL only when nearby source text identifies it as an application endpoint."""
+    """Return an application endpoint only when adjacent source text/anchor identifies it."""
+    markdown_link = re.compile(r"\[([^\]]{1,160})\]\((https?://[^)\s]+)\)", re.IGNORECASE)
+    for match in markdown_link.finditer(text):
+        label = match.group(1).lower()
+        before = text[max(0, match.start() - 200):match.start()].lower()
+        is_application_label = re.search(
+            r"\b(?:apply|application|submit|submission|proposal)\b", label
+        )
+        is_grant_issue_template = (
+            "new issue" in label
+            and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
+        )
+        if is_application_label or is_grant_issue_template:
+            return match.group(2).rstrip(".,")
     url_pattern = r"https?://[^\s)\]]+"
-    contextual = re.compile(r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*(" + url_pattern + r")", re.IGNORECASE)
+    contextual = re.compile(
+        r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*("
+        + url_pattern + r")",
+        re.IGNORECASE,
+    )
     for match in contextual.finditer(text):
         return match.group(1).rstrip(".,")
     return None
@@ -1455,6 +1478,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"applications? (?:are )?accepted on a rolling basis",
             r"(?:grant )?fellows are accepted on a rolling basis",
             r"proposals are accepted on a rolling basis",
+            r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
             r"request for proposals",
             r"call for proposals",
         ]),
@@ -2153,6 +2177,9 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 {
                     "source_id": res.source_id,
                     "method": res.method,
+                    "api_pages_fetched": res.api_pages_fetched,
+                    "api_records_received": res.api_records_received,
+                    "api_expected_records": res.api_expected_records,
                     "pages_discovered": res.pages_discovered,
                     "pages_fetched": res.pages_fetched,
                     "pages_failed": res.pages_failed,
