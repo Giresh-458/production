@@ -1000,10 +1000,17 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     if open_listing_badge and title_has_call_identity and normalized_title not in GENERIC_PAGE_TITLES:
         return "OPEN_CALL"
 
+    # Form/application boilerplate commonly says "if awarded". That is not
+    # evidence that funding has already been granted; require concrete selection/
+    # recipient language or an explicitly past-tense award statement.
     funded_project_hint = any(
         phrase in lowered
-        for phrase in ("awarded", "selected projects", "fund recipients", "startups selected", "grant recipients")
-    )
+        for phrase in ("selected projects", "fund recipients", "startups selected", "grant recipients")
+    ) or bool(re.search(
+        r"\b(?:was|were|has been|have been|had been)\s+awarded\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
 
     rolling_acceptance = bool(re.search(
         r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"

@@ -406,6 +406,65 @@ def _get_final_page_url(result: Any, requested_url: str) -> str:
     )
 
 
+def _raw_markdown_text(result: Any) -> str:
+    """Read the generated Markdown across Crawl4AI result API variants."""
+    for attribute in ("markdown", "markdown_v2"):
+        candidate = getattr(result, attribute, None)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+        for text_attribute in ("raw_markdown", "fit_markdown"):
+            value = getattr(candidate, text_attribute, None)
+            if isinstance(value, str) and value.strip():
+                return value
+    return ""
+
+
+def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
+    """Extract navigable links from Markdown when rendered HTML omits card anchors."""
+    if not markdown:
+        return []
+
+    pattern = re.compile(
+        r'(?<!!)\[([^\n]{1,300}?)\]\(\s*(?:<([^>]+)>|([^\s)]+))'
+        r'(?:\s+"[^"]*")?\s*\)'
+    )
+
+    links: list[dict] = []
+    seen: set[str] = set()
+    excluded_assets = (".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf")
+    excluded_paths = ("/terms", "/privacy", "/cookies", "/login", "/signup", "/auth", "/signin")
+
+    for match in pattern.finditer(markdown):
+        label = re.sub(r"[*_~]", "", match.group(1)).strip()
+        target = (match.group(2) or match.group(3) or "").strip()
+        if not target or target.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        resolved = _normalize_url(urljoin(page_url, target))
+        if not resolved.startswith(("http://", "https://")):
+            continue
+        parsed = urlparse(resolved)
+        path_lower = parsed.path.lower()
+        if path_lower.endswith(excluded_assets) or any(path_lower.startswith(item) for item in excluded_paths):
+            continue
+        key = _url_dedupe_key(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        line_start = markdown.rfind("\n", 0, match.start()) + 1
+        line_end = markdown.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(markdown)
+        context = re.sub(r"\s+", " ", markdown[line_start:line_end]).strip()[:300]
+        links.append({
+            "url": resolved,
+            "anchor_text": label,
+            "surrounding_text": context,
+            "rel": "",
+        })
+    return links
+
+
 async def _fetch_url(url: str) -> dict:
     """Fetch a single URL using Crawl4AI and extract links with context."""
     from core.crawl_context import current_crawl_context
@@ -431,6 +490,7 @@ async def _fetch_url(url: str) -> dict:
             result = DummyResult()
 
         page_url = _get_final_page_url(result, url)
+        markdown_text = _raw_markdown_text(result)
         links = []
         pagination_links = []
         title = ""
@@ -494,9 +554,24 @@ async def _fetch_url(url: str) -> dict:
             except Exception as e:
                 LOGGER.warning("Link extraction failed for %s: %s", url, e)
 
+        # Some JS-rendered card grids are present in Crawl4AI's Markdown but
+        # expose no usable <a href> in the returned HTML. Supplement HTML links
+        # with Markdown links so opportunity cards remain discoverable.
+        known_link_keys = {_url_dedupe_key(item["url"]) for item in links}
+        for markdown_link in _extract_markdown_links(markdown_text, page_url):
+            link_key = _url_dedupe_key(markdown_link["url"])
+            if link_key in known_link_keys:
+                continue
+            known_link_keys.add(link_key)
+            links.append(markdown_link)
+            if _is_pagination_link(
+                markdown_link["anchor_text"], markdown_link["rel"], markdown_link["url"]
+            ):
+                pagination_links.append(markdown_link["url"])
+
         return {
             "html": result.html,
-            "markdown": result.markdown,
+            "markdown": markdown_text,
             "success": result.success,
             "error_message": getattr(result, "error_message", None),
             # Crawl4AI exposes first-response and final redirect statuses separately.
