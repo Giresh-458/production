@@ -19,7 +19,7 @@ from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCO
 from core.batch_runner import execute_batch_run
 from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
 from core.normalization import save_normalized_collection_records
-from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, normalize_area
+from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
 
 
@@ -95,6 +95,7 @@ def _supported_rif_funding_domains(
     matched_domains: list[str] = []
     best_score = 0.0
     source_domain_mismatch = False
+    missing_composite_domain_anchors = False
 
     for item in ranking:
         if not isinstance(item, dict):
@@ -129,6 +130,10 @@ def _supported_rif_funding_domains(
         if raw_score < 2.5 or not supported_terms:
             continue
 
+        if not has_required_domain_anchor_groups(domain, supported_terms):
+            missing_composite_domain_anchors = True
+            continue
+
         if source_domains_field_present:
             if domain not in source_domains:
                 source_domain_mismatch = True
@@ -146,8 +151,13 @@ def _supported_rif_funding_domains(
             "strong call-content domain evidence does not match the configured "
             "source's research-domain mapping"
         )
+    if missing_composite_domain_anchors:
+        return [], 0.0, (
+            "ZK-IoV requires direct evidence for both zero-knowledge cryptography "
+            "and Internet-of-Vehicles/connected-vehicle technology"
+        )
     return [], 0.0, (
-        "no sufficiently strong, domain-specific evidence for any canonical RIF research area"
+        "no sufficiently strong, domain-specific evidence for any canonical research area"
     )
 
 
