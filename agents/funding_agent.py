@@ -1003,10 +1003,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # Form/application boilerplate commonly says "if awarded". That is not
     # evidence that funding has already been granted; require concrete selection/
     # recipient language or an explicitly past-tense award statement.
-    funded_project_hint = any(
-        phrase in lowered
-        for phrase in ("selected projects", "fund recipients", "startups selected", "grant recipients")
-    ) or bool(re.search(
+    # Generic "grant recipients" and "selected projects" sections also appear on
+    # program homepages. Only explicit past-tense award statements identify an
+    # individual funded project with sufficient confidence.
+    funded_project_hint = bool(re.search(
         r"\b(?:was|were|has been|have been|had been)\s+awarded\b",
         lowered,
         flags=re.IGNORECASE,
