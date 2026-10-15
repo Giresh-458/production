@@ -215,10 +215,10 @@ def collect_auto_sources(
         LOGGER.info("TEST MODE ENABLED. Filtering sources and applying caps.")
         test_limits = {"max_pages": 5, "max_detail_pages": 10, "max_documents": 5}
         test_source_names = [
-            "Grants.gov Public Opportunities API", 
-            "Filecoin Grants and Funding", 
-            "Chainlink Build Program Status", 
-            "NSF Cyber Physical and Intelligent Systems",
+            "Filecoin Grants and Funding",
+            "Climate KIC Open Calls",
+            "NSF SBIR Climate Change Adaptation and Mitigation",
+            "NSF CPS Foundations and Connected Communities",
             "Ethereum ESP RFPs",
         ]
         sources = [s for s in sources if s.name in test_source_names]
