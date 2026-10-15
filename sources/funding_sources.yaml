@@ -168,7 +168,7 @@ sources:
         follow_pdfs: true
         pagination: false
         exclude_url_patterns:
-          - '^https?://github\\.com/filecoin-project/devgrants/issues(?:/|$)'
+          - '^https?://github\.com/filecoin-project/devgrants/issues(?:/|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
