@@ -36,25 +36,6 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: Chainlink Build Program Status
-    research_domains: [RWA, Stablecoins]
-    url: https://chain.link/blog/build-program-evolution
-    focus: Official Chainlink Build-program status bulletin only, not a direct cash-grant call. The June 26, 2026 announcement says existing Build arrangements are being concluded and the latest Build-related token-reward claims ended July 7, 2026. Do not infer an active grant from general technical support or ecosystem access; require a separately published call with explicit funding terms, eligibility, and application instructions.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - chain.link
-      discovery:
-        start_urls:
-        - https://chain.link/blog/build-program-evolution
-        # Monitor the official programme-status announcement only. Do not follow old
-        # reward, project, or generic ecosystem links as potential grant opportunities.
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
-        pagination: false
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
@@ -146,21 +127,17 @@ sources:
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
-    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details from programme-level pages.
+    focus: Official XRPL grants directory for RWA/tokenization and stablecoin/payment infrastructure. Crawl the application manager as well as the directory; it can state that no applications are currently open. Require current call-specific evidence before accepting an opportunity.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - xrplgrants.org
-      - brinc.io
-      - tenity.com
+      - submit.xrplgrants.org
       discovery:
-        # Treat the homepage as a directory and verify each linked accelerator on
-        # its own official programme page; the homepage banner can be stale.
         start_urls:
         - https://xrplgrants.org/
-        - https://brinc.io/xrpl-program
-        - https://www.tenity.com/program/sfiip-2026/
+        - https://submit.xrplgrants.org/submit
         max_depth: 1
         max_pages: 10
         follow_detail_pages: true
@@ -172,21 +149,26 @@ sources:
     research_domains: [DePIN]
     url: https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
     direct_page: true
-    focus: Official Filecoin Open Grants programme page; extract the programme-level amount and continuous-application evidence rather than treating each applicant's GitHub issue as a separate funding call.
+    focus: Official Filecoin Open Grants programme details plus the Filecoin Foundation's current grants directory. Extract current grant/RFP information; do not treat historical applicant issues as separate funding calls.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - github.com
       - raw.githubusercontent.com
+      - fil.org
+      - www.fil.org
       discovery:
         start_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
+        - https://fil.org/grants
+        max_depth: 2
+        max_pages: 12
+        follow_detail_pages: true
+        follow_pdfs: true
         pagination: false
+        exclude_url_patterns:
+          - '^https?://github\\.com/filecoin-project/devgrants/issues(?:/|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
@@ -207,24 +189,44 @@ sources:
         follow_pdfs: false
         pagination: false
   tier_3:
-  - name: Climate Pitch Climate-Tech Grants
+  - name: Climate KIC Open Calls
     research_domains: [ESG]
-    url: https://climatepitch.org/
-    direct_page: true
-    focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
+    url: https://www.climate-kic.org/get-involved/open-calls/
+    focus: Official climate-innovation open-call directory. Some entries are accelerators, expressions of interest, or support programmes rather than grants; retain only individual calls with explicit funding/application evidence and direct ESG relevance.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - climatepitch.org
+      - climate-kic.org
+      - www.climate-kic.org
       discovery:
         start_urls:
-        - https://climatepitch.org/
+        - https://www.climate-kic.org/get-involved/open-calls/
+        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         max_depth: 2
-        max_pages: 5
+        max_pages: 15
         follow_detail_pages: true
         follow_pdfs: true
-        pagination: true
+        pagination: false
+  - name: NSF SBIR Climate Change Adaptation and Mitigation
+    research_domains: [ESG]
+    url: https://www.sbir.gov/topics/1012419
+    direct_page: true
+    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012419
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
   cps_funding:
   - name: NSF CPS Foundations and Connected Communities
     research_domains: [ZK-IoV]
