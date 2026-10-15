@@ -159,8 +159,8 @@ sources:
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
     url: https://fil.org/grants
-    direct_page: true
-    focus: Official Filecoin Foundation grants directory plus the detailed Filecoin Open Grants programme README. Extract current grant/RFP information; do not treat historical applicant issues as separate funding calls.
+    direct_page: false
+    focus: Official Filecoin Foundation grants directory plus the detailed Filecoin Open Grants programme README. The directory is a discovery hub; treat the linked/seeded Open Grants README as the direct programme page and do not treat historical applicant issues as separate funding calls.
     collection:
       mode: web
       engine: crawl4ai
@@ -175,6 +175,10 @@ sources:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
         max_depth: 2
         max_pages: 12
+        # The root URL is a directory. Only force-record the README with the
+        # programme's explicit continuous-application and award evidence.
+        direct_page_urls:
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
