@@ -260,8 +260,8 @@ def test_past_deadline_takes_precedence_over_awardee_copy():
         None,
         None,
         "2026-05-27",
-        "Climate Pitch grants. Grant recipients: 8 startups. Last Date to Apply – 27 May 2026.",
-        "Climate Pitch",
+        "Climate innovation grants. Grant recipients: 8 startups. Last Date to Apply – 27 May 2026.",
+        "Climate-tech funding programme",
     )
     assert status == "CLOSED_CALL"
 
@@ -416,10 +416,10 @@ def test_direct_page_override_applies_only_to_primary_start_url():
     assert [item["url"] for item in result.opportunities] == [primary]
 
 
-def test_chainlink_status_announcement_is_not_misclassified_as_a_funding_call():
+def test_ecosystem_status_announcement_is_not_misclassified_as_a_funding_call():
     from core.crawl4ai_web import _classify_page_stage_b
 
-    title = "Evolving the Chainlink Build Program"
+    title = "Evolving an Ecosystem Builder Program"
     content = (
         "The Chainlink ecosystem is continually evolving how it supports early and mid-stage projects. "
         "Existing arrangements under the Build program are being concluded, while new commercial "
@@ -428,18 +428,18 @@ def test_chainlink_status_announcement_is_not_misclassified_as_a_funding_call():
         "This announcement is a program-status update, not an open application call."
     )
     assert _classify_page_stage_b(
-        "https://chain.link/blog/build-program-evolution", title, content
+        "https://funding.example.org/program-status", title, content
     ) is False
 
 
 def test_collection_error_formatter_exposes_operation_url_and_reason():
     error = {
         "operation": "page_fetch",
-        "url": "https://chain.link/community/grants",
+        "url": "https://funding.example.org/previously-configured-route",
         "error": "HTTP 404",
     }
     assert _format_collection_error(error) == (
-        "page_fetch | https://chain.link/community/grants | HTTP 404"
+        "page_fetch | https://funding.example.org/previously-configured-route | HTTP 404"
     )
     assert _format_collection_error("robots.txt disallows this URL") == (
         "robots.txt disallows this URL"
@@ -599,23 +599,23 @@ def test_specific_superteam_h1_precedes_about_section_and_open_badge_is_open():
     assert opportunity.application_url == "https://83chy35k9ea.typeform.com/to/Mgl4epqX"
 
 
-def test_climate_pitch_expired_homepage_is_not_a_funded_project():
+def test_expired_climate_grant_deadline_is_not_a_funded_project():
     from agents.funding_agent import FundingDocument, analyze_document, extract_call_dates
 
     content = (
-        "CLIMATE PITCH. A Grant Funding Platform for Early-stage Startups in Climate Tech.\n"
+        "Climate innovation grant programme for early-stage startups in climate technology.\n"
         "Apply Here. _Last Date to Apply –_ _27 May 2026_.\n"
-        "Climate Pitch Showcase. Grant Support: Up to Rs 20 Lakhs.\n"
+        "Climate innovation showcase. Grant Support: Up to Rs 20 Lakhs.\n"
         "Grant recipients: 8 startups.\n"
-        "Winners of Climate Pitch 2025. Previous Winners.\n"
+        "Previous programme awardees.\n"
     )
     _, deadline = extract_call_dates(content)
     assert deadline == "2026-05-27"
 
     opportunity = analyze_document(FundingDocument(
-        organization="Climate Pitch Climate-Tech Grants",
-        title="Climate Pitch",
-        source="https://climatepitch.org/",
+        organization="Example Climate Funding Programme",
+        title="Climate-tech funding programme",
+        source="https://funding.example.org/climate-call",
         source_type="html",
         content=content,
         year=2026,
