@@ -572,3 +572,68 @@ def test_non_superteam_page_does_not_use_superteam_wait_options():
     assert _superteam_directory_wait_options(
         "https://solana.org/grants-funding"
     ) == {}
+
+
+def test_specific_superteam_h1_precedes_about_section_and_open_badge_is_open():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    content = (
+        "# Startup Accelerator Grant\n"
+        "Grant | Open | Global\n"
+        "## About DD.xyz by Webacy\n"
+        "Get up to $10,000 in DD.xyz API credits.\n"
+        "Apply for the grant now: "
+        "[Apply](https://83chy35k9ea.typeform.com/to/Mgl4epqX)\n"
+    )
+    opportunity = analyze_document(FundingDocument(
+        organization="Solana Grants and Funding",
+        title="potentially dangerous token approvals",
+        source="https://superteam.fun/earn/grants/startup-accelerator-grant",
+        source_type="html",
+        content=content,
+        year=2026,
+    ))
+
+    assert opportunity.program_name == "Startup Accelerator Grant"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.application_url == "https://83chy35k9ea.typeform.com/to/Mgl4epqX"
+
+
+def test_climate_pitch_expired_homepage_is_not_a_funded_project():
+    from agents.funding_agent import FundingDocument, analyze_document, extract_call_dates
+
+    content = (
+        "CLIMATE PITCH. A Grant Funding Platform for Early-stage Startups in Climate Tech.\n"
+        "Apply Here. _Last Date to Apply –_ _27 May 2026_.\n"
+        "Climate Pitch Showcase. Grant Support: Up to Rs 20 Lakhs.\n"
+        "Grant recipients: 8 startups.\n"
+        "Winners of Climate Pitch 2025. Previous Winners.\n"
+    )
+    _, deadline = extract_call_dates(content)
+    assert deadline == "2026-05-27"
+
+    opportunity = analyze_document(FundingDocument(
+        organization="Climate Pitch Climate-Tech Grants",
+        title="Climate Pitch",
+        source="https://climatepitch.org/",
+        source_type="html",
+        content=content,
+        year=2026,
+    ))
+    assert opportunity.status == "CLOSED_CALL"
+    assert opportunity.opportunity_type == "FUNDING_CALL"
+
+
+def test_flashbots_markdown_h1_wins_over_url_fallback_title():
+    from agents.funding_agent import _extract_program_name
+
+    content = (
+        "# MEV Fellowship Grants\n"
+        "The MEV fellowship is a grants program to support research.\n"
+        "## About Flashbots Research\n"
+        "Fellows are accepted on a rolling basis.\n"
+    )
+    assert _extract_program_name(
+        content,
+        "Extracted from https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
+    ) == "MEV Fellowship Grants"

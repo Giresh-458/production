@@ -1003,10 +1003,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # Form/application boilerplate commonly says "if awarded". That is not
     # evidence that funding has already been granted; require concrete selection/
     # recipient language or an explicitly past-tense award statement.
-    funded_project_hint = any(
-        phrase in lowered
-        for phrase in ("selected projects", "fund recipients", "startups selected", "grant recipients")
-    ) or bool(re.search(
+    # Generic "grant recipients" and "selected projects" sections also appear on
+    # program homepages. Only explicit past-tense award statements identify an
+    # individual funded project with sufficient confidence.
+    funded_project_hint = bool(re.search(
         r"\b(?:was|were|has been|have been|had been)\s+awarded\b",
         lowered,
         flags=re.IGNORECASE,
@@ -1083,8 +1083,8 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
         # as a date cue. The previous bare "open" alternative could consume
         # unrelated dates later in a GitHub issue header, e.g. "opened on Oct 9".
         # "Opens:", "opening date", "open date", and "applications open" remain valid.
-        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?({date_token})",
-        "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bfinal\s+date\b)[^.!?]{{0,160}}?({date_token})",
+        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
+        "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_`]*({date_token})",
     }
     values: dict[str, str | None] = {"opening": None, "deadline": None}
     for key, pattern in patterns.items():
@@ -1188,6 +1188,21 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
+    # Prefer a specific Markdown H1 before scanning broad section headings such
+    # as "About DD.xyz". The H1 often identifies the opportunity when the browser
+    # title or fallback title is unrelated.
+    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
+        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
+        normalized = candidate.lower().rstrip(" .:-")
+        if not candidate or normalized in GENERIC_PAGE_TITLES:
+            continue
+        if re.search(
+            r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
+            candidate,
+            flags=re.IGNORECASE,
+        ):
+            return candidate
+
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
         r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
@@ -1213,22 +1228,6 @@ def _extract_program_name(text: str, fallback: str) -> str:
     ))
     if normalized_title not in GENERIC_PAGE_TITLES and title_has_call_identity and len(title) <= 180:
         return title.rstrip(" .:-")
-
-    # Browser-rendered sites sometimes expose app-shell titles such as
-    # "this listing" while the actual record name is the page's Markdown H1.
-    # Prefer a specific H1 with explicit call/program language instead of saving
-    # a generic title or the organization's site-wide brand as the opportunity.
-    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
-        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
-        normalized = candidate.lower().rstrip(" .:-")
-        if not candidate or normalized in GENERIC_PAGE_TITLES:
-            continue
-        if re.search(
-            r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
-            candidate,
-            flags=re.IGNORECASE,
-        ):
-            return candidate
 
     if title and normalized_title not in GENERIC_PAGE_TITLES and len(title) <= 180:
         return title.rstrip(" .:-")
