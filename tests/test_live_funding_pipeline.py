@@ -604,7 +604,7 @@ def test_climate_pitch_expired_homepage_is_not_a_funded_project():
 
     content = (
         "CLIMATE PITCH. A Grant Funding Platform for Early-stage Startups in Climate Tech.\n"
-        "Apply Here. Last Date to Apply – 27 May 2026.\n"
+        "Apply Here. _Last Date to Apply –_ _27 May 2026_.\n"
         "Climate Pitch Showcase. Grant Support: Up to Rs 20 Lakhs.\n"
         "Grant recipients: 8 startups.\n"
         "Winners of Climate Pitch 2025. Previous Winners.\n"
