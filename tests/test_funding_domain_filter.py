@@ -5,7 +5,7 @@ import pytest
 from run_pipeline import get_all_open_funding_calls
 
 
-def _candidate(*, domain="DePIN", term="depin", source_domains=None, raw_score=3.0):
+def _candidate(*, domain="DePIN", term="depin", terms=None, source_domains=None, raw_score=3.0):
     deadline = (datetime.now(UTC) + timedelta(days=30)).date().isoformat()
     record = {
         "call_id": f"CALL-{domain}",
@@ -24,7 +24,7 @@ def _candidate(*, domain="DePIN", term="depin", source_domains=None, raw_score=3
             "domain": domain,
             "score": 0.75,
             "raw_score": raw_score,
-            "matched_terms": [term],
+            "matched_terms": list(terms) if terms is not None else [term],
         }],
     }
     if source_domains is not None:
@@ -90,7 +90,7 @@ def test_manual_candidate_without_source_metadata_still_needs_strong_domain_evid
     [
         ("RWA", "real-world asset"),
         ("ESG", "carbon credit"),
-        ("ZK-IoV", "zero-knowledge"),
+        ("ZK-IoV", ["zero-knowledge", "v2x"]),
         ("DID", "verifiable credential"),
         ("DePIN", "depin"),
         ("MEV", "mev"),
@@ -99,13 +99,45 @@ def test_manual_candidate_without_source_metadata_still_needs_strong_domain_evid
 )
 def test_all_seven_canonical_domains_can_pass_with_strong_evidence(domain, anchor):
     selected, rejected = get_all_open_funding_calls(
-        _candidate(domain=domain, term=anchor, source_domains=[domain]),
+        _candidate(
+            domain=domain,
+            term=anchor if isinstance(anchor, str) else anchor[0],
+            terms=anchor if isinstance(anchor, list) else None,
+            source_domains=[domain],
+        ),
         require_domain_match=True,
     )
 
     assert len(selected) == 1
     assert selected[0]["matched_rif_domains"] == [domain]
     assert rejected == []
+
+
+
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [
+        ["zero-knowledge"],
+        ["v2x"],
+        ["vehicular"],
+    ],
+)
+def test_strict_funding_gate_rejects_one_sided_ziov_evidence(terms):
+    selected, rejected = get_all_open_funding_calls(
+        _candidate(
+            domain="ZK-IoV",
+            terms=terms,
+            source_domains=["ZK-IoV"],
+            raw_score=5.0,
+        ),
+        require_domain_match=True,
+    )
+
+    assert selected == []
+    assert len(rejected) == 1
+    assert "ZK-IoV requires direct evidence for both" in rejected[0]["reasons"][0]
 
 
 def test_explicit_rolling_fellowship_is_accepted_without_a_deadline():
