@@ -1075,29 +1075,61 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
 
 
 def extract_call_dates(content: str) -> tuple[str | None, str | None]:
-    # Funding pages frequently emphasize labels and dates in Markdown (for example,
-    # "_Last Date to Apply –_ _27 May 2026_"). Strip emphasis/code markers before
-    # matching so formatting cannot prevent deadline extraction.
+    """Extract opening dates and the nearest active deadline from call-specific text.
+
+    Some official topic pages list several application windows under one "Due
+    Date(s)" label. Selecting the first date incorrectly marks an open solicitation
+    closed when an earlier round has passed but a later round remains open.
+    """
     text = cleaned_text(re.sub(r"[*_`]", "", str(content or "")))
     month = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
     date_token = rf"(?:{month}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,)?\s+20\d{{2}}|\d{{1,2}}(?:st|nd|rd|th)?\s+{month}\s+20\d{{2}}|20\d{{2}}[-/]\d{{1,2}}[-/]\d{{1,2}}|\d{{1,2}}[-/]\d{{1,2}}[-/]20\d{{2}})"
     patterns = {
         # Do not treat the word "Open" in a title like "Open Grant Proposal"
-        # as a date cue. The previous bare "open" alternative could consume
-        # unrelated dates later in a GitHub issue header, e.g. "opened on Oct 9".
-        # "Opens:", "opening date", "open date", and "applications open" remain valid.
+        # as a date cue. "Opens:", "opening date", "open date", and
+        # "applications open" remain valid date cues.
         "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
         "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_`]*({date_token})",
     }
-    values: dict[str, str | None] = {"opening": None, "deadline": None}
-    for key, pattern in patterns.items():
-        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-            parsed = _normalize_date(match.group(1))
-            if parsed:
-                values[key] = parsed
-                break
-    return values["opening"], values["deadline"]
 
+    values: dict[str, str | None] = {"opening": None, "deadline": None}
+    for match in re.finditer(patterns["opening"], text, flags=re.IGNORECASE):
+        parsed = _normalize_date(match.group(1))
+        if parsed:
+            values["opening"] = parsed
+            break
+
+    deadline_candidates: list[str] = []
+    for match in re.finditer(patterns["deadline"], text, flags=re.IGNORECASE):
+        parsed = _normalize_date(match.group(1))
+        if parsed and parsed not in deadline_candidates:
+            deadline_candidates.append(parsed)
+
+    # A "Due Date(s)" schedule may list several rounds after a single label.
+    # Read that labelled list up to the next field heading / sentence boundary.
+    for match in re.finditer(r"\bdue\s+dates?\s*\(?s?\)?\s*[:\-]?\s*", text, flags=re.IGNORECASE):
+        remainder = text[match.end():match.end() + 400]
+        remainder = re.split(
+            r"\b(?:close|closing|opening|release|solicitation)\s+date\b|\b(?:description|eligibility|how to apply)\b|\.\s+(?=[A-Z0-9])",
+            remainder,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        for date_match in re.finditer(date_token, remainder, flags=re.IGNORECASE):
+            parsed = _normalize_date(date_match.group(0))
+            if parsed and parsed not in deadline_candidates:
+                deadline_candidates.append(parsed)
+
+    if deadline_candidates:
+        today = datetime.now(UTC).date()
+        parsed_dates = [(datetime.strptime(value, "%Y-%m-%d").date(), value) for value in deadline_candidates]
+        future = [(date_value, value) for date_value, value in parsed_dates if date_value >= today]
+        # For multiple rounds, select the next deadline that has not passed.
+        # If all listed deadlines are past, use the latest past date so the
+        # hard-closed status check remains conservative.
+        values["deadline"] = min(future)[1] if future else max(parsed_dates)[1]
+
+    return values["opening"], values["deadline"]
 
 def detect_research_intent(text: str, *, focus_area: str = "General", themes: list[str] | None = None) -> tuple[str, list[str]]:
     """Conservatively classify whether a funding call actually supports research.
