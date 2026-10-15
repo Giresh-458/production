@@ -637,3 +637,29 @@ def test_flashbots_markdown_h1_wins_over_url_fallback_title():
         content,
         "Extracted from https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
     ) == "MEV Fellowship Grants"
+
+
+def test_repeated_due_date_schedule_selects_nearest_future_round():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    opening_date = today - timedelta(days=30)
+    past_deadline = today - timedelta(days=10)
+    next_deadline = today + timedelta(days=20)
+    later_deadline = today + timedelta(days=80)
+
+    def display_date(value):
+        return f"{value.strftime('%B')} {value.day}, {value.year}"
+
+    content = (
+        f"Open Date: {display_date(opening_date)}. "
+        f"3. Due Date(s) {display_date(past_deadline)}; "
+        f"{display_date(next_deadline)}; {display_date(later_deadline)}. "
+        f"4. Close Date: {display_date(later_deadline)}. "
+        "Solicitation Status: Open."
+    )
+    opening, deadline = extract_call_dates(content)
+
+    assert opening == opening_date.isoformat()
+    assert deadline == next_deadline.isoformat()
+    assert determine_status(None, opening, deadline, content) == "OPEN_CALL"
