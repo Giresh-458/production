@@ -416,6 +416,41 @@ def test_direct_page_override_applies_only_to_primary_start_url():
     assert [item["url"] for item in result.opportunities] == [primary]
 
 
+def test_broad_funding_catalogue_roots_are_not_individual_opportunities():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_generic_funding_hub
+
+    samples = [
+        (
+            "https://fil.org/grants",
+            "Filecoin Foundation Grants & Funding Opportunities",
+            "The foundation awards grant funding. Submit a proposal, apply now, "
+            "review eligibility, and check deadlines.",
+        ),
+        (
+            "https://www.climate-kic.org/get-involved/open-calls/",
+            "Climate KIC Open Calls 2027",
+            "Browse open calls, grants, funding, eligibility, application instructions, "
+            "and deadlines for multiple programmes.",
+        ),
+        (
+            "https://www.sbir.gov/topics?status=Open",
+            "Current SBIR topic results",
+            "Open topics list funding amounts, eligibility, calls for proposals, "
+            "deadlines, and application instructions across agencies.",
+        ),
+        (
+            "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502",
+            "Calls for Proposals | EU Funding & Tenders Portal",
+            "Browse open and forthcoming calls for proposals, grant funding, "
+            "eligibility requirements, applications, and deadlines.",
+        ),
+    ]
+
+    for url, title, content in samples:
+        assert _is_generic_funding_hub(url, title, content)
+        assert not _classify_page_stage_b(url, title, content)
+
+
 def test_filecoin_directory_is_not_forced_but_open_grants_readme_is_direct():
     from unittest.mock import patch
     from core.crawl4ai_web import crawl_funding_source
@@ -428,8 +463,11 @@ def test_filecoin_directory_is_not_forced_but_open_grants_readme_is_direct():
 
     def fake_fetch(url):
         if url == directory:
-            title = "Grants | Filecoin Foundation"
-            markdown = "Explore grants and funding programmes across the Filecoin ecosystem."
+            title = "Filecoin Foundation Grants & Funding Opportunities"
+            markdown = (
+                "Filecoin Foundation awards grant funding for development projects. "
+                "Applicants can submit a proposal, review eligibility, apply now, and check deadlines."
+            )
         else:
             title = "Open Grants"
             markdown = "Programme evidence text."
