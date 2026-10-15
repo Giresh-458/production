@@ -1075,7 +1075,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
 
 
 def extract_call_dates(content: str) -> tuple[str | None, str | None]:
-    text = cleaned_text(content)
+    # Funding pages frequently emphasize labels and dates in Markdown (for example,
+    # "_Last Date to Apply –_ _27 May 2026_"). Strip emphasis/code markers before
+    # matching so formatting cannot prevent deadline extraction.
+    text = cleaned_text(re.sub(r"[*_`]", "", str(content or "")))
     month = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
     date_token = rf"(?:{month}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,)?\s+20\d{{2}}|\d{{1,2}}(?:st|nd|rd|th)?\s+{month}\s+20\d{{2}}|20\d{{2}}[-/]\d{{1,2}}[-/]\d{{1,2}}|\d{{1,2}}[-/]\d{{1,2}}[-/]20\d{{2}})"
     patterns = {
