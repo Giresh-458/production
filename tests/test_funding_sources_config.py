@@ -32,7 +32,7 @@ def test_funding_source_catalogue_has_unique_names_and_urls():
 
     # Keep the catalogue intentionally curated; additions require an explicit
     # domain mapping and a corresponding review of scope.
-    assert len(entries) == 12
+    assert len(entries) == 15
     assert all(names)
     assert all(urls)
     assert len(names) == len(set(names))
@@ -59,54 +59,21 @@ def test_every_funding_source_is_mapped_to_canonical_rif_domains():
 def test_curated_sources_are_scoped_to_the_seven_target_areas():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected = {
-        "Ethereum ESP RFPs": (
-            "https://esp.ethereum.foundation/applicants/rfp",
-            {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
-        ),
-        "Ethereum ESP Open Rounds": (
-            "https://esp.ethereum.foundation/applicants/open-rounds",
-            {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
-        ),
-        "Solana Grants and Funding": (
-            "https://solana.org/grants-funding",
-            {"RWA", "DePIN", "MEV", "Stablecoins"},
-        ),
-        "NEAR Ecosystem Funding": (
-            "https://www.near.org/funding",
-            {"RWA", "DID", "DePIN", "MEV", "Stablecoins"},
-        ),
-        "Ripple UBRI": (
-            "https://ripple.com/impact/ubri/",
-            {"RWA", "DID", "Stablecoins"},
-        ),
-        "XRPL Grants Program": (
-            "https://xrplgrants.org/",
-            {"RWA", "Stablecoins"},
-        ),
-        "Filecoin Grants and Funding": (
-            "https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md",
-            {"DePIN"},
-        ),
-        "Flashbots MEV Research Grants": (
-            "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
-            {"MEV"},
-        ),
-        "Climate KIC Open Calls": (
-            "https://www.climate-kic.org/get-involved/open-calls/",
-            {"ESG"},
-        ),
-        "NSF SBIR Climate Change Adaptation and Mitigation": (
-            "https://www.sbir.gov/topics/1012419",
-            {"ESG"},
-        ),
-        "NSF CPS Foundations and Connected Communities": (
-            "https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation",
-            {"ZK-IoV"},
-        ),
-        "I-DAPT Hub Cyber-Physical Systems Calls": (
-            "https://idapthub.org/applications/call_for_proposals",
-            {"ESG", "ZK-IoV"},
-        ),
+        "Ethereum ESP RFPs": ("https://esp.ethereum.foundation/applicants/rfp", {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
+        "Ethereum ESP Open Rounds": ("https://esp.ethereum.foundation/applicants/open-rounds", {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
+        "Solana Grants and Funding": ("https://solana.org/grants-funding", {"RWA", "DePIN", "MEV", "Stablecoins"}),
+        "Superteam Development Grants": ("https://superteam.fun/earn/opportunities/development-grants/", {"RWA", "DePIN", "MEV", "Stablecoins"}),
+        "NEAR Ecosystem Funding": ("https://near.org/funding", {"RWA", "DID", "DePIN", "MEV", "Stablecoins"}),
+        "Ripple UBRI": ("https://ripple.com/impact/ubri/", {"RWA", "DID", "Stablecoins"}),
+        "XRPL Grants Program": ("https://xrplgrants.org/", {"RWA", "Stablecoins"}),
+        "Filecoin Grants and Funding": ("https://fil.org/grants", {"DePIN"}),
+        "Flashbots MEV Research Grants": ("https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md", {"MEV"}),
+        "Climate KIC Open Calls": ("https://www.climate-kic.org/get-involved/open-calls/", {"ESG"}),
+        "NSF SBIR Trusted Identity": ("https://www.sbir.gov/topics/1012406", {"DID"}),
+        "NSF SBIR Climate Change Adaptation and Mitigation": ("https://www.sbir.gov/topics/1012419", {"ESG"}),
+        "Open SBIR Funding Topics": ("https://www.sbir.gov/topics?status=Open", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
+        "EU Open and Forthcoming Funding Calls": ("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
+        "I-DAPT Hub Cyber-Physical Systems Calls": ("https://idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
     }
 
     assert set(by_name) == set(expected)
@@ -140,12 +107,13 @@ def test_idapt_stale_awards_and_historical_fellows_are_excluded():
 
 def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     by_name = {entry["name"]: entry for entry in _entries()}
-    expected_url = (
+    official_url = "https://fil.org/grants"
+    readme_url = (
         "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
     entry = by_name["Filecoin Grants and Funding"]
-    assert entry["url"] == expected_url
+    assert entry["url"] == official_url
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is True
@@ -154,8 +122,8 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     )
     discovery = collection["discovery"]
     assert discovery["start_urls"] == [
-        expected_url,
-        "https://fil.org/grants",
+        official_url,
+        readme_url,
     ]
     assert discovery["max_depth"] == 2
     assert discovery["max_pages"] == 12
@@ -191,7 +159,7 @@ def test_ripple_ubri_follows_discovered_pdf_evidence():
     assert discovery["follow_pdfs"] is True
 
 
-def test_broad_unscoped_portals_are_not_funding_roots():
+def test_known_irrelevant_or_mis_scoped_portals_are_not_funding_roots():
     names = {str(entry.get("name", "")).casefold() for entry in _entries()}
     forbidden_names = {
         "meity startup hub",
@@ -228,16 +196,59 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     by_name = {entry["name"]: entry for entry in _entries()}
-
     assert "Chainlink Build Program Status" not in by_name
+    assert "Climate Pitch Climate-Tech Grants" not in by_name
+    assert "NSF CPS Foundations and Connected Communities" not in by_name
+
+    solana = by_name["Solana Grants and Funding"]
+    assert solana.get("direct_page") is True
+    assert solana["url"] == "https://solana.org/grants-funding"
+    assert solana["collection"]["discovery"]["start_urls"] == [solana["url"]]
+    assert "superteam.fun" not in solana["collection"]["allowed_domains"]
+    assert any("/news/" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
+    assert solana["collection"]["discovery"]["max_pages"] == 60
+
+    superteam = by_name["Superteam Development Grants"]
+    assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
+    assert superteam["collection"]["discovery"]["start_urls"] == [superteam["url"]]
+    assert {"superteam.fun", "earn.superteam.fun"}.issubset(set(superteam["collection"]["allowed_domains"]))
+    assert superteam["collection"]["discovery"]["max_pages"] == 30
+    assert superteam.get("direct_page", False) is False
+
+    near_entry = by_name["NEAR Ecosystem Funding"]
+    assert near_entry["url"] == "https://near.org/funding"
+    near = near_entry["collection"]["discovery"]
+    assert near["max_pages"] == 20 and near["max_depth"] == 2 and near["exclude_url_patterns"]
+    assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
+    assert "https://near.org/funding" in near["start_urls"]
+    assert "https://nearn.io/devhub/" in near["start_urls"]
+    assert "https://app.potlock.org/pots" in near["start_urls"]
+
+    xrpl_entry = by_name["XRPL Grants Program"]
+    xrpl = xrpl_entry["collection"]
+    assert {"xrplgrants.org", "submit.xrplgrants.org"}.issubset(set(xrpl["allowed_domains"]))
+    assert xrpl["discovery"]["max_depth"] == 1 and xrpl["discovery"]["max_pages"] == 10
+    assert "https://xrplgrants.org/" in xrpl["discovery"]["start_urls"]
+    assert "https://submit.xrplgrants.org/submit" in xrpl["discovery"]["start_urls"]
+    assert not any("brinc.io" in u or "tenity.com" in u for u in xrpl["discovery"]["start_urls"])
+    assert any("awardees" in p for p in xrpl["discovery"]["exclude_url_patterns"])
+
+    filecoin = by_name["Filecoin Grants and Funding"]
+    assert filecoin["url"] == "https://fil.org/grants"
+    assert filecoin["collection"]["discovery"]["start_urls"][0] == filecoin["url"]
 
     climate = by_name["Climate KIC Open Calls"]
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 2
-    assert climate_discovery["max_pages"] == 15
+    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 15
     assert climate.get("direct_page", False) is False
+
+    nsf_identity = by_name["NSF SBIR Trusted Identity"]
+    assert nsf_identity["url"] == "https://www.sbir.gov/topics/1012406"
+    assert nsf_identity["research_domains"] == ["DID"]
+    assert nsf_identity.get("direct_page") is True
+    assert nsf_identity["collection"]["discovery"]["max_pages"] == 1
 
     nsf_climate = by_name["NSF SBIR Climate Change Adaptation and Mitigation"]
     assert nsf_climate["url"] == "https://www.sbir.gov/topics/1012419"
@@ -245,49 +256,19 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert nsf_climate.get("direct_page") is True
     assert nsf_climate["collection"]["discovery"]["max_pages"] == 1
 
-    solana = by_name["Solana Grants and Funding"]
-    assert solana.get("direct_page") is True
-    assert solana["url"] == "https://solana.org/grants-funding"
-    assert any("/news/" in pattern for pattern in solana["collection"]["discovery"]["exclude_url_patterns"])
-    assert "airtable.com" not in solana["collection"]["allowed_domains"]
-    assert "superteam.fun" in solana["collection"]["allowed_domains"]
-    solana_discovery = solana["collection"]["discovery"]
-    assert "https://superteam.fun/earn/opportunities/development-grants/" in solana_discovery["start_urls"]
-    assert solana_discovery["max_pages"] == 60
-    import re
-    legacy_superteam_url = "https://earn.superteam.fun/grants/?utm_medium=em&utm_content=161969574&utm_source=hs_automation"
-    assert any(
-        re.search(pattern, legacy_superteam_url)
-        for pattern in solana_discovery["exclude_url_patterns"]
-    )
-    # Exclude only the broad listing route, not individual opportunity pages.
-    individual_grant_url = "https://superteam.fun/earn/grants/solana-foundation-india-grants/"
-    assert not any(
-        re.search(pattern, individual_grant_url)
-        for pattern in solana_discovery["exclude_url_patterns"]
-    )
+    sbir = by_name["Open SBIR Funding Topics"]
+    assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
+    assert sbir.get("direct_page", False) is False
+    assert set(sbir["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
+    assert sbir["collection"]["discovery"]["max_pages"] == 30
 
-    near_entry = by_name["NEAR Ecosystem Funding"]
-    near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 20
-    assert near["max_depth"] == 2
-    assert near["exclude_url_patterns"]
-    assert "nearn.io" in near_entry["collection"]["allowed_domains"]
-    assert "app.potlock.org" in near_entry["collection"]["allowed_domains"]
-    assert "https://nearn.io/devhub/" in near["start_urls"]
-    assert "https://app.potlock.org/pots" in near["start_urls"]
+    eu = by_name["EU Open and Forthcoming Funding Calls"]
+    assert "status=31094501%2C31094502" in eu["url"]
+    assert eu["url"] == eu["collection"]["discovery"]["start_urls"][0]
+    assert eu.get("direct_page", False) is False
+    assert set(eu["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
+    assert eu["collection"]["discovery"]["max_pages"] == 30
 
-    xrpl = by_name["XRPL Grants Program"]["collection"]
-    assert {"xrplgrants.org", "submit.xrplgrants.org"}.issubset(set(xrpl["allowed_domains"]))
-    assert xrpl["discovery"]["max_depth"] == 1
-    assert xrpl["discovery"]["max_pages"] == 10
-    xrpl_discovery = xrpl["discovery"]
-    assert "https://xrplgrants.org/" in xrpl_discovery["start_urls"]
-    assert "https://submit.xrplgrants.org/submit" in xrpl_discovery["start_urls"]
-    assert not any("brinc.io" in url or "tenity.com" in url for url in xrpl_discovery["start_urls"])
-    assert any("awardees" in pattern for pattern in xrpl_discovery["exclude_url_patterns"])
-
-    assert "Climate Pitch Climate-Tech Grants" not in by_name
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
     from dataclasses import replace
