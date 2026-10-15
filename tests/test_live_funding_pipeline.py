@@ -445,7 +445,7 @@ def test_filecoin_directory_is_not_forced_but_open_grants_readme_is_direct():
             "pagination_links": [],
         }
 
-    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \\
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
          patch("core.crawl4ai_web._wait_for_host_slot", return_value=True):
         result = crawl_funding_source(
             "Filecoin Grants and Funding",
@@ -468,9 +468,9 @@ def test_ecosystem_status_announcement_is_not_misclassified_as_a_funding_call():
 
     title = "Evolving an Ecosystem Builder Program"
     content = (
-        "The Chainlink ecosystem is continually evolving how it supports early and mid-stage projects. "
-        "Existing arrangements under the Build program are being concluded, while new commercial "
-        "agreements are established on a case-by-case basis. The latest season of Build-related token "
+        "The blockchain ecosystem is continually evolving how it supports early and mid-stage projects. "
+        "Existing arrangements under the builder programme are being concluded, while new commercial "
+        "agreements are established on a case-by-case basis. The latest season of programme-specific token "
         "rewards marked the conclusion of those rewards, with claims ending July 7, 2026. "
         "This announcement is a program-status update, not an open application call."
     )
