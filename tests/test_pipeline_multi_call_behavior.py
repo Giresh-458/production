@@ -23,8 +23,10 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                 "evidence_refs": (),
                 "inference_provenance": (),
                 "confidence": "Medium",
-                "research_intent": "research"
+                "research_intent": "research",
+                "research_intent_evidence": ["Research funding supports technology validation."]
             }
+            domain_evidence = [{"domain": "DePIN", "score": 0.8, "raw_score": 3.0, "matched_terms": ["depin"]}]
             return {
                 "outputs": [
                     {
@@ -33,6 +35,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://v1.org",
+                        "domain_relevance": domain_evidence,
                         "research_context": rc
                     },
                     {
@@ -41,6 +44,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://bad.org",
+                        "domain_relevance": domain_evidence,
                         "research_context": rc
                     },
                     {
@@ -49,6 +53,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://v2.org",
+                        "domain_relevance": domain_evidence,
                         "research_context": rc
                     }
                 ]
