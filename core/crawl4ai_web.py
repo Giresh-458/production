@@ -319,6 +319,23 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     ):
         return True
 
+    # These routes are directory/search results by definition, even if their
+    # aggregated cards contain many deadline/application phrases. Keep them as
+    # traversal roots so individual call pages are classified independently.
+    explicit_directory_paths = {
+        "https://fil.org": {"/grants"},
+        "https://www.fil.org": {"/grants"},
+        "https://climate-kic.org": {"/get-involved/open-calls"},
+        "https://www.climate-kic.org": {"/get-involved/open-calls"},
+        "https://sbir.gov": {"/topics"},
+        "https://www.sbir.gov": {"/topics"},
+        "https://ec.europa.eu": {
+            "/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals"
+        },
+    }
+    if path in explicit_directory_paths.get(origin, set()):
+        return True
+
     # Use directory copy only for known landing-page URLs. A detail page may
     # include this language in a reused footer or navigation section.
     known_hub_paths = {
