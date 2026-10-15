@@ -416,6 +416,53 @@ def test_direct_page_override_applies_only_to_primary_start_url():
     assert [item["url"] for item in result.opportunities] == [primary]
 
 
+def test_filecoin_directory_is_not_forced_but_open_grants_readme_is_direct():
+    from unittest.mock import patch
+    from core.crawl4ai_web import crawl_funding_source
+
+    directory = "https://fil.org/grants"
+    program = (
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
+        "Program%20Resources/Open%20Grants%20README.md"
+    )
+
+    def fake_fetch(url):
+        if url == directory:
+            title = "Grants | Filecoin Foundation"
+            markdown = "Explore grants and funding programmes across the Filecoin ecosystem."
+        else:
+            title = "Open Grants"
+            markdown = "Programme evidence text."
+        return {
+            "html": "<html><body>Funding page</body></html>",
+            "markdown": markdown,
+            "success": True,
+            "error_message": None,
+            "status_code": 200,
+            "url": url,
+            "title": title,
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \\
+         patch("core.crawl4ai_web._wait_for_host_slot", return_value=True):
+        result = crawl_funding_source(
+            "Filecoin Grants and Funding",
+            directory,
+            {
+                "start_urls": [directory, program],
+                "max_depth": 0,
+                "max_pages": 2,
+                "direct_page_urls": [program],
+                "respect_robots_txt": False,
+            },
+            ["fil.org", "raw.githubusercontent.com"],
+        )
+
+    assert [item["url"] for item in result.opportunities] == [program]
+
+
 def test_ecosystem_status_announcement_is_not_misclassified_as_a_funding_call():
     from core.crawl4ai_web import _classify_page_stage_b
 
