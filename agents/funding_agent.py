@@ -1188,6 +1188,21 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
+    # Prefer a specific Markdown H1 before scanning broad section headings such
+    # as "About DD.xyz". The H1 often identifies the opportunity when the browser
+    # title or fallback title is unrelated.
+    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
+        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
+        normalized = candidate.lower().rstrip(" .:-")
+        if not candidate or normalized in GENERIC_PAGE_TITLES:
+            continue
+        if re.search(
+            r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
+            candidate,
+            flags=re.IGNORECASE,
+        ):
+            return candidate
+
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
         r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
@@ -1213,22 +1228,6 @@ def _extract_program_name(text: str, fallback: str) -> str:
     ))
     if normalized_title not in GENERIC_PAGE_TITLES and title_has_call_identity and len(title) <= 180:
         return title.rstrip(" .:-")
-
-    # Browser-rendered sites sometimes expose app-shell titles such as
-    # "this listing" while the actual record name is the page's Markdown H1.
-    # Prefer a specific H1 with explicit call/program language instead of saving
-    # a generic title or the organization's site-wide brand as the opportunity.
-    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
-        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
-        normalized = candidate.lower().rstrip(" .:-")
-        if not candidate or normalized in GENERIC_PAGE_TITLES:
-            continue
-        if re.search(
-            r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
-            candidate,
-            flags=re.IGNORECASE,
-        ):
-            return candidate
 
     if title and normalized_title not in GENERIC_PAGE_TITLES and len(title) <= 180:
         return title.rstrip(" .:-")
