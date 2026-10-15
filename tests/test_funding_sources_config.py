@@ -67,10 +67,6 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             "https://esp.ethereum.foundation/applicants/open-rounds",
             {"RWA", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"},
         ),
-        "Chainlink Build Program Status": (
-            "https://chain.link/blog/build-program-evolution",
-            {"RWA", "Stablecoins"},
-        ),
         "Solana Grants and Funding": (
             "https://solana.org/grants-funding",
             {"RWA", "DePIN", "MEV", "Stablecoins"},
@@ -95,8 +91,12 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
             "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
             {"MEV"},
         ),
-        "Climate Pitch Climate-Tech Grants": (
-            "https://climatepitch.org/",
+        "Climate KIC Open Calls": (
+            "https://www.climate-kic.org/get-involved/open-calls/",
+            {"ESG"},
+        ),
+        "NSF SBIR Climate Change Adaptation and Mitigation": (
+            "https://www.sbir.gov/topics/1012419",
             {"ESG"},
         ),
         "NSF CPS Foundations and Connected Communities": (
@@ -138,7 +138,7 @@ def test_idapt_stale_awards_and_historical_fellows_are_excluded():
     assert any(re.search(pattern, historical_fellows_url) for pattern in patterns)
 
 
-def test_filecoin_source_uses_the_official_open_grants_program_page():
+def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     by_name = {entry["name"]: entry for entry in _entries()}
     expected_url = (
         "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
@@ -148,33 +148,36 @@ def test_filecoin_source_uses_the_official_open_grants_program_page():
     assert entry["url"] == expected_url
     collection = entry["collection"]
     assert collection["mode"] == "web"
+    assert entry.get("direct_page") is True
+    assert {"raw.githubusercontent.com", "github.com", "fil.org"}.issubset(
+        set(collection["allowed_domains"])
+    )
     discovery = collection["discovery"]
-    assert discovery["start_urls"] == [expected_url]
+    assert discovery["start_urls"] == [
+        expected_url,
+        "https://fil.org/grants",
+    ]
+    assert discovery["max_depth"] == 2
+    assert discovery["max_pages"] == 12
+    assert discovery["follow_detail_pages"] is True
+    assert any("devgrants/issues" in pattern for pattern in discovery["exclude_url_patterns"])
+
+def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    name = "Flashbots MEV Research Grants"
+    url = "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md"
+    entry = by_name[name]
+    collection = entry["collection"]
+    discovery = collection["discovery"]
+    assert entry["url"] == url
+    assert entry.get("direct_page") is True
+    assert discovery["start_urls"] == [url]
+    assert "raw.githubusercontent.com" in collection["allowed_domains"]
+    assert discovery["max_depth"] == 0
     assert discovery["max_pages"] == 1
     assert discovery["follow_detail_pages"] is False
-
-
-def test_github_markdown_sources_use_bounded_raw_content_endpoints():
-    by_name = {entry["name"]: entry for entry in _entries()}
-    expected = {
-        "Filecoin Grants and Funding": "https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md",
-        "Flashbots MEV Research Grants": "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
-    }
-
-    for name, url in expected.items():
-        entry = by_name[name]
-        collection = entry["collection"]
-        discovery = collection["discovery"]
-        assert entry["url"] == url
-        assert entry.get("direct_page") is True
-        assert discovery["start_urls"] == [url]
-        assert "raw.githubusercontent.com" in collection["allowed_domains"]
-        assert discovery["max_depth"] == 0
-        assert discovery["max_pages"] == 1
-        assert discovery["follow_detail_pages"] is False
-        assert discovery["follow_pdfs"] is False
-        assert discovery["pagination"] is False
-
+    assert discovery["follow_pdfs"] is False
+    assert discovery["pagination"] is False
 
 def test_near_page_budget_is_larger_than_the_previous_exhausted_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
@@ -226,13 +229,21 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     by_name = {entry["name"]: entry for entry in _entries()}
 
-    chainlink_status = by_name["Chainlink Build Program Status"]
-    assert chainlink_status.get("direct_page", False) is False
-    chainlink_discovery = chainlink_status["collection"]["discovery"]
-    assert chainlink_discovery["start_urls"] == ["https://chain.link/blog/build-program-evolution"]
-    assert chainlink_discovery["max_depth"] == 0
-    assert chainlink_discovery["max_pages"] == 1
-    assert chainlink_discovery["follow_detail_pages"] is False
+    assert "Chainlink Build Program Status" not in by_name
+
+    climate = by_name["Climate KIC Open Calls"]
+    assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
+    climate_discovery = climate["collection"]["discovery"]
+    assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
+    assert climate_discovery["max_depth"] == 2
+    assert climate_discovery["max_pages"] == 15
+    assert climate.get("direct_page", False) is False
+
+    nsf_climate = by_name["NSF SBIR Climate Change Adaptation and Mitigation"]
+    assert nsf_climate["url"] == "https://www.sbir.gov/topics/1012419"
+    assert nsf_climate["research_domains"] == ["ESG"]
+    assert nsf_climate.get("direct_page") is True
+    assert nsf_climate["collection"]["discovery"]["max_pages"] == 1
 
     solana = by_name["Solana Grants and Funding"]
     assert solana.get("direct_page") is True
@@ -267,17 +278,16 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://app.potlock.org/pots" in near["start_urls"]
 
     xrpl = by_name["XRPL Grants Program"]["collection"]
-    assert {"xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
+    assert {"xrplgrants.org", "submit.xrplgrants.org"}.issubset(set(xrpl["allowed_domains"]))
     assert xrpl["discovery"]["max_depth"] == 1
     assert xrpl["discovery"]["max_pages"] == 10
     xrpl_discovery = xrpl["discovery"]
-    assert "https://brinc.io/xrpl-program" in xrpl_discovery["start_urls"]
-    assert "https://www.tenity.com/program/sfiip-2026/" in xrpl_discovery["start_urls"]
+    assert "https://xrplgrants.org/" in xrpl_discovery["start_urls"]
+    assert "https://submit.xrplgrants.org/submit" in xrpl_discovery["start_urls"]
+    assert not any("brinc.io" in url or "tenity.com" in url for url in xrpl_discovery["start_urls"])
     assert any("awardees" in pattern for pattern in xrpl_discovery["exclude_url_patterns"])
 
-    climate_pitch = by_name["Climate Pitch Climate-Tech Grants"]
-    assert climate_pitch["url"] == "https://climatepitch.org/"
-    assert climate_pitch["collection"]["discovery"]["start_urls"] == ["https://climatepitch.org/"]
+    assert "Climate Pitch Climate-Tech Grants" not in by_name
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
     from dataclasses import replace
