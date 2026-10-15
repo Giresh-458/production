@@ -206,7 +206,7 @@ DOMAIN_REQUIRED_ANCHOR_GROUPS = {
 
 
 def _normalize_research_term(value: Any) -> str:
-    return re.sub(r"\\s+", " ", re.sub(r"[-_/]+", " ", str(value or "").casefold())).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[-_/]+", " ", str(value or "").casefold())).strip()
 
 
 def has_required_domain_anchor_groups(domain: str, matched_terms: Iterable[str]) -> bool:
