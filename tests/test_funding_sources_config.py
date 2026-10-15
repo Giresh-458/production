@@ -116,7 +116,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     assert entry["url"] == official_url
     collection = entry["collection"]
     assert collection["mode"] == "web"
-    assert entry.get("direct_page") is True
+    assert entry.get("direct_page") is False
     assert {"raw.githubusercontent.com", "github.com", "fil.org"}.issubset(
         set(collection["allowed_domains"])
     )
@@ -127,6 +127,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     ]
     assert discovery["max_depth"] == 2
     assert discovery["max_pages"] == 12
+    assert discovery["direct_page_urls"] == [readme_url]
     assert discovery["follow_detail_pages"] is True
     assert any("devgrants/issues" in pattern for pattern in discovery["exclude_url_patterns"])
 
