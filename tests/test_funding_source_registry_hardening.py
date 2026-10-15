@@ -24,10 +24,12 @@ def _funding_sources():
 def test_funding_registry_uses_current_domain_scoped_program_pages():
     sources = dict(_funding_sources())
 
-    assert sources['Chainlink Build Program Status'] == 'https://chain.link/blog/build-program-evolution'
+    assert 'Chainlink Build Program Status' not in sources
     assert sources['Filecoin Grants and Funding'] == 'https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md'
     assert sources['Flashbots MEV Research Grants'] == 'https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md'
-    assert sources['Climate Pitch Climate-Tech Grants'] == 'https://climatepitch.org/'
+    assert sources['Climate KIC Open Calls'] == 'https://www.climate-kic.org/get-involved/open-calls/'
+    assert sources['NSF SBIR Climate Change Adaptation and Mitigation'] == 'https://www.sbir.gov/topics/1012419'
+    assert 'Climate Pitch Climate-Tech Grants' not in sources
     assert sources['I-DAPT Hub Cyber-Physical Systems Calls'] == 'https://idapthub.org/applications/call_for_proposals'
 
     # Broad, unscoped portals and known stale/general sources were deliberately
@@ -48,6 +50,8 @@ def test_funding_registry_uses_current_domain_scoped_program_pages():
         'Ethereum Foundation Academic Grants',
         'NIST CPS / IoT Testbed',
         'CISA ICS',
+        'Chainlink Build Program Status',
+        'Climate Pitch Climate-Tech Grants',
     }
     assert removed_names.isdisjoint(sources)
 
