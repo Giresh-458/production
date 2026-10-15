@@ -39,3 +39,9 @@ fix_*.py
 patch.py
 gen_test.py
 skip_funding.py
+
+# Generated packaging metadata
+*.egg-info/
+
+# Generated repository audit report
+/docs/REPOSITORY_CLEANUP_AUDIT.md
