@@ -62,7 +62,7 @@ AREA_FILTER_KEYWORDS = {
     "RWA": ["rwa", "real-world asset", "real world asset", "tokenized treasury", "tokenized fund", "asset tokenization"],
     "ESG": ["esg", "carbon", "mrv", "climate", "sustainability", "carbon credit"],
     "ZK-IoV": ["zk", "zero-knowledge", "zero knowledge", "vehicular", "internet of vehicles", "iov"],
-    "DID": ["did", "decentralized identity", "verifiable credential", "identity"],
+    "DID": ["decentralized identity", "decentralised identity", "self-sovereign identity", "decentralized identifier", "verifiable credential", "identity wallet"],
     "DePIN": ["depin", "decentralized physical infrastructure", "wireless", "storage network", "sensor network", "mapping"],
     "MEV": ["mev", "block builder", "transaction ordering", "order flow"],
     "Stablecoins": ["stablecoin", "settlement", "tokenized deposit", "digital dollar", "payment rail"],
