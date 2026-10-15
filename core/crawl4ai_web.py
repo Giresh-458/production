@@ -773,6 +773,16 @@ def crawl_funding_source(
     follow_documents = bool(discovery_config.get("follow_documents", False))
     follow_detail = discovery_config.get("follow_detail_pages", True)
     direct_page = bool(discovery_config.get("direct_page", False))
+    raw_direct_page_urls = discovery_config.get("direct_page_urls", []) or []
+    if isinstance(raw_direct_page_urls, str):
+        raw_direct_page_urls = [raw_direct_page_urls]
+    direct_page_url_keys = {
+        _url_dedupe_key(_normalize_url(candidate))
+        for candidate in raw_direct_page_urls
+        if isinstance(candidate, str)
+        and urlparse(candidate).scheme in {"http", "https"}
+        and urlparse(candidate).netloc
+    }
     raw_exclusion_patterns = discovery_config.get("exclude_url_patterns", []) or []
     if isinstance(raw_exclusion_patterns, str):
         raw_exclusion_patterns = [raw_exclusion_patterns]
@@ -1026,8 +1036,10 @@ def crawl_funding_source(
         # Known empty-state listings remain excluded.
         if (
             depth == 0
-            and direct_page
-            and _url_dedupe_key(page_url) == _url_dedupe_key(url)
+            and (
+                (direct_page and _url_dedupe_key(page_url) == _url_dedupe_key(url))
+                or _url_dedupe_key(page_url) in direct_page_url_keys
+            )
             and not _reports_no_active_funding(page_url, page_title, page_content)
         ):
             is_funding_page = True
