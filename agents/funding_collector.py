@@ -319,7 +319,7 @@ def _trim_page_navigation_and_footer(content: str) -> str:
 
     footer_patterns = (
         r"(?im)^\s*(?:©|copyright)\s*[^\n]{0,180}\b(?:19|20)\d{2}\b",
-        r"(?im)^\s*#{1,4}\s*(?:quick links|quicks links|footer navigation|newsletter)\s*$",
+        r"(?im)^\s*#{1,4}\s*(?:quick links|quicks links|footer navigation|newsletter|Europe[’']s leading\b.*\bagency and community)\s*$",
     )
     footer_starts = [
         match.start()
