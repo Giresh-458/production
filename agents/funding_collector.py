@@ -36,7 +36,6 @@ from agents.funding_agent import (
     analyze_document,
     current_year,
     parse_date_string,
-    build_domain_relevance,
 )
 
 LOGGER = logging.getLogger("rif.funding_collector")
@@ -725,7 +724,6 @@ def _collect_eu_funding_tenders(
             "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
             "admissibilityConditions", "eligibilityCriteria", "topicConditions",
             "eligibilityCriteriaHtml", "admissibilityCriteria", "beneficiaryAdministration",
-            "description", "descriptionEn", "descriptionByte", "topicDescription", "scope",
         )
         if (
             api_config.get("detail_fetch_missing_metadata", True)
@@ -743,6 +741,15 @@ def _collect_eu_funding_tenders(
                 result.detail_pages_fetched += 1
             except Exception as exc:
                 result.detail_pages_failed += 1
+                result.errors.append({
+                    "url": url if "url" in locals() else (
+                        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
+                        + detail_reference
+                    ),
+                    "operation": "fetch_detail_metadata",
+                    "error": str(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
                 LOGGER.warning(
                     "EU detail metadata fetch failed for reference %s: %s",
                     detail_reference, exc,
@@ -827,7 +834,7 @@ def _collect_eu_funding_tenders(
                     break
         description = _eu_metadata_value(
             metadata, "description", "descriptionEn", "descriptionByte", "objective",
-            "topicDescription", "scope", "summary", "content"
+            "topicDescription", "scope", "summary", "content", "beneficiaryAdministration"
         )
 
         fields = [
@@ -918,11 +925,11 @@ def _collect_eu_funding_tenders(
             if warnings is not None:
                 warnings.append(f"EU funding record analysis failed for {url}: {exc}")
 
-    if result.errors and not result.opportunities and not result.truncated:
-        result.final_status = "FAIL"
-    elif result.truncated:
+    if result.truncated:
         if result.final_status != "TEST_TRUNCATED":
             result.final_status = "PARTIAL"
+    elif result.errors:
+        result.final_status = "PARTIAL" if result.opportunities else "FAIL"
     elif result.opportunities:
         result.final_status = "VERIFIED"
     elif result.records_filtered:
