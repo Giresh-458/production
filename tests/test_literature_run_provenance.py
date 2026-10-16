@@ -4,7 +4,7 @@ from pathlib import Path
 from agents import literature_agent
 from core.agent_registry import run_registered_agent
 from core.funding_selection import FundingCallContext
-from core.normalization import normalize_intermediate_artifact
+from core.normalization import build_normalized_collection_records, normalize_intermediate_artifact
 
 
 def _context() -> FundingCallContext:
@@ -64,6 +64,7 @@ def test_configured_literature_scan_preserves_run_and_call_provenance(tmp_path: 
     monkeypatch.setattr(literature_agent, "fetch_semanticscholar_entries", lambda _area: [])
     monkeypatch.setattr(literature_agent, "fetch_crossref_entries", lambda _area: [])
     monkeypatch.setattr(literature_agent, "fetch_dblp_entries", lambda _area: [])
+    monkeypatch.setattr(literature_agent, "score_paper", lambda candidate, _area, _now: candidate)
     monkeypatch.setattr(literature_agent, "semantic_rerank", lambda papers, _query: papers)
 
     run_id = "pipeline-run-literature-provenance-001"
@@ -93,3 +94,15 @@ def test_configured_literature_scan_preserves_run_and_call_provenance(tmp_path: 
     assert normalized["funding_call_id"] == call.funding_call_id
     assert call.funding_call_id in normalized["funding_call_ids"]
     assert normalized["source_url"] == paper.url
+
+    # This is the exact run-scoped selector used by the pipeline. The prior
+    # legacy literature artifact had no run_id/call ID, so it was silently
+    # discarded here despite an apparently successful collector response.
+    selected_records = build_normalized_collection_records(
+        output_dir,
+        target_funding_call_id=call.funding_call_id,
+        target_run_id=run_id,
+    )
+    assert len(selected_records) == 1
+    assert selected_records[0]["run_id"] == run_id
+    assert selected_records[0]["funding_call_id"] == call.funding_call_id
