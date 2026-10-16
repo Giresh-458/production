@@ -1017,7 +1017,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # program homepages. Only explicit past-tense award statements identify an
     # individual funded project with sufficient confidence.
     funded_project_hint = bool(re.search(
-        r"\b(?:was|were|has been|have been|had been)\s+awarded\b",
+        r"\b(?:(?:was|were|has been|have been|had been)\s+awarded|"
+        r"(?:we|they|the organization|the foundation|the company)\s+"
+        r"(?:(?:have|has)\s+)?(?:just\s+)?awarded|"
+        r"just\s+awarded\s+\d+\s+(?:projects?|grants?|teams?|researchers?|recipients?))\b",
         lowered,
         flags=re.IGNORECASE,
     ))
@@ -1547,6 +1550,24 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
 def _extract_general_themes(content: str) -> list[str]:
     import re
     from collections import Counter
+
+    # Preserve canonical multi-word technical themes before token-based phrase
+    # scoring. Hyphenated labels otherwise lose their domain meaning.
+    canonical_patterns = (
+        (r"\bcyber[\s-]+physical systems\b", "Cyber-Physical Systems"),
+        (r"\bcps\b", "Cyber-Physical Systems"),
+        (r"\bdigital healthcare\b", "Digital Healthcare"),
+        (r"\binternet of vehicles\b", "Internet of Vehicles"),
+        (r"\bzero[\s-]+knowledge\b", "Zero-Knowledge"),
+        (r"\bdecentralized identity\b", "Decentralized Identity"),
+        (r"\breal[\s-]+world assets?\b", "Real-World Assets"),
+        (r"\bstablecoins?\b", "Stablecoins"),
+        (r"\bdecentralized physical infrastructure\b", "Decentralized Physical Infrastructure"),
+    )
+    canonical_themes: list[str] = []
+    for pattern, label in canonical_patterns:
+        if re.search(pattern, content or "", flags=re.IGNORECASE) and label not in canonical_themes:
+            canonical_themes.append(label)
     stop_words = {
         'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'their', 'there', 
         'which', 'using', 'used', 'use', 'are', 'was', 'were', 'have', 'has', 'had', 
@@ -1667,7 +1688,7 @@ def _extract_general_themes(content: str) -> list[str]:
         if len(final) >= 3:
             break
             
-    return final
+    return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
 def analyze_document(document: FundingDocument) -> FundingOpportunity:

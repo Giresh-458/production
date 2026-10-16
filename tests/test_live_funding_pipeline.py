@@ -765,6 +765,33 @@ def test_specific_superteam_h1_precedes_about_section_and_open_badge_is_open():
     assert opportunity.application_url == "https://83chy35k9ea.typeform.com/to/Mgl4epqX"
 
 
+def test_active_voice_award_announcement_is_classified_as_funded_not_open():
+    from agents.funding_agent import determine_status
+
+    assert determine_status(
+        None,
+        None,
+        None,
+        "We just awarded 3 projects to research teams this quarter.",
+        "Funding programme update",
+    ) == "FUNDED_PROJECT"
+
+
+def test_general_theme_extraction_preserves_canonical_multiword_technology_themes():
+    from agents.funding_agent import _extract_general_themes
+
+    themes = _extract_general_themes(
+        "The opportunity supports Cyber-Physical Systems, Digital Healthcare, "
+        "and Internet of Vehicles research."
+    )
+
+    assert themes[:3] == [
+        "Cyber-Physical Systems",
+        "Digital Healthcare",
+        "Internet of Vehicles",
+    ]
+
+
 def test_expired_climate_grant_deadline_is_not_a_funded_project():
     from agents.funding_agent import FundingDocument, analyze_document, extract_call_dates
 
@@ -909,8 +936,9 @@ def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls
             "## Details\n"
             "Women TechEU supports women-led early-stage deep tech startups.\n"
             "DEADLINE 2027-06-14\n"
+            "### Europe’s leading **climate innovation agency** and community\n"
+            "Stichting Climate-KIC International Foundation focuses on climate change mitigation and adaptation.\n"
             "© Climate KIC 2026\n"
-            "Our objective is to contribute to climate change mitigation and adaptation."
         ),
     }
 
