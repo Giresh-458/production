@@ -23,5 +23,5 @@ If the logic tests pass, the pipeline connects to your RTX 5070 server, updates 
    - Ensures the `gemma` LLM is fully downloaded.
 3. **Live Execution Trigger**: 
    - Spins up the `rif-pipeline` container in the background.
-   - The container immediately executes `python run_full_pipeline.py`.
+   - The container immediately executes `python run_full_pipeline.py`, a compatibility entry point that delegates to the canonical `run_pipeline.py` orchestrator.
    - The pipeline will autonomously crawl the web, process the intelligence, and synthesize the grant proposals in the background on your server.
