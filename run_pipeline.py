@@ -17,7 +17,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.batch_runner import execute_batch_run
-from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
+from core.funding_selection import (
+    FundingCallContext, ScoredCall, ValidationResult,
+    has_substantive_eligibility_evidence,
+)
 from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
@@ -231,6 +234,15 @@ def get_all_open_funding_calls(
         if program_name.lower().rstrip(" .:-") in generic_names:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})
             continue
+
+        if not has_substantive_eligibility_evidence(record.get("eligibility")):
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": ["missing substantive applicant eligibility evidence"],
+                "source_url": record.get("source_url"),
+            })
+            continue
         evidence_score = sum(1 for f in ["deadline", "application_url", "funding_amount", "eligibility", "evaluation_criteria"] if record.get(f))
         has_call_identity = program_name.lower() not in generic_names
         # A classifier-produced OPEN_CALL label is not independent proof that
@@ -238,6 +250,14 @@ def get_all_open_funding_calls(
         # explicit current-acceptance language, or a concrete submission route
         # paired with an unexpired timeline.
         source_status = str(evidence.get("source_status") or "").strip().lower() if isinstance(evidence, dict) else ""
+        # Commission Funding & Tenders Search API encodes status as numeric portal
+        # codes. Normalize those documented values before the authoritative-current
+        # status gate, rather than letting valid open calls fall through as unknown.
+        source_status = {
+            "31094501": "upcoming",
+            "31094502": "open",
+            "31094503": "closed",
+        }.get(source_status, source_status)
         if source_status in {"forecasted", "upcoming", "upcoming_call"}:
             rejected.append({
                 "title": record.get("title"),
@@ -336,6 +356,11 @@ def get_all_open_funding_calls(
         record = dict(record)
         if require_domain_match:
             record["matched_rif_domains"] = matched_rif_domains
+            # The strict domain-evidence gate is stronger than a generic
+            # classifier fallback. Keep the public focus_area aligned with the
+            # canonical domain that actually passed that gate.
+            if normalize_area(str(record.get("focus_area") or "")) not in matched_rif_domains:
+                record["focus_area"] = matched_rif_domains[0]
         record["selection_score"] = round(min(score, 0.99), 4)
         record["call_id"] = call_id
         candidates.append((score, record))

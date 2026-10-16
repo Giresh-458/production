@@ -276,6 +276,93 @@ def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatc
 
 
 
+def test_eu_eligibility_parser_recognizes_who_can_submit_language_from_official_description():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    description = (
+        "<p><strong>WHO CAN SUBMIT A GRANT APPLICATION?</strong></p>"
+        "<p>Micro, small and medium-sized enterprises may submit grant applications "
+        "for the call if they:</p>"
+        "<ol><li>have at least three closed financial years;</li>"
+        "<li>operate in sectors listed in the official call.</li></ol>"
+    )
+    extracted = _extract_eu_eligibility_from_html(description)
+
+    assert extracted is not None
+    assert "Micro, small and medium-sized enterprises may submit grant applications" in extracted
+    assert "WHO CAN SUBMIT" not in extracted
+
+
+def test_eu_collector_extracts_eligibility_from_description_metadata(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    description = (
+        "<p><strong>WHO CAN SUBMIT A GRANT APPLICATION?</strong></p>"
+        "<p>Micro, small and medium-sized enterprises may submit grant applications "
+        "for the call if they:</p>"
+        "<ol><li>have at least three closed financial years;</li>"
+        "<li>operate in sectors relevant to carbon-credit MRV.</li></ol>"
+        "<p>This call supports ESG carbon-credit MRV, emissions measurement, "
+        "and sustainability data systems.</p>"
+    )
+    record = {
+        "reference": "description-eligibility-fallback",
+        "url": (
+            "https://ec.europa.eu/funding-tenders/opportunities/portal/"
+            "screen/opportunities/competitive-calls-cs/description-eligibility-fallback"
+        ),
+        "metadata": {
+            "title": ["ESG Carbon-credit MRV Innovation Call"],
+            "status": ["31094502"],
+            "deadlineDate": ["2026-12-20T23:59:00.000+0000"],
+            "description": [description],
+        },
+    }
+    detail_calls = []
+    monkeypatch.setattr(
+        funding_collector,
+        "eu_funding_tenders_paginated_search",
+        lambda **kwargs: {
+            "results": [record],
+            "pages_fetched": 1,
+            "total_expected": 1,
+            "pagination_complete": True,
+            "errors": [],
+        },
+    )
+    monkeypatch.setattr(
+        funding_collector,
+        "eu_funding_tenders_fetch_document",
+        lambda reference: detail_calls.append(reference) or {"metadata": {}},
+    )
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url=(
+            "https://ec.europa.eu/info/funding-tenders/opportunities/portal/"
+            "screen/opportunities/calls-for-proposals"
+        ),
+        tier="tier_3",
+        collection={"api": {
+            "types": ["1", "2", "8"],
+            "statuses": ["31094501", "31094502"],
+        }},
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert detail_calls == []
+    assert result.records_valid == 1
+    _, opportunity = result.opportunities[0]
+    assert opportunity.eligibility
+    assert "Micro, small and medium-sized enterprises may submit grant applications" in opportunity.eligibility
+    assert "description" in opportunity.evidence["eligibility"]
+
+
 def test_eu_eligibility_parser_extracts_specific_criteria_from_beneficiary_html():
     from agents.funding_collector import _extract_eu_eligibility_from_html
 
@@ -289,6 +376,17 @@ def test_eu_eligibility_parser_extracts_specific_criteria_from_beneficiary_html(
     assert extracted is not None
     assert "Eligible applicants are SMEs and public research organisations" in extracted
     assert "<p>" not in extracted
+
+
+def test_eu_eligibility_parser_rejects_project_fit_language_as_applicant_eligibility():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    project_fit = (
+        "Applicants should demonstrate their potential to leverage downstream space data, "
+        "such as Earth Observation, remote sensing, and satellite navigation."
+    )
+    assert _extract_eu_eligibility_from_html(project_fit) is None
+
 
 
 def test_eu_eligibility_parser_does_not_promote_generic_process_language():

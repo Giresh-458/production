@@ -291,6 +291,47 @@ def collect_auto_sources(
             yield result
 
 
+def _trim_page_navigation_and_footer(content: str) -> str:
+    """Remove common Markdown-rendered site chrome before extracting call evidence.
+
+    Crawl4AI can include the entire header/navigation/footer in its Markdown output.
+    Domain scoring over that text may classify an unrelated opportunity by the
+    publisher's own mission statement (for example, a deep-tech call hosted by a
+    climate organisation). Preserve the call body and its links, but start at the
+    last skip-to-content link and discard a clearly labelled copyright/footer tail.
+    """
+    text = str(content or "")
+    if not text.strip():
+        return text
+
+    skip_links = list(re.finditer(
+        r"(?i)\[skip to (?:main )?content\]\([^)]+\)\s*",
+        text,
+    ))
+    if skip_links:
+        text = text[skip_links[-1].start():]
+        text = re.sub(
+            r"(?i)^\[skip to (?:main )?content\]\([^)]+\)\s*",
+            "",
+            text,
+            count=1,
+        )
+
+    footer_patterns = (
+        r"(?im)^\s*(?:©|copyright)\s*[^\n]{0,180}\b(?:19|20)\d{2}\b",
+        r"(?im)^\s*#{1,4}\s*(?:quick links|quicks links|footer navigation|newsletter|Europe[’']s leading\b.*\bclimate innovation agency\b.*\bcommunity)\s*$",
+    )
+    footer_starts = [
+        match.start()
+        for pattern in footer_patterns
+        for match in re.finditer(pattern, text)
+    ]
+    if footer_starts:
+        text = text[:min(footer_starts)]
+
+    return text.strip()
+
+
 def _normalize_raw_to_doc(
     source: FundingSource,
     raw: dict,
@@ -300,12 +341,17 @@ def _normalize_raw_to_doc(
     url = raw.get("url", source.url)
     title = str(raw.get("title", "") or "").strip()
     content = str(raw.get("content", "") or "")
+    if raw_type != "pdf":
+        content = _trim_page_navigation_and_footer(content)
 
     # Some topic publishers expose site chrome ("Our Programs") as the browser
     # title. Prefer a concrete content heading before naming an output record.
     generic_titles = {
         "our programs", "programs", "topic", "home", "welcome", "funding",
         "grants", "grant", "overview", "about", "details", "description",
+        "all cookies under each consent category below", "cookie settings",
+        "privacy preferences", "consent preferences", "your privacy choices",
+        "manage cookie preferences", "manage consent preferences",
     }
     if title.casefold().rstrip(" .:-") in generic_titles:
         for heading_match in re.finditer(r"(?m)^\s{0,4}#{1,4}\s+(.{3,180}?)\s*$", content):
@@ -588,13 +634,14 @@ def _extract_eu_eligibility_from_html(value: Any) -> str | None:
         paragraphs = [cleaned] if cleaned else []
 
     explicit_patterns = (
-        r"\beligible applicants?\b.{0,180}\b(?:are|include|must|may|need|should)\b",
+        r"\beligible applicants?\b.{0,180}\b(?:must be|must include|may apply|can apply|are eligible to|are eligible for|are limited to)\b",
+        r"\beligible applicants?\s+(?:are|include)\s+(?:legal entities?|natural persons?|SMEs?|small and medium[- ]sized enterprises|public\s+research organisations?|public\s+research organizations?|nuclear research facilities|research facilities?|research institutions?|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|organisations|organizations)\b.{0,180}",
         r"\beligible applicants?\s*[:\-]\s*.{15,}",
-        r"\bapplicants?\s+(?:must|may|should|need to|are required to|are eligible to)\s+(?:be|include|have|hold|establish|register|reside|operate|meet|demonstrate|provide|form|belong|qualify|include|maintain|undertake|participate|apply)\b",
+        r"\bapplicants?\s+(?:(?:must|are required to)\s+(?:be|include|have|hold|establish|register|reside|operate|form|belong|qualify|maintain|apply)|may\s+(?:apply|be eligible|submit)|can\s+apply)\b",
         r"\bapplications?\s+(?:are|is)\s+open\s+to\b.{15,}",
         r"\bwho can apply\b.{20,}",
         r"\bonly\b.{0,140}\b(?:may apply|are eligible|can apply)\b",
-        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|must|provided that|support(?:ed)?|are required)\b",
+        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|may submit|can submit|submit grant applications?|must|provided that|support(?:ed)?|are required)\b",
         r"\b(?:legal entities|natural persons|public entities|private entities)\b.{0,140}\b(?:eligible|may apply|can apply|established|registered)\b",
         r"\bconsortiums?\s+must\s+include\b.{20,}",
         r"\b(?:at least|minimum of)\s+\d+\s+(?:independent\s+)?(?:legal entities|partners|beneficiaries|organisations|organizations)\b.{15,}",
@@ -848,10 +895,15 @@ def _collect_eu_funding_tenders(
         # Search hits can omit richer publisher fields. Fetch the documented
         # EU document record only when the hit has no eligibility/content payload.
         detail_reference = str(item.get("reference") or metadata.get("reference") or "").strip()
+        # EU Search hits often omit eligibility-specific keys even when the
+        # official document's description contains an explicit "who can apply"
+        # section. Scan publisher-owned rich-text fields before fetching details.
         detail_keys = (
             "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
             "admissibilityConditions", "eligibilityCriteria", "topicConditions",
             "eligibilityCriteriaHtml", "admissibilityCriteria", "beneficiaryAdministration",
+            "description", "descriptionEn", "descriptionByte", "topicDescription",
+            "scope", "summary",
         )
         metadata_eligibility_present = bool(
             _extract_eu_eligibility_from_html(
@@ -859,11 +911,7 @@ def _collect_eu_funding_tenders(
             )
         ) or any(
             _extract_eu_eligibility_from_html(metadata.get(key))
-            for key in (
-                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
-                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
-                "beneficiaryAdministration",
-            )
+            for key in detail_keys
         )
         if (
             api_config.get("detail_fetch_missing_metadata", True)
@@ -963,11 +1011,7 @@ def _collect_eu_funding_tenders(
         eligibility = _extract_eu_eligibility_from_html(scalar_eligibility)
         eligibility_source_field = "eligibility"
         if not eligibility:
-            for key in (
-                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
-                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
-                "beneficiaryAdministration",
-            ):
+            for key in detail_keys:
                 extracted = _extract_eu_eligibility_from_html(metadata.get(key))
                 if extracted:
                     eligibility = extracted

@@ -4,6 +4,75 @@ from agents.funding_agent import _format_collection_error, determine_status, ext
 from run_pipeline import get_all_open_funding_calls
 
 
+def test_eu_search_api_open_status_code_is_authoritative_for_current_topic_details():
+    now = datetime.now(UTC)
+    record = {
+        "title": "Climate transition research call",
+        "program_name": "Climate transition research call",
+        "status": "OPEN_CALL",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "source_url": (
+            "https://ec.europa.eu/info/funding-tenders/opportunities/portal/"
+            "screen/opportunities/topic-details/HORIZON-CLIMATE-2027-01"
+        ),
+        "domain_relevance": [{
+            "domain": "ESG",
+            "score": 0.75,
+            "raw_score": 18.0,
+            "matched_terms": ["climate change mitigation", "climate"],
+        }],
+        "source_research_domains": ["ESG"],
+        "eligibility": "The consortium must include at least three independent legal entities established in an EU Member State.",
+        "evidence": {"source_status": "31094502"},
+    }
+
+    selected, rejected = get_all_open_funding_calls({"outputs": [record]})
+    assert len(selected) == 1, rejected
+    assert selected[0]["title"] == "Climate transition research call"
+
+
+def test_selector_requires_substantive_applicant_eligibility_evidence():
+    now = datetime.now(UTC)
+    record = {
+        "title": "Eligibility-qualified Climate Research Call",
+        "program_name": "Eligibility-qualified Climate Research Call",
+        "status": "OPEN_CALL",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "source_url": "https://ec.europa.eu/funding-tenders/opportunities/topic-details/test-call",
+        "domain_relevance": [{
+            "domain": "ESG",
+            "score": 0.75,
+            "raw_score": 18.0,
+            "matched_terms": ["climate change mitigation", "climate"],
+        }],
+        "source_research_domains": ["ESG"],
+        "evidence": {"source_status": "31094502"},
+        "eligibility": "Eligible applicants must be research organisations and SMEs established in an EU Member State.",
+    }
+    missing = dict(record, title="Call Without Eligibility", program_name="Call Without Eligibility")
+    missing.pop("eligibility")
+    project_fit_only = dict(
+        record,
+        title="Call With Project-Fit Text Only",
+        program_name="Call With Project-Fit Text Only",
+        eligibility=(
+            "Applicants should demonstrate their potential to leverage downstream space data, "
+            "including Earth Observation and remote sensing."
+        ),
+    )
+
+    selected, rejected = get_all_open_funding_calls(
+        {"outputs": [record, missing, project_fit_only]}
+    )
+
+    assert [call["title"] for call in selected] == [record["title"]]
+    assert selected[0]["focus_area"] == "ESG"
+    reasons = {item["title"]: " ".join(item.get("reasons", [])) for item in rejected}
+    assert "substantive applicant eligibility" in reasons["Call Without Eligibility"]
+    assert "substantive applicant eligibility" in reasons["Call With Project-Fit Text Only"]
+
+
+
 def test_live_date_extraction_marks_current_call_open():
     text = "Road to Devcon 8 India University Program. Opens: Apr 20, 2026. Closes: Sep 30, 2029."
     opening, deadline = extract_call_dates(text)
@@ -39,6 +108,7 @@ def test_select_open_funding_call_rejects_closed_and_future_calls():
                 "program_name": "Open Call",
                 "status": "OPEN_CALL",
                 "deadline": open_deadline,
+                "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                 "domain_relevance": [{"domain": "RWA", "score": 0.75, "raw_score": 3.0, "matched_terms": ["rwa"]}],
                 "source_research_domains": ["RWA"],
                 "application_url": "https://example.org/apply",
@@ -152,6 +222,7 @@ def test_filecoin_open_grants_pass_strict_gate_with_depin_evidence():
 
     content = (
         "# Open Grants\n"
+        "Eligibility: Individual developers, research teams, and organizations may apply for support for open-source Filecoin ecosystem projects.\n"
         "Open Grants applications for funding up to $50,000 are welcome in the following categories:\n"
         "Developer and Data Tooling; Integrations; Research & protocols; Storage; Retrieval; FVM.\n"
         "The program supports projects that advance the Filecoin ecosystem and directly advance the Filecoin mission statement.\n"
@@ -203,6 +274,24 @@ def test_literature_unscoped_mode_uses_funding_mission_terms():
 
 
 
+def test_filecoin_repository_link_does_not_outrank_explicit_grant_issue_template():
+    from agents.funding_agent import _extract_application_url
+
+    repository_url = "https://github.com/ipfs/devgrants"
+    application_url = (
+        "https://github.com/filecoin-project/devgrants/issues/new"
+        "?labels=Open+Grant&template=open-grant-appolication.md"
+    )
+    content = (
+        "Open Grants applications for funding are welcome in the following categories: "
+        f"[ipfs/devgrants]({repository_url})\n"
+        "To submit an Open Grant proposal, "
+        f"[create a new issue]({application_url}) using the Open Grants Proposal template."
+    )
+
+    assert _extract_application_url(content) == application_url
+
+
 def test_rolling_mev_grant_language_survives_funding_extraction():
     from agents.funding_agent import FundingDocument, analyze_document
 
@@ -223,8 +312,44 @@ def test_rolling_mev_grant_language_survives_funding_extraction():
     opportunity = analyze_document(document)
 
     assert opportunity.status == "OPEN_CALL"
+    assert opportunity.focus_area == "MEV"
     assert "rolling basis" in opportunity.evidence.get("status", "").lower()
     assert opportunity.funding_amount
+
+
+def test_sbir_generic_browser_title_uses_specific_configured_topic_name():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="our programs",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=(
+            "Solicitation Status: Open. "
+            "Trusted Identity and Identity Management research supports identity "
+            "management and verifiable credentials. "
+            "Due Date(s): November 4, 2026; March 4, 2027."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+    assert opportunity.program_name == "NSF SBIR Trusted Identity"
+
+
+def test_eligibility_extractor_does_not_return_application_workflow_copy():
+    from agents.funding_agent import _extract_section_value
+
+    assert _extract_section_value(
+        "Eligible applicants will then be invited to submit a Full Proposal.",
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
+    ) is None
+    assert _extract_section_value(
+        "Eligibility: Pass/fail requirements related to the conditions of the call are assessed by Climate-KIC.",
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
+    ) is None
+
 
 def test_solana_current_program_uses_contextual_application_link_and_rolling_review():
     from agents.funding_agent import FundingDocument, analyze_document
@@ -684,6 +809,33 @@ def test_specific_superteam_h1_precedes_about_section_and_open_badge_is_open():
     assert opportunity.application_url == "https://83chy35k9ea.typeform.com/to/Mgl4epqX"
 
 
+def test_active_voice_award_announcement_is_classified_as_funded_not_open():
+    from agents.funding_agent import determine_status
+
+    assert determine_status(
+        None,
+        None,
+        None,
+        "We just awarded 3 projects to research teams this quarter.",
+        "Funding programme update",
+    ) == "FUNDED_PROJECT"
+
+
+def test_general_theme_extraction_preserves_canonical_multiword_technology_themes():
+    from agents.funding_agent import _extract_general_themes
+
+    themes = _extract_general_themes(
+        "The opportunity supports Cyber-Physical Systems, Digital Healthcare, "
+        "and Internet of Vehicles research."
+    )
+
+    assert themes[:3] == [
+        "Cyber-Physical Systems",
+        "Digital Healthcare",
+        "Internet of Vehicles",
+    ]
+
+
 def test_expired_climate_grant_deadline_is_not_a_funded_project():
     from agents.funding_agent import FundingDocument, analyze_document, extract_call_dates
 
@@ -750,6 +902,23 @@ def test_repeated_due_date_schedule_selects_nearest_future_round():
     assert determine_status(None, opening, deadline, content) == "OPEN_CALL"
 
 
+def test_explicit_deadline_beats_later_notification_milestone():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    past_deadline = today - timedelta(days=4)
+    future_notification = today + timedelta(days=14)
+    content = (
+        f"OPEN CALL\nDEADLINE {past_deadline.isoformat()} 23:59 CET\n"
+        "Planned Date | Milestone\n"
+        f"{future_notification.strftime('%b %d, %Y')} | Notification of selected applicants"
+    )
+
+    opening, deadline = extract_call_dates(content)
+    assert deadline == past_deadline.isoformat()
+    assert determine_status(None, opening, deadline, content, "Climate resilience call") == "CLOSED_CALL"
+
+
 def test_generic_sbir_apply_page_is_not_used_as_call_application_url():
     from agents.funding_agent import _extract_application_url
 
@@ -786,6 +955,44 @@ def test_eligibility_heading_is_not_misread_as_a_requirement_value():
     assert _extract_section_value(content, ("eligibility", "who can apply")) == (
         "Organisations must be legally established in the eligible region."
     )
+
+
+def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls():
+    from agents.funding_agent import analyze_document
+    from agents.funding_collector import FundingSource, _normalize_raw_to_doc
+
+    source = FundingSource(
+        name="Climate KIC Open Calls",
+        url="https://www.climate-kic.org/open-call/women-techeu-2-eic/",
+        tier="tier_2",
+        research_domains=["ESG"],
+        direct_page=True,
+    )
+    raw = {
+        "type": "html",
+        "url": source.url,
+        "title": "all cookies under each consent category below",
+        "content": (
+            "Climate KIC navigation describing climate change mitigation and adaptation. "
+            "[Skip to content](https://www.climate-kic.org/open-call/women-techeu-2-eic/#content-wrap) "
+            "OPEN CALL\n# Women TechEU 2 EIC\n"
+            "CALL FOR Women-led early-stage deep tech startups from Europe\n"
+            "## Details\n"
+            "Women TechEU supports women-led early-stage deep tech startups.\n"
+            "DEADLINE 2027-06-14\n"
+            "### Europe’s leading **climate innovation agency** and community\n"
+            "Stichting Climate-KIC International Foundation focuses on climate change mitigation and adaptation.\n"
+            "© Climate KIC 2026\n"
+        ),
+    }
+
+    document = _normalize_raw_to_doc(source, raw)
+    opportunity = analyze_document(document)
+
+    assert "climate change mitigation" not in document.content.casefold()
+    assert document.title == "Women TechEU 2 EIC"
+    assert "Women TechEU supports women-led early-stage deep tech startups" in document.content
+    assert opportunity.focus_area == "General"
 
 
 def test_sbir_generic_browser_title_is_replaced_with_the_topic_heading():

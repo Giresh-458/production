@@ -11,9 +11,9 @@ The pipeline is completely autonomous and operates in five distinct, strictly or
 Before scraping general intelligence, the system must establish *why* it is researching.
 
 1. **Cache Reset**: The orchestrator sets `force_refresh=True` and resets crawler statistics to ensure it fetches live data rather than stale cache.
-2. **Funding Discovery**: The orchestrator triggers the `funding_agent`. Using the deep-spidering Crawl4AI engine, it scrapes active grant portals (defined in `sources/funding_sources.yaml`) and saves them to `outputs/funding.db`.
-3. **Context Selection**: The `execute_selection()` function analyzes the database and ranks the grants based on total funding amount, approaching deadlines, and overall relevance.
-4. **Context Lock**: The highest-ranking grant is locked into a global `FundingCallContext` object. If no valid grants are found, the system immediately fast-fails (`NO_VALID_FUNDING_CONTEXT`) to save compute resources.
+2. **Funding Discovery**: The orchestrator invokes `funding_agent` against the configured sources in `sources/funding_sources.yaml`. Sources use bounded web crawling or an official structured API where supported. The full-pipeline entrypoint runs in `analysis_mode="analyze"` and writes normalized current records to `outputs/funding/funding_memory.db`.
+3. **Qualification and Selection**: The runner passes the current funding agent result to the shared strict selector in `run_pipeline.py`. It accepts only calls explicitly classified `OPEN_CALL`, with an unexpired deadline, a verifiable source/application URL, substantive applicant-eligibility criteria, and strong canonical RIF-domain evidence. Upcoming, closed, unknown-status, weak-domain, and eligibility-free records are rejected.
+4. **Context Lock**: The highest-ranked qualified call is converted to a `FundingCallContext`, and its canonical research area drives the downstream collectors. The SQLite ledger remains a persistent, refreshed funding record store; the active context is chosen from fresh source evidence, not stale rows. If no qualifying call exists, the pipeline fast-fails (`NO_VALID_FUNDING_CONTEXT`) rather than inventing a context.
 
 ---
 

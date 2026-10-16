@@ -1017,7 +1017,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # program homepages. Only explicit past-tense award statements identify an
     # individual funded project with sufficient confidence.
     funded_project_hint = bool(re.search(
-        r"\b(?:was|were|has been|have been|had been)\s+awarded\b",
+        r"\b(?:(?:was|were|has been|have been|had been)\s+awarded|"
+        r"(?:we|they|the organization|the foundation|the company)\s+"
+        r"(?:(?:have|has)\s+)?(?:just\s+)?awarded|"
+        r"just\s+awarded\s+\d+\s+(?:projects?|grants?|teams?|researchers?|recipients?))\b",
         lowered,
         flags=re.IGNORECASE,
     ))
@@ -1108,6 +1111,19 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
         if parsed:
             values["opening"] = parsed
             break
+
+    # A structured call page may state its actual application deadline near the
+    # top and then list later selection/notification dates in a project timeline.
+    # Prefer that explicit deadline over downstream milestones. Repeated SBIR-style
+    # rounds are handled separately by the "Due Date(s)" schedule below.
+    primary_deadline = re.search(
+        rf"\bdeadline\b\s*(?:[:\-|]\s*)?[*_`]*({date_token})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if primary_deadline:
+        values["deadline"] = _normalize_date(primary_deadline.group(1))
+        return values["opening"], values["deadline"]
 
     deadline_candidates: list[str] = []
     for match in re.finditer(patterns["deadline"], text, flags=re.IGNORECASE):
@@ -1355,13 +1371,21 @@ def _extract_application_url(text: str) -> str | None:
             "new issue" in label
             and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
         )
-        # Some official pages label the endpoint "here"; the preceding sentence
-        # can still identify that link as the application endpoint.
-        is_contextual_application_link = bool(re.search(
-            r"\b(?:application|apply|submit|submission)\b[^.!?\n]{0,100}$",
-            before,
-            flags=re.IGNORECASE,
-        ))
+        # A short CTA label such as "here" can inherit meaning from nearby
+        # application instructions. Do not classify an arbitrary repository link
+        # as an application URL merely because the word "applications" appeared
+        # earlier in the same paragraph.
+        short_application_label = label.strip().rstrip(".") in {
+            "here", "this form", "the form", "application form", "application portal"
+        }
+        is_contextual_application_link = bool(
+            short_application_label
+            and re.search(
+                r"\b(?:application|apply|submit|submission|proposal|form)\b",
+                before[-150:],
+                flags=re.IGNORECASE,
+            )
+        )
         if is_application_label or is_grant_issue_template or is_contextual_application_link:
             candidate_url = match.group(2).rstrip(".,")
             if _is_generic_application_url(candidate_url):
@@ -1502,13 +1526,48 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
     if hits:
-        return " ".join(dict.fromkeys(hits))[:max_chars]
+        eligibility_labels = {
+            "eligibility", "who can apply", "eligible applicants", "eligible organizations"
+        }
+        if any(label.casefold() in eligibility_labels for label in labels):
+            # Do not treat application workflow copy as applicant eligibility.
+            # This previously captured phrases like "eligible applicants will then
+            # be invited to submit a Full Proposal" as if they were requirements.
+            hits = [
+                value for value in hits
+                if not re.search(
+                    r"\bwill(?:\s+then)?\s+be\s+invited\s+to\s+submit\b|"
+                    r"\bpass/fail\s+requirements?\b.{0,120}\bassessed\s+by\b",
+                    value,
+                    flags=re.IGNORECASE,
+                )
+            ]
+        if hits:
+            return " ".join(dict.fromkeys(hits))[:max_chars]
     return None
 
 
 def _extract_general_themes(content: str) -> list[str]:
     import re
     from collections import Counter
+
+    # Preserve canonical multi-word technical themes before token-based phrase
+    # scoring. Hyphenated labels otherwise lose their domain meaning.
+    canonical_patterns = (
+        (r"\bcyber[\s-]+physical systems\b", "Cyber-Physical Systems"),
+        (r"\bcps\b", "Cyber-Physical Systems"),
+        (r"\bdigital healthcare\b", "Digital Healthcare"),
+        (r"\binternet of vehicles\b", "Internet of Vehicles"),
+        (r"\bzero[\s-]+knowledge\b", "Zero-Knowledge"),
+        (r"\bdecentralized identity\b", "Decentralized Identity"),
+        (r"\breal[\s-]+world assets?\b", "Real-World Assets"),
+        (r"\bstablecoins?\b", "Stablecoins"),
+        (r"\bdecentralized physical infrastructure\b", "Decentralized Physical Infrastructure"),
+    )
+    canonical_themes: list[str] = []
+    for pattern, label in canonical_patterns:
+        if re.search(pattern, content or "", flags=re.IGNORECASE) and label not in canonical_themes:
+            canonical_themes.append(label)
     stop_words = {
         'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'their', 'there', 
         'which', 'using', 'used', 'use', 'are', 'was', 'were', 'have', 'has', 'had', 
@@ -1629,13 +1688,13 @@ def _extract_general_themes(content: str) -> list[str]:
         if len(final) >= 3:
             break
             
-    return final
+    return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
-    domain_relevance = build_domain_relevance(document.content)
+    domain_relevance = build_domain_relevance(f"{document.title}\n{document.content}")
     # Never route a funding call into a canonical research area because of a few
     # incidental words on a broad landing page. Routing requires both a meaningful
     # normalized share and enough raw domain evidence; otherwise the call remains
@@ -1644,7 +1703,18 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     top_score = float(top_item.get("score", 0.0) or 0.0)
     top_raw = float(top_item.get("raw_score", 0.0) or 0.0)
     top_matches = list(top_item.get("matched_terms", []) or [])
-    focus_area = (str(top_item.get("domain")) if top_score >= 0.30 and top_raw >= 4.0 and len(top_matches) >= 2 else "General")
+    title_has_domain_anchor = any(
+        re.search(rf"\b{re.escape(str(term))}\b", document.title, flags=re.IGNORECASE)
+        for term in top_matches
+        if str(term).strip()
+    )
+    focus_area = (
+        str(top_item.get("domain"))
+        if top_score >= 0.30
+        and top_raw >= 4.0
+        and (len(top_matches) >= 2 or title_has_domain_anchor)
+        else "General"
+    )
     domain_themes = {
         "RWA": ["Real-World Assets", "Asset Tokenization"],
         "ESG": ["ESG", "Carbon and MRV"],
@@ -1685,6 +1755,19 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
+    # SBIR.gov's topic pages sometimes render "Our Programs" as both the browser
+    # title and page chrome. For our two explicitly configured NSF topics, use the
+    # curated source label only when the topic URL is specific and extraction still
+    # has a generic title. Never use the broad "Open SBIR Funding Topics" hub label.
+    normalized_program_name = re.sub(r"[^a-z0-9]+", " ", program_name.casefold()).strip()
+    parsed_source = urlparse(document.source or "")
+    if (
+        normalized_program_name in {"our programs", "programs", "topic", "home", "welcome"}
+        and (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
+        and document.organization.casefold().startswith("nsf sbir ")
+    ):
+        program_name = document.organization.strip()
     status = determine_status(None, opening_date, deadline, document.content, program_name)
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
@@ -2036,11 +2119,15 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
     connection = db_connect(db_path)
     init_funding_db(connection)
     created = 0
+    refreshed = 0
     for document, analysis in documents_with_analysis:
-        if funding_exists(connection, document.title, document.source):
-            LOGGER.info("Skipping already stored funding item '%s'", document.title)
-            continue
+        already_stored = funding_exists(connection, document.title, document.source)
+        if already_stored:
+            LOGGER.info("Refreshing stored funding item '%s' from %s", document.title, document.source)
         output_path = save_markdown_output(document, analysis, output_dir, run_id=run_id)
+        # save_funding_record uses ON CONFLICT(url) DO UPDATE. Always call it for
+        # an observed source URL so status, deadline and eligibility cannot remain
+        # stale merely because the URL was seen in an earlier scan.
         save_funding_record(
             connection,
             opportunity=analysis,
@@ -2048,9 +2135,13 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
             source_type=document.source_type,
             year=document.year
         )
-        created += 1
+        if already_stored:
+            refreshed += 1
+        else:
+            created += 1
     connection.commit()
     write_insights(connection, output_dir)
+    LOGGER.info("Funding persistence: %d new records, %d refreshed records", created, refreshed)
     return created
 
 
@@ -2386,7 +2477,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 LOGGER.warning("Could not save funding markdown output: %s", e)
 
             evidence = {"source_url": analysis.source_url, "source_title": analysis.source_title, **analysis.evidence}
-            domains = build_domain_relevance(doc.content)
+            domains = build_domain_relevance(f"{doc.title}\n{doc.content}")
             outputs.append({
                 "funding_body": analysis.funding_body,
                 "program_name": analysis.program_name,
