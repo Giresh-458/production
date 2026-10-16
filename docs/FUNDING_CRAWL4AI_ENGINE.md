@@ -43,3 +43,8 @@ The EU Funding & Tenders source uses the European Commission's public Search API
 The sources/funding_sources.yaml catalogue and sources/source_registry.json lifecycle state work together. A URL present in YAML can still be skipped when its matching registry entry is deprecated. When a source is intentionally restored to the active catalogue, restore its registry status in the same change and add a regression test so an apparently successful run cannot silently omit it.
 
 For live quality checks, read the per-source collection status and inspect the generated call records after the crawler completes. VERIFIED describes source-collection completeness within the configured boundary; it does not by itself prove every extracted record is an open, eligible, domain-matched funding opportunity. A page-cap warning or failed robots-policy check remains a coverage gap and should be resolved or preserved as PARTIAL.
+
+
+### EU live-call status and eligibility metadata
+
+The EU public Search API can return legacy records whose source status is still Open despite a past deadline. API queries should prefer `deadlineDate` descending for capped live scans, and normalization applies the deadline consistency guard before exposing a record as open. Where the API lacks a scalar eligibility field, extract the publisher's `topicConditions` HTML as eligibility evidence, strip markup and preserve field provenance. Use `descriptionByte` as a description fallback where the standard description field is absent. These fields should still be reviewed at call level; non-empty criteria do not by themselves prove that a call matches RIF's research domains.
