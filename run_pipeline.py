@@ -17,7 +17,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.batch_runner import execute_batch_run
-from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
+from core.funding_selection import (
+    FundingCallContext, ScoredCall, ValidationResult,
+    has_substantive_eligibility_evidence,
+)
 from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
@@ -159,61 +162,6 @@ def _supported_rif_funding_domains(
     return [], 0.0, (
         "no sufficiently strong, domain-specific evidence for any canonical research area"
     )
-
-
-def _has_substantive_eligibility_evidence(value: Any) -> bool:
-    """Return True only when eligibility text states an applicant rule or category.
-
-    Topic relevance (what a project should demonstrate) is not applicant
-    eligibility (who may apply and under what constraints). Keep this gate
-    conservative because selected calls become the downstream funding context.
-    """
-    text = re.sub(r"<[^>]+>", " ", str(value or ""))
-    text = re.sub(r"\s+", " ", text).strip()
-    if not text or text.casefold() in {"none", "null", "unknown", "n/a", "not specified"}:
-        return False
-
-    if re.search(
-        r"\b(?:will then be invited to submit|eligibility criteria "
-        r"(?:specified|set out|described) in the call|"
-        r"pass/fail requirements?.{0,120}\bassessed by)\b",
-        text,
-        flags=re.IGNORECASE,
-    ):
-        return False
-
-    applicant_scope = re.search(
-        r"\b(?:eligible applicants?|applicants?|applicant types?|who can apply|"
-        r"legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
-        r"research organisations?|research organizations?|universit(?:y|ies)|"
-        r"public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
-        r"start[- ]ups?|students?|individual developers?|research teams?|"
-        r"companies|businesses|organisations|organizations|consortiums?)\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    concrete_constraint = re.search(
-        r"\b(?:eligible|eligibility|may apply|can apply|may submit|can submit|"
-        r"must be|must include|must have|are required to|are limited to|"
-        r"not eligible|cannot apply|established|registered|incorporated|"
-        r"resident|reside|domiciled|based in|located in|citizens? of|"
-        r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
-        r"start[- ]up only|open to)\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    concrete_subject_or_condition = re.search(
-        r"\b(?:legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
-        r"research organisations?|research organizations?|universit(?:y|ies)|"
-        r"public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
-        r"start[- ]ups?|students?|individual developers?|research teams?|"
-        r"companies|businesses|organisations|organizations|consortiums?|"
-        r"established|registered|incorporated|resident|reside|domiciled|"
-        r"based in|located in|citizens? of|at least\s+\d+)\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    return bool(applicant_scope and concrete_constraint and concrete_subject_or_condition)
 
 
 def get_all_open_funding_calls(
