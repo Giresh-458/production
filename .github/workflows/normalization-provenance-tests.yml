@@ -11,6 +11,8 @@ on:
       - "core/agent_interface.py"
       - "core/normalization.py"
       - "core/intelligence.py"
+      - "agents/literature_agent.py"
+      - "tests/test_literature_run_provenance.py"
       - "run_pipeline.py"
       - "tests/test_agent_normalization_refresh.py"
       - "tests/test_batch4_normalization.py"
@@ -53,6 +55,7 @@ jobs:
         run: |
           python -m pytest \
             tests/test_agent_normalization_refresh.py \
+            tests/test_literature_run_provenance.py \
             tests/test_batch4_normalization.py \
             tests/test_multi_call_evidence_attribution.py \
             tests/test_stale_index.py \
