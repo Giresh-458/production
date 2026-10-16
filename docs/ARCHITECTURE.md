@@ -34,9 +34,11 @@ limits, HTTP collection, and browser fallback. Crawl telemetry and stop reasons
 are propagated into batch reports.
 
 ### 6. Normalization and Evidence Memory (`core/normalization.py`, `core/evidence.py`)
-Normalizes intermediate artifacts into structured records with source URLs,
-collection metadata, run IDs, and funding-call attribution. Per-call relevance
-checks filter the records before NLP and synthesis.
+Normalizes intermediate artifacts into structured records with validated
+source URLs, source identities, collector/layer provenance, run IDs, and
+funding-call attribution. Cache reuse is guarded by a content-hashed input
+manifest; per-call normalization rejects artifacts from other runs before
+mission-relevance checks filter records for NLP and synthesis.
 
 ## Execution Lifecycle
 
