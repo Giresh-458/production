@@ -1,6 +1,6 @@
 import json
 import pytest
-from core.agent_interface import assign_funding_calls
+from core.agent_interface import assign_funding_calls, _resolve_funding_call_ids
 from core.funding_selection import FundingCallContext
 
 def _mock_ctx(**kwargs):
@@ -33,6 +33,37 @@ def _get_matched_ids(title, content, contexts):
     analysis = DummyAnalysis()
     # Call the actual production function
     return assign_funding_calls(title, content, contexts)
+
+def test_stale_document_call_ids_are_recomputed_from_current_evidence():
+    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha")
+    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo")
+    stale_document = {"funding_call_ids": ["CALL-CURRENT-B", "CALL-FROM-OLD-RUN"]}
+
+    ids = _resolve_funding_call_ids(
+        stale_document,
+        title="Current Program Alpha application evidence",
+        content="This evidence explicitly names CALL-CURRENT-A and its application requirements.",
+        funding_context=None,
+        funding_contexts=[call_a, call_b],
+    )
+
+    assert ids == ["CALL-CURRENT-A"]
+
+
+def test_explicit_call_context_overrides_stale_document_ids():
+    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha")
+    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo")
+
+    ids = _resolve_funding_call_ids(
+        {"funding_call_ids": ["CALL-CURRENT-B"]},
+        title="Evidence mentioning CALL-CURRENT-B",
+        content="This document mentions CALL-CURRENT-B but is being collected for the explicit current call.",
+        funding_context=call_a,
+        funding_contexts=[call_a, call_b],
+    )
+
+    assert ids == ["CALL-CURRENT-A"]
+
 
 def test_large_context_cross_contamination():
     # CASE A: Generic document + 100 contexts -> []
