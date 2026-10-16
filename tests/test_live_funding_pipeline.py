@@ -240,7 +240,7 @@ def test_filecoin_repository_link_does_not_outrank_explicit_grant_issue_template
     )
     content = (
         "Open Grants applications for funding are welcome in the following categories: "
-        f"[ipfs/devgrants]({repository_url})\\n"
+        f"[ipfs/devgrants]({repository_url})\n"
         "To submit an Open Grant proposal, "
         f"[create a new issue]({application_url}) using the Open Grants Proposal template."
     )
@@ -838,8 +838,8 @@ def test_explicit_deadline_beats_later_notification_milestone():
     past_deadline = today - timedelta(days=4)
     future_notification = today + timedelta(days=14)
     content = (
-        f"OPEN CALL\\nDEADLINE {past_deadline.isoformat()} 23:59 CET\\n"
-        "Planned Date | Milestone\\n"
+        f"OPEN CALL\nDEADLINE {past_deadline.isoformat()} 23:59 CET\n"
+        "Planned Date | Milestone\n"
         f"{future_notification.strftime('%b %d, %Y')} | Notification of selected applicants"
     )
 
