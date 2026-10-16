@@ -111,6 +111,55 @@ jobs:
               print("No diagnostic sample titles appeared in capped pages; inspect more pages before concluding fields are absent.")
           PY
 
+      - name: Probe EU domain-query discovery
+        run: |
+          python - <<'PY'
+          import json
+          from core.http_client import post_multipart_json
+
+          endpoint = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+          query = {"bool": {"must": [
+              {"terms": {"type": ["1", "2", "8"]}},
+              {"terms": {"status": ["31094501", "31094502"]}},
+          ]}}
+          fields = {
+              "query": (None, json.dumps(query, separators=(",", ":")), "application/json"),
+              "languages": (None, json.dumps(["en"]), "application/json"),
+              "displayLanguage": (None, "en", "text/plain"),
+          }
+          headers = {
+              "Accept": "application/json, text/plain, */*",
+              "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+              "Origin": "https://ec.europa.eu",
+              "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+          }
+          terms = [
+              "carbon credit", "MRV emissions", "blockchain", "zero knowledge",
+              "decentralized identity", "physical infrastructure", "stablecoin",
+              "MEV", "climate ESG", "biodiversity", "sustainability data",
+          ]
+          results = {}
+          for term in terms:
+              payload, _ = post_multipart_json(
+                  endpoint,
+                  params={"apiKey": "SEDIA", "text": term, "pageNumber": 1,
+                          "pageSize": 10, "sortBy": "deadline", "orderBy": "DESC"},
+                  fields=fields, headers=headers, timeout=(8, 20), retries=1,
+              )
+              hits = payload.get("results", [])
+              results[term] = {
+                  "total": payload.get("totalResults"),
+                  "samples": [
+                      {
+                          "title": ((item.get("metadata") or {}).get("title") or [""])[0],
+                          "deadline": ((item.get("metadata") or {}).get("deadlineDate") or [""])[0],
+                      }
+                      for item in hits[:3]
+                  ],
+              }
+          print(json.dumps(results, indent=2, ensure_ascii=False))
+          PY
+
       - name: Run bounded live Batch 1 EU qualification audit
         run: |
           python - <<'PY'
