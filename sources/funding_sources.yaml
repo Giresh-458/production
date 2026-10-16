@@ -297,6 +297,12 @@ sources:
         types: ["1", "2", "8"]
         statuses: ["31094501", "31094502"]
         page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
         detail_fetch_missing_metadata: true
         require_eligibility_evidence: true
         require_domain_match: true
