@@ -635,7 +635,7 @@ def _extract_eu_eligibility_from_html(value: Any) -> str | None:
 
     explicit_patterns = (
         r"\beligible applicants?\b.{0,180}\b(?:must be|must include|may apply|can apply|are eligible to|are eligible for|are limited to)\b",
-        r"\beligible applicants?\s+(?:are|include)\s+(?:legal entities?|natural persons?|SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|organisations|organizations)\b.{0,180}",
+        r"\beligible applicants?\s+(?:are|include)\s+(?:legal entities?|natural persons?|SMEs?|small and medium[- ]sized enterprises|public\s+research organisations?|public\s+research organizations?|nuclear research facilities|research facilities?|research institutions?|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|organisations|organizations)\b.{0,180}",
         r"\beligible applicants?\s*[:\-]\s*.{15,}",
         r"\bapplicants?\s+(?:(?:must|are required to)\s+(?:be|include|have|hold|establish|register|reside|operate|form|belong|qualify|maintain|apply)|may\s+(?:apply|be eligible|submit)|can\s+apply)\b",
         r"\bapplications?\s+(?:are|is)\s+open\s+to\b.{15,}",
