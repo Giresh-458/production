@@ -586,7 +586,16 @@ def analyze_papers(papers: list[Paper], area: str) -> AnalysisResult:
     return extract_research_gap(best_papers, area)
 
 
-def process_area(connection, area: str | None, output_dir: Path, now: datetime, *, allow_llm_analysis: bool = False, funding_context: FundingCallContext | None = None) -> int:
+def process_area(
+    connection,
+    area: str | None,
+    output_dir: Path,
+    now: datetime,
+    *,
+    allow_llm_analysis: bool = False,
+    funding_context: FundingCallContext | None = None,
+    run_id: str | None = None,
+) -> int:
     LOGGER.info("Starting collection for area: %s", area)
     
     all_papers = []
@@ -660,14 +669,44 @@ def process_area(connection, area: str | None, output_dir: Path, now: datetime, 
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", effective_area.lower()).strip("-")
     md_path = output_dir / f"{slug}.md"
     
+    # The literature collector uses a legacy file-based finalizer rather than
+    # the shared intermediate-artifact writer. Add the same machine-readable
+    # provenance fields here so run-scoped normalization does not silently drop
+    # fresh literature evidence.
+    primary_source_url = next(
+        (
+            str(paper.url).strip()
+            for paper in semantically_ranked
+            if str(paper.url or "").strip().startswith(("https://", "http://"))
+        ),
+        "",
+    )
     lines = [
-        f"# Research Gap: {effective_area}", "",
+        f"# Research Gap: {effective_area}",
+        "",
+        "## Shared Metadata",
+        f"- title: Research Gap: {effective_area}",
+        "- agent_name: literature",
+        "- layer: Literature",
+        f"- research_area: {effective_area}",
+        "- collection_mode: configured_scan",
+        f"- collected_at: {now.isoformat()}",
+    ]
+    if primary_source_url:
+        lines.append(f"- source: {primary_source_url}")
+    if funding_context and funding_context.funding_call_id:
+        lines.append(f"- funding_call_id: {funding_context.funding_call_id}")
+        lines.append(f"- funding_call_ids: {funding_context.funding_call_id}")
+    if run_id:
+        lines.append(f"- run_id: {run_id}")
+    lines.extend([
+        "",
         "## Problem", analysis.problem, "",
         "## Gap", analysis.gap, "",
         "## Insight", analysis.insight, "",
         "## Keywords", " ".join(f"#{k}" for k in analysis.keyword_tags), "",
         "## Sources Used",
-    ]
+    ])
     for p in semantically_ranked[:5]:
         lines.append(f"- **{p.title}** ({p.source})")
         lines.append(f"  *DOI: {p.doi or 'N/A'}, Authors: {', '.join(p.authors[:3])}*")
@@ -742,7 +781,15 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Adaptive/unscoped mode: derive compact research terms from the selected call
                 # rather than forcing the call into a fixed taxonomy.
                 scan_area = None
-            count = process_area(connection, scan_area, output_dir, datetime.now(UTC), allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)), funding_context=funding_context)
+            count = process_area(
+                connection,
+                scan_area,
+                output_dir,
+                datetime.now(UTC),
+                allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
+                funding_context=funding_context,
+                run_id=payload.get("run_id"),
+            )
             return finalize_file_agent_response(
                 agent=agent_name, layer=layer, mode=mode, area=area,
                 items_processed=count, items_saved=count, output_dir=output_dir,
