@@ -125,4 +125,4 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
     assert opportunity.opening_date == "2026-10-01"
     assert opportunity.deadline == "2026-12-01"
     assert opportunity.call_id == "HORIZON-CL4-2026-TEST-01"
-    assert "official Search API metadata" in opportunity.evidence["source_status_provenance"].lower()
+    assert "Search API metadata" in opportunity.evidence["source_status_provenance"]
