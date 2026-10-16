@@ -634,9 +634,9 @@ def _extract_eu_eligibility_from_html(value: Any) -> str | None:
         paragraphs = [cleaned] if cleaned else []
 
     explicit_patterns = (
-        r"\beligible applicants?\b.{0,180}\b(?:are|include|must|may|need|should)\b",
+        r"\beligible applicants?\b.{0,180}\b(?:must be|must include|may apply|can apply|are eligible to|are eligible for|are limited to)\b",
         r"\beligible applicants?\s*[:\-]\s*.{15,}",
-        r"\bapplicants?\s+(?:must|may|should|need to|are required to|are eligible to)\s+(?:be|include|have|hold|establish|register|reside|operate|meet|demonstrate|provide|form|belong|qualify|include|maintain|undertake|participate|apply)\b",
+        r"\bapplicants?\s+(?:(?:must|are required to)\s+(?:be|include|have|hold|establish|register|reside|operate|form|belong|qualify|maintain|apply)|may\s+(?:apply|be eligible|submit)|can\s+apply)\b",
         r"\bapplications?\s+(?:are|is)\s+open\s+to\b.{15,}",
         r"\bwho can apply\b.{20,}",
         r"\bonly\b.{0,140}\b(?:may apply|are eligible|can apply)\b",
