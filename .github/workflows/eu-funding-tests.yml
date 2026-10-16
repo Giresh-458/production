@@ -97,6 +97,76 @@ jobs:
           print(json.dumps({"detail_endpoint": samples}, indent=2, ensure_ascii=False))
           PY
 
+      - name: Probe EU deadline sorting and eligibility text
+        run: |
+          python - <<'PY'
+          import html
+          import json
+          import re
+          from core.http_client import post_multipart_json
+
+          endpoint = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+          query = {"bool": {"must": [
+              {"terms": {"type": ["1", "2", "8"]}},
+              {"terms": {"status": ["31094501", "31094502"]}},
+          ]}}
+          fields = {
+              "query": (None, json.dumps(query, separators=(",", ":")), "application/json"),
+              "languages": (None, json.dumps(["en"]), "application/json"),
+              "displayLanguage": (None, "en", "text/plain"),
+          }
+          headers = {
+              "Accept": "application/json, text/plain, */*",
+              "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+              "Origin": "https://ec.europa.eu",
+              "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+          }
+          sorts = {}
+          selected = []
+          for sort_by in ("deadline", "deadlineDate", "startDate"):
+              payload, _ = post_multipart_json(
+                  endpoint,
+                  params={"apiKey": "SEDIA", "text": "*", "pageNumber": 1,
+                          "pageSize": 8, "sortBy": sort_by, "orderBy": "DESC"},
+                  fields=fields, headers=headers, timeout=(8, 25), retries=1,
+              )
+              items = payload.get("results", [])
+              sorts[sort_by] = [
+                  {
+                      "title": ((item.get("metadata") or {}).get("title") or [""])[0],
+                      "deadline": ((item.get("metadata") or {}).get("deadlineDate") or [""])[0],
+                  }
+                  for item in items[:5]
+              ]
+              if sort_by == "deadline":
+                  selected = items[:5]
+
+          def extract_hits(value):
+              raw = " ".join(str(x) for x in value) if isinstance(value, list) else str(value or "")
+              raw = re.sub(r"(?is)<(script|style)\\b[^>]*>.*?</\\1>", " ", raw)
+              raw = re.sub(r"(?i)</(?:p|li|div|h[1-6]|tr|br)\\s*>|<br\\s*/?>", "\\n", raw)
+              raw = html.unescape(re.sub(r"(?s)<[^>]+>", " ", raw))
+              chunks = [re.sub(r"\\s+", " ", x).strip() for x in raw.splitlines()]
+              hits = []
+              for chunk in chunks:
+                  if re.search(r"(?i)eligib|applicant|who can apply|SME|students enrolled|established in|legal entities|research organisation|research organization", chunk):
+                      if chunk and chunk not in hits:
+                          hits.append(chunk[:500])
+              return hits[:12]
+
+          eligibility = []
+          for item in selected:
+              metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+              body = metadata.get("beneficiaryAdministration")
+              if body:
+                  eligibility.append({
+                      "title": ((metadata.get("title") or [""])[0]),
+                      "deadline": ((metadata.get("deadlineDate") or [""])[0]),
+                      "hits": extract_hits(body),
+                  })
+          print(json.dumps({"sort_comparison": sorts, "beneficiary_administration_hits": eligibility}, indent=2, ensure_ascii=False))
+          PY
+
       - name: Live EU Search API smoke test (bounded)
         run: |
           python - <<'PY'
