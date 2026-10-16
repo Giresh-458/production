@@ -60,6 +60,42 @@ def test_validate_call_missing_required():
     assert any("program_name" in r for r in result.reasons)
 
 
+def test_validate_call_rejects_missing_or_project_fit_only_eligibility():
+    now = datetime.now(UTC)
+    valid = {
+        "status": "OPEN_CALL",
+        "program_name": "Applicant-qualified research grant",
+        "funding_body": "Example Funder",
+        "source_url": "https://example.org/calls/research",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "eligibility": "Eligible applicants must be legal entities established in an eligible country.",
+    }
+
+    assert validate_call(valid, ApplicantProfile()).is_valid is True
+
+    missing = dict(valid, eligibility=None)
+    result = validate_call(missing, ApplicantProfile())
+    assert result.is_valid is False
+    assert any("substantive applicant eligibility" in reason for reason in result.reasons)
+
+    project_fit_only = dict(
+        valid,
+        eligibility=(
+            "Applicants should demonstrate their potential to leverage downstream space data "
+            "and remote sensing."
+        ),
+    )
+    result = validate_call(project_fit_only, ApplicantProfile())
+    assert result.is_valid is False
+    assert any("substantive applicant eligibility" in reason for reason in result.reasons)
+
+    upcoming = dict(valid, status="UPCOMING_CALL")
+    result = validate_call(upcoming, ApplicantProfile())
+    assert result.is_valid is False
+    assert any("not confirmed open" in reason for reason in result.reasons)
+
+
+
 def test_validate_call_geography():
     profile = ApplicantProfile(allowed_geographies=["europe", "uk"])
     
@@ -69,6 +105,8 @@ def test_validate_call_geography():
         "program_name": "Test",
         "funding_body": "Test",
         "problem_statement": "Test",
+        "source_url": "https://example.org/call",
+        "eligibility": "Eligible applicants must be legal entities established in Europe.",
         "geography": "United States Only"
     }
     result = validate_call(record, profile)
@@ -127,7 +165,9 @@ def test_rank_calls():
             "funding_body": "Test",
             "problem_statement": "Test",
             "focus_area": "DePIN",
-            "deadline": future_date
+            "deadline": future_date,
+            "source_url": "https://example.org/call-a",
+            "eligibility": "Eligible applicants must be legal entities established in an eligible country."
         },
         # Call 2: Valid, generic area -> medium score
         {
@@ -137,7 +177,9 @@ def test_rank_calls():
             "funding_body": "Test",
             "problem_statement": "Test",
             "focus_area": "General",
-            "deadline": future_date
+            "deadline": future_date,
+            "source_url": "https://example.org/call-b",
+            "eligibility": "Eligible applicants must be legal entities established in an eligible country."
         },
         # Call 3: Invalid (closed) -> low score, is_valid=False
         {
@@ -213,7 +255,9 @@ def test_execute_selection_autonomous(tmp_path: Path, monkeypatch):
             "funding_body": "Test",
             "problem_statement": "Test",
             "focus_area": "DePIN",
-            "deadline": future_date
+            "deadline": future_date,
+            "source_url": "https://example.org/call-a",
+            "eligibility": "Eligible applicants must be legal entities established in an eligible country."
         },
         {
             "call_id": "CALL-456",
