@@ -1384,7 +1384,34 @@ def _extract_application_url(text: str) -> str | None:
 
 def _resolve_application_url(content: str, source_url: str, status: str) -> str | None:
     """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
+    parsed_source = urlparse(source_url or "")
+    is_open_sbir_topic = (
+        (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
+        and status in {"OPEN_CALL", "UPCOMING_CALL"}
+        and re.search(r"(?i)\bsolicitation status\s*:\s*open\b", content or "")
+    )
+    has_official_nsf_solicitation = bool(re.search(
+        r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
+        content or "",
+    ))
     extracted = _extract_application_url(content)
+
+    # The SBIR topic page itself is the relevant instructions destination when
+    # the only non-generic link discovered is the linked NSF solicitation PDF/page.
+    # The solicitation explains the topic; it is not necessarily the online submit endpoint.
+    extracted_is_nsf_solicitation = bool(
+        extracted
+        and re.search(
+            r"(?i)^https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation/?$",
+            extracted,
+        )
+    )
+    if is_open_sbir_topic and has_official_nsf_solicitation and (
+        not extracted or extracted_is_nsf_solicitation
+    ):
+        return source_url
+
     if extracted:
         return extracted
 
@@ -1404,20 +1431,6 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_superteam_detail and has_on_page_cta:
         return source_url
 
-    # The source-specific SBIR topic page is the useful application-instructions
-    # route when an open NSF topic links to its official solicitation but only
-    # exposes the generic SBIR /apply help page in its navigation.
-    parsed_source = urlparse(source_url or "")
-    if (
-        (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
-        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
-        and re.search(r"(?i)\bsolicitation status\s*:\s*open\b", content or "")
-        and re.search(
-            r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
-            content or "",
-        )
-    ):
-        return source_url
     return None
 
 
