@@ -609,6 +609,7 @@ def _collect_eu_funding_tenders(
     if not result.pagination_complete:
         result.truncated = True
 
+    seen_detail_urls: set[str] = set()
     for item in records:
         if not isinstance(item, dict):
             result.records_failed += 1
@@ -631,6 +632,20 @@ def _collect_eu_funding_tenders(
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
+
+        # Distinct search references can still point at the same detail page.
+        # Keep source records unique by their canonical URL before analysis.
+        parsed_detail_url = urlparse(url)
+        canonical_detail_url = parsed_detail_url._replace(
+            scheme=parsed_detail_url.scheme.lower(),
+            netloc=parsed_detail_url.netloc.lower(),
+            path=parsed_detail_url.path.rstrip("/") or "/",
+            fragment="",
+        ).geturl()
+        if canonical_detail_url in seen_detail_urls:
+            result.duplicates_removed += 1
+            continue
+        seen_detail_urls.add(canonical_detail_url)
 
         raw_status = _eu_metadata_value(metadata, "status", "submissionStatus", "callStatus")
         if not raw_status:
