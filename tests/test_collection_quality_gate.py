@@ -1,4 +1,12 @@
-from run_pipeline import evaluate_collection_health
+from run_pipeline import evaluate_collection_health, minimum_healthy_collectors
+
+
+def test_minimum_healthy_collectors_requires_a_majority():
+    assert minimum_healthy_collectors(11) == 6
+    assert minimum_healthy_collectors(10) == 6
+    assert minimum_healthy_collectors(5) == 3
+    assert minimum_healthy_collectors(2) == 2
+    assert minimum_healthy_collectors(0) == 0
 
 def test_collection_quality_gate():
     # Case A: 6 success, >0 outputs -> Healthy
