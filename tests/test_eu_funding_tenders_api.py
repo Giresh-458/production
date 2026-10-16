@@ -46,6 +46,8 @@ def test_eu_search_api_paginates_and_filters_open_forthcoming_calls(monkeypatch)
     assert len(calls) == 2
     assert [call["params"]["pageNumber"] for call in calls] == [1, 2]
     assert all(call["params"]["apiKey"] == "SEDIA" for call in calls)
+    assert all(call["params"]["sortBy"] == "deadlineDate" for call in calls)
+    assert all(call["params"]["orderBy"] == "DESC" for call in calls)
     assert result["pages_fetched"] == 2
     assert result["pagination_complete"] is True
     assert result["total_expected"] == 2
@@ -218,3 +220,55 @@ def test_eu_effective_status_preserves_open_when_deadline_not_past_or_missing():
     assert _eu_effective_status("31094502", None, today=date(2026, 10, 16)) == (
         "OPEN_CALL", None
     )
+
+
+def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    record = {
+        "reference": "eligibility-fallback",
+        "url": "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/topic-details/TEST-2026",
+        "metadata": {
+            "title": ["Secure Data Infrastructure Pilot"],
+            "status": ["31094502"],
+            "deadlineDate": ["2026-12-15"],
+            "topicConditions": [
+                "<section><h3>Eligibility conditions</h3>"
+                "<p>Eligible applicants are public research organisations and SMEs "
+                "established in an EU Member State.</p></section>"
+            ],
+            "descriptionByte": ["<p>Research and innovation in secure data infrastructure.</p>"],
+        },
+    }
+    monkeypatch.setattr(
+        funding_collector,
+        "eu_funding_tenders_paginated_search",
+        lambda **kwargs: {
+            "results": [record],
+            "pages_fetched": 1,
+            "total_expected": 1,
+            "pagination_complete": True,
+            "errors": [],
+        },
+    )
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
+        research_domains=["RWA", "DID"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert result.records_valid == 1
+    _, opportunity = result.opportunities[0]
+    assert opportunity.eligibility
+    assert "Eligible applicants are public research organisations and SMEs" in opportunity.eligibility
+    assert "<p>" not in opportunity.eligibility
+    assert opportunity.evidence["eligibility_provenance"].startswith("European Commission")
+    assert "topicConditions" in opportunity.evidence["eligibility"]
