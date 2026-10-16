@@ -904,9 +904,9 @@ def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls
         "content": (
             "Climate KIC navigation describing climate change mitigation and adaptation. "
             "[Skip to content](https://www.climate-kic.org/open-call/women-techeu-2-eic/#content-wrap) "
-            "OPEN CALL\n# Women TechEU 2 EIC\\n"
+            "OPEN CALL\n# Women TechEU 2 EIC\n"
             "CALL FOR Women-led early-stage deep tech startups from Europe\n"
-            "## Details\\n"
+            "## Details\n"
             "Women TechEU supports women-led early-stage deep tech startups.\n"
             "DEADLINE 2027-06-14\n"
             "© Climate KIC 2026\n"
