@@ -748,3 +748,67 @@ def test_repeated_due_date_schedule_selects_nearest_future_round():
     assert opening == opening_date.isoformat()
     assert deadline == next_deadline.isoformat()
     assert determine_status(None, opening, deadline, content) == "OPEN_CALL"
+
+
+def test_generic_sbir_apply_page_is_not_used_as_call_application_url():
+    from agents.funding_agent import _extract_application_url
+
+    content = (
+        "[Apply](https://www.sbir.gov/apply) "
+        "Solicitation Status: Open. "
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/"
+        "small-business-innovation-research-small-business-technology/nsf26-510/solicitation)"
+    )
+    assert _extract_application_url(content) is None
+
+
+def test_specific_open_sbir_topic_uses_its_topic_page_not_generic_apply_guidance():
+    from agents.funding_agent import _resolve_application_url
+
+    source_url = "https://www.sbir.gov/topics/1012406"
+    content = (
+        "Solicitation Status: Open. "
+        "[Apply](https://www.sbir.gov/apply) "
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/"
+        "small-business-innovation-research-small-business-technology/nsf26-510/solicitation)"
+    )
+    assert _resolve_application_url(content, source_url, "OPEN_CALL") == source_url
+
+
+def test_eligibility_heading_is_not_misread_as_a_requirement_value():
+    from agents.funding_agent import _extract_section_value
+
+    content = (
+        "## Eligibility and Final Selection\n"
+        "This call has a one-stage assessment process.\n"
+        "Eligibility: Organisations must be legally established in the eligible region."
+    )
+    assert _extract_section_value(content, ("eligibility", "who can apply")) == (
+        "Organisations must be legally established in the eligible region."
+    )
+
+
+def test_sbir_generic_browser_title_is_replaced_with_the_topic_heading():
+    from agents.funding_agent import FundingSource
+    from agents.funding_collector import _normalize_raw_to_doc
+
+    source = FundingSource(
+        name="NSF SBIR Trusted Identity",
+        url="https://www.sbir.gov/topics/1012406",
+        tier="tier_3",
+        direct_page=True,
+    )
+    document = _normalize_raw_to_doc(
+        source,
+        {
+            "type": "html",
+            "url": source.url,
+            "title": "Our Programs",
+            "content": (
+                "# Topic\n"
+                "## Trusted Identity and Identity Management\n"
+                "Solicitation Status: Open"
+            ),
+        },
+    )
+    assert document.title == "Trusted Identity and Identity Management"
