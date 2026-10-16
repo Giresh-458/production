@@ -812,3 +812,12 @@ def test_sbir_generic_browser_title_is_replaced_with_the_topic_heading():
         },
     )
     assert document.title == "Trusted Identity and Identity Management"
+
+
+def test_unpunctuated_eligible_applicants_prose_is_still_extracted():
+    from agents.funding_agent import _extract_section_value
+
+    content = "Eligible applicants must be legally established in the United States."
+    assert _extract_section_value(content, ("eligible applicants",)) == (
+        "must be legally established in the United States."
+    )
