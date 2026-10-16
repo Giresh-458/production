@@ -207,7 +207,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "NSF CPS Foundations and Connected Communities" not in by_name
 
     solana = by_name["Solana Grants and Funding"]
-    assert solana.get("direct_page") is True
+    # This URL is a generic grant directory and must be traversed, not emitted as a grant.
+    assert solana.get("direct_page", False) is False
     assert solana["url"] == "https://solana.org/grants-funding"
     assert solana["collection"]["discovery"]["start_urls"] == [solana["url"]]
     assert "superteam.fun" not in solana["collection"]["allowed_domains"]
