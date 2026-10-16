@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import os, re, time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-from core.http_client import fetch_json, post_json, get_response
+from core.http_client import fetch_json, post_json, post_multipart_json, get_response
 
 @dataclass(slots=True)
 class StructuredResult:
@@ -427,6 +428,191 @@ def github_paginated_issues(
         "errors": errors,
         "rate_limited": rate_limited,
     }
+
+def eu_funding_tenders_paginated_search(
+    *,
+    types: list[str] | None = None,
+    statuses: list[str] | None = None,
+    page_size: int = 50,
+    test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
+) -> dict:
+    """Search the European Commission public Funding & Tenders Search API.
+
+    The public endpoint accepts query and language filters as multipart POST fields.
+    Explicit open/forthcoming status filters avoid traversing stale topic exports.
+    """
+    endpoint = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+    selected_types = [str(value) for value in (types or ["1", "2", "8"])]
+    selected_statuses = [str(value) for value in (statuses or ["31094501", "31094502"])]
+    page_size = max(1, min(int(page_size), 100))
+
+    page_limits: list[int] = []
+    limit_kind = "SOURCE_LIMIT_REACHED"
+    if source_limits and source_limits.get("max_pages") is not None:
+        page_limits.append(int(source_limits["max_pages"]))
+    if test_limits and test_limits.get("max_pages") is not None:
+        page_limits.append(int(test_limits["max_pages"]))
+        if (
+            not source_limits
+            or source_limits.get("max_pages") is None
+            or int(test_limits["max_pages"]) <= int(source_limits["max_pages"])
+        ):
+            limit_kind = "TEST_TRUNCATED"
+    max_pages = min(page_limits) if page_limits else 5
+
+    document_limits: list[int] = []
+    if source_limits and source_limits.get("max_documents") is not None:
+        document_limits.append(int(source_limits["max_documents"]))
+    if test_limits and test_limits.get("max_documents") is not None:
+        document_limits.append(int(test_limits["max_documents"]))
+    max_documents = min(document_limits) if document_limits else None
+    if test_limits and test_limits.get("max_documents") is not None and (
+        not source_limits
+        or source_limits.get("max_documents") is None
+        or int(test_limits["max_documents"]) <= int(source_limits["max_documents"])
+    ):
+        limit_kind = "TEST_TRUNCATED"
+
+    query = {
+        "bool": {
+            "must": [
+                {"terms": {"type": selected_types}},
+                {"terms": {"status": selected_statuses}},
+            ]
+        }
+    }
+    form_fields = {
+        "query": (None, json.dumps(query, separators=(",", ":")), "application/json"),
+        "languages": (None, json.dumps(["en"]), "application/json"),
+        "displayLanguage": (None, "en", "text/plain"),
+    }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+        "Origin": "https://ec.europa.eu",
+        "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+    }
+
+    results: list[dict] = []
+    errors: list[str] = []
+    total_expected: int | None = None
+    pages_fetched = 0
+    pagination_complete = False
+    seen_refs: set[str] = set()
+
+    while pages_fetched < max_pages:
+        if max_documents is not None and len(results) >= max_documents:
+            errors.append(f"{limit_kind}: Max documents reached ({max_documents})")
+            break
+        current_page_size = page_size
+        if max_documents is not None:
+            current_page_size = min(current_page_size, max_documents - len(results))
+        if current_page_size <= 0:
+            errors.append(f"{limit_kind}: Max documents reached ({max_documents})")
+            break
+
+        params = {
+            "apiKey": "SEDIA",
+            "text": "*",
+            "pageNumber": pages_fetched + 1,
+            "pageSize": current_page_size,
+            "sortBy": "startDate",
+            "orderBy": "DESC",
+        }
+        try:
+            payload, _ = post_multipart_json(
+                endpoint,
+                params=params,
+                fields=form_fields,
+                headers=headers,
+                timeout=(8, 25),
+                retries=2,
+            )
+        except Exception as exc:
+            errors.append(
+                f"EU Funding & Tenders Search API request failed on page {pages_fetched + 1}: {exc}"
+            )
+            break
+
+        raw_total = payload.get("totalResults", payload.get("total", payload.get("totalCount", 0)))
+        try:
+            total = int(raw_total)
+        except (TypeError, ValueError):
+            errors.append(f"EU Funding & Tenders Search API returned invalid total count: {raw_total!r}")
+            break
+        if total_expected is None:
+            total_expected = total
+
+        page_results = payload.get("results")
+        if not isinstance(page_results, list):
+            errors.append(
+                "EU Funding & Tenders Search API returned malformed results: "
+                f"{type(page_results).__name__}"
+            )
+            break
+        if not page_results:
+            if total_expected == 0 or (total_expected is not None and len(results) >= total_expected):
+                pagination_complete = True
+            elif total_expected is not None:
+                errors.append(
+                    f"EU Funding & Tenders Search API returned an empty page after {len(results)} of {total_expected} expected records"
+                )
+            else:
+                pagination_complete = True
+            break
+
+        new_items: list[dict] = []
+        for item in page_results:
+            if not isinstance(item, dict):
+                continue
+            reference = str(item.get("reference") or item.get("url") or "").strip()
+            if reference and reference in seen_refs:
+                continue
+            if reference:
+                seen_refs.add(reference)
+            new_items.append(item)
+        if not new_items:
+            errors.append(
+                f"EU Funding & Tenders Search API repeated page content at page {pages_fetched + 1}"
+            )
+            break
+
+        results.extend(new_items)
+        pages_fetched += 1
+
+        if max_documents is not None and len(results) >= max_documents:
+            if total_expected is not None and len(results) < total_expected:
+                errors.append(f"{limit_kind}: Max documents reached ({max_documents})")
+            else:
+                pagination_complete = True
+            break
+        if total_expected is not None and len(results) >= total_expected:
+            pagination_complete = True
+            break
+        if len(page_results) < current_page_size:
+            if total_expected is not None and len(results) < total_expected:
+                errors.append(
+                    f"EU Funding & Tenders Search API returned a short page: retrieved {len(results)} of {total_expected} expected records"
+                )
+            else:
+                pagination_complete = True
+            break
+
+    if not pagination_complete and not errors:
+        errors.append(
+            f"{limit_kind}: Max pages reached ({max_pages}); retrieved {len(results)} of "
+            f"{total_expected if total_expected is not None else 'an unknown total'} records"
+        )
+
+    return {
+        "results": results,
+        "pagination_complete": pagination_complete,
+        "total_expected": total_expected,
+        "pages_fetched": pages_fetched,
+        "errors": errors,
+    }
+
 
 def collect_structured_source(url: str, source_type: str = '', area: str | None = None) -> StructuredResult | None:
     """Return a structured/API acquisition when the configured source has an official endpoint.
