@@ -40,3 +40,76 @@ jobs:
       - name: Run EU funding and pipeline regression tests
         run: |
           python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
+
+      - name: Live EU Search API smoke test (bounded)
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from core.structured_sources import eu_funding_tenders_paginated_search
+          from agents.funding_collector import _eu_metadata_value, _eu_status_to_internal
+
+          result = eu_funding_tenders_paginated_search(
+              page_size=10,
+              source_limits={"max_pages": 1, "max_documents": 10},
+          )
+          records = result.get("results", [])
+          statuses = Counter()
+          eligibility_fields = Counter()
+          samples = []
+
+          for item in records:
+              metadata = item.get("metadata", {})
+              if not isinstance(metadata, dict):
+                  metadata = {}
+              raw_status = _eu_metadata_value(metadata, "status", "submissionStatus", "callStatus")
+              if raw_status is None:
+                  raw_status = _eu_metadata_value(item, "status", "submissionStatus", "callStatus")
+              statuses[f"{raw_status} -> {_eu_status_to_internal(raw_status) or 'UNMAPPED'}"] += 1
+
+              for key in ("eligibility", "eligibilityConditions", "eligibleApplicants",
+                          "applicantEligibility", "admissibilityConditions",
+                          "eligibilityCriteria", "topicConditions", "eligibilityCriteriaHtml",
+                          "admissibilityCriteria"):
+                  if _eu_metadata_value(metadata, key):
+                      eligibility_fields[key] += 1
+
+              if len(samples) < 5:
+                  samples.append({
+                      "title": _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
+                               or _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name"),
+                      "status_raw": raw_status,
+                      "status_normalized": _eu_status_to_internal(raw_status),
+                      "deadline": _eu_metadata_value(metadata, "deadlineDate", "deadline", "deadlineDateTime", "submissionDeadline", "endDate"),
+                      "eligibility_field_present": bool(any(
+                          _eu_metadata_value(metadata, key) for key in (
+                              "eligibility", "eligibilityConditions", "eligibleApplicants",
+                              "applicantEligibility", "admissibilityConditions",
+                              "eligibilityCriteria", "topicConditions", "eligibilityCriteriaHtml",
+                              "admissibilityCriteria"
+                          )
+                      )),
+                      "url": item.get("url"),
+                  })
+
+          output = {
+              "records_received": len(records),
+              "total_expected": result.get("total_expected"),
+              "pages_fetched": result.get("pages_fetched"),
+              "pagination_complete": result.get("pagination_complete"),
+              "status_mapping_counts": dict(statuses),
+              "eligibility_metadata_field_counts": dict(eligibility_fields),
+              "sample_records": samples,
+              "errors": result.get("errors", []),
+          }
+          print(json.dumps(output, indent=2, ensure_ascii=False))
+
+          non_cap_errors = [
+              error for error in result.get("errors", [])
+              if not any(marker in error for marker in (
+                  "SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached"
+              ))
+          ]
+          if not records or non_cap_errors:
+              raise SystemExit(1)
+          PY
