@@ -703,6 +703,14 @@ def fetch_post_document(source: FundingSource, post_url: str, allow_undated: boo
     )
 
 
+def _is_generic_application_url(url: str) -> bool:
+    """Reject site-wide SBIR guidance routes when a call-specific URL is needed."""
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").casefold()
+    path = parsed.path.rstrip("/").casefold() or "/"
+    return host in {"sbir.gov", "www.sbir.gov"} and path in {"/apply", "/topics"}
+
+
 def extract_application_links(base_url: str, soup: Any) -> list[str]:
     """Extract actual application/submit links from HTML anchors, not just visible text."""
     found: list[str] = []
@@ -711,6 +719,8 @@ def extract_application_links(base_url: str, soup: Any) -> list[str]:
         if not href or href.startswith(("#", "mailto:", "javascript:", "tel:")):
             continue
         absolute = urljoin(base_url, href)
+        if _is_generic_application_url(absolute):
+            continue
         label = cleaned_text(anchor.get_text(" ", strip=True)).lower()
         haystack = f"{absolute.lower()} {label}"
         if any(token in haystack for token in ("apply", "application", "submit", "submission", "proposal")):
@@ -1353,7 +1363,10 @@ def _extract_application_url(text: str) -> str | None:
             flags=re.IGNORECASE,
         ))
         if is_application_label or is_grant_issue_template or is_contextual_application_link:
-            return match.group(2).rstrip(".,")
+            candidate_url = match.group(2).rstrip(".,")
+            if _is_generic_application_url(candidate_url):
+                continue
+            return candidate_url
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
         r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*("
@@ -1361,7 +1374,10 @@ def _extract_application_url(text: str) -> str | None:
         re.IGNORECASE,
     )
     for match in contextual.finditer(text):
-        return match.group(1).rstrip(".,")
+        candidate_url = match.group(1).rstrip(".,")
+        if _is_generic_application_url(candidate_url):
+            continue
+        return candidate_url
     return None
 
 
@@ -1386,6 +1402,21 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         flags=re.IGNORECASE,
     ))
     if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_superteam_detail and has_on_page_cta:
+        return source_url
+
+    # The source-specific SBIR topic page is the useful application-instructions
+    # route when an open NSF topic links to its official solicitation but only
+    # exposes the generic SBIR /apply help page in its navigation.
+    parsed_source = urlparse(source_url or "")
+    if (
+        (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
+        and re.search(r"(?i)\bsolicitation status\s*:\s*open\b", content or "")
+        and re.search(
+            r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
+            content or "",
+        )
+    ):
         return source_url
     return None
 
@@ -1436,9 +1467,10 @@ def _application_evidence(text: str) -> str | None:
 def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int = 900) -> str | None:
     """Extract a bounded value from a labelled funding section without inventing text."""
     chunks = [cleaned_text(c) for c in re.split(r"\n+|(?<=[.!?])\s+", text) if cleaned_text(c)]
+    escaped_labels = sorted((re.escape(x) for x in labels), key=len, reverse=True)
     label_re = re.compile(
         r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?(?:"
-        + "|".join(re.escape(x) for x in labels)
+        + "|".join(escaped_labels)
         + r")\s*[:?\-]?\s*(.+)$",
         re.I,
     )
@@ -1447,6 +1479,13 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
         m = label_re.search(chunk)
         if m:
             value = cleaned_text(m.group(1))
+            # Skip heading continuations such as "Eligibility and Final Selection".
+            # Do not require a colon for real prose such as "Eligible applicants must...".
+            if re.match(
+                r"(?i)^(?:and|or|of|in|on|with|the final selection|final selection|selection criteria)\b",
+                value,
+            ):
+                continue
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
     if hits:

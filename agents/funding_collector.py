@@ -20,10 +20,12 @@ from typing import Any, List, Optional, Iterator
 from urllib.parse import urlparse
 
 from core.schemas import CollectionResult
+from agents.utils import cleaned_text
 from core.structured_sources import (
     grantsgov_paginated_search,
     grantsgov_fetch_opportunity,
     github_paginated_issues,
+    eu_funding_tenders_paginated_search,
 )
 from core.crawl4ai_web import crawl_funding_source
 from agents.funding_agent import (
@@ -32,6 +34,7 @@ from agents.funding_agent import (
     FundingOpportunity,
     analyze_document,
     current_year,
+    parse_date_string,
 )
 
 LOGGER = logging.getLogger("rif.funding_collector")
@@ -294,8 +297,27 @@ def _normalize_raw_to_doc(
     """Convert a raw crawler result dict into a FundingDocument."""
     raw_type = raw.get("type", "html")
     url = raw.get("url", source.url)
-    title = raw.get("title", "")
-    content = raw.get("content", "")
+    title = str(raw.get("title", "") or "").strip()
+    content = str(raw.get("content", "") or "")
+
+    # Some topic publishers expose site chrome ("Our Programs") as the browser
+    # title. Prefer a concrete content heading before naming an output record.
+    generic_titles = {
+        "our programs", "programs", "topic", "home", "welcome", "funding",
+        "grants", "grant", "overview", "about", "details", "description",
+    }
+    if title.casefold().rstrip(" .:-") in generic_titles:
+        for heading_match in re.finditer(r"(?m)^\s{0,4}#{1,4}\s+(.{3,180}?)\s*$", content):
+            candidate = cleaned_text(heading_match.group(1)).rstrip(" .:-")
+            candidate = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", candidate)
+            if candidate.casefold().rstrip(" .:-") in generic_titles:
+                continue
+            if candidate.casefold().startswith(("solicitation status", "funding agency")):
+                continue
+            title = candidate
+            break
+        if title.casefold().rstrip(" .:-") in generic_titles and source.direct_page:
+            title = source.name
 
     if raw_type == "pdf":
         source_type = "PDF Document"
@@ -333,6 +355,10 @@ def _collect_api_source(
         )
     elif provider == "github":
         return _collect_github(
+            source, result, warnings, test_limits, source_limits
+        )
+    elif provider == "eu_funding_tenders":
+        return _collect_eu_funding_tenders(
             source, result, warnings, test_limits, source_limits
         )
     else:
@@ -509,6 +535,208 @@ def _collect_grants_gov(
         print(f"truncated: {result.truncated}")
         print(f"final_status: {result.final_status}\n")
 
+    return result
+
+
+def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
+    """Return the first meaningful scalar value in an EU API metadata record."""
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, list):
+            value = next((item for item in value if item not in (None, "")), None)
+        if isinstance(value, dict):
+            value = value.get("label") or value.get("name") or value.get("title") or value.get("value")
+        if value is None:
+            continue
+        cleaned = _clean_grantsgov_text(value)
+        if cleaned and cleaned.casefold() not in {"null", "none", "unknown", "n/a"}:
+            return cleaned
+    return None
+
+
+def _eu_status_to_internal(raw_status: str | None) -> str | None:
+    status = re.sub(r"[^a-z0-9]+", "", (raw_status or "").casefold())
+    if not status:
+        return None
+    if "forthcoming" in status or "upcoming" in status or status == "31094502":
+        return "UPCOMING_CALL"
+    if "openforsubmission" in status or status in {"open", "31094501"} or status.startswith("open"):
+        return "OPEN_CALL"
+    if "closed" in status or status == "31094503":
+        return "CLOSED_CALL"
+    return None
+
+
+def _collect_eu_funding_tenders(
+    source: FundingSource,
+    result: CollectionResult,
+    warnings: Optional[List[str]],
+    test_limits: Optional[dict] = None,
+    source_limits: Optional[dict] = None,
+) -> CollectionResult:
+    """Collect only open/forthcoming EU calls from the Commission Search API."""
+    api_config = source.collection.get("api", {}) or {}
+    api_result = eu_funding_tenders_paginated_search(
+        types=[str(value) for value in api_config.get("types", ["1", "2", "8"])],
+        statuses=[str(value) for value in api_config.get("statuses", ["31094501", "31094502"])],
+        page_size=int(api_config.get("page_size", 50)),
+        test_limits=test_limits,
+        source_limits=source_limits,
+    )
+
+    records = api_result.get("results", [])
+    result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
+    result.api_pages_fetched = result.pages_fetched
+    result.api_expected_records = api_result.get("total_expected")
+    result.api_records_received = len(records)
+    result.pagination_detected = True
+    result.pagination_complete = bool(api_result.get("pagination_complete"))
+    result.records_discovered = len(records)
+
+    for error in api_result.get("errors", []):
+        result.errors.append({
+            "url": "https://api.tech.ec.europa.eu/search-api/prod/rest/search",
+            "operation": "paginated_search",
+            "error": error,
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+        if "TEST_TRUNCATED" in error or "SOURCE_LIMIT_REACHED" in error:
+            result.truncated = True
+            if "TEST_TRUNCATED" in error:
+                result.final_status = "TEST_TRUNCATED"
+        if warnings is not None:
+            warnings.append(f"EU Funding & Tenders API: {error}")
+    if not result.pagination_complete:
+        result.truncated = True
+
+    for item in records:
+        if not isinstance(item, dict):
+            result.records_failed += 1
+            continue
+        raw_metadata = item.get("metadata")
+        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
+        if not title:
+            title = _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name")
+        url_value = item.get("url") or metadata.get("url")
+        if isinstance(url_value, list):
+            url_value = next((value for value in url_value if value), "")
+        url = str(url_value or "").strip()
+        if not url.startswith("https://") or not title:
+            result.records_failed += 1
+            result.errors.append({
+                "url": url or "https://api.tech.ec.europa.eu/search-api/prod/rest/search",
+                "operation": "normalize_search_result",
+                "error": "EU API result is missing a concrete title or HTTPS detail URL",
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+            continue
+
+        raw_status = _eu_metadata_value(metadata, "status", "submissionStatus", "callStatus")
+        if not raw_status:
+            raw_status = _eu_metadata_value(item, "status", "submissionStatus", "callStatus")
+        internal_status = _eu_status_to_internal(raw_status)
+        opening_raw = _eu_metadata_value(
+            metadata, "openingDate", "startDate", "openingDateTime", "publicationDate"
+        )
+        deadline_raw = _eu_metadata_value(
+            metadata, "deadlineDate", "deadline", "deadlineDateTime", "submissionDeadline", "endDate"
+        )
+        opening_dt = parse_date_string(opening_raw) if opening_raw else None
+        deadline_dt = parse_date_string(deadline_raw) if deadline_raw else None
+        opening_date = opening_dt.date().isoformat() if opening_dt else None
+        deadline = deadline_dt.date().isoformat() if deadline_dt else None
+
+        identifier = _eu_metadata_value(
+            metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
+        )
+        programme = _eu_metadata_value(
+            metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
+        )
+        amount = _eu_metadata_value(
+            metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
+        )
+        eligibility = _eu_metadata_value(
+            metadata, "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility"
+        )
+        description = _eu_metadata_value(
+            metadata, "description", "descriptionEn", "objective", "topicDescription", "scope", "summary", "content"
+        )
+
+        fields = [
+            f"Title: {title}",
+            f"Official detail URL: {url}",
+            f"Status: {raw_status or 'Not supplied in result metadata'}",
+        ]
+        if identifier:
+            fields.append(f"Call identifier: {identifier}")
+        if programme:
+            fields.append(f"Programme: {programme}")
+        if opening_raw:
+            fields.append(f"Opening Date: {opening_raw}")
+        if deadline_raw:
+            fields.append(f"Deadline: {deadline_raw}")
+        if amount:
+            fields.append(f"Funding amount or budget: {amount}")
+        if eligibility:
+            fields.append(f"Eligibility: {eligibility}")
+        if description:
+            fields.append(f"Description: {description}")
+
+        doc = FundingDocument(
+            organization=programme or source.name,
+            title=title,
+            source=url,
+            source_type="Official EU Funding & Tenders Search API",
+            content="\n".join(fields)[:50000],
+            year=current_year(),
+        )
+        try:
+            analysis = analyze_document(doc)
+            analysis.program_name = title
+            analysis.source_title = title
+            if identifier:
+                analysis.call_id = identifier
+            if internal_status:
+                analysis.status = internal_status
+                analysis.evidence["source_status"] = raw_status or internal_status
+                analysis.evidence["source_status_provenance"] = (
+                    "European Commission Funding & Tenders public Search API metadata"
+                )
+            if opening_date:
+                analysis.opening_date = opening_date
+                analysis.evidence["opening_date"] = f"EU Search API opening date: {opening_raw}"
+            if deadline:
+                analysis.deadline = deadline
+                analysis.evidence["deadline"] = f"EU Search API deadline: {deadline_raw}"
+            if eligibility:
+                analysis.eligibility = eligibility
+                analysis.evidence["eligibility"] = f"EU Search API metadata: {eligibility}"
+            if amount:
+                analysis.funding_amount = amount
+                analysis.evidence["funding_amount"] = f"EU Search API metadata: {amount}"
+            result.opportunities.append((doc, analysis))
+            result.records_valid += 1
+        except Exception as exc:
+            result.records_failed += 1
+            result.errors.append({
+                "url": url,
+                "operation": "analyze_search_result",
+                "error": str(exc),
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+            if warnings is not None:
+                warnings.append(f"EU funding record analysis failed for {url}: {exc}")
+
+    if result.errors and not result.opportunities and not result.truncated:
+        result.final_status = "FAIL"
+    elif result.truncated:
+        if result.final_status != "TEST_TRUNCATED":
+            result.final_status = "PARTIAL"
+    elif result.opportunities:
+        result.final_status = "VERIFIED"
+    else:
+        result.final_status = "NO_ACTIVE_OPPORTUNITIES"
     return result
 
 
