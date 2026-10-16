@@ -126,3 +126,15 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
     assert opportunity.deadline == "2026-12-01"
     assert opportunity.call_id == "HORIZON-CL4-2026-TEST-01"
     assert "Search API metadata" in opportunity.evidence["source_status_provenance"]
+
+
+
+def test_eu_status_codes_match_portal_reference_values():
+    from agents.funding_collector import _eu_status_to_internal
+
+    # Portal reference values: forthcoming=31094501, open=31094502, closed=31094503.
+    assert _eu_status_to_internal("31094501") == "UPCOMING_CALL"
+    assert _eu_status_to_internal("31094502") == "OPEN_CALL"
+    assert _eu_status_to_internal("31094503") == "CLOSED_CALL"
+    assert _eu_status_to_internal("Open for Submission") == "OPEN_CALL"
+    assert _eu_status_to_internal("Forthcoming") == "UPCOMING_CALL"
