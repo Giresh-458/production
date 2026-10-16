@@ -504,7 +504,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     # describe the same underlying source, but merging them here loses which
     # collector actually produced each evidence record.
     evidence_id = hashlib.sha256(
-        f"{source_id}|{funding_call_id}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
+        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
     ).hexdigest()[:16]
 
     # Domain relevance is evidence-derived and deliberately independent from
