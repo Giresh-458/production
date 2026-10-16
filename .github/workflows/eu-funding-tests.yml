@@ -41,6 +41,51 @@ jobs:
         run: |
           python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
 
+      - name: Probe official EU detail-document endpoint
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.parse import quote
+          from core.structured_sources import eu_funding_tenders_paginated_search
+          from core.http_client import get_response
+
+          result = eu_funding_tenders_paginated_search(
+              page_size=2,
+              source_limits={"max_pages": 1, "max_documents": 2},
+          )
+          endpoint = "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
+          samples = []
+          for item in result.get("results", [])[:2]:
+              reference = str(item.get("reference") or "").strip()
+              sample = {
+                  "reference": reference,
+                  "search_metadata_fields": sorted((item.get("metadata") or {}).keys())
+                  if isinstance(item.get("metadata"), dict) else [],
+              }
+              if reference:
+                  try:
+                      response = get_response(
+                          endpoint + quote(reference, safe=""),
+                          params={"apiKey": "SEDIA"},
+                          headers={
+                              "Accept": "application/json, text/plain, */*",
+                              "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+                              "Origin": "https://ec.europa.eu",
+                          },
+                          timeout=(8, 20),
+                          retries=1,
+                      )
+                      sample["http_status"] = response.status_code
+                      payload = response.json()
+                      sample["response_type"] = type(payload).__name__
+                      sample["response_keys"] = sorted(payload.keys()) if isinstance(payload, dict) else []
+                      sample["response_preview"] = json.dumps(payload, ensure_ascii=False)[:1800]
+                  except Exception as exc:
+                      sample["detail_error"] = f"{type(exc).__name__}: {exc}"
+              samples.append(sample)
+          print(json.dumps({"detail_endpoint": samples}, indent=2, ensure_ascii=False))
+          PY
+
       - name: Live EU Search API smoke test (bounded)
         run: |
           python - <<'PY'
