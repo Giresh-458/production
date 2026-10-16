@@ -62,12 +62,21 @@ output root.
 1. **Schema alignment:** Markdown artifacts are converted into structured records
    with title, source URL, timestamps, collection agent, research area, evidence
    snippets, and machine-readable provenance.
-2. **Funding-call attribution:** The normalizer filters records to the active
-   funding-call ID.
-3. **Mission relevance:** Each record is checked against the active
+2. **Run and funding-call attribution:** Shared collectors receive the active
+   run ID, and the normalizer excludes artifacts whose run ID does not match the
+   selected run. It then filters records to the active funding-call ID; cached
+   call IDs carried by a document cannot override attribution from the current
+   call context and evidence.
+3. **Provenance and cache integrity:** Source URLs must be usable HTTP(S) URLs;
+   placeholder values such as `Manual` are treated as missing. Source identity
+   uses DOI or canonical URL when available and a scoped fallback otherwise.
+   The normalization input manifest fingerprints source artifacts and selected
+   call context so deletions, same-timestamp edits, and context changes
+   invalidate cached records.
+4. **Mission relevance:** Each record is checked against the active
    `FundingCallContext`; irrelevant records are excluded and recorded in the
    gate report.
-4. **Empty-evidence stop:** If no usable normalized evidence remains, the runner
+5. **Empty-evidence stop:** If no usable normalized evidence remains, the runner
    stops proposal work for that call rather than inventing a research gap.
 
 Normalized records and the mission-relevance report are stored under
