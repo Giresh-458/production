@@ -10,11 +10,9 @@ labs:
     max_depth: 2
     max_seconds: 120
 - name: Chainlink Labs
-  url: https://chain.link/
+  url: https://chainlinklabs.com/
   focus_pages:
   - /research
-  - /ecosystem
-  - /resources
   limits:
     max_pages: 12
     max_depth: 2

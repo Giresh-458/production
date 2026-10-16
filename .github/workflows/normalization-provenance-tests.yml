@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/batch3-normalization-provenance-20261016
+      - audit/batch6-live-source-smoke-20261016
   pull_request:
     branches:
       - main

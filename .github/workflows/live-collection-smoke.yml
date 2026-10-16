@@ -1,0 +1,52 @@
+name: RIF bounded live collection smoke audit
+
+on:
+  push:
+    branches:
+      - audit/batch6-live-source-smoke-20261016
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rif-live-collection-smoke
+  cancel-in-progress: true
+
+jobs:
+  live-collection-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded smoke-test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+
+      - name: Install browser runtime
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify smoke config is restricted to one preferred source
+        run: python -m pytest tests/test_live_collection_smoke_config.py -q
+
+      - name: Run one-source-per-agent live smoke audit
+        run: python -u scripts/live_collection_smoke.py
+
+      - name: Upload live-source report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rif-live-collection-smoke
+          path: outputs/ci_live_collection_smoke/
+          if-no-files-found: warn
+          retention-days: 14
