@@ -22,13 +22,55 @@ def test_eu_search_api_open_status_code_is_authoritative_for_current_topic_detai
             "matched_terms": ["climate change mitigation", "climate"],
         }],
         "source_research_domains": ["ESG"],
-        "eligibility": "The consortium must include eligible legal entities.",
+        "eligibility": "The consortium must include at least three independent legal entities established in an EU Member State.",
         "evidence": {"source_status": "31094502"},
     }
 
     selected, rejected = get_all_open_funding_calls({"outputs": [record]})
     assert len(selected) == 1, rejected
     assert selected[0]["title"] == "Climate transition research call"
+
+
+def test_selector_requires_substantive_applicant_eligibility_evidence():
+    now = datetime.now(UTC)
+    record = {
+        "title": "Eligibility-qualified Climate Research Call",
+        "program_name": "Eligibility-qualified Climate Research Call",
+        "status": "OPEN_CALL",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "source_url": "https://ec.europa.eu/funding-tenders/opportunities/topic-details/test-call",
+        "domain_relevance": [{
+            "domain": "ESG",
+            "score": 0.75,
+            "raw_score": 18.0,
+            "matched_terms": ["climate change mitigation", "climate"],
+        }],
+        "source_research_domains": ["ESG"],
+        "evidence": {"source_status": "31094502"},
+        "eligibility": "Eligible applicants must be research organisations and SMEs established in an EU Member State.",
+    }
+    missing = dict(record, title="Call Without Eligibility", program_name="Call Without Eligibility")
+    missing.pop("eligibility")
+    project_fit_only = dict(
+        record,
+        title="Call With Project-Fit Text Only",
+        program_name="Call With Project-Fit Text Only",
+        eligibility=(
+            "Applicants should demonstrate their potential to leverage downstream space data, "
+            "including Earth Observation and remote sensing."
+        ),
+    )
+
+    selected, rejected = get_all_open_funding_calls(
+        {"outputs": [record, missing, project_fit_only]}
+    )
+
+    assert [call["title"] for call in selected] == [record["title"]]
+    assert selected[0]["focus_area"] == "ESG"
+    reasons = {item["title"]: " ".join(item.get("reasons", [])) for item in rejected}
+    assert "substantive applicant eligibility" in reasons["Call Without Eligibility"]
+    assert "substantive applicant eligibility" in reasons["Call With Project-Fit Text Only"]
+
 
 
 def test_live_date_extraction_marks_current_call_open():
@@ -66,6 +108,7 @@ def test_select_open_funding_call_rejects_closed_and_future_calls():
                 "program_name": "Open Call",
                 "status": "OPEN_CALL",
                 "deadline": open_deadline,
+                "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                 "domain_relevance": [{"domain": "RWA", "score": 0.75, "raw_score": 3.0, "matched_terms": ["rwa"]}],
                 "source_research_domains": ["RWA"],
                 "application_url": "https://example.org/apply",
@@ -179,6 +222,7 @@ def test_filecoin_open_grants_pass_strict_gate_with_depin_evidence():
 
     content = (
         "# Open Grants\n"
+        "Eligibility: Individual developers, research teams, and organizations may apply for support for open-source Filecoin ecosystem projects.\n"
         "Open Grants applications for funding up to $50,000 are welcome in the following categories:\n"
         "Developer and Data Tooling; Integrations; Research & protocols; Storage; Retrieval; FVM.\n"
         "The program supports projects that advance the Filecoin ecosystem and directly advance the Filecoin mission statement.\n"
