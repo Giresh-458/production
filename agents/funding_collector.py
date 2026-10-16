@@ -742,7 +742,7 @@ def _collect_eu_funding_tenders(
             except Exception as exc:
                 result.detail_pages_failed += 1
                 result.errors.append({
-                    "url": url if "url" in locals() else (
+                    "url": (
                         "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
                         + detail_reference
                     ),
