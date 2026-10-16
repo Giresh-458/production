@@ -7,7 +7,7 @@ RIF is a fully automated, multi-agent research intelligence system designed for 
 RIF uses a structured, sequential pipeline to move from raw web data to structured proposals:
 
 1. **Context Initialization**: The orchestrator qualifies currently open funding calls, rejects non-research opportunities, and creates a strict `FundingCallContext` for each research-eligible call being processed.
-2. **Context-Driven Collection**: 11 concurrent downstream agents scrape the web (using headless browsers and fallback engines), filtering all signals through the active funding context. Irrelevant signals are discarded.
+2. **Context-Driven Collection**: 11 downstream agents run in a bounded parallel batch (using headless browsers and fallback engines), filtering all signals through the active funding context. Irrelevant signals are discarded.
 3. **Data Normalization & Storage**: Extracted signals are normalized and saved into an intermediate SQLite ledger and Markdown artifacts for traceability.
 4. **NLP Processing**:
    - **Tagging**: Normalizes research layers and domains.
