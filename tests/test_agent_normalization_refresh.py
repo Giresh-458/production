@@ -191,3 +191,49 @@ def test_resolve_refresh_context_malformed_file(tmp_path):
     with pytest.raises(RuntimeError) as exc:
         resolve_refresh_context(outputs_root)
     assert "failed to reconstruct mission context" in str(exc.value)
+
+def test_normalization_cache_invalidates_same_mtime_edits_and_deleted_artifacts(tmp_path: Path):
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / "run_cache"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    artifact = intermediate / "signal.md"
+
+    def write_artifact(title: str) -> str:
+        return f"""# {title}
+
+## Shared Metadata
+- Title: {title}
+- Source: https://example.org/research-signal
+- Layer: Literature
+- Run Id: run-cache
+- Collected At: 2026-10-16T10:00:00+00:00
+
+## Problem
+Evidence about research system reliability and integration for {title}.
+
+## Evidence Bundle
+### Evidence Snippets
+- Research system reliability evidence for {title} contains enough detail to be retained.
+"""
+
+    artifact.write_text(write_artifact("Signal Alpha"), encoding="utf-8")
+    save_normalized_collection_records(intermediate, run_root)
+    records_path = run_root / "normalized" / "records.json"
+    assert [r["title"] for r in json.loads(records_path.read_text(encoding="utf-8"))] == ["Signal Alpha"]
+
+    original_stat = artifact.stat()
+    artifact.write_text(write_artifact("Signal Bravo"), encoding="utf-8")
+    # Simulate a restored/old timestamp: content hashing must still invalidate the cache.
+    os.utime(artifact, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    ensure_normalized_collection_records(run_root)
+    assert [r["title"] for r in json.loads(records_path.read_text(encoding="utf-8"))] == ["Signal Bravo"]
+
+    # A deleted raw artifact must not survive in normalized output as stale evidence.
+    artifact.unlink()
+    ensure_normalized_collection_records(run_root)
+    assert json.loads(records_path.read_text(encoding="utf-8")) == []
+    assert json.loads((run_root / "normalized" / "by_area.json").read_text(encoding="utf-8")) == []
+    assert json.loads((run_root / "normalized" / "by_layer.json").read_text(encoding="utf-8")) == {}
+
