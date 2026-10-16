@@ -373,8 +373,13 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
             parts = path.resolve().parts
             if "intermediate" in parts:
                 idx = parts.index("intermediate")
-                if idx + 1 < len(parts):
-                    agent_name = parts[idx + 1]
+                # Infer from an actual subdirectory only. For legacy flat files,
+                # parts[idx + 1] is the Markdown filename, not the collector.
+                if idx + 1 < len(parts) - 1:
+                    candidate = parts[idx + 1]
+                    candidate_area = normalize_area(candidate)
+                    if candidate_area not in ALLOWED_RESEARCH_AREAS and candidate_area != "Unscoped":
+                        agent_name = candidate
         except Exception:
             pass
     agent_name = agent_name or "unknown"
