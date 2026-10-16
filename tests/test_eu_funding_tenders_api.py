@@ -380,6 +380,10 @@ def test_eu_collector_filters_records_without_eligibility_or_strong_domain_evide
             "pagination_complete": True, "errors": [],
         },
     )
+    monkeypatch.setattr(
+        funding_collector, "eu_funding_tenders_fetch_document",
+        lambda reference: {"metadata": {}},
+    )
     source = FundingSource(
         name="EU Open and Forthcoming Funding Calls",
         url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
@@ -409,3 +413,20 @@ def test_eu_document_detail_helper_uses_official_reference_endpoint(monkeypatch)
     assert result["reference"] == "a/b"
     assert calls[0][0].endswith("/document/a%2Fb")
     assert calls[0][1]["params"] == {"apiKey": "SEDIA"}
+
+
+
+def test_eu_eligibility_parser_rejects_heading_and_supplemental_compliance_only():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    assert _extract_eu_eligibility_from_html("<h3>WHO CAN APPLY</h3>") is None
+    assert _extract_eu_eligibility_from_html(
+        "Applicants must also comply with the applicable national/regional requirements "
+        "set out in the Funder Regulations."
+    ) is None
+
+    specific = (
+        "The consortium must include at least seven legal entities independent from each "
+        "other, each established in a different Member State or Associated Country."
+    )
+    assert _extract_eu_eligibility_from_html(specific) == specific
