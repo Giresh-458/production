@@ -1467,13 +1467,11 @@ def _application_evidence(text: str) -> str | None:
 def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int = 900) -> str | None:
     """Extract a bounded value from a labelled funding section without inventing text."""
     chunks = [cleaned_text(c) for c in re.split(r"\n+|(?<=[.!?])\s+", text) if cleaned_text(c)]
-    # Require a delimiter after the field label: "## Eligibility and Final Selection"
-    # is a heading, not an eligibility value. Match longer labels first.
     escaped_labels = sorted((re.escape(x) for x in labels), key=len, reverse=True)
     label_re = re.compile(
         r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?(?:"
         + "|".join(escaped_labels)
-        + r")\s*(?::|\?|-)\s*(.+)$",
+        + r")\s*[:?\-]?\s*(.+)$",
         re.I,
     )
     hits: list[str] = []
@@ -1481,6 +1479,13 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
         m = label_re.search(chunk)
         if m:
             value = cleaned_text(m.group(1))
+            # Skip heading continuations such as "Eligibility and Final Selection".
+            # Do not require a colon for real prose such as "Eligible applicants must...".
+            if re.match(
+                r"(?i)^(?:and|or|of|in|on|with|the final selection|final selection|selection criteria)\b",
+                value,
+            ):
+                continue
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
     if hits:
