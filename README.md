@@ -6,7 +6,7 @@ RIF is a fully automated, multi-agent research intelligence system designed for 
 
 RIF uses a structured, sequential pipeline to move from raw web data to structured proposals:
 
-1. **Context Initialization**: The orchestrator scans for open grant opportunities and ranks them based on funding amount, relevance, and deadline. The strongest opportunity becomes the strict `FundingCallContext` for the entire run.
+1. **Context Initialization**: The orchestrator qualifies currently open funding calls, rejects non-research opportunities, and creates a strict `FundingCallContext` for each research-eligible call being processed.
 2. **Context-Driven Collection**: 11 concurrent downstream agents scrape the web (using headless browsers and fallback engines), filtering all signals through the active funding context. Irrelevant signals are discarded.
 3. **Data Normalization & Storage**: Extracted signals are normalized and saved into an intermediate SQLite ledger and Markdown artifacts for traceability.
 4. **NLP Processing**:
@@ -26,15 +26,20 @@ RIF uses a structured, sequential pipeline to move from raw web data to structur
 
 ## Invocation
 
-The entire system is executed autonomously via a single entrypoint:
+The canonical orchestrator is `run_pipeline.py`. The historical `run_full_pipeline.py` command remains supported as a compatibility entry point and delegates to the same implementation.
 
 ```bash
+python run_pipeline.py
+# Compatibility alias for existing deployment scripts:
 python run_full_pipeline.py
 ```
 
-This script enforces:
-- Strict live caching bypass (`force_refresh=True`)
-- SQLite database persistence for memory
+The canonical runner provides:
+- Live source refresh by default (use `--scheduled-refresh` to opt into configured refresh schedules)
+- Run-scoped artifacts under `outputs/pipeline_run/<run_id>/` to prevent cross-run evidence mixing
+- A downstream collection-health gate and stage-level quality checks
+- Per-call reports and provenance, with proposal generation blocked when required evidence or upstream stages fail
+- SQLite persistence for source and evidence memory
 - Centralized LLM routing via `core/llm_provider.py`
 
 *(For production and CI/CD deployment specifics, please refer to [docs/CI_CD_PIPELINE.md](docs/CI_CD_PIPELINE.md)).*
