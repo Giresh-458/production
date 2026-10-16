@@ -234,6 +234,6 @@ Evidence about research system reliability and integration for {title}.
     artifact.unlink()
     ensure_normalized_collection_records(run_root)
     assert json.loads(records_path.read_text(encoding="utf-8")) == []
-    assert json.loads((run_root / "normalized" / "by_area.json").read_text(encoding="utf-8")) == []
+    assert json.loads((run_root / "normalized" / "by_area.json").read_text(encoding="utf-8")) == {}
     assert json.loads((run_root / "normalized" / "by_layer.json").read_text(encoding="utf-8")) == {}
 
