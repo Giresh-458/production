@@ -23,6 +23,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, run_registered_agent
 from core.crawl_context import CrawlContext, current_crawl_context
+from core.funding_context import (
+    build_agent_specific_funding_context,
+    current_funding_prompt_context,
+    current_funding_queries,
+    generate_funding_queries,
+)
 from core.funding_selection import FundingCallContext
 from core.source_registry import current_force_source_refresh, current_source_area
 
@@ -41,6 +47,12 @@ AGENT_CONFIGS = {
     "expert": "expert_sources.yaml",
 }
 PER_AGENT_DEADLINE_SECONDS = 35
+PREFERRED_SOURCES = {
+    "company": ("Securitize", "Ondo Finance"),
+    "expert": ("IISc CSA Faculty", "IISc CrIS Lab"),
+    "lab": ("Chainlink Labs", "Protocol Labs"),
+    "practitioner": ("Ethereum Research", "Chainlink Community"),
+}
 
 
 def _bounded_limits() -> dict[str, int]:
@@ -52,8 +64,17 @@ def _bounded_limits() -> dict[str, int]:
     }
 
 
-def _prune_config(node: Any, state: dict[str, Any], *, inside_source: bool = False) -> Any:
-    """Keep exactly one configured source while preserving the agent's YAML shape."""
+def _prune_config(
+    node: Any,
+    state: dict[str, Any],
+    *,
+    inside_source: bool = False,
+) -> Any:
+    """Keep one representative configured source while preserving YAML shape.
+
+    Prefer source names known to expose the relevant content, where a configured
+    source exists, instead of always selecting the first entry in a large file.
+    """
     if isinstance(node, dict):
         result = {}
         for key, value in node.items():
@@ -61,7 +82,17 @@ def _prune_config(node: Any, state: dict[str, Any], *, inside_source: bool = Fal
                 result[key] = _bounded_limits()
             elif isinstance(value, list) and value and isinstance(value[0], dict):
                 if not state["selected"]:
-                    first = value[0]
+                    preferred = {
+                        name.casefold()
+                        for name in state.get("preferred_names", ())
+                    }
+                    first = next(
+                        (
+                            item for item in value
+                            if str(item.get("name") or "").strip().casefold() in preferred
+                        ),
+                        value[0],
+                    )
                     state["selected"] = True
                     state["source_name"] = str(first.get("name") or "unnamed source")
                     state["source_url"] = str(first.get("url") or "")
@@ -127,7 +158,12 @@ def _make_context() -> FundingCallContext:
 def _prepare_one_source_config(agent: str, run_root: Path, report: dict[str, Any]) -> Path:
     source_file = SOURCES_ROOT / AGENT_CONFIGS[agent]
     raw = yaml.safe_load(source_file.read_text(encoding="utf-8")) or {}
-    state: dict[str, Any] = {"selected": False, "source_name": "", "source_url": ""}
+    state: dict[str, Any] = {
+        "selected": False,
+        "source_name": "",
+        "source_url": "",
+        "preferred_names": PREFERRED_SOURCES.get(agent, ()),
+    }
     pruned = _prune_config(raw, state)
     if not state["selected"] or not state["source_url"].startswith(("https://", "http://")):
         raise RuntimeError(f"{agent}: no valid configured source could be selected from {source_file}")
@@ -144,7 +180,7 @@ def _prepare_one_source_config(agent: str, run_root: Path, report: dict[str, Any
     return config_path
 
 
-def _run_agent(agent: str, context: FundingCallContext, run_root: Path) -> dict[str, Any]:
+def _run_agent(agent: str, context: FundingCallContext, run_root: Path, run_id: str) -> dict[str, Any]:
     started = time.monotonic()
     output_dir = run_root / "intermediate" / agent
     db_path = run_root / "db" / f"{agent}.sqlite"
@@ -165,7 +201,7 @@ def _run_agent(agent: str, context: FundingCallContext, run_root: Path) -> dict[
         "analysis_mode": "collect_only",
         "output_dir": str(output_dir),
         "db_path": str(db_path),
-        "run_id": "live-smoke-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ"),
+        "run_id": run_id,
         "force_refresh": True,
         "defer_registry_sync": True,
     }
@@ -180,9 +216,13 @@ def _run_agent(agent: str, context: FundingCallContext, run_root: Path) -> dict[
         }
 
     crawl = CrawlContext(deadline=time.time() + PER_AGENT_DEADLINE_SECONDS)
+    prompt_context = build_agent_specific_funding_context(agent, context)
+    query_context = list(dict.fromkeys(generate_funding_queries(context)))
     force_token = current_force_source_refresh.set(True)
     area_token = current_source_area.set(None)
     crawl_token = current_crawl_context.set(crawl)
+    prompt_token = current_funding_prompt_context.set(prompt_context)
+    query_token = current_funding_queries.set(query_context)
     try:
         response = run_registered_agent(
             agent_name=agent,
@@ -227,6 +267,8 @@ def _run_agent(agent: str, context: FundingCallContext, run_root: Path) -> dict[
             "exceptions": crawl.exceptions[:10],
         }
     finally:
+        current_funding_queries.reset(query_token)
+        current_funding_prompt_context.reset(prompt_token)
         current_crawl_context.reset(crawl_token)
         current_source_area.reset(area_token)
         current_force_source_refresh.reset(force_token)
@@ -245,12 +287,13 @@ def main() -> int:
     run_root = OUTPUT_ROOT / ("run-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ"))
     run_root.mkdir(parents=True, exist_ok=True)
     context = _make_context()
+    run_id = "live-smoke-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
     agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
     results = []
     for agent in agents:
         print(f"\n=== Live source smoke: {agent} ===", flush=True)
-        result = _run_agent(agent, context, run_root)
+        result = _run_agent(agent, context, run_root, run_id)
         results.append(result)
         print(json.dumps(result, indent=2, ensure_ascii=False), flush=True)
 
@@ -262,6 +305,7 @@ def main() -> int:
     no_evidence = [item["agent"] for item in results if not item["usable_output"]]
     summary = {
         "generated_at": datetime.now(UTC).isoformat(),
+        "run_id": run_id,
         "run_root": str(run_root),
         "agent_count": len(results),
         "fatal_count": len(fatal),
