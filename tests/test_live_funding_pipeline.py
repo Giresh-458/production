@@ -4,6 +4,33 @@ from agents.funding_agent import _format_collection_error, determine_status, ext
 from run_pipeline import get_all_open_funding_calls
 
 
+def test_eu_search_api_open_status_code_is_authoritative_for_current_topic_details():
+    now = datetime.now(UTC)
+    record = {
+        "title": "Climate transition research call",
+        "program_name": "Climate transition research call",
+        "status": "OPEN_CALL",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "source_url": (
+            "https://ec.europa.eu/info/funding-tenders/opportunities/portal/"
+            "screen/opportunities/topic-details/HORIZON-CLIMATE-2027-01"
+        ),
+        "domain_relevance": [{
+            "domain": "ESG",
+            "score": 0.75,
+            "raw_score": 18.0,
+            "matched_terms": ["climate change mitigation", "climate"],
+        }],
+        "source_research_domains": ["ESG"],
+        "eligibility": "The consortium must include eligible legal entities.",
+        "evidence": {"source_status": "31094502"},
+    }
+
+    selected, rejected = get_all_open_funding_calls({"outputs": [record]})
+    assert len(selected) == 1, rejected
+    assert selected[0]["title"] == "Climate transition research call"
+
+
 def test_live_date_extraction_marks_current_call_open():
     text = "Road to Devcon 8 India University Program. Opens: Apr 20, 2026. Closes: Sep 30, 2029."
     opening, deadline = extract_call_dates(text)
@@ -203,6 +230,24 @@ def test_literature_unscoped_mode_uses_funding_mission_terms():
 
 
 
+def test_filecoin_repository_link_does_not_outrank_explicit_grant_issue_template():
+    from agents.funding_agent import _extract_application_url
+
+    repository_url = "https://github.com/ipfs/devgrants"
+    application_url = (
+        "https://github.com/filecoin-project/devgrants/issues/new"
+        "?labels=Open+Grant&template=open-grant-appolication.md"
+    )
+    content = (
+        "Open Grants applications for funding are welcome in the following categories: "
+        f"[ipfs/devgrants]({repository_url})\\n"
+        "To submit an Open Grant proposal, "
+        f"[create a new issue]({application_url}) using the Open Grants Proposal template."
+    )
+
+    assert _extract_application_url(content) == application_url
+
+
 def test_rolling_mev_grant_language_survives_funding_extraction():
     from agents.funding_agent import FundingDocument, analyze_document
 
@@ -223,8 +268,44 @@ def test_rolling_mev_grant_language_survives_funding_extraction():
     opportunity = analyze_document(document)
 
     assert opportunity.status == "OPEN_CALL"
+    assert opportunity.focus_area == "MEV"
     assert "rolling basis" in opportunity.evidence.get("status", "").lower()
     assert opportunity.funding_amount
+
+
+def test_sbir_generic_browser_title_uses_specific_configured_topic_name():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="our programs",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=(
+            "Solicitation Status: Open. "
+            "Trusted Identity and Identity Management research supports identity "
+            "management and verifiable credentials. "
+            "Due Date(s): November 4, 2026; March 4, 2027."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+    assert opportunity.program_name == "NSF SBIR Trusted Identity"
+
+
+def test_eligibility_extractor_does_not_return_application_workflow_copy():
+    from agents.funding_agent import _extract_section_value
+
+    assert _extract_section_value(
+        "Eligible applicants will then be invited to submit a Full Proposal.",
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
+    ) is None
+    assert _extract_section_value(
+        "Eligibility: Pass/fail requirements related to the conditions of the call are assessed by Climate-KIC.",
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
+    ) is None
+
 
 def test_solana_current_program_uses_contextual_application_link_and_rolling_review():
     from agents.funding_agent import FundingDocument, analyze_document
@@ -748,6 +829,23 @@ def test_repeated_due_date_schedule_selects_nearest_future_round():
     assert opening == opening_date.isoformat()
     assert deadline == next_deadline.isoformat()
     assert determine_status(None, opening, deadline, content) == "OPEN_CALL"
+
+
+def test_explicit_deadline_beats_later_notification_milestone():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    past_deadline = today - timedelta(days=4)
+    future_notification = today + timedelta(days=14)
+    content = (
+        f"OPEN CALL\\nDEADLINE {past_deadline.isoformat()} 23:59 CET\\n"
+        "Planned Date | Milestone\\n"
+        f"{future_notification.strftime('%b %d, %Y')} | Notification of selected applicants"
+    )
+
+    opening, deadline = extract_call_dates(content)
+    assert deadline == past_deadline.isoformat()
+    assert determine_status(None, opening, deadline, content, "Climate resilience call") == "CLOSED_CALL"
 
 
 def test_generic_sbir_apply_page_is_not_used_as_call_application_url():
