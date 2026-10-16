@@ -517,7 +517,9 @@ def eu_funding_tenders_paginated_search(
             "text": "*",
             "pageNumber": pages_fetched + 1,
             "pageSize": current_page_size,
-            "sortBy": "startDate",
+            # Put calls with the latest deadlines first. The portal search index
+            # can retain legacy items whose status still says Open after expiry.
+            "sortBy": "deadlineDate",
             "orderBy": "DESC",
         }
         try:
