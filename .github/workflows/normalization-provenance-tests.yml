@@ -21,6 +21,7 @@ on:
       - "tests/test_stale_index_advanced.py"
       - "tests/test_cache_bypass.py"
       - "tests/test_pipeline_multi_call_behavior.py"
+      - "tests/test_batch3_verification.py"
       - "tests/test_source_registry_isolation.py"
       - "tests/test_adaptive_area_filtering.py"
       - "tests/test_intelligence_exceptions.py"
@@ -60,6 +61,7 @@ jobs:
             tests/test_stale_index_advanced.py \
             tests/test_cache_bypass.py \
             tests/test_pipeline_multi_call_behavior.py \
+            tests/test_batch3_verification.py \
             tests/test_source_registry_isolation.py \
             tests/test_adaptive_area_filtering.py \
             tests/test_intelligence_exceptions.py \
