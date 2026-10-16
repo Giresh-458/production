@@ -10,6 +10,11 @@ on:
     paths:
       - "agents/funding_collector.py"
       - "agents/funding_agent.py"
+      - "core/funding_selection.py"
+      - "run_pipeline.py"
+      - "run_full_pipeline.py"
+      - "tests/test_funding_selection.py"
+      - "tests/test_funding_persistence_identity.py"
       - "core/schemas.py"
       - "core/structured_sources.py"
       - "sources/funding_sources.yaml"
@@ -44,7 +49,7 @@ jobs:
 
       - name: Run focused regression suite
         run: |
-          python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_pipeline_multi_call_behavior.py tests/test_source_registry_isolation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
+          python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_funding_selection.py tests/test_funding_persistence_identity.py tests/test_pipeline_multi_call_behavior.py tests/test_source_registry_isolation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
 
       - name: Run bounded live Batch 1 EU qualification audit
         run: |
@@ -55,7 +60,7 @@ jobs:
           from agents.funding_agent import load_sources
           from agents.funding_collector import _collect_eu_funding_tenders
           from core.schemas import CollectionResult
-          from run_pipeline import _has_substantive_eligibility_evidence
+          from core.funding_selection import has_substantive_eligibility_evidence
 
           target = "EU Open and Forthcoming Funding Calls"
           sources = load_sources(Path("sources/funding_sources.yaml"))
@@ -76,7 +81,7 @@ jobs:
                   raise SystemExit(f"Noncurrent record emitted as actionable: {opportunity.program_name}")
               if opportunity.deadline and datetime.fromisoformat(opportunity.deadline).date() < today:
                   raise SystemExit(f"Expired record emitted as actionable: {opportunity.program_name}")
-              if not _has_substantive_eligibility_evidence(opportunity.eligibility):
+              if not has_substantive_eligibility_evidence(opportunity.eligibility):
                   raise SystemExit(
                       f"Opportunity missing substantive applicant eligibility evidence: {opportunity.program_name}"
                   )
