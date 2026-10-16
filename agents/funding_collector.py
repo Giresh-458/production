@@ -26,6 +26,7 @@ from core.structured_sources import (
     grantsgov_fetch_opportunity,
     github_paginated_issues,
     eu_funding_tenders_paginated_search,
+    eu_funding_tenders_fetch_document,
 )
 from core.crawl4ai_web import crawl_funding_source
 from agents.funding_agent import (
@@ -554,6 +555,78 @@ def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
     return None
 
 
+def _extract_eu_eligibility_from_html(value: Any) -> str | None:
+    """Extract explicit applicant criteria from the portal's rich HTML fields.
+
+    A beneficiary-administration field can contain general process guidance rather
+    than eligibility. Return only paragraphs that state applicant types or conditions.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        raw = "\n".join(str(part) for part in value if part not in (None, ""))
+    else:
+        raw = str(value)
+    if not raw.strip():
+        return None
+
+    raw = unescape(raw)
+    raw = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", raw)
+    raw = re.sub(
+        r"(?i)</(?:p|li|div|h[1-6]|tr|section|article|br)\s*>|<br\s*/?>",
+        "\n",
+        raw,
+    )
+    raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+    paragraphs = [
+        re.sub(r"\s+", " ", part).strip(" \t\r\n:;-")
+        for part in raw.splitlines()
+    ]
+    paragraphs = [part for part in paragraphs if part]
+    if not paragraphs:
+        cleaned = _clean_grantsgov_text(raw)
+        paragraphs = [cleaned] if cleaned else []
+
+    explicit_patterns = (
+        r"\beligible applicants?\b.{0,180}\b(?:are|include|must|may|need|should)\b",
+        r"\beligible applicants?\s*[:\-]\s*.{15,}",
+        r"\bapplicants?\s+(?:must|may|should|need to|are required to|are eligible to)\s+(?:be|include|have|hold|establish|register|reside|operate|meet|demonstrate|provide|form|belong|qualify|include|maintain|undertake|participate|apply)\b",
+        r"\bapplications?\s+(?:are|is)\s+open\s+to\b.{15,}",
+        r"\bwho can apply\b.{20,}",
+        r"\bonly\b.{0,140}\b(?:may apply|are eligible|can apply)\b",
+        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|must|provided that|support(?:ed)?|are required)\b",
+        r"\b(?:legal entities|natural persons|public entities|private entities)\b.{0,140}\b(?:eligible|may apply|can apply|established|registered)\b",
+        r"\bconsortiums?\s+must\s+include\b.{20,}",
+        r"\b(?:at least|minimum of)\s+\d+\s+(?:independent\s+)?(?:legal entities|partners|beneficiaries|organisations|organizations)\b.{15,}",
+        r"\b(?:applicants|beneficiaries|partners)\s+must\s+be\s+(?:established|registered|located|based|resident|legally established)\b.{10,}",
+        r"\bopen to all\s+(?:legal entities|organisations|organizations|public bodies|SMEs|research organisations)\b.{5,}",
+    )
+    selected: list[str] = []
+    for paragraph in paragraphs:
+        if any(re.search(pattern, paragraph, flags=re.IGNORECASE) for pattern in explicit_patterns):
+            if not re.search(
+                r"\beligibility criteria (?:specified|set out|described) in the call\b",
+                paragraph,
+                flags=re.IGNORECASE,
+            ):
+                selected.append(paragraph[:1200])
+        if len(selected) >= 4:
+            break
+
+    if not selected:
+        return None
+    return " ".join(dict.fromkeys(selected))[:4000]
+
+
+def _record_eu_filter(result: CollectionResult, reason: str, title: str, url: str) -> None:
+    """Record a deliberate data-quality filter separately from an acquisition failure."""
+    result.records_filtered += 1
+    result.records_filtered_by_reason[reason] = (
+        result.records_filtered_by_reason.get(reason, 0) + 1
+    )
+    LOGGER.info("Filtered EU funding record %r (%s): %s", title, reason, url)
+
+
 def _eu_status_to_internal(raw_status: str | None) -> str | None:
     status = re.sub(r"[^a-z0-9]+", "", (raw_status or "").casefold())
     if not status:
@@ -609,13 +682,135 @@ def _collect_eu_funding_tenders(
 ) -> CollectionResult:
     """Collect only open/forthcoming EU calls from the Commission Search API."""
     api_config = source.collection.get("api", {}) or {}
-    api_result = eu_funding_tenders_paginated_search(
-        types=[str(value) for value in api_config.get("types", ["1", "2", "8"])],
-        statuses=[str(value) for value in api_config.get("statuses", ["31094501", "31094502"])],
-        page_size=int(api_config.get("page_size", 50)),
-        test_limits=test_limits,
-        source_limits=source_limits,
+    configured_limits = source.collection.get("limits", {}) or {}
+    query_values = api_config.get("search_texts") or ["*"]
+    search_texts = list(dict.fromkeys(
+        str(value).strip() for value in query_values if str(value).strip()
+    )) or ["*"]
+
+    def _effective_limit(name: str, default: int) -> int:
+        values = [
+            limits.get(name)
+            for limits in (configured_limits, source_limits or {}, test_limits or {})
+            if isinstance(limits, dict) and limits.get(name) is not None
+        ]
+        return max(1, min(int(value) for value in values)) if values else default
+
+    max_pages_budget = _effective_limit("max_pages", 5)
+    max_documents_budget = _effective_limit("max_documents", 250)
+    if max_pages_budget < len(search_texts):
+        omitted = search_texts[max_pages_budget:]
+        search_texts = search_texts[:max_pages_budget]
+        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+        warnings_text = (
+            f"{limit_marker}: Search-query budget is {max_pages_budget}; "
+            f"skipped {len(omitted)} configured EU domain query/queries"
+        )
+    else:
+        warnings_text = None
+
+    # Spend the global page/document budget across targeted searches. One page
+    # per query is intentional: it increases RIF-domain recall while the client
+    # still filters expired, ineligible, and weakly matched records.
+    pages_per_query = max(1, max_pages_budget // max(1, len(search_texts)))
+    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
+    documents_per_query = max(
+        1,
+        min(page_size * pages_per_query, (max_documents_budget + len(search_texts) - 1) // len(search_texts)),
     )
+
+    aggregated_records: list[dict] = []
+    aggregated_errors: list[str] = []
+    query_totals: list[int] = []
+    pages_fetched = 0
+    all_queries_complete = warnings_text is None
+    seen_search_refs: set[str] = set()
+    seen_search_urls: set[str] = set()
+    search_duplicates = 0
+
+    for search_text in search_texts:
+        remaining_budget = max_documents_budget - len(aggregated_records)
+        if remaining_budget <= 0:
+            all_queries_complete = False
+            aggregated_errors.append(
+                f"{'TEST_TRUNCATED' if test_limits else 'SOURCE_LIMIT_REACHED'}: "
+                f"Global max documents reached ({max_documents_budget}) before query {search_text!r}"
+            )
+            break
+
+        query_document_cap = min(documents_per_query, remaining_budget)
+        query_page_cap = min(pages_per_query, max(1, (query_document_cap + page_size - 1) // page_size))
+        query_limits = {
+            "max_pages": query_page_cap,
+            "max_documents": query_document_cap,
+        }
+        query_result = eu_funding_tenders_paginated_search(
+            types=[str(value) for value in api_config.get("types", ["1", "2", "8"])],
+            statuses=[str(value) for value in api_config.get("statuses", ["31094501", "31094502"])],
+            search_text=search_text,
+            page_size=min(page_size, query_document_cap),
+            test_limits=query_limits if test_limits else None,
+            source_limits=None if test_limits else query_limits,
+        )
+        pages_fetched += int(query_result.get("pages_fetched", 0) or 0)
+        if query_result.get("total_expected") is not None:
+            try:
+                query_totals.append(int(query_result["total_expected"]))
+            except (TypeError, ValueError):
+                pass
+        if not query_result.get("pagination_complete"):
+            all_queries_complete = False
+
+        for error in query_result.get("errors", []):
+            aggregated_errors.append(f"query={search_text!r}: {error}")
+
+        for item in query_result.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            reference = str(item.get("reference") or "").strip()
+            metadata = item.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            raw_url = item.get("url") or metadata.get("url") or ""
+            if isinstance(raw_url, list):
+                raw_url = next((value for value in raw_url if value), "")
+            canonical_url = ""
+            if str(raw_url).strip().startswith("https://"):
+                parsed = urlparse(str(raw_url).strip())
+                canonical_url = parsed._replace(
+                    scheme=parsed.scheme.lower(),
+                    netloc=parsed.netloc.lower(),
+                    path=parsed.path.rstrip("/") or "/",
+                    fragment="",
+                ).geturl()
+            if (reference and reference in seen_search_refs) or (
+                canonical_url and canonical_url in seen_search_urls
+            ):
+                search_duplicates += 1
+                continue
+            if reference:
+                seen_search_refs.add(reference)
+            if canonical_url:
+                seen_search_urls.add(canonical_url)
+            aggregated_records.append(item)
+
+    if warnings_text:
+        aggregated_errors.append(warnings_text)
+    if len(aggregated_records) >= max_documents_budget and not all_queries_complete:
+        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+        aggregated_errors.append(
+            f"{limit_marker}: Global max documents reached ({max_documents_budget})"
+        )
+
+    api_result = {
+        "results": aggregated_records,
+        "pages_fetched": pages_fetched,
+        # Totals across different text searches overlap, so do not present their
+        # sum as a count of unique opportunities.
+        "total_expected": query_totals[0] if len(search_texts) == 1 and query_totals else None,
+        "pagination_complete": all_queries_complete and not aggregated_errors,
+        "errors": aggregated_errors,
+    }
 
     records = api_result.get("results", [])
     result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
@@ -625,6 +820,7 @@ def _collect_eu_funding_tenders(
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
+    result.duplicates_removed += search_duplicates
 
     for error in api_result.get("errors", []):
         result.errors.append({
@@ -648,7 +844,56 @@ def _collect_eu_funding_tenders(
             result.records_failed += 1
             continue
         raw_metadata = item.get("metadata")
-        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        # Search hits can omit richer publisher fields. Fetch the documented
+        # EU document record only when the hit has no eligibility/content payload.
+        detail_reference = str(item.get("reference") or metadata.get("reference") or "").strip()
+        detail_keys = (
+            "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
+            "admissibilityConditions", "eligibilityCriteria", "topicConditions",
+            "eligibilityCriteriaHtml", "admissibilityCriteria", "beneficiaryAdministration",
+        )
+        metadata_eligibility_present = bool(
+            _extract_eu_eligibility_from_html(
+                _eu_metadata_value(metadata, "eligibility", "eligibleApplicants", "applicantEligibility")
+            )
+        ) or any(
+            _extract_eu_eligibility_from_html(metadata.get(key))
+            for key in (
+                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
+                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
+                "beneficiaryAdministration",
+            )
+        )
+        if (
+            api_config.get("detail_fetch_missing_metadata", True)
+            and detail_reference
+            and not metadata_eligibility_present
+        ):
+            result.detail_pages_discovered += 1
+            try:
+                detail = eu_funding_tenders_fetch_document(detail_reference)
+                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                if isinstance(detail_metadata, dict):
+                    for key, value in detail_metadata.items():
+                        if metadata.get(key) in (None, "", []):
+                            metadata[key] = value
+                result.detail_pages_fetched += 1
+            except Exception as exc:
+                result.detail_pages_failed += 1
+                result.errors.append({
+                    "url": (
+                        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
+                        + detail_reference
+                    ),
+                    "operation": "fetch_detail_metadata",
+                    "error": str(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                LOGGER.warning(
+                    "EU detail metadata fetch failed for reference %s: %s",
+                    detail_reference, exc,
+                )
         title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
         if not title:
             title = _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name")
@@ -696,6 +941,12 @@ def _collect_eu_funding_tenders(
         internal_status, status_consistency_warning = _eu_effective_status(
             raw_status, deadline
         )
+        if status_consistency_warning:
+            _record_eu_filter(result, "expired_deadline", title, url)
+            continue
+        if internal_status not in {"OPEN_CALL", "UPCOMING_CALL"}:
+            _record_eu_filter(result, "unrecognized_or_noncurrent_status", title, url)
+            continue
 
         identifier = _eu_metadata_value(
             metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
@@ -706,22 +957,25 @@ def _collect_eu_funding_tenders(
         amount = _eu_metadata_value(
             metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
         )
-        eligibility = _eu_metadata_value(
-            metadata, "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
-            "admissibilityConditions", "eligibilityCriteria"
+        scalar_eligibility = _eu_metadata_value(
+            metadata, "eligibility", "eligibleApplicants", "applicantEligibility"
         )
+        eligibility = _extract_eu_eligibility_from_html(scalar_eligibility)
         eligibility_source_field = "eligibility"
         if not eligibility:
-            # Search API topicConditions is publisher-provided HTML containing
-            # admissibility/eligibility criteria when no scalar eligibility field exists.
-            eligibility = _eu_metadata_value(
-                metadata, "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria"
-            )
-            if eligibility:
-                eligibility_source_field = "topicConditions"
+            for key in (
+                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
+                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
+                "beneficiaryAdministration",
+            ):
+                extracted = _extract_eu_eligibility_from_html(metadata.get(key))
+                if extracted:
+                    eligibility = extracted
+                    eligibility_source_field = key
+                    break
         description = _eu_metadata_value(
             metadata, "description", "descriptionEn", "descriptionByte", "objective",
-            "topicDescription", "scope", "summary", "content"
+            "topicDescription", "scope", "summary", "content", "beneficiaryAdministration"
         )
 
         fields = [
@@ -744,6 +998,11 @@ def _collect_eu_funding_tenders(
         if description:
             fields.append(f"Description: {description}")
 
+        require_eligibility = bool(api_config.get("require_eligibility_evidence", True))
+        if require_eligibility and not eligibility:
+            _record_eu_filter(result, "missing_eligibility_evidence", title, url)
+            continue
+
         doc = FundingDocument(
             organization=programme or source.name,
             title=title,
@@ -754,6 +1013,13 @@ def _collect_eu_funding_tenders(
         )
         try:
             analysis = analyze_document(doc)
+            require_domain_match = bool(api_config.get("require_domain_match", True))
+            if require_domain_match and (
+                analysis.focus_area == "General"
+                or analysis.focus_area not in set(source.research_domains or [])
+            ):
+                _record_eu_filter(result, "off_domain_or_weak_domain_evidence", title, url)
+                continue
             analysis.program_name = title
             analysis.source_title = title
             if identifier:
@@ -800,13 +1066,15 @@ def _collect_eu_funding_tenders(
             if warnings is not None:
                 warnings.append(f"EU funding record analysis failed for {url}: {exc}")
 
-    if result.errors and not result.opportunities and not result.truncated:
-        result.final_status = "FAIL"
-    elif result.truncated:
+    if result.truncated:
         if result.final_status != "TEST_TRUNCATED":
             result.final_status = "PARTIAL"
+    elif result.errors:
+        result.final_status = "PARTIAL" if result.opportunities else "FAIL"
     elif result.opportunities:
         result.final_status = "VERIFIED"
+    elif result.records_filtered:
+        result.final_status = "NO_QUALIFIED_OPPORTUNITIES"
     else:
         result.final_status = "NO_ACTIVE_OPPORTUNITIES"
     return result

@@ -4,7 +4,7 @@ import json
 import os, re, time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from core.http_client import fetch_json, post_json, post_multipart_json, get_response
 
@@ -433,6 +433,7 @@ def eu_funding_tenders_paginated_search(
     *,
     types: list[str] | None = None,
     statuses: list[str] | None = None,
+    search_text: str = "*",
     page_size: int = 50,
     test_limits: Optional[dict] = None,
     source_limits: Optional[dict] = None,
@@ -514,12 +515,13 @@ def eu_funding_tenders_paginated_search(
 
         params = {
             "apiKey": "SEDIA",
-            "text": "*",
+            "text": str(search_text or "*").strip() or "*",
             "pageNumber": pages_fetched + 1,
             "pageSize": current_page_size,
-            # Put calls with the latest deadlines first. The portal search index
-            # can retain legacy items whose status still says Open after expiry.
-            "sortBy": "deadlineDate",
+            # Request the portal's documented deadline ordering, but do not trust
+            # it for currentness: live probes showed expired calls can still appear.
+            # The collector must validate deadlines client-side.
+            "sortBy": "deadline",
             "orderBy": "DESC",
         }
         try:
@@ -615,6 +617,37 @@ def eu_funding_tenders_paginated_search(
         "pages_fetched": pages_fetched,
         "errors": errors,
     }
+
+
+
+def eu_funding_tenders_fetch_document(reference: str) -> dict[str, Any]:
+    """Fetch one full public EU Funding & Tenders document by its search reference.
+
+    The Search API returns only indexed metadata for many records. The documented
+    /document/{reference} endpoint can expose additional publisher fields.
+    """
+    value = str(reference or "").strip()
+    if not value:
+        raise ValueError("EU Funding & Tenders document reference is empty")
+    endpoint = (
+        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
+        + quote(value, safe="")
+    )
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+        "Origin": "https://ec.europa.eu",
+        "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+    }
+    payload, _ = fetch_json(
+        endpoint,
+        params={"apiKey": "SEDIA"},
+        headers=headers,
+        timeout=(8, 20),
+        retries=1,
+    )
+    return payload
+
 
 
 def collect_structured_source(url: str, source_type: str = '', area: str | None = None) -> StructuredResult | None:

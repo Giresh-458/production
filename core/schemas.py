@@ -37,6 +37,8 @@ class CollectionResult:
     records_discovered: int = 0
     records_valid: int = 0
     records_failed: int = 0
+    records_filtered: int = 0
+    records_filtered_by_reason: dict[str, int] = field(default_factory=dict)
     records_deduplicated: int = 0
     duplicates_removed: int = 0
     urls_skipped: int = 0

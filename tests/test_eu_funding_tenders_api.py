@@ -46,7 +46,7 @@ def test_eu_search_api_paginates_and_filters_open_forthcoming_calls(monkeypatch)
     assert len(calls) == 2
     assert [call["params"]["pageNumber"] for call in calls] == [1, 2]
     assert all(call["params"]["apiKey"] == "SEDIA" for call in calls)
-    assert all(call["params"]["sortBy"] == "deadlineDate" for call in calls)
+    assert all(call["params"]["sortBy"] == "deadline" for call in calls)
     assert all(call["params"]["orderBy"] == "DESC" for call in calls)
     assert result["pages_fetched"] == 2
     assert result["pagination_complete"] is True
@@ -93,8 +93,8 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
             "deadlineDate": ["2026-12-01"],
             "callIdentifier": ["HORIZON-CL4-2026-TEST-01"],
             "programme": ["Horizon Europe"],
-            "eligibility": ["Eligible research organisations as stated in the topic conditions."],
-            "description": ["Research call for secure decentralized infrastructure."],
+            "eligibility": ["Eligible applicants are research organisations and SMEs established in an EU Member State."],
+            "description": ["ESG carbon-credit MRV, greenhouse-gas emissions measurement, and sustainability research using interoperable data infrastructure."],
         },
     }
     monkeypatch.setattr(
@@ -153,11 +153,12 @@ def test_eu_collector_deduplicates_repeated_detail_urls_with_different_reference
         "screen/opportunities/competitive-calls-cs/46786367"
     )
     common_metadata = {
-        "title": ["Example live cascade call"],
+        "title": ["Carbon-credit MRV research call"],
         "status": ["31094502"],
         "deadlineDate": ["2026-12-01"],
         "callIdentifier": ["EXAMPLE-2026"],
-        "description": ["Research infrastructure funding opportunity."],
+        "eligibility": ["Eligible applicants are SMEs and public research organisations established in an EU Member State."],
+        "description": ["ESG carbon credits, MRV, emissions measurement, and sustainability research."],
     }
     records = [
         {"reference": "first-index-reference", "url": duplicate_url, "metadata": common_metadata},
@@ -179,14 +180,14 @@ def test_eu_collector_deduplicates_repeated_detail_urls_with_different_reference
         url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
         tier="tier_3",
         collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
-        research_domains=["RWA"],
+        research_domains=["ESG"],
     )
 
     result = funding_collector._collect_eu_funding_tenders(
         source, CollectionResult(source_id=source.name, method="api"), warnings=[]
     )
 
-    assert result.records_discovered == 2
+    assert result.records_discovered == 1
     assert result.duplicates_removed == 1
     assert result.records_valid == 1
     assert len(result.opportunities) == 1
@@ -239,7 +240,7 @@ def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatc
                 "<p>Eligible applicants are public research organisations and SMEs "
                 "established in an EU Member State.</p></section>"
             ],
-            "descriptionByte": ["<p>Research and innovation in secure data infrastructure.</p>"],
+            "descriptionByte": ["<p>Research on ESG carbon-credit MRV, emissions measurement, and sustainability data.</p>"],
         },
     }
     monkeypatch.setattr(
@@ -258,7 +259,7 @@ def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatc
         url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
         tier="tier_3",
         collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
-        research_domains=["RWA", "DID"],
+        research_domains=["ESG"],
     )
 
     result = funding_collector._collect_eu_funding_tenders(
@@ -272,3 +273,233 @@ def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatc
     assert "<p>" not in opportunity.eligibility
     assert opportunity.evidence["eligibility_provenance"].startswith("European Commission")
     assert "topicConditions" in opportunity.evidence["eligibility"]
+
+
+
+def test_eu_eligibility_parser_extracts_specific_criteria_from_beneficiary_html():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    html = (
+        "<h3>How to submit</h3><p>Submit through the online application portal.</p>"
+        "<h3>Eligibility conditions</h3>"
+        "<p>Eligible applicants are SMEs and public research organisations "
+        "established in an EU Member State.</p>"
+    )
+    extracted = _extract_eu_eligibility_from_html(html)
+    assert extracted is not None
+    assert "Eligible applicants are SMEs and public research organisations" in extracted
+    assert "<p>" not in extracted
+
+
+def test_eu_eligibility_parser_does_not_promote_generic_process_language():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    generic = (
+        "<p>Administrators continuously check the eligibility of applications "
+        "according to the eligibility criteria specified in the call.</p>"
+    )
+    assert _extract_eu_eligibility_from_html(generic) is None
+
+
+def test_eu_collector_filters_expired_records_instead_of_emitting_closed_opportunities(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    record = {
+        "reference": "expired-call",
+        "url": "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/expired",
+        "metadata": {
+            "title": ["Expired carbon-credit MRV call"],
+            "status": ["31094502"],
+            "deadlineDate": [yesterday],
+            "eligibility": ["Eligible applicants are SMEs established in an EU Member State."],
+            "description": ["ESG carbon-credit MRV, emissions measurement, and sustainability research."],
+        },
+    }
+    monkeypatch.setattr(
+        funding_collector, "eu_funding_tenders_paginated_search",
+        lambda **kwargs: {
+            "results": [record], "pages_fetched": 1, "total_expected": 1,
+            "pagination_complete": True, "errors": [],
+        },
+    )
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+    assert result.records_valid == 0
+    assert result.records_filtered_by_reason["expired_deadline"] == 1
+    assert result.final_status == "NO_QUALIFIED_OPPORTUNITIES"
+
+
+def test_eu_collector_filters_records_without_eligibility_or_strong_domain_evidence(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    records = [
+        {
+            "reference": "missing-eligibility",
+            "url": "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/no-elig",
+            "metadata": {
+                "title": ["ESG Carbon MRV Research Call"],
+                "status": ["31094502"],
+                "deadlineDate": ["2026-12-01"],
+                "description": ["ESG carbon-credit MRV, emissions tracking, and sustainability data."],
+                "beneficiaryAdministration": [
+                    "<p>Administrators check eligibility according to criteria specified in the call.</p>"
+                ],
+            },
+        },
+        {
+            "reference": "off-domain",
+            "url": "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/off-domain",
+            "metadata": {
+                "title": ["Nuclear fission reactor facility programme"],
+                "status": ["31094502"],
+                "deadlineDate": ["2026-12-01"],
+                "eligibility": ["Eligible applicants are nuclear research facilities established in the EU."],
+                "description": ["Nuclear fission reactor research facility infrastructure."],
+            },
+        },
+    ]
+    monkeypatch.setattr(
+        funding_collector, "eu_funding_tenders_paginated_search",
+        lambda **kwargs: {
+            "results": records, "pages_fetched": 1, "total_expected": 2,
+            "pagination_complete": True, "errors": [],
+        },
+    )
+    monkeypatch.setattr(
+        funding_collector, "eu_funding_tenders_fetch_document",
+        lambda reference: {"metadata": {}},
+    )
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+    assert result.records_valid == 0
+    assert result.records_filtered_by_reason["missing_eligibility_evidence"] == 1
+    assert result.records_filtered_by_reason["off_domain_or_weak_domain_evidence"] == 1
+
+
+def test_eu_document_detail_helper_uses_official_reference_endpoint(monkeypatch):
+    calls = []
+
+    def fake_fetch_json(url, **kwargs):
+        calls.append((url, kwargs))
+        return {"reference": "a/b", "metadata": {"beneficiaryAdministration": ["<p>content</p>"]}}, url
+
+    monkeypatch.setattr(structured_sources, "fetch_json", fake_fetch_json)
+    result = structured_sources.eu_funding_tenders_fetch_document("a/b")
+
+    assert result["reference"] == "a/b"
+    assert calls[0][0].endswith("/document/a%2Fb")
+    assert calls[0][1]["params"] == {"apiKey": "SEDIA"}
+
+
+
+def test_eu_eligibility_parser_rejects_heading_and_supplemental_compliance_only():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    assert _extract_eu_eligibility_from_html("<h3>WHO CAN APPLY</h3>") is None
+    assert _extract_eu_eligibility_from_html(
+        "Applicants must also comply with the applicable national/regional requirements "
+        "set out in the Funder Regulations."
+    ) is None
+
+    specific = (
+        "The consortium must include at least seven legal entities independent from each "
+        "other, each established in a different Member State or Associated Country."
+    )
+    assert _extract_eu_eligibility_from_html(specific) == specific
+
+
+
+def test_eu_search_api_accepts_domain_search_text(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, params, fields, headers, timeout, retries):
+        calls.append(params)
+        return {"totalResults": 0, "results": []}, url
+
+    monkeypatch.setattr(structured_sources, "post_multipart_json", fake_post)
+    result = structured_sources.eu_funding_tenders_paginated_search(
+        search_text="carbon credit",
+        page_size=10,
+        source_limits={"max_pages": 1, "max_documents": 10},
+    )
+    assert calls[0]["text"] == "carbon credit"
+    assert result["pagination_complete"] is True
+    assert result["results"] == []
+
+
+def test_eu_collector_fans_out_domain_searches_and_deduplicates_across_queries(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    url = "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/domain-fanout"
+    metadata = {
+        "title": ["Carbon-credit MRV research call"],
+        "status": ["31094502"],
+        "deadlineDate": ["2026-12-01"],
+        "eligibility": ["Eligible applicants are SMEs and public research organisations established in an EU Member State."],
+        "description": ["ESG carbon-credit MRV, emissions measurement, and sustainability data."],
+    }
+    records = {
+        "carbon credit": {
+            "results": [{"reference": "carbon-hit", "url": url, "metadata": metadata}],
+            "pages_fetched": 1, "total_expected": 1, "pagination_complete": True, "errors": [],
+        },
+        "sustainability data": {
+            "results": [{"reference": "sustainability-hit", "url": url + "#details", "metadata": metadata}],
+            "pages_fetched": 1, "total_expected": 1, "pagination_complete": True, "errors": [],
+        },
+    }
+    seen_queries = []
+
+    def fake_search(**kwargs):
+        query = kwargs["search_text"]
+        seen_queries.append(query)
+        return records[query]
+
+    monkeypatch.setattr(funding_collector, "eu_funding_tenders_paginated_search", fake_search)
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {
+            "types": ["1", "2", "8"],
+            "statuses": ["31094501", "31094502"],
+            "search_texts": ["carbon credit", "sustainability data"],
+            "page_size": 50,
+        }},
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert seen_queries == ["carbon credit", "sustainability data"]
+    assert result.records_discovered == 1
+    assert result.duplicates_removed == 1
+    assert result.records_valid == 1
