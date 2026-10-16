@@ -640,6 +640,59 @@ def _build_indexes(records: list[dict[str, Any]]) -> tuple[dict[str, list[dict[s
     return by_area, by_layer
 
 
+def _normalization_input_manifest(
+    intermediate_root: Path | list[Path],
+    output_dir: Path,
+    target_funding_call_id: str | None,
+) -> dict[str, Any]:
+    """Fingerprint all normalization inputs so the cache cannot retain stale evidence.
+
+    File hashes detect content changes even when timestamps are restored. The full
+    inventory detects artifacts that were added or deleted, and the selected-call
+    hash invalidates call-scoped records when their mission context changes.
+    """
+    roots = [intermediate_root] if isinstance(intermediate_root, Path) else list(intermediate_root)
+    artifacts: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*.md")):
+            if path.name.lower() == "insights.md":
+                continue
+            resolved = str(path.resolve())
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
+            try:
+                stat = path.stat()
+                raw = path.read_bytes()
+                artifacts.append({
+                    "path": resolved,
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                })
+            except OSError as exc:
+                artifacts.append({"path": resolved, "unreadable": type(exc).__name__})
+
+    selected_call_hash = ""
+    if target_funding_call_id:
+        selected_path = output_dir / "workflow" / "selected_funding_call.json"
+        try:
+            selected_call_hash = hashlib.sha256(selected_path.read_bytes()).hexdigest()
+        except OSError:
+            selected_call_hash = ""
+
+    artifacts.sort(key=lambda item: item["path"])
+    return {
+        "schema_version": 1,
+        "target_funding_call_id": target_funding_call_id or "",
+        "selected_call_sha256": selected_call_hash,
+        "artifacts": artifacts,
+    }
+
+
 def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None, filter_func=None) -> dict[str, Path]:
     errors: list[str] = []
     input_manifest = _normalization_input_manifest(intermediate_root, output_dir, target_funding_call_id)
