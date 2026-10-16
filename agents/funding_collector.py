@@ -291,6 +291,47 @@ def collect_auto_sources(
             yield result
 
 
+def _trim_page_navigation_and_footer(content: str) -> str:
+    """Remove common Markdown-rendered site chrome before extracting call evidence.
+
+    Crawl4AI can include the entire header/navigation/footer in its Markdown output.
+    Domain scoring over that text may classify an unrelated opportunity by the
+    publisher's own mission statement (for example, a deep-tech call hosted by a
+    climate organisation). Preserve the call body and its links, but start at the
+    last skip-to-content link and discard a clearly labelled copyright/footer tail.
+    """
+    text = str(content or "")
+    if not text.strip():
+        return text
+
+    skip_links = list(re.finditer(
+        r"(?i)\[skip to (?:main )?content\]\([^)]+\)\s*",
+        text,
+    ))
+    if skip_links:
+        text = text[skip_links[-1].start():]
+        text = re.sub(
+            r"(?i)^\[skip to (?:main )?content\]\([^)]+\)\s*",
+            "",
+            text,
+            count=1,
+        )
+
+    footer_patterns = (
+        r"(?im)^\s*(?:©|copyright)\s*[^\n]{0,180}\b(?:19|20)\d{2}\b",
+        r"(?im)^\s*#{1,4}\s*(?:quick links|quicks links|footer navigation|newsletter)\s*$",
+    )
+    footer_starts = [
+        match.start()
+        for pattern in footer_patterns
+        for match in re.finditer(pattern, text)
+    ]
+    if footer_starts:
+        text = text[:min(footer_starts)]
+
+    return text.strip()
+
+
 def _normalize_raw_to_doc(
     source: FundingSource,
     raw: dict,
@@ -300,6 +341,8 @@ def _normalize_raw_to_doc(
     url = raw.get("url", source.url)
     title = str(raw.get("title", "") or "").strip()
     content = str(raw.get("content", "") or "")
+    if raw_type != "pdf":
+        content = _trim_page_navigation_and_footer(content)
 
     # Some topic publishers expose site chrome ("Our Programs") as the browser
     # title. Prefer a concrete content heading before naming an output record.
