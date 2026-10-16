@@ -430,3 +430,76 @@ def test_eu_eligibility_parser_rejects_heading_and_supplemental_compliance_only(
         "other, each established in a different Member State or Associated Country."
     )
     assert _extract_eu_eligibility_from_html(specific) == specific
+
+
+
+def test_eu_search_api_accepts_domain_search_text(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, params, fields, headers, timeout, retries):
+        calls.append(params)
+        return {"totalResults": 0, "results": []}, url
+
+    monkeypatch.setattr(structured_sources, "post_multipart_json", fake_post)
+    result = structured_sources.eu_funding_tenders_paginated_search(
+        search_text="carbon credit",
+        page_size=10,
+        source_limits={"max_pages": 1, "max_documents": 10},
+    )
+    assert calls[0]["text"] == "carbon credit"
+    assert result["pagination_complete"] is True
+    assert result["results"] == []
+
+
+def test_eu_collector_fans_out_domain_searches_and_deduplicates_across_queries(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    url = "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/domain-fanout"
+    metadata = {
+        "title": ["Carbon-credit MRV research call"],
+        "status": ["31094502"],
+        "deadlineDate": ["2026-12-01"],
+        "eligibility": ["Eligible applicants are SMEs and public research organisations established in an EU Member State."],
+        "description": ["ESG carbon-credit MRV, emissions measurement, and sustainability data."],
+    }
+    records = {
+        "carbon credit": {
+            "results": [{"reference": "carbon-hit", "url": url, "metadata": metadata}],
+            "pages_fetched": 1, "total_expected": 1, "pagination_complete": True, "errors": [],
+        },
+        "sustainability data": {
+            "results": [{"reference": "sustainability-hit", "url": url + "#details", "metadata": metadata}],
+            "pages_fetched": 1, "total_expected": 1, "pagination_complete": True, "errors": [],
+        },
+    }
+    seen_queries = []
+
+    def fake_search(**kwargs):
+        query = kwargs["search_text"]
+        seen_queries.append(query)
+        return records[query]
+
+    monkeypatch.setattr(funding_collector, "eu_funding_tenders_paginated_search", fake_search)
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {
+            "types": ["1", "2", "8"],
+            "statuses": ["31094501", "31094502"],
+            "search_texts": ["carbon credit", "sustainability data"],
+            "page_size": 50,
+        }},
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert seen_queries == ["carbon credit", "sustainability data"]
+    assert result.records_discovered == 1
+    assert result.duplicates_removed == 1
+    assert result.records_valid == 1
