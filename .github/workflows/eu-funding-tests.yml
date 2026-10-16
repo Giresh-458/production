@@ -1,0 +1,110 @@
+name: Batch 1 EU funding quality gate
+
+on:
+  push:
+    branches:
+      - fix/batch1-eu-live-quality-20261016
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "agents/funding_collector.py"
+      - "agents/funding_agent.py"
+      - "core/schemas.py"
+      - "core/structured_sources.py"
+      - "sources/funding_sources.yaml"
+      - "tests/test_eu_funding_tenders_api.py"
+      - "tests/test_live_funding_pipeline.py"
+      - "tests/test_funding_sources_config.py"
+      - ".github/workflows/eu-funding-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  eu-funding-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML requests beautifulsoup4 python-dotenv pypdf numpy
+
+      - name: Run focused regression suite
+        run: |
+          python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
+
+      - name: Run bounded live Batch 1 EU qualification audit
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from agents.funding_agent import load_sources
+          from agents.funding_collector import _collect_eu_funding_tenders
+          from core.schemas import CollectionResult
+
+          target = "EU Open and Forthcoming Funding Calls"
+          sources = load_sources("sources/funding_sources.yaml")
+          source = next((item for item in sources if item.name == target), None)
+          if source is None:
+              raise SystemExit(f"Configured EU source not found: {target}")
+
+          result = _collect_eu_funding_tenders(
+              source,
+              CollectionResult(source_id=source.name, method="api"),
+              warnings=[],
+              source_limits={"max_pages": 5, "max_documents": 250},
+          )
+          today = datetime.now(timezone.utc).date()
+          qualified = []
+          for document, opportunity in result.opportunities:
+              if opportunity.status not in {"OPEN_CALL", "UPCOMING_CALL"}:
+                  raise SystemExit(f"Noncurrent record emitted as actionable: {opportunity.program_name}")
+              if opportunity.deadline and datetime.fromisoformat(opportunity.deadline).date() < today:
+                  raise SystemExit(f"Expired record emitted as actionable: {opportunity.program_name}")
+              if not opportunity.eligibility:
+                  raise SystemExit(f"Opportunity missing eligibility evidence: {opportunity.program_name}")
+              if opportunity.focus_area not in set(source.research_domains or []):
+                  raise SystemExit(f"Opportunity lacks canonical domain match: {opportunity.program_name}")
+              qualified.append({
+                  "title": opportunity.program_name,
+                  "status": opportunity.status,
+                  "deadline": opportunity.deadline,
+                  "eligibility": opportunity.eligibility[:280],
+                  "focus_area": opportunity.focus_area,
+                  "url": document.source,
+              })
+
+          non_cap_errors = [
+              error for error in result.errors
+              if not any(marker in str(error.get("error", error)) for marker in (
+                  "SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached"
+              ))
+          ]
+          print(json.dumps({
+              "records_discovered": result.records_discovered,
+              "records_valid": result.records_valid,
+              "records_filtered": result.records_filtered,
+              "records_filtered_by_reason": result.records_filtered_by_reason,
+              "duplicates_removed": result.duplicates_removed,
+              "detail_pages_fetched": result.detail_pages_fetched,
+              "detail_pages_failed": result.detail_pages_failed,
+              "final_status": result.final_status,
+              "qualified_samples": qualified[:10],
+              "non_cap_errors": non_cap_errors,
+          }, indent=2, ensure_ascii=False))
+          if not result.records_discovered:
+              raise SystemExit("EU API returned no records")
+          if non_cap_errors:
+              raise SystemExit("EU qualification audit had non-limit acquisition/normalization errors")
+          PY
