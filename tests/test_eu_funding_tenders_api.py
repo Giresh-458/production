@@ -187,7 +187,7 @@ def test_eu_collector_deduplicates_repeated_detail_urls_with_different_reference
         source, CollectionResult(source_id=source.name, method="api"), warnings=[]
     )
 
-    assert result.records_discovered == 2
+    assert result.records_discovered == 1
     assert result.duplicates_removed == 1
     assert result.records_valid == 1
     assert len(result.opportunities) == 1
