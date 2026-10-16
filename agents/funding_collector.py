@@ -349,6 +349,9 @@ def _normalize_raw_to_doc(
     generic_titles = {
         "our programs", "programs", "topic", "home", "welcome", "funding",
         "grants", "grant", "overview", "about", "details", "description",
+        "all cookies under each consent category below", "cookie settings",
+        "privacy preferences", "consent preferences", "your privacy choices",
+        "manage cookie preferences", "manage consent preferences",
     }
     if title.casefold().rstrip(" .:-") in generic_titles:
         for heading_match in re.finditer(r"(?m)^\s{0,4}#{1,4}\s+(.{3,180}?)\s*$", content):
