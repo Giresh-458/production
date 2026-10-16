@@ -55,6 +55,7 @@ jobs:
           from agents.funding_agent import load_sources
           from agents.funding_collector import _collect_eu_funding_tenders
           from core.schemas import CollectionResult
+          from run_pipeline import _has_substantive_eligibility_evidence
 
           target = "EU Open and Forthcoming Funding Calls"
           sources = load_sources(Path("sources/funding_sources.yaml"))
@@ -75,8 +76,10 @@ jobs:
                   raise SystemExit(f"Noncurrent record emitted as actionable: {opportunity.program_name}")
               if opportunity.deadline and datetime.fromisoformat(opportunity.deadline).date() < today:
                   raise SystemExit(f"Expired record emitted as actionable: {opportunity.program_name}")
-              if not opportunity.eligibility:
-                  raise SystemExit(f"Opportunity missing eligibility evidence: {opportunity.program_name}")
+              if not _has_substantive_eligibility_evidence(opportunity.eligibility):
+                  raise SystemExit(
+                      f"Opportunity missing substantive applicant eligibility evidence: {opportunity.program_name}"
+                  )
               if opportunity.focus_area not in set(source.research_domains or []):
                   raise SystemExit(f"Opportunity lacks canonical domain match: {opportunity.program_name}")
               qualified.append({
