@@ -207,6 +207,64 @@ def fetch_json(url: str, *, session: Any | None = None, headers: dict[str, str] 
     return data, str(response.url)
 
 
+def post_multipart_json(
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    fields: dict[str, tuple[str | None, str, str]],
+    headers: dict[str, str] | None = None,
+    timeout: tuple[float, float] = (8.0, 20.0),
+    retries: int = 1,
+) -> tuple[dict[str, Any], str]:
+    """POST multipart form fields and require a JSON-object response.
+
+    Each form part maps to (filename, value, content_type). Do not set Content-Type
+    manually: requests must generate the multipart boundary.
+    """
+    client = _get_session()
+    merged = dict(DEFAULT_HEADERS)
+    merged.update(headers or {})
+    target = canonicalize_url(url)
+    import requests as _requests
+
+    from core.crawl_context import current_crawl_context
+
+    for attempt in range(retries + 1):
+        try:
+            ctx = current_crawl_context.get(None)
+            if ctx:
+                ctx.http_requests += 1
+            response = client.post(
+                target,
+                params=params,
+                files=fields,
+                headers=merged,
+                timeout=_apply_context_timeout(timeout),
+                allow_redirects=True,
+            )
+            if response.status_code in RETRYABLE_STATUS and attempt < retries:
+                _sleep_or_abort(_retry_delay(response, attempt))
+                continue
+            response.raise_for_status()
+            content_length = int(response.headers.get("Content-Length", 0) or 0)
+            if content_length > 10 * 1024 * 1024:
+                raise ValueError(f"Response too large: {content_length} bytes")
+            try:
+                data = response.json()
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
+            return data, str(response.url)
+        except _requests.HTTPError:
+            raise
+        except (_requests.RequestException, TimeoutError):
+            if attempt >= retries:
+                raise
+            _sleep_or_abort(min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25))
+    raise RuntimeError(f"Unable to POST {target}")
+
+
 def post_json(url: str, *, json_body: dict[str, Any], headers: dict[str, str] | None = None, timeout: tuple[float,float]=(8.0,20.0), retries: int=1) -> tuple[dict[str,Any], str]:
     client=_get_session(); merged=dict(DEFAULT_HEADERS); merged.update(headers or {})
     merged["Content-Type"]="application/json"
