@@ -583,7 +583,13 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     normalized_record["tokens"] = _tokenize(normalized_record["search_text"])
     return normalized_record
 
-def build_normalized_collection_records(intermediate_root: Path | list[Path], target_funding_call_id: str | None = None, *, errors: list[str] | None = None) -> list[dict[str, Any]]:
+def build_normalized_collection_records(
+    intermediate_root: Path | list[Path],
+    target_funding_call_id: str | None = None,
+    *,
+    target_run_id: str | None = None,
+    errors: list[str] | None = None,
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
 
     roots = [intermediate_root] if isinstance(intermediate_root, Path) else intermediate_root
@@ -596,6 +602,11 @@ def build_normalized_collection_records(intermediate_root: Path | list[Path], ta
                 continue
             try:
                 record = normalize_intermediate_artifact(path)
+                # A run-scoped caller must never consume artifacts from a prior
+                # or unknown run, even if they remain under a reused output root.
+                if target_run_id and str(record.get("run_id") or "").strip() != target_run_id:
+                    continue
+
                 # Filter by target_funding_call_id if provided
                 if target_funding_call_id:
                     call_ids = record.get("funding_call_ids", [])
@@ -644,6 +655,7 @@ def _normalization_input_manifest(
     intermediate_root: Path | list[Path],
     output_dir: Path,
     target_funding_call_id: str | None,
+    target_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Fingerprint all normalization inputs so the cache cannot retain stale evidence.
 
@@ -688,15 +700,30 @@ def _normalization_input_manifest(
     return {
         "schema_version": 1,
         "target_funding_call_id": target_funding_call_id or "",
+        "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
         "artifacts": artifacts,
     }
 
 
-def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None, filter_func=None) -> dict[str, Path]:
+def save_normalized_collection_records(
+    intermediate_root: Path | list[Path],
+    output_dir: Path,
+    target_funding_call_id: str | None = None,
+    filter_func=None,
+    *,
+    target_run_id: str | None = None,
+) -> dict[str, Path]:
     errors: list[str] = []
-    input_manifest = _normalization_input_manifest(intermediate_root, output_dir, target_funding_call_id)
-    records = build_normalized_collection_records(intermediate_root, target_funding_call_id=target_funding_call_id, errors=errors)
+    input_manifest = _normalization_input_manifest(
+        intermediate_root, output_dir, target_funding_call_id, target_run_id
+    )
+    records = build_normalized_collection_records(
+        intermediate_root,
+        target_funding_call_id=target_funding_call_id,
+        target_run_id=target_run_id,
+        errors=errors,
+    )
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
     deduped_records = {}
@@ -899,6 +926,12 @@ def resolve_refresh_context(outputs_root: Path):
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
+    target_run_id = None
+    if target_funding_call_id:
+        selected_path = outputs_root / "workflow" / "selected_funding_call.json"
+        wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
+        run_value = wrapper.get("run_id")
+        target_run_id = _clean(str(run_value or "")) or None
 
     newest_intermediate = 0.0
     for ir in intermediate_roots:
@@ -925,7 +958,7 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
         try:
             cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             current_manifest = _normalization_input_manifest(
-                intermediate_roots, outputs_root, target_funding_call_id
+                intermediate_roots, outputs_root, target_funding_call_id, target_run_id
             )
             if cached_manifest != current_manifest:
                 force_refresh = True
@@ -972,7 +1005,13 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
             force_refresh = True
 
     if force_refresh:
-        return save_normalized_collection_records(intermediate_roots, outputs_root, target_funding_call_id, filter_func=filter_func)
+        return save_normalized_collection_records(
+            intermediate_roots,
+            outputs_root,
+            target_funding_call_id,
+            filter_func=filter_func,
+            target_run_id=target_run_id,
+        )
     return {
         "records": records_path,
         "by_area": outputs_root / "normalized" / "by_area.json",
