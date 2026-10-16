@@ -158,6 +158,7 @@ def test_ripple_ubri_follows_discovered_pdf_evidence():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["Ripple UBRI"]["collection"]["discovery"]
     assert discovery["follow_pdfs"] is True
+    assert any("Ripple-UBRI-Research" in pattern for pattern in discovery["exclude_url_patterns"])
 
 
 def test_known_irrelevant_or_mis_scoped_portals_are_not_funding_roots():
@@ -189,9 +190,13 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         assert discovery.get("max_pages") is not None, (
             f"{entry.get('name')} is missing a configured page cap"
         )
-        # Solana's live Superteam frontier exceeded 30 pages; keep its higher
-        # cap an explicit source-specific exception. All other web sources stay <=30.
-        page_cap = 60 if entry.get("name") == "Solana Grants and Funding" else 30
+        # The Solana frontier and broad SBIR directory have dedicated bounded caps.
+        if entry.get("name") == "Solana Grants and Funding":
+            page_cap = 60
+        elif entry.get("name") == "Open SBIR Funding Topics":
+            page_cap = 50
+        else:
+            page_cap = 30
         assert 1 <= int(discovery["max_pages"]) <= page_cap
         assert 0 <= int(discovery.get("max_depth", 0)) <= 4
 
@@ -261,14 +266,22 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
     assert sbir.get("direct_page", False) is False
     assert set(sbir["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
-    assert sbir["collection"]["discovery"]["max_pages"] == 30
+    assert sbir["collection"]["discovery"]["max_pages"] == 50
+    sbir_exclusions = sbir["collection"]["discovery"]["exclude_url_patterns"]
+    assert any("/awards" in pattern for pattern in sbir_exclusions)
+    assert any("/apply" in pattern for pattern in sbir_exclusions)
+    assert any("data" in pattern and "sbir" in pattern for pattern in sbir_exclusions)
 
     eu = by_name["EU Open and Forthcoming Funding Calls"]
     assert "status=31094501%2C31094502" in eu["url"]
-    assert eu["url"] == eu["collection"]["discovery"]["start_urls"][0]
     assert eu.get("direct_page", False) is False
     assert set(eu["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
-    assert eu["collection"]["discovery"]["max_pages"] == 30
+    assert eu["collection"]["mode"] == "api"
+    assert eu["collection"]["provider"] == "eu_funding_tenders"
+    assert eu["collection"]["api"]["types"] == ["1", "2", "8"]
+    assert eu["collection"]["api"]["statuses"] == ["31094501", "31094502"]
+    assert eu["collection"]["limits"]["max_pages"] == 5
+    assert eu["collection"]["limits"]["max_documents"] == 250
 
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
