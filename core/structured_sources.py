@@ -433,6 +433,7 @@ def eu_funding_tenders_paginated_search(
     *,
     types: list[str] | None = None,
     statuses: list[str] | None = None,
+    search_text: str = "*",
     page_size: int = 50,
     test_limits: Optional[dict] = None,
     source_limits: Optional[dict] = None,
@@ -514,7 +515,7 @@ def eu_funding_tenders_paginated_search(
 
         params = {
             "apiKey": "SEDIA",
-            "text": "*",
+            "text": str(search_text or "*").strip() or "*",
             "pageNumber": pages_fetched + 1,
             "pageSize": current_page_size,
             # Put calls with the latest deadlines first. The portal search index
