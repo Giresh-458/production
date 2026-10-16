@@ -1,0 +1,156 @@
+name: Batch 1 full live validation
+
+on:
+  push:
+    branches:
+      - ci-batch1-full-live-20261016
+
+permissions:
+  contents: read
+
+jobs:
+  batch1-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out merged main validation branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Batch 1 runtime and audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0"
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run Batch 1 configured funding scan and quality audit
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from datetime import date, datetime
+          from pathlib import Path
+          from agents.funding_agent import run_agent
+
+          outdir = Path("outputs/ci_batch1_live")
+          outdir.mkdir(parents=True, exist_ok=True)
+          response = run_agent(
+              "configured_scan",
+              None,
+              {
+                  "sources_path": "sources/funding_sources.yaml",
+                  "posts_per_source": 10,
+                  "output_dir": str(outdir),
+                  "db_path": str(outdir / "funding_memory.db"),
+                  "analysis_mode": "analyze",
+                  "is_test_mode": False,
+                  "log_level": "INFO",
+              },
+          )
+
+          collection_results = response.get("collection_results", [])
+          outputs = response.get("outputs", [])
+          today = datetime.now().date()
+          quality_flags = []
+          generic_title = re.compile(
+              r"^(?:our programs?|grants? and funding|funding|open calls?|calls? for proposals?|"
+              r"grant programs?|funding opportunities?|programs?)$",
+              re.I,
+          )
+          for record in outputs:
+              title = str(record.get("title") or record.get("program_name") or "").strip()
+              status = str(record.get("status") or "").upper()
+              deadline = record.get("deadline")
+              issues = []
+              if generic_title.fullmatch(title):
+                  issues.append("generic_title")
+              if status in {"OPEN_CALL", "UPCOMING_CALL"} and deadline:
+                  try:
+                      if date.fromisoformat(str(deadline)[:10]) < today:
+                          issues.append("expired_deadline_still_actionable")
+                  except ValueError:
+                      issues.append("unparseable_deadline")
+              if status in {"OPEN_CALL", "UPCOMING_CALL"} and not record.get("eligibility"):
+                  issues.append("missing_eligibility")
+              if status in {"OPEN_CALL", "UPCOMING_CALL"} and not record.get("application_url"):
+                  issues.append("missing_application_url")
+              if status in {"OPEN_CALL", "UPCOMING_CALL"} and record.get("focus_area") == "General":
+                  issues.append("weak_domain_assignment")
+              if issues:
+                  quality_flags.append({
+                      "title": title,
+                      "status": status,
+                      "deadline": deadline,
+                      "source_url": record.get("source_url"),
+                      "focus_area": record.get("focus_area"),
+                      "issues": issues,
+                  })
+
+          source_summary = []
+          for item in collection_results:
+              source_summary.append({
+                  key: item.get(key) for key in (
+                      "source_id", "method", "final_status", "pages_fetched",
+                      "detail_pages_fetched", "detail_pages_failed", "documents_fetched",
+                      "records_discovered", "records_valid", "records_failed",
+                      "records_filtered", "records_filtered_by_reason",
+                      "duplicates_removed", "truncated", "pagination_complete",
+                  )
+              })
+              source_summary[-1]["errors"] = [
+                  {
+                      "operation": e.get("operation") if isinstance(e, dict) else None,
+                      "url": e.get("url") if isinstance(e, dict) else None,
+                      "error": e.get("error") if isinstance(e, dict) else str(e),
+                  }
+                  for e in (item.get("errors") or [])
+              ][:5]
+
+          summary = {
+              "run_status": response.get("status"),
+              "items_processed": response.get("items_processed"),
+              "outputs_count": len(outputs),
+              "duration_seconds": response.get("metadata", {}).get("duration_seconds"),
+              "source_summary": source_summary,
+              "quality_flags_count": len(quality_flags),
+              "quality_flags": quality_flags,
+              "actionable_count": sum(
+                  str(r.get("status", "")).upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+                  for r in outputs
+              ),
+              "actionable_missing_eligibility": sum(
+                  str(r.get("status", "")).upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+                  and not r.get("eligibility") for r in outputs
+              ),
+              "actionable_missing_deadline": sum(
+                  str(r.get("status", "")).upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+                  and not r.get("deadline") for r in outputs
+              ),
+              "warnings": response.get("warnings", []),
+          }
+          (outdir / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          (outdir / "records.json").write_text(
+              json.dumps(outputs, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          print(json.dumps(summary, indent=2, ensure_ascii=False))
+          if response.get("status") == "error":
+              raise SystemExit("Batch 1 funding agent returned error status")
+          PY
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch1-live-audit
+          path: outputs/ci_batch1_live/
+          if-no-files-found: warn
+          retention-days: 7
