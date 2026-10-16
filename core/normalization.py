@@ -397,14 +397,14 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     source_url = next(
         (
             candidate
-            for candidate in (
+            for value in (
                 provenance.get("source_url", ""),
                 shared_header.get("source", ""),
                 machine_metadata.get("source_url", ""),
                 source_hints.get("source_url", ""),
                 source_hints.get("url", ""),
             )
-            if (candidate := _usable_source_url(candidate))
+            if (candidate := _usable_source_url(value))
         ),
         "",
     )
