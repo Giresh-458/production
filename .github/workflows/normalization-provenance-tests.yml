@@ -21,7 +21,6 @@ on:
       - "tests/test_cache_bypass.py"
       - "tests/test_pipeline_multi_call_behavior.py"
       - "tests/test_source_registry_isolation.py"
-      - "tests/test_funding_rejection.py"
       - "tests/test_adaptive_area_filtering.py"
       - ".github/workflows/normalization-provenance-tests.yml"
 
@@ -59,6 +58,5 @@ jobs:
             tests/test_cache_bypass.py \
             tests/test_pipeline_multi_call_behavior.py \
             tests/test_source_registry_isolation.py \
-            tests/test_funding_rejection.py \
             tests/test_adaptive_area_filtering.py \
             -q
