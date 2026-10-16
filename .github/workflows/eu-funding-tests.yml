@@ -1,0 +1,42 @@
+name: EU funding regression tests
+
+on:
+  push:
+    branches:
+      - ci-verify-eu-metadata
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "agents/funding_collector.py"
+      - "core/structured_sources.py"
+      - "tests/test_eu_funding_tenders_api.py"
+      - "tests/test_live_funding_pipeline.py"
+      - "tests/test_funding_sources_config.py"
+      - ".github/workflows/eu-funding-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  eu-funding-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML requests beautifulsoup4 python-dotenv pypdf
+
+      - name: Run EU funding and pipeline regression tests
+        run: |
+          python -m pytest tests/test_eu_funding_tenders_api.py tests/test_live_funding_pipeline.py tests/test_funding_sources_config.py -q
