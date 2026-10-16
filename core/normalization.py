@@ -60,13 +60,31 @@ def _clean(text: str) -> str:
     return " ".join((text or "").split()).strip()
 
 
+def _usable_source_url(value: Any) -> str:
+    """Return an absolute HTTP(S) source URL; ignore placeholders such as 'Manual'."""
+    cleaned = _clean(str(value or ""))
+    if not cleaned or cleaned.casefold() in {"manual", "unknown", "none", "null", "n/a", "na"}:
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(cleaned)
+    except Exception:
+        return ""
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return cleaned
+
+
 def canonicalize_url(url: str) -> str:
     if not url:
         return ""
     try:
         parsed = urllib.parse.urlparse(url)
         query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-        filtered_query = [(k, v) for k, v in query if not k.startswith("utm_")]
+        tracking_keys = {"fbclid", "gclid", "mc_cid", "mc_eid", "_hsenc", "_hsmi"}
+        filtered_query = [
+            (k, v) for k, v in query
+            if not k.casefold().startswith("utm_") and k.casefold() not in tracking_keys
+        ]
 
         # Rebuild URL
         scheme = parsed.scheme.lower()
@@ -84,7 +102,8 @@ def canonicalize_url(url: str) -> str:
         # Don't strip trailing slash arbitrarily as it might be semantically meaningful on some domains,
         # but let's just use it as is
         new_query = urllib.parse.urlencode(filtered_query)
-        new_url = urllib.parse.urlunparse((scheme, netloc, path, parsed.params, new_query, parsed.fragment))
+        # URL fragments are browser-side anchors, not part of the source resource identity.
+        new_url = urllib.parse.urlunparse((scheme, netloc, path, parsed.params, new_query, ""))
         return new_url
     except Exception:
         return url
@@ -207,8 +226,25 @@ def extract_source_identity(title: str, source_url: str, canonical_url: str, met
     if source_url:
         return f"url:{source_url}"
 
-    # 3. Hash
-    return f"hash:{hashlib.sha256(title.encode('utf-8')).hexdigest()[:16]}"
+    # 3. Scoped fallback. A title alone is not a reliable source identity:
+    # unrelated artifacts frequently reuse generic titles such as "Overview".
+    identity_fields: dict[str, str] = {"title": _clean(title).casefold()}
+    fallback_keys = (
+        "agent_name", "layer", "source_type", "evidence_type", "organization",
+        "source_name", "company_name", "issuing_body", "investor_or_organization",
+        "problem", "context_summary",
+    )
+    for key in fallback_keys:
+        value = metadata.get(key)
+        if not value and isinstance(source_hints, dict):
+            value = source_hints.get(key)
+        rendered = _clean(str(value or ""))
+        if rendered:
+            identity_fields[key] = rendered.casefold()
+    fallback_hash = hashlib.sha256(
+        json.dumps(identity_fields, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+    return f"hash:{fallback_hash}"
 
 
 def extract_claims(evidence_snippets: list[str]) -> list[Dict[str, str]]:
@@ -358,7 +394,20 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         if ":" in h1_title:
             area_candidates.append(h1_title.split(":", 1)[1].strip())
     research_area = next((normalize_area(value) for value in area_candidates if normalize_area(value) in ALLOWED_RESEARCH_AREAS), "Unscoped")
-    source_url = _coalesce(provenance.get("source_url", ""), shared_header.get("source", ""))
+    source_url = next(
+        (
+            candidate
+            for candidate in (
+                provenance.get("source_url", ""),
+                shared_header.get("source", ""),
+                machine_metadata.get("source_url", ""),
+                source_hints.get("source_url", ""),
+                source_hints.get("url", ""),
+            )
+            if (candidate := _usable_source_url(candidate))
+        ),
+        "",
+    )
     canonical_url = canonicalize_url(source_url)
     collected_at = _coalesce(shared_header.get("collected_at", ""), provenance.get("collected_at", ""))
     collection_mode = _coalesce(shared_header.get("collection_mode", ""))
@@ -433,14 +482,30 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     linked_urls = list(dict.fromkeys(([source_url] if source_url else []) + evidence.get("links_found", [])))[:20]
 
     content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
-    source_id = extract_source_identity(title, source_url, canonical_url, machine_metadata)
+    identity_metadata = dict(machine_metadata)
+    identity_metadata.update({
+        "agent_name": agent_name,
+        "layer": layer,
+        "source_type": source_type,
+        "evidence_type": evidence_type,
+        "source_name": actor,
+        "organization": actor,
+        "problem": normalized_problem,
+        "context_summary": context_summary,
+    })
+    source_id = extract_source_identity(title, source_url, canonical_url, identity_metadata)
 
     # Needs review if lacking funding call id or source
     needs_review = (not funding_call_id and not funding_call_ids) or not source_url
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
 
     evidence_snippets_str = "\n".join(evidence.get("evidence_snippets", []))
-    evidence_id = hashlib.sha256(f"{source_id}|{funding_call_id}|{evidence_snippets_str}".encode('utf-8')).hexdigest()[:16]
+    # Keep observations from different collection layers distinct. They may
+    # describe the same underlying source, but merging them here loses which
+    # collector actually produced each evidence record.
+    evidence_id = hashlib.sha256(
+        f"{source_id}|{funding_call_id}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
+    ).hexdigest()[:16]
 
     # Domain relevance is evidence-derived and deliberately independent from
     # the routed research_area. This prevents routing metadata from overriding
@@ -577,6 +642,7 @@ def _build_indexes(records: list[dict[str, Any]]) -> tuple[dict[str, list[dict[s
 
 def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None, filter_func=None) -> dict[str, Path]:
     errors: list[str] = []
+    input_manifest = _normalization_input_manifest(intermediate_root, output_dir, target_funding_call_id)
     records = build_normalized_collection_records(intermediate_root, target_funding_call_id=target_funding_call_id, errors=errors)
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
@@ -616,6 +682,10 @@ def save_normalized_collection_records(intermediate_root: Path | list[Path], out
 
     records_path = normalized_root / "records.json"
     records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (normalized_root / "input_manifest.json").write_text(
+        json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     by_area, by_layer = _build_indexes(records)
 
@@ -794,23 +864,40 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     force_refresh = False
     if not records_path.exists() or newest_intermediate > records_mtime:
         force_refresh = True
-    elif filter_func:
-        import json
+
+    # The mtime-only cache check misses deleted inputs, edits with restored
+    # timestamps, and call-context changes. Require an exact input manifest match.
+    manifest_path = outputs_root / "normalized" / "input_manifest.json"
+    if not force_refresh:
+        try:
+            cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            current_manifest = _normalization_input_manifest(
+                intermediate_roots, outputs_root, target_funding_call_id
+            )
+            if cached_manifest != current_manifest:
+                force_refresh = True
+        except Exception:
+            force_refresh = True
+
+    if not force_refresh:
         import copy
         try:
             cached = json.loads(records_path.read_text(encoding="utf-8"))
-            for r in cached:
-                if not filter_func(copy.deepcopy(r)):
-                    force_refresh = True
-                    break
+            if not isinstance(cached, list):
+                raise ValueError("normalized records cache must contain a JSON list")
+
+            if filter_func:
+                for record in cached:
+                    if not filter_func(copy.deepcopy(record)):
+                        force_refresh = True
+                        break
 
             if not force_refresh:
                 area_path = outputs_root / "normalized" / "by_area.json"
                 layer_path = outputs_root / "normalized" / "by_layer.json"
-
                 expected_by_area, expected_by_layer = _build_indexes(cached)
-
                 needs_repair = False
+
                 try:
                     area_data = json.loads(area_path.read_text(encoding="utf-8"))
                     if area_data != expected_by_area:
@@ -826,8 +913,8 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
                     needs_repair = True
 
                 if needs_repair:
-                    area_path.write_text(json.dumps(expected_by_area, indent=2), encoding="utf-8")
-                    layer_path.write_text(json.dumps(expected_by_layer, indent=2), encoding="utf-8")
+                    area_path.write_text(json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    layer_path.write_text(json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         except Exception:
             force_refresh = True
 
