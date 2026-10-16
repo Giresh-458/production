@@ -133,10 +133,12 @@ def test_case_10_and_11_missing_provenance(temp_outputs):
     
     save_normalized_collection_records(temp_outputs, temp_outputs)
     conn = get_db(temp_outputs)
+    create_artifact(temp_outputs, "c.md", make_artifact_md(title="Manual Source Placeholder", source="Manual"))
+    save_normalized_collection_records(temp_outputs, temp_outputs)
+    conn = get_db(temp_outputs)
     recs = conn.execute("SELECT normalization_status FROM canonical_evidence").fetchall()
-    assert len(recs) == 2
-    assert recs[0]["normalization_status"] == "NEEDS_REVIEW"
-    assert recs[1]["normalization_status"] == "NEEDS_REVIEW"
+    assert len(recs) == 3
+    assert all(r["normalization_status"] == "NEEDS_REVIEW" for r in recs)
 
 def test_case_12_same_source_multi_call(temp_outputs):
     # Same source for CALL-A and CALL-B -> Same source id, different evidence relationships
@@ -201,11 +203,48 @@ def test_case_15_same_source_two_agents(temp_outputs):
     conn = get_db(temp_outputs)
     recs = conn.execute("SELECT layer, source_id FROM canonical_evidence").fetchall()
     
-    # In my current implementation, evidence_id relies on source_id + call_id + evidence_snippets.
-    # Since evidence_snippets are the same, they might merge. Wait! In DB, `agent` and `layer` are updated. 
-    # The requirement: "preserve both collection provenance records if they contain distinct evidence."
-    # If the evidence is identical, merging is fine or we keep both.
-    pass
+    # Repeated evidence from the same source is still traceable to each collection layer.
+    assert len(recs) == 2
+    assert {r["layer"] for r in recs} == {"Literature", "Expert"}
+    assert recs[0]["source_id"] == recs[1]["source_id"]
+
+def test_missing_url_fallback_identity_is_scoped_by_layer(temp_outputs):
+    md1 = make_artifact_md(
+        title="Generic Program Overview",
+        source="",
+        problem="The same generic page title is used by different collectors.",
+        evidence_snippets=["The same generic evidence snippet should not erase provenance."],
+    )
+    md2 = md1.replace("- Layer: Literature", "- Layer: Expert")
+    create_artifact(temp_outputs, "a.md", md1)
+    create_artifact(temp_outputs, "b.md", md2)
+
+    save_normalized_collection_records(temp_outputs, temp_outputs)
+    with open(temp_outputs / "normalized" / "records.json", encoding="utf-8") as handle:
+        records = json.load(handle)
+
+    assert len(records) == 2
+    assert records[0]["source_id"] != records[1]["source_id"]
+    assert {record["layer"] for record in records} == {"Literature", "Expert"}
+    assert all(record["source_url"] == "" for record in records)
+    assert all(record["normalization_status"] == "NEEDS_REVIEW" for record in records)
+
+
+def test_manual_placeholder_is_not_a_source_url(temp_outputs):
+    create_artifact(
+        temp_outputs,
+        "manual.md",
+        make_artifact_md(title="Missing Source Evidence", source="Manual"),
+    )
+    save_normalized_collection_records(temp_outputs, temp_outputs)
+    with open(temp_outputs / "normalized" / "records.json", encoding="utf-8") as handle:
+        records = json.load(handle)
+
+    assert len(records) == 1
+    assert records[0]["source_url"] == ""
+    assert records[0]["canonical_url"] == ""
+    assert records[0]["normalization_status"] == "NEEDS_REVIEW"
+
 
 def test_idempotency(temp_outputs):
     create_artifact(temp_outputs, "a.md", make_artifact_md())

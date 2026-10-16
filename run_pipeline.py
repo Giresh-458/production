@@ -575,6 +575,7 @@ def main() -> int:
             mode="configured_scan",
             base_input_data={
                 "analysis_mode": "collect_only",
+                "run_id": run_id,
                 "pipeline_run_dir": str(root), # output to root/intermediate
                 "force_refresh": bool(getattr(args, "force_refresh", False) or not getattr(args, "scheduled_refresh", False)),
                 "allow_llm_refinement": False,
@@ -614,7 +615,18 @@ def main() -> int:
 
         selected_path = call_root / "workflow" / "selected_funding_call.json"
         selected_path.parent.mkdir(parents=True, exist_ok=True)
-        selected_path.write_text(json.dumps({"selected": selected, "rejected_alternatives": rejected if call_idx == 1 else []}, indent=2, ensure_ascii=False), encoding="utf-8")
+        selected_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "selected": selected,
+                    "rejected_alternatives": rejected if call_idx == 1 else [],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         print(f"\n==============================================")
         print(f"▶️ Processing Call {call_idx}/{len(valid_calls)}: {selected.get('program_name') or selected.get('title')}")
@@ -672,7 +684,13 @@ def main() -> int:
                 return False
 
         try:
-            normalized = save_normalized_collection_records([root / "intermediate", call_root / "intermediate"], call_root, context.funding_call_id, filter_func=apply_gate)
+            normalized = save_normalized_collection_records(
+                [root / "intermediate", call_root / "intermediate"],
+                call_root,
+                context.funding_call_id,
+                filter_func=apply_gate,
+                target_run_id=run_id,
+            )
         except Exception as exc:
             print(f"❌ Normalization failed with exception: {exc}")
             global_exit_code = max(global_exit_code, 4)

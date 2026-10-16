@@ -702,6 +702,31 @@ def _rescue_required_agent_body(agent: str, document: Any, body: Dict[str, Any],
         result[field.name] = defaults.get(field.name, area or "Preserved live source evidence")
     return result
 
+
+def _resolve_funding_call_ids(
+    document: Any,
+    *,
+    title: str,
+    content: str,
+    funding_context: Optional[FundingCallContext],
+    funding_contexts: list[FundingCallContext],
+) -> list[str]:
+    """Resolve ownership from the active run, not potentially stale document metadata.
+
+    Crawled document objects can carry IDs inherited from an earlier crawl/cache.
+    An explicit call context is authoritative for a call-scoped collection; shared
+    collection otherwise uses the evidence-grounded active-context matcher.
+    """
+    if funding_context is not None:
+        call_id = str(funding_context.funding_call_id or "").strip()
+        if call_id:
+            return [call_id]
+
+    # Deliberately do not trust document.funding_call_ids as ownership proof.
+    # Only current text/source evidence matched against the active call contexts
+    # may assign shared evidence to one or more calls.
+    return assign_funding_calls(title, content, funding_contexts)
+
 def finalize_collection_agent_response(
     *,
     agent: str,
@@ -748,22 +773,21 @@ def finalize_collection_agent_response(
         )
 
         if funding_contexts:
-            doc_ids = getattr(document, "funding_call_ids", None)
-            if doc_ids is None and isinstance(document, dict):
-                doc_ids = document.get("funding_call_ids")
-
-            if not doc_ids:
-                # Single call explicitly passed to collector overrides everything
-                if funding_context:
-                    doc_ids = [funding_context.funding_call_id]
-                else:
-                    # Multi-call: strict provenance requirements
-                    matched_ids = []
-                    raw = (str(content) + " " + str(title)).lower()
-
-                    doc_ids = assign_funding_calls(title, content, funding_contexts)
-
-                artifact_payload["shared_header"]["funding_call_ids"] = doc_ids
+            doc_ids = _resolve_funding_call_ids(
+                document,
+                title=title,
+                content=content,
+                funding_context=funding_context,
+                funding_contexts=funding_contexts,
+            )
+            # Always write the resolved IDs (including an empty list). The old
+            # code only wrote inside "if not doc_ids", dropping document-provided
+            # IDs when present and allowing stale metadata to bypass resolution.
+            artifact_payload["shared_header"]["funding_call_ids"] = doc_ids
+            if len(doc_ids) == 1:
+                artifact_payload["shared_header"]["funding_call_id"] = doc_ids[0]
+            else:
+                artifact_payload["shared_header"].pop("funding_call_id", None)
 
         elif funding_context:
             artifact_payload["shared_header"]["funding_call_id"] = funding_context.funding_call_id

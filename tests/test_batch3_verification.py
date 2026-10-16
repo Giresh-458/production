@@ -457,6 +457,39 @@ class TestBatchRunnerRegression:
         )
         assert tasks[0]["input_data"]["analysis_mode"] == "collect_and_analyze"
 
+    def test_batch_runner_preserves_orchestrator_run_id(self, ctx_depin, tmp_path):
+        """A pipeline-provided run ID must reach the collector unchanged."""
+        captured = {}
+
+        def fake_registered_agent(**kwargs):
+            captured.update(kwargs)
+            return {
+                "status": "success",
+                "outputs": [{"title": "Run ID propagation fixture"}],
+                "items_processed": 1,
+                "items_saved": 1,
+                "metadata": {},
+                "errors": [],
+                "warnings": [],
+            }
+
+        pipeline_run_id = "pipeline-run-20261016-unique"
+        with patch("core.batch_runner.run_registered_agent", side_effect=fake_registered_agent):
+            report = execute_batch_run(
+                agent_names=["lab"],
+                area_names=["RWA"],
+                mode="configured_scan",
+                base_input_data={"run_id": pipeline_run_id},
+                execution_mode="sequential",
+                dry_run=False,
+                timeout_budget_seconds=30,
+                report_path=tmp_path / "batch-report.json",
+                funding_context=ctx_depin,
+            )
+
+        assert report["status"] in ("completed", "completed_with_errors")
+        assert captured["input_data"]["run_id"] == pipeline_run_id
+
 
 # ──────────── REQ 10: Agent classification ───────────────────────────────
 

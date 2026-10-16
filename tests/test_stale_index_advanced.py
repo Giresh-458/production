@@ -8,7 +8,7 @@ from unittest.mock import patch
 import copy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core.normalization import ensure_normalized_collection_records
+from core.normalization import ensure_normalized_collection_records, _normalization_input_manifest
 
 def test_cache_advanced_index_repair(tmp_path):
     call_id = "CALL-ADVANCED"
@@ -117,6 +117,11 @@ def test_cache_advanced_index_repair(tmp_path):
     os.utime(records_json, (new_time, new_time))
     os.utime(by_area_json, (new_time, new_time))
     os.utime(by_layer_json, (new_time, new_time))
+
+    (normalized / "input_manifest.json").write_text(
+        json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
+        encoding="utf-8",
+    )
 
     def fake_relevance(rec, ctx):
         gate = {"passed": True}

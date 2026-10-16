@@ -4,10 +4,11 @@ import os
 import time
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.normalization import ensure_normalized_collection_records
+from core.normalization import ensure_normalized_collection_records, _normalization_input_manifest
 
 def test_agent_normalization_refresh(tmp_path):
     call_id = "CALL-TEST-88"
@@ -191,3 +192,124 @@ def test_resolve_refresh_context_malformed_file(tmp_path):
     with pytest.raises(RuntimeError) as exc:
         resolve_refresh_context(outputs_root)
     assert "failed to reconstruct mission context" in str(exc.value)
+
+def test_normalization_cache_invalidates_same_mtime_edits_and_deleted_artifacts(tmp_path: Path):
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / "run_cache"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    artifact = intermediate / "signal.md"
+
+    def write_artifact(title: str) -> str:
+        return f"""# {title}
+
+## Shared Metadata
+- Title: {title}
+- Source: https://example.org/research-signal
+- Layer: Literature
+- Run Id: run-cache
+- Collected At: 2026-10-16T10:00:00+00:00
+
+## Problem
+Evidence about research system reliability and integration for {title}.
+
+## Evidence Bundle
+### Evidence Snippets
+- Research system reliability evidence for {title} contains enough detail to be retained.
+"""
+
+    artifact.write_text(write_artifact("Signal Alpha"), encoding="utf-8")
+    save_normalized_collection_records(intermediate, run_root)
+    records_path = run_root / "normalized" / "records.json"
+    assert [r["title"] for r in json.loads(records_path.read_text(encoding="utf-8"))] == ["Signal Alpha"]
+
+    original_stat = artifact.stat()
+    artifact.write_text(write_artifact("Signal Bravo"), encoding="utf-8")
+    # Simulate a restored/old timestamp: content hashing must still invalidate the cache.
+    os.utime(artifact, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    ensure_normalized_collection_records(run_root)
+    assert [r["title"] for r in json.loads(records_path.read_text(encoding="utf-8"))] == ["Signal Bravo"]
+
+    # A deleted raw artifact must not survive in normalized output as stale evidence.
+    artifact.unlink()
+    ensure_normalized_collection_records(run_root)
+    assert json.loads(records_path.read_text(encoding="utf-8")) == []
+    assert json.loads((run_root / "normalized" / "by_area.json").read_text(encoding="utf-8")) == {}
+    assert json.loads((run_root / "normalized" / "by_layer.json").read_text(encoding="utf-8")) == {}
+
+def test_call_refresh_excludes_artifacts_from_other_runs(tmp_path: Path):
+    call_id = "CALL-RUN-SCOPE"
+    run_id = "run-current"
+    run_root = tmp_path / "outputs" / run_id
+    call_root = run_root / "calls" / call_id
+    (call_root / "workflow").mkdir(parents=True)
+    (run_root / "intermediate").mkdir(parents=True)
+    (call_root / "intermediate").mkdir(parents=True)
+
+    selected = {
+        "run_id": run_id,
+        "selected": {
+            "call_id": call_id,
+            "title": "Quantum Research Call",
+            "program_name": "Quantum Research Call",
+            "organization": "QOrg",
+            "research_area": "DePIN",
+            "research_context": {
+                "funding_call_id": call_id,
+                "domain": "DePIN",
+                "technology_themes": ["quantum"],
+                "funding_priorities": [],
+                "target_outcomes": [],
+                "investigation_questions": [],
+                "inferred_challenges": [],
+                "evidence_refs": [],
+                "inference_provenance": "test",
+                "confidence": "high",
+            },
+        },
+    }
+    (call_root / "workflow" / "selected_funding_call.json").write_text(
+        json.dumps(selected), encoding="utf-8"
+    )
+
+    def artifact(title: str, artifact_run_id: str, source: str) -> str:
+        return f"""# {title}
+
+## Shared Metadata
+- title: {title}
+- source: {source}
+- layer: Literature
+- funding_call_id: {call_id}
+- funding_call_ids: {call_id}
+- research_area: DePIN
+- run_id: {artifact_run_id}
+- collected_at: 2026-10-16T10:00:00+00:00
+
+## Problem Preview
+Quantum research system reliability and integration evidence for {title}.
+
+## Evidence Bundle
+### Evidence Snippets
+- Quantum research system reliability evidence supporting the selected program.
+"""
+
+    (run_root / "intermediate" / "old-run.md").write_text(
+        artifact("Old Run Evidence", "run-previous", "https://example.org/old"),
+        encoding="utf-8",
+    )
+    (run_root / "intermediate" / "current-run.md").write_text(
+        artifact("Current Run Evidence", run_id, "https://example.org/current"),
+        encoding="utf-8",
+    )
+
+    def accept(_record, _context):
+        return {"passed": True, "reason": "controlled test"}
+
+    with patch("core.mission_gate.relevance", side_effect=accept):
+        ensure_normalized_collection_records(call_root)
+
+    records = json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8"))
+    assert [record["title"] for record in records] == ["Current Run Evidence"]
+    assert records[0]["run_id"] == run_id
+

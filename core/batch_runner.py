@@ -234,7 +234,11 @@ def execute_batch_run(
     def run_task(task: Dict[str, Any]) -> Dict[str, Any]:
         LOGGER.info("Batch task starting: %s", task["task_id"])
         inp = dict(task.get("input_data") or {})
-        inp["run_id"] = run_id
+        # Preserve the orchestrator's run ID when present so persisted collector
+        # artifacts match the selected-call manifest and normalization boundary.
+        # Standalone batch runs still receive the batch runner's generated ID.
+        if not inp.get("run_id"):
+            inp["run_id"] = run_id
         # Parallel collectors must not race on the shared source registry.
         # Registry synchronization is performed by the batch coordinator.
         if execution_mode == "parallel":

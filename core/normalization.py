@@ -60,13 +60,31 @@ def _clean(text: str) -> str:
     return " ".join((text or "").split()).strip()
 
 
+def _usable_source_url(value: Any) -> str:
+    """Return an absolute HTTP(S) source URL; ignore placeholders such as 'Manual'."""
+    cleaned = _clean(str(value or ""))
+    if not cleaned or cleaned.casefold() in {"manual", "unknown", "none", "null", "n/a", "na"}:
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(cleaned)
+    except Exception:
+        return ""
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return cleaned
+
+
 def canonicalize_url(url: str) -> str:
     if not url:
         return ""
     try:
         parsed = urllib.parse.urlparse(url)
         query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-        filtered_query = [(k, v) for k, v in query if not k.startswith("utm_")]
+        tracking_keys = {"fbclid", "gclid", "mc_cid", "mc_eid", "_hsenc", "_hsmi"}
+        filtered_query = [
+            (k, v) for k, v in query
+            if not k.casefold().startswith("utm_") and k.casefold() not in tracking_keys
+        ]
 
         # Rebuild URL
         scheme = parsed.scheme.lower()
@@ -84,7 +102,8 @@ def canonicalize_url(url: str) -> str:
         # Don't strip trailing slash arbitrarily as it might be semantically meaningful on some domains,
         # but let's just use it as is
         new_query = urllib.parse.urlencode(filtered_query)
-        new_url = urllib.parse.urlunparse((scheme, netloc, path, parsed.params, new_query, parsed.fragment))
+        # URL fragments are browser-side anchors, not part of the source resource identity.
+        new_url = urllib.parse.urlunparse((scheme, netloc, path, parsed.params, new_query, ""))
         return new_url
     except Exception:
         return url
@@ -207,8 +226,25 @@ def extract_source_identity(title: str, source_url: str, canonical_url: str, met
     if source_url:
         return f"url:{source_url}"
 
-    # 3. Hash
-    return f"hash:{hashlib.sha256(title.encode('utf-8')).hexdigest()[:16]}"
+    # 3. Scoped fallback. A title alone is not a reliable source identity:
+    # unrelated artifacts frequently reuse generic titles such as "Overview".
+    identity_fields: dict[str, str] = {"title": _clean(title).casefold()}
+    fallback_keys = (
+        "agent_name", "layer", "source_type", "evidence_type", "organization",
+        "source_name", "company_name", "issuing_body", "investor_or_organization",
+        "problem", "context_summary",
+    )
+    for key in fallback_keys:
+        value = metadata.get(key)
+        if not value and isinstance(source_hints, dict):
+            value = source_hints.get(key)
+        rendered = _clean(str(value or ""))
+        if rendered:
+            identity_fields[key] = rendered.casefold()
+    fallback_hash = hashlib.sha256(
+        json.dumps(identity_fields, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+    return f"hash:{fallback_hash}"
 
 
 def extract_claims(evidence_snippets: list[str]) -> list[Dict[str, str]]:
@@ -337,8 +373,13 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
             parts = path.resolve().parts
             if "intermediate" in parts:
                 idx = parts.index("intermediate")
-                if idx + 1 < len(parts):
-                    agent_name = parts[idx + 1]
+                # Infer from an actual subdirectory only. For legacy flat files,
+                # parts[idx + 1] is the Markdown filename, not the collector.
+                if idx + 1 < len(parts) - 1:
+                    candidate = parts[idx + 1]
+                    candidate_area = normalize_area(candidate)
+                    if candidate_area not in ALLOWED_RESEARCH_AREAS and candidate_area != "Unscoped":
+                        agent_name = candidate
         except Exception:
             pass
     agent_name = agent_name or "unknown"
@@ -358,7 +399,20 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         if ":" in h1_title:
             area_candidates.append(h1_title.split(":", 1)[1].strip())
     research_area = next((normalize_area(value) for value in area_candidates if normalize_area(value) in ALLOWED_RESEARCH_AREAS), "Unscoped")
-    source_url = _coalesce(provenance.get("source_url", ""), shared_header.get("source", ""))
+    source_url = next(
+        (
+            candidate
+            for value in (
+                provenance.get("source_url", ""),
+                shared_header.get("source", ""),
+                machine_metadata.get("source_url", ""),
+                source_hints.get("source_url", ""),
+                source_hints.get("url", ""),
+            )
+            if (candidate := _usable_source_url(value))
+        ),
+        "",
+    )
     canonical_url = canonicalize_url(source_url)
     collected_at = _coalesce(shared_header.get("collected_at", ""), provenance.get("collected_at", ""))
     collection_mode = _coalesce(shared_header.get("collection_mode", ""))
@@ -433,14 +487,30 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     linked_urls = list(dict.fromkeys(([source_url] if source_url else []) + evidence.get("links_found", [])))[:20]
 
     content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
-    source_id = extract_source_identity(title, source_url, canonical_url, machine_metadata)
+    identity_metadata = dict(machine_metadata)
+    identity_metadata.update({
+        "agent_name": agent_name,
+        "layer": layer,
+        "source_type": source_type,
+        "evidence_type": evidence_type,
+        "source_name": actor,
+        "organization": actor,
+        "problem": normalized_problem,
+        "context_summary": context_summary,
+    })
+    source_id = extract_source_identity(title, source_url, canonical_url, identity_metadata)
 
     # Needs review if lacking funding call id or source
     needs_review = (not funding_call_id and not funding_call_ids) or not source_url
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
 
     evidence_snippets_str = "\n".join(evidence.get("evidence_snippets", []))
-    evidence_id = hashlib.sha256(f"{source_id}|{funding_call_id}|{evidence_snippets_str}".encode('utf-8')).hexdigest()[:16]
+    # Keep observations from different collection layers distinct. They may
+    # describe the same underlying source, but merging them here loses which
+    # collector actually produced each evidence record.
+    evidence_id = hashlib.sha256(
+        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
+    ).hexdigest()[:16]
 
     # Domain relevance is evidence-derived and deliberately independent from
     # the routed research_area. This prevents routing metadata from overriding
@@ -518,7 +588,13 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     normalized_record["tokens"] = _tokenize(normalized_record["search_text"])
     return normalized_record
 
-def build_normalized_collection_records(intermediate_root: Path | list[Path], target_funding_call_id: str | None = None, *, errors: list[str] | None = None) -> list[dict[str, Any]]:
+def build_normalized_collection_records(
+    intermediate_root: Path | list[Path],
+    target_funding_call_id: str | None = None,
+    *,
+    target_run_id: str | None = None,
+    errors: list[str] | None = None,
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
 
     roots = [intermediate_root] if isinstance(intermediate_root, Path) else intermediate_root
@@ -531,6 +607,11 @@ def build_normalized_collection_records(intermediate_root: Path | list[Path], ta
                 continue
             try:
                 record = normalize_intermediate_artifact(path)
+                # A run-scoped caller must never consume artifacts from a prior
+                # or unknown run, even if they remain under a reused output root.
+                if target_run_id and str(record.get("run_id") or "").strip() != target_run_id:
+                    continue
+
                 # Filter by target_funding_call_id if provided
                 if target_funding_call_id:
                     call_ids = record.get("funding_call_ids", [])
@@ -575,9 +656,79 @@ def _build_indexes(records: list[dict[str, Any]]) -> tuple[dict[str, list[dict[s
     return by_area, by_layer
 
 
-def save_normalized_collection_records(intermediate_root: Path | list[Path], output_dir: Path, target_funding_call_id: str | None = None, filter_func=None) -> dict[str, Path]:
+def _normalization_input_manifest(
+    intermediate_root: Path | list[Path],
+    output_dir: Path,
+    target_funding_call_id: str | None,
+    target_run_id: str | None = None,
+) -> dict[str, Any]:
+    """Fingerprint all normalization inputs so the cache cannot retain stale evidence.
+
+    File hashes detect content changes even when timestamps are restored. The full
+    inventory detects artifacts that were added or deleted, and the selected-call
+    hash invalidates call-scoped records when their mission context changes.
+    """
+    roots = [intermediate_root] if isinstance(intermediate_root, Path) else list(intermediate_root)
+    artifacts: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*.md")):
+            if path.name.lower() == "insights.md":
+                continue
+            resolved = str(path.resolve())
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
+            try:
+                stat = path.stat()
+                raw = path.read_bytes()
+                artifacts.append({
+                    "path": resolved,
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                })
+            except OSError as exc:
+                artifacts.append({"path": resolved, "unreadable": type(exc).__name__})
+
+    selected_call_hash = ""
+    if target_funding_call_id:
+        selected_path = output_dir / "workflow" / "selected_funding_call.json"
+        try:
+            selected_call_hash = hashlib.sha256(selected_path.read_bytes()).hexdigest()
+        except OSError:
+            selected_call_hash = ""
+
+    artifacts.sort(key=lambda item: item["path"])
+    return {
+        "schema_version": 1,
+        "target_funding_call_id": target_funding_call_id or "",
+        "target_run_id": target_run_id or "",
+        "selected_call_sha256": selected_call_hash,
+        "artifacts": artifacts,
+    }
+
+
+def save_normalized_collection_records(
+    intermediate_root: Path | list[Path],
+    output_dir: Path,
+    target_funding_call_id: str | None = None,
+    filter_func=None,
+    *,
+    target_run_id: str | None = None,
+) -> dict[str, Path]:
     errors: list[str] = []
-    records = build_normalized_collection_records(intermediate_root, target_funding_call_id=target_funding_call_id, errors=errors)
+    input_manifest = _normalization_input_manifest(
+        intermediate_root, output_dir, target_funding_call_id, target_run_id
+    )
+    records = build_normalized_collection_records(
+        intermediate_root,
+        target_funding_call_id=target_funding_call_id,
+        target_run_id=target_run_id,
+        errors=errors,
+    )
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
     deduped_records = {}
@@ -616,6 +767,10 @@ def save_normalized_collection_records(intermediate_root: Path | list[Path], out
 
     records_path = normalized_root / "records.json"
     records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (normalized_root / "input_manifest.json").write_text(
+        json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     by_area, by_layer = _build_indexes(records)
 
@@ -773,9 +928,23 @@ def resolve_refresh_context(outputs_root: Path):
     return intermediate_roots, target_funding_call_id, filter_func
 
 
+def resolve_refresh_run_id(outputs_root: Path) -> str | None:
+    """Read the active run ID for a call-scoped output root, if available."""
+    if outputs_root.parent.name != "calls":
+        return None
+    selected_path = outputs_root / "workflow" / "selected_funding_call.json"
+    try:
+        wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    run_value = wrapper.get("run_id") if isinstance(wrapper, dict) else None
+    return _clean(str(run_value or "")) or None
+
+
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
+    target_run_id = resolve_refresh_run_id(outputs_root)
 
     newest_intermediate = 0.0
     for ir in intermediate_roots:
@@ -794,23 +963,40 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     force_refresh = False
     if not records_path.exists() or newest_intermediate > records_mtime:
         force_refresh = True
-    elif filter_func:
-        import json
+
+    # The mtime-only cache check misses deleted inputs, edits with restored
+    # timestamps, and call-context changes. Require an exact input manifest match.
+    manifest_path = outputs_root / "normalized" / "input_manifest.json"
+    if not force_refresh:
+        try:
+            cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            current_manifest = _normalization_input_manifest(
+                intermediate_roots, outputs_root, target_funding_call_id, target_run_id
+            )
+            if cached_manifest != current_manifest:
+                force_refresh = True
+        except Exception:
+            force_refresh = True
+
+    if not force_refresh:
         import copy
         try:
             cached = json.loads(records_path.read_text(encoding="utf-8"))
-            for r in cached:
-                if not filter_func(copy.deepcopy(r)):
-                    force_refresh = True
-                    break
+            if not isinstance(cached, list):
+                raise ValueError("normalized records cache must contain a JSON list")
+
+            if filter_func:
+                for record in cached:
+                    if not filter_func(copy.deepcopy(record)):
+                        force_refresh = True
+                        break
 
             if not force_refresh:
                 area_path = outputs_root / "normalized" / "by_area.json"
                 layer_path = outputs_root / "normalized" / "by_layer.json"
-
                 expected_by_area, expected_by_layer = _build_indexes(cached)
-
                 needs_repair = False
+
                 try:
                     area_data = json.loads(area_path.read_text(encoding="utf-8"))
                     if area_data != expected_by_area:
@@ -826,13 +1012,19 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
                     needs_repair = True
 
                 if needs_repair:
-                    area_path.write_text(json.dumps(expected_by_area, indent=2), encoding="utf-8")
-                    layer_path.write_text(json.dumps(expected_by_layer, indent=2), encoding="utf-8")
+                    area_path.write_text(json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    layer_path.write_text(json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         except Exception:
             force_refresh = True
 
     if force_refresh:
-        return save_normalized_collection_records(intermediate_roots, outputs_root, target_funding_call_id, filter_func=filter_func)
+        return save_normalized_collection_records(
+            intermediate_roots,
+            outputs_root,
+            target_funding_call_id,
+            filter_func=filter_func,
+            target_run_id=target_run_id,
+        )
     return {
         "records": records_path,
         "by_area": outputs_root / "normalized" / "by_area.json",

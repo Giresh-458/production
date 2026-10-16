@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.normalization import ensure_normalized_collection_records
+from core.normalization import ensure_normalized_collection_records, _normalization_input_manifest
 
 def test_legacy_ungated_records_bypass(tmp_path):
     call_id = "CALL-TEST-CACHE"
@@ -64,6 +64,11 @@ def test_legacy_ungated_records_bypass(tmp_path):
     new_time = time.time()
     os.utime(records_json, (new_time, new_time))
 
+    (normalized / "input_manifest.json").write_text(
+        json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
+        encoding="utf-8",
+    )
+
     # Invoke
     ensure_normalized_collection_records(call_root)
 
@@ -99,6 +104,11 @@ def test_cache_hit_global_refresh_is_preserved(tmp_path):
 
     new_time = time.time()
     os.utime(records_json, (new_time, new_time))
+
+    (normalized / "input_manifest.json").write_text(
+        json.dumps(_normalization_input_manifest([run_root / "intermediate"], run_root, None)),
+        encoding="utf-8",
+    )
 
     from unittest.mock import patch
     with patch("core.normalization.save_normalized_collection_records") as mock_save:

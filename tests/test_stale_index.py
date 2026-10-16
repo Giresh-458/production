@@ -7,7 +7,7 @@ import sys
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core.normalization import ensure_normalized_collection_records
+from core.normalization import ensure_normalized_collection_records, _normalization_input_manifest
 
 def test_stale_index_survives_cache_hit(tmp_path):
     call_id = "CALL-TEST-STALE-IDX"
@@ -83,6 +83,11 @@ def test_stale_index_survives_cache_hit(tmp_path):
     os.utime(records_json, (new_time, new_time))
     os.utime(by_area_json, (new_time, new_time))
     os.utime(by_layer_json, (new_time, new_time))
+
+    (normalized / "input_manifest.json").write_text(
+        json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
+        encoding="utf-8",
+    )
 
     with patch("core.mission_gate.relevance") as mock_gate, patch("core.normalization.save_normalized_collection_records") as mock_save:
         mock_gate.return_value = {"passed": True}
