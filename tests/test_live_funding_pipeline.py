@@ -886,6 +886,42 @@ def test_eligibility_heading_is_not_misread_as_a_requirement_value():
     )
 
 
+def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls():
+    from agents.funding_agent import analyze_document
+    from agents.funding_collector import FundingSource, _normalize_raw_to_doc
+
+    source = FundingSource(
+        name="Climate KIC Open Calls",
+        url="https://www.climate-kic.org/open-call/women-techeu-2-eic/",
+        tier="tier_2",
+        research_domains=["ESG"],
+        direct_page=True,
+    )
+    raw = {
+        "type": "html",
+        "url": source.url,
+        "title": "Women TechEU 2 EIC | Climate KIC",
+        "content": (
+            "Climate KIC navigation describing climate change mitigation and adaptation. "
+            "[Skip to content](https://www.climate-kic.org/open-call/women-techeu-2-eic/#content-wrap) "
+            "OPEN CALL\\n# Women TechEU 2 EIC\\n"
+            "CALL FOR Women-led early-stage deep tech startups from Europe\\n"
+            "## Details\\n"
+            "Women TechEU supports women-led early-stage deep tech startups.\\n"
+            "DEADLINE 2027-06-14\\n"
+            "© Climate KIC 2026\\n"
+            "Our objective is to contribute to climate change mitigation and adaptation."
+        ),
+    }
+
+    document = _normalize_raw_to_doc(source, raw)
+    opportunity = analyze_document(document)
+
+    assert "climate change mitigation" not in document.content.casefold()
+    assert "Women TechEU supports women-led early-stage deep tech startups" in document.content
+    assert opportunity.focus_area == "General"
+
+
 def test_sbir_generic_browser_title_is_replaced_with_the_topic_heading():
     from agents.funding_agent import FundingSource
     from agents.funding_collector import _normalize_raw_to_doc
