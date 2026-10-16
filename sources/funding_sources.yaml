@@ -121,7 +121,7 @@ sources:
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
-    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research.
+    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research. Annual research highlights are reports of past activity, not applications; retain only direct call or submission evidence.
     collection:
       mode: web
       engine: crawl4ai
@@ -135,6 +135,8 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?ripple\.com/reports/Ripple-UBRI-Research-20\d{2}\.pdf(?:[?#].*)?$'
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
@@ -264,7 +266,7 @@ sources:
   - name: Open SBIR Funding Topics
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://www.sbir.gov/topics?status=Open
-    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed topic is accepting applications now; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence before acceptance.
+    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed opportunity is currently accepting applications; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence. Exclude historical awards, generic application guidance and unrelated community pages.
     collection:
       mode: web
       engine: crawl4ai
@@ -275,28 +277,29 @@ sources:
         start_urls:
         - https://www.sbir.gov/topics?status=Open
         max_depth: 2
-        max_pages: 30
+        max_pages: 50
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?sbir\.gov/awards(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/apply(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/community/gafc(?:/|\?|#|$)'
+        - '^https?://data\.www\.sbir\.gov/'
   - name: EU Open and Forthcoming Funding Calls
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
-    focus: Official EU Funding & Tenders Portal discovery page for open and forthcoming calls for proposals. It is cross-domain discovery only; validate each individual call's status, dates, applicant eligibility, funding terms and direct RIF-domain evidence. Do not infer a ZK-IoV match from an unrelated call.
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
     collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - ec.europa.eu
-      - funding-tenders.ec.europa.eu
-      discovery:
-        start_urls:
-        - https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
-        max_depth: 2
-        max_pages: 30
-        follow_detail_pages: true
-        follow_pdfs: true
-        pagination: true
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+      limits:
+        max_pages: 5
+        max_documents: 250
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
