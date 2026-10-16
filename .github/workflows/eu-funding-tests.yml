@@ -44,6 +44,73 @@ jobs:
         run: |
           python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
 
+      - name: Diagnose official EU eligibility metadata
+        run: |
+          python - <<'PY'
+          import json
+          from core.structured_sources import eu_funding_tenders_paginated_search, eu_funding_tenders_fetch_document
+          from agents.funding_collector import _eu_metadata_value, _extract_eu_eligibility_from_html
+
+          result = eu_funding_tenders_paginated_search(
+              page_size=50, source_limits={"max_pages": 5, "max_documents": 250}
+          )
+          samples = []
+          for item in result.get("results", []):
+              metadata = item.get("metadata", {})
+              if not isinstance(metadata, dict):
+                  metadata = {}
+              title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name") or ""
+              if not any(term in title.casefold() for term in (
+                  "one health", "forests and forestry", "perform eu"
+              )):
+                  continue
+              sample = {"title": title, "reference": item.get("reference"), "url": item.get("url")}
+              relevant = {}
+              for key, value in metadata.items():
+                  if any(term in key.casefold() for term in (
+                      "eligib", "applicant", "condition", "beneficiar", "admiss", "description",
+                      "consortium", "participant", "specific"
+                  )):
+                      relevant[key] = str(value)[:2200]
+              sample["search_fields"] = relevant
+              sample["eligibility_parse_from_search"] = {
+                  key: _extract_eu_eligibility_from_html(value)
+                  for key, value in metadata.items()
+                  if any(term in key.casefold() for term in (
+                      "eligib", "applicant", "condition", "beneficiar", "admiss"
+                  ))
+              }
+              reference = str(item.get("reference") or "").strip()
+              if reference:
+                  try:
+                      detail = eu_funding_tenders_fetch_document(reference)
+                      dm = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                      sample["detail_keys"] = sorted(dm) if isinstance(dm, dict) else []
+                      sample["detail_fields"] = {
+                          key: str(value)[:2200] for key, value in (dm.items() if isinstance(dm, dict) else [])
+                          if any(term in key.casefold() for term in (
+                              "eligib", "applicant", "condition", "beneficiar", "admiss",
+                              "description", "consortium", "participant", "specific"
+                          ))
+                      }
+                      sample["eligibility_parse_from_detail"] = {
+                          key: _extract_eu_eligibility_from_html(value)
+                          for key, value in (dm.items() if isinstance(dm, dict) else [])
+                          if any(term in key.casefold() for term in (
+                              "eligib", "applicant", "condition", "beneficiar", "admiss"
+                          ))
+                      }
+                  except Exception as exc:
+                      sample["detail_error"] = str(exc)
+              samples.append(sample)
+              if len(samples) >= 5:
+                  break
+
+          print(json.dumps({"matching_records": samples}, indent=2, ensure_ascii=False))
+          if not samples:
+              print("No diagnostic sample titles appeared in capped pages; inspect more pages before concluding fields are absent.")
+          PY
+
       - name: Run bounded live Batch 1 EU qualification audit
         run: |
           python - <<'PY'
