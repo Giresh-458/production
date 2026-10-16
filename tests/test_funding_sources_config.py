@@ -313,3 +313,19 @@ def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_finger
     assert _funding_sources_fingerprint(sources) != _funding_sources_fingerprint(
         [replace(sources[0], direct_page=False)]
     )
+
+
+def test_filecoin_configured_directory_is_not_suppressed_by_deprecated_registry_state():
+    import json
+
+    registry_path = REPO_ROOT / "sources" / "source_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entries = [
+        entry for entry in registry.get("entries", [])
+        if entry.get("agent_name") == "funding"
+        and entry.get("url") == "https://fil.org/grants"
+    ]
+
+    assert len(entries) == 1
+    assert entries[0]["status"] == "active"
+    assert entries[0]["active_config"] is True
