@@ -1,12 +1,15 @@
-import pytest
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-pytestmark = pytest.mark.live
-
-from core.agent_registry import AGENT_REGISTRY, run_registered_agent
+from core.agent_registry import (
+    AGENT_REGISTRY,
+    DOWNSTREAM_FUNDING_CONTEXT_AGENTS,
+    run_registered_agent,
+)
 from core.collection_schemas import get_collection_schema
+from core.funding_selection import FundingCallContext
 from agents.data_availability_agent import DataDocument, fallback_analysis as data_fallback
 from agents.expert_agent import ExpertDocument, fallback_analysis as expert_fallback
 from agents.failure_agent import FailureDocument, fallback_analysis as failure_fallback
@@ -157,6 +160,39 @@ TEXTS = {
 AREAS = {name: "ZK-IoV" if name in {"literature", "data_availability", "hackathon", "expert"} else "RWA" for name in COLLECTION_AGENTS}
 
 
+def _contract_funding_context() -> FundingCallContext:
+    return FundingCallContext(
+        funding_call_id="CALL-COLLECTOR-CONTRACT-001",
+        funding_body="Contract Test Agency",
+        program_name="Collector Contract Test",
+        call_id="COLLECTOR-CONTRACT-001",
+        call_title="Privacy-preserving verification for real-world assets",
+        status="OPEN",
+        opening_date="2026-01-01",
+        deadline="2027-12-31",
+        funding_amount="1000000",
+        currency="EUR",
+        duration="24 months",
+        eligibility="Universities and research organizations in eligible jurisdictions.",
+        geography="EU",
+        trl="TRL3-TRL5",
+        research_priorities=["Zero-knowledge proof scalability", "Secure settlement"],
+        required_partners="Research and industry partners",
+        deliverables="Prototype, benchmark report, and research publications",
+        evaluation_criteria="Excellence, impact, and implementation",
+        eligible_costs="Personnel, equipment, and travel",
+        application_url="https://example.org/apply",
+        source_url="https://example.org/call",
+        source_name="Contract Test Agency",
+        publication_date="2026-01-01",
+        last_updated="2026-01-01",
+        research_area="RWA",
+        selection_mode="test",
+        selection_score=1.0,
+        selection_reasons=["Deterministic collection-agent contract test"],
+    )
+
+
 class AllCollectionAgentTests(unittest.TestCase):
     def test_registry_contains_exactly_12_collection_agents(self):
         self.assertEqual([name for name in COLLECTION_AGENTS if name in AGENT_REGISTRY], COLLECTION_AGENTS)
@@ -183,9 +219,66 @@ class AllCollectionAgentTests(unittest.TestCase):
                 self.assertGreaterEqual(len(result["outputs"]), 1, result)
                 self.assertFalse(result.get("errors"), result)
                 output = result["outputs"][0]
-                self.assertTrue(output.get("source"), output)
-                self.assertTrue(output.get("title"), output)
-                self.assertTrue(output.get("problem"), output)
+                # Funding uses the domain-specific source_url field; other
+                # collection agents expose the common source field.
+                self.assertTrue(output.get("source") or output.get("source_url"), output)
+                self.assertTrue(output.get("title") or output.get("program_name"), output)
+                self.assertTrue(output.get("problem") or output.get("problem_signal"), output)
+
+    def test_all_eleven_downstream_agents_preserve_run_and_call_provenance(self):
+        """Each downstream collector persists the active run and selected call ID."""
+        root = Path(tempfile.mkdtemp())
+        run_id = "ci-collection-contract-run-001"
+        funding_context = _contract_funding_context()
+
+        self.assertEqual(len(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), 11)
+        self.assertSetEqual(
+            set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            set(COLLECTION_AGENTS) - {"funding"},
+        )
+
+        for name in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
+            with self.subTest(agent=name):
+                result = run_registered_agent(
+                    name,
+                    "manual_text",
+                    area=AREAS[name],
+                    input_data={
+                        "text": TEXTS[name],
+                        "title": f"Contract evidence for {name}",
+                        "source_name": f"Contract test {name}",
+                        "analysis_mode": "collect_only",
+                        "output_dir": str(root / name),
+                        "run_id": run_id,
+                    },
+                    funding_context=funding_context,
+                )
+                self.assertEqual(result["status"], "success", result)
+                self.assertGreaterEqual(result["items_saved"], 1, result)
+                self.assertGreaterEqual(len(result["outputs"]), 1, result)
+
+                artifact_path = Path(result["outputs"][0]["markdown_path"])
+                self.assertTrue(artifact_path.is_file(), f"{name} did not persist {artifact_path}")
+                artifact = artifact_path.read_text(encoding="utf-8")
+                self.assertIn("```json", artifact, f"{name} artifact has no JSON payload")
+                payload = json.loads(artifact.split("```json", 1)[1].split("```", 1)[0])
+                header = payload.get("shared_header")
+                self.assertIsInstance(header, dict, f"{name} artifact has no shared_header")
+                self.assertEqual(
+                    header.get("funding_call_id"),
+                    funding_context.funding_call_id,
+                    f"{name} lost selected funding-call provenance",
+                )
+                self.assertEqual(
+                    header.get("funding_call_ids"),
+                    [funding_context.funding_call_id],
+                    f"{name} has inconsistent funding_call_ids",
+                )
+                self.assertEqual(
+                    header.get("run_id"),
+                    run_id,
+                    f"{name} artifact does not belong to the orchestrated run",
+                )
 
     def test_all_12_collection_schemas_exist_and_have_required_fields(self):
         for name in COLLECTION_AGENTS:
@@ -209,26 +302,20 @@ class AllCollectionAgentTests(unittest.TestCase):
                 self.assertIsInstance(result["errors"], list)
                 self.assertIsInstance(result["warnings"], list)
 
-    def test_data_availability_new_fields_are_present(self):
+    def test_data_availability_does_not_synthesize_llm_fallback(self):
         doc = DataDocument("Benchmark", "Benchmark", "Dataset Description", "ZK-IoV", "evaluation", "manual://x", TEXTS["data_availability"], "Manual")
-        a = data_fallback(doc)
-        self.assertTrue(a.benchmark_gap)
-        self.assertTrue(a.reproducibility)
-        self.assertTrue(a.dataset_scope)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            data_fallback(doc)
 
-    def test_expert_fit_fields_are_present(self):
+    def test_expert_does_not_synthesize_llm_fallback(self):
         doc = ExpertDocument("Professor Profile", "Expert Profile", "Profile", "Professor", "University", "Faculty", "ZK-IoV", "cryptography", "manual://x", TEXTS["expert"], "Manual")
-        a = expert_fallback(doc)
-        self.assertGreaterEqual(a.collaboration_fit_score, 0)
-        self.assertLessEqual(a.collaboration_fit_score, 100)
-        self.assertTrue(a.recent_publication_signal)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            expert_fallback(doc)
 
-    def test_failure_evidence_fields_are_present(self):
+    def test_failure_agent_does_not_synthesize_llm_fallback(self):
         doc = FailureDocument("Bridge Incident", "Postmortem", "Incident Report", "RWA", "bridge exploit", "manual://x", TEXTS["failure"], "Manual")
-        a = failure_fallback(doc)
-        self.assertTrue(a.attack_vector)
-        self.assertTrue(a.evidence_strength)
-        self.assertTrue(a.affected_system)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            failure_fallback(doc)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+name: RIF 11-collector contract checks
+
+on:
+  push:
+    branches:
+      - fix/batch4-11-collector-contracts-20261016
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "agents/**"
+      - "core/agent_interface.py"
+      - "core/agent_registry.py"
+      - "core/batch_runner.py"
+      - "core/collection_schemas.py"
+      - "core/funding_context.py"
+      - "core/funding_selection.py"
+      - "core/schemas.py"
+      - "tests/test_all_collection_agents.py"
+      - "tests/test_funding_routing_golden.py"
+      - ".github/workflows/collection-agent-contract-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  collection-agent-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+
+      - name: Verify all collection-agent contracts and funding routing
+        run: |
+          python -m pytest tests/test_all_collection_agents.py tests/test_funding_routing_golden.py -q
