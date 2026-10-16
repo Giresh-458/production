@@ -180,7 +180,7 @@ def test_eu_collector_deduplicates_repeated_detail_urls_with_different_reference
         url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
         tier="tier_3",
         collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
-        research_domains=["RWA"],
+        research_domains=["ESG"],
     )
 
     result = funding_collector._collect_eu_funding_tenders(
@@ -259,7 +259,7 @@ def test_eu_collector_extracts_eligibility_from_topic_conditions_html(monkeypatc
         url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
         tier="tier_3",
         collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
-        research_domains=["RWA", "DID"],
+        research_domains=["ESG"],
     )
 
     result = funding_collector._collect_eu_funding_tenders(
@@ -302,12 +302,12 @@ def test_eu_eligibility_parser_does_not_promote_generic_process_language():
 
 
 def test_eu_collector_filters_expired_records_instead_of_emitting_closed_opportunities(monkeypatch):
-    from datetime import timedelta
+    from datetime import datetime, timedelta, timezone
     from agents import funding_collector
     from agents.funding_agent import FundingSource
     from core.schemas import CollectionResult
 
-    yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     record = {
         "reference": "expired-call",
         "url": "https://ec.europa.eu/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/expired",
