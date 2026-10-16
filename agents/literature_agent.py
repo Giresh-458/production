@@ -611,7 +611,19 @@ def process_area(
     scored_papers = []
     for p in unique_papers:
         paper_year = p.published.year if p.published else 0
-        if paper_exists(connection, title=p.title, url=p.url, doi=p.doi or "", source_id=p.source_id, authors="; ".join(p.authors), year=paper_year):
+        # CLI/incremental scans keep the historical duplicate suppression. A
+        # run-scoped pipeline scan must re-emit matching papers as this run's
+        # evidence, even when the cross-run SQLite ledger already knows them;
+        # normalization intentionally excludes prior-run artifacts.
+        if not return_papers and paper_exists(
+            connection,
+            title=p.title,
+            url=p.url,
+            doi=p.doi or "",
+            source_id=p.source_id,
+            authors="; ".join(p.authors),
+            year=paper_year,
+        ):
             continue
         cutoff = now - timedelta(days=LOOKBACK_YEARS * 365)
         if p.published is not None and p.published < cutoff:
