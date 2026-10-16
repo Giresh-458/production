@@ -35,8 +35,8 @@ def _get_matched_ids(title, content, contexts):
     return assign_funding_calls(title, content, contexts)
 
 def test_stale_document_call_ids_are_recomputed_from_current_evidence():
-    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha")
-    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo")
+    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha", program_name="Current Program Alpha")
+    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo", program_name="Current Program Bravo")
     stale_document = {"funding_call_ids": ["CALL-CURRENT-B", "CALL-FROM-OLD-RUN"]}
 
     ids = _resolve_funding_call_ids(
