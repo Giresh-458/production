@@ -35,7 +35,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest PyYAML requests beautifulsoup4 python-dotenv pypdf
+          python -m pip install pytest PyYAML requests beautifulsoup4 python-dotenv pypdf numpy
 
       - name: Run EU funding and pipeline regression tests
         run: |
