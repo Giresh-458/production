@@ -46,7 +46,7 @@ AGENT_CONFIGS = {
     "hackathon": "hackathon_sources.yaml",
     "expert": "expert_sources.yaml",
 }
-PER_AGENT_DEADLINE_SECONDS = 35
+PER_AGENT_DEADLINE_SECONDS = 120
 PREFERRED_SOURCES = {
     "company": ("Securitize", "Ondo Finance"),
     "expert": ("IISc CSA Faculty", "IISc CrIS Lab"),
@@ -82,14 +82,16 @@ def _prune_config(
                 result[key] = _bounded_limits()
             elif isinstance(value, list) and value and isinstance(value[0], dict):
                 if not state["selected"]:
-                    preferred = {
+                    preferred_names = [
                         name.casefold()
                         for name in state.get("preferred_names", ())
-                    }
+                    ]
                     first = next(
                         (
-                            item for item in value
-                            if str(item.get("name") or "").strip().casefold() in preferred
+                            item
+                            for preferred_name in preferred_names
+                            for item in value
+                            if str(item.get("name") or "").strip().casefold() == preferred_name
                         ),
                         value[0],
                     )
