@@ -39,7 +39,7 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
-    direct_page: true
+    direct_page: false
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
