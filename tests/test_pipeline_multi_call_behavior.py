@@ -35,6 +35,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://v1.org",
+                        "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
                         "research_context": rc
                     },
@@ -44,6 +45,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://bad.org",
+                        "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
                         "research_context": rc
                     },
@@ -53,6 +55,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "status": "OPEN_CALL",
                         "deadline": "2030-01-01T00:00:00Z",
                         "application_url": "https://v2.org",
+                        "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
                         "research_context": rc
                     }
