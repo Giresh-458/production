@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -188,14 +189,66 @@ class FundingCallContext:
         return cls(**kwargs)
 
 
-def _parse_date(date_str: str | None) -> datetime | None:
+def has_substantive_eligibility_evidence(value: Any) -> bool:
+    """Check for concrete applicant criteria, not project-fit or workflow prose."""
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or text.casefold() in {"none", "null", "unknown", "n/a", "not specified"}:
+        return False
+
+    if re.search(
+        r"\b(?:will then be invited to submit|eligibility criteria "
+        r"(?:specified|set out|described) in the call|"
+        r"pass/fail requirements?.{0,120}\bassessed by)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return False
+
+    applicant_scope = re.search(
+        r"\b(?:eligible applicants?|applicants?|applicant types?|who can apply|"
+        r"legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
+        r"research organisations?|research organizations?|research facilities?|research institutions?|"
+        r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
+        r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
+        r"organisations|organizations|consortiums?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    concrete_constraint = re.search(
+        r"\b(?:eligible|eligibility|may apply|can apply|may submit|can submit|"
+        r"must be|must include|must have|are required to|are limited to|"
+        r"not eligible|cannot apply|established|registered|incorporated|"
+        r"resident|reside|domiciled|based in|located in|citizens? of|"
+        r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
+        r"start[- ]up only|open to)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    concrete_subject_or_condition = re.search(
+        r"\b(?:legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
+        r"research organisations?|research organizations?|research facilities?|research institutions?|"
+        r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
+        r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
+        r"organisations|organizations|consortiums?|established|registered|incorporated|"
+        r"resident|reside|domiciled|based in|located in|citizens? of|at least\s+\d+)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return bool(applicant_scope and concrete_constraint and concrete_subject_or_condition)
+
+
+def _parse_date(date_str: str | None, *, end_of_day: bool = False) -> datetime | None:
     if not date_str:
         return None
+    date_only = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date_str).strip()))
     try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            from datetime import UTC
             dt = dt.replace(tzinfo=UTC)
+        dt = dt.astimezone(UTC)
+        if date_only and end_of_day:
+            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
         return dt
     except ValueError:
         return None
@@ -216,86 +269,85 @@ def _extract_trl(trl_str: str | None) -> tuple[int, int] | None:
 
 
 def validate_call(record: dict[str, Any], profile: ApplicantProfile) -> ValidationResult:
-    """Check hard constraints for a funding call."""
+    """Apply hard status, timeline, provenance, applicant, geography and TRL gates."""
     reasons: list[str] = []
     is_valid = True
 
-    # 1. Closed or expired
-    status = str(record.get("status", "")).upper()
+    status = str(record.get("status", "")).strip().upper()
     if status == "CLOSED_CALL":
         is_valid = False
         reasons.append("Call is explicitly closed.")
-    
-    deadline_str = record.get("deadline")
-    deadline = _parse_date(deadline_str)
+    elif status != "OPEN_CALL":
+        is_valid = False
+        reasons.append(f"Call is not confirmed open (status={status or 'UNKNOWN'}).")
+
     now = datetime.now(UTC)
+    opening = _parse_date(record.get("opening_date"))
+    if opening and opening > now:
+        is_valid = False
+        reasons.append(f"Opening date ({record.get('opening_date')}) is in the future.")
+
+    deadline_str = record.get("deadline")
+    deadline = _parse_date(deadline_str, end_of_day=True)
     if deadline and deadline < now:
         is_valid = False
         reasons.append(f"Deadline ({deadline_str}) is in the past.")
 
-    # 2. Required info missing
     required_fields = ["program_name", "funding_body", "status"]
     for req in required_fields:
         val = record.get(req)
-        if not val or str(val).strip().lower() in ["null", "unknown", "none", ""]:
+        if not val or str(val).strip().lower() in {"null", "unknown", "none", ""}:
             is_valid = False
             reasons.append(f"Critically missing required field: {req}")
 
-    # A URL is strongly preferred, but intermediate/in-memory candidates may
-    # legitimately omit it (e.g. during ranking tests or pre-publication review).
-    # Final selected calls should still be checked for a verifiable source by the
-    # caller before submission/crawling.
     has_url = any(
         record.get(url_field)
         and str(record.get(url_field)).strip().lower() not in {"null", "unknown", "none", ""}
         for url_field in ("source_url", "application_url")
     )
     if not has_url:
-        reasons.append("Source/application URL not available; candidate is lower-confidence until verified.")
+        is_valid = False
+        reasons.append("Missing official source/application URL.")
 
-    # 3. Geography incompatible (heuristic)
+    if not has_substantive_eligibility_evidence(record.get("eligibility")):
+        is_valid = False
+        reasons.append("Missing substantive applicant eligibility evidence.")
+
     geo = str(record.get("geography", "")).lower()
-    if geo and geo not in ["null", "unknown", "none"]:
-        # If any allowed geography is in the string, or it says global
-        match_geo = False
-        if "global" in geo or "anywhere" in geo or "remote" in geo:
-            match_geo = True
-        else:
-            for allowed in profile.allowed_geographies:
-                if allowed.lower() in geo:
-                    match_geo = True
-                    break
+    if geo and geo not in {"null", "unknown", "none"}:
+        match_geo = "global" in geo or "anywhere" in geo or "remote" in geo
+        if not match_geo:
+            match_geo = any(allowed.lower() in geo for allowed in profile.allowed_geographies)
         if not match_geo:
             is_valid = False
             reasons.append(f"Incompatible geography: {geo}")
 
-    # 4. TRL incompatible
-    trl_val = record.get("trl")
-    call_trls = _extract_trl(trl_val)
+    call_trls = _extract_trl(record.get("trl"))
     if call_trls:
         c_min, c_max = call_trls
         if c_max < profile.min_trl or c_min > profile.max_trl:
             is_valid = False
-            reasons.append(f"TRL requirement ({trl_val}) incompatible with profile [{profile.min_trl}-{profile.max_trl}]")
+            reasons.append(
+                f"TRL requirement ({record.get('trl')}) incompatible with profile "
+                f"[{profile.min_trl}-{profile.max_trl}]"
+            )
 
-    # 5. Eligibility (basic keyword check)
     elig = str(record.get("eligibility", "")).lower()
-    if elig and elig not in ["null", "unknown", "none"]:
-        if profile.applicant_type == "academic":
-            if "startup only" in elig or "commercial only" in elig or "for-profit only" in elig:
-                is_valid = False
-                reasons.append("Eligibility excludes academic applicants.")
-        elif profile.applicant_type == "startup":
-            if "academic only" in elig or "university only" in elig or "non-profit only" in elig:
-                is_valid = False
-                reasons.append("Eligibility excludes startup applicants.")
+    if profile.applicant_type == "academic" and any(
+        phrase in elig for phrase in ("startup only", "commercial only", "for-profit only")
+    ):
+        is_valid = False
+        reasons.append("Eligibility excludes academic applicants.")
+    elif profile.applicant_type == "startup" and any(
+        phrase in elig for phrase in ("academic only", "university only", "non-profit only")
+    ):
+        is_valid = False
+        reasons.append("Eligibility excludes startup applicants.")
 
-    # 6. Research domain (area)
     area = str(record.get("focus_area", "")).lower()
     if area and area != "general" and profile.target_research_areas:
         target_lower = [t.lower() for t in profile.target_research_areas]
         if area not in target_lower:
-            # We don't strictly fail on "general", but we fail on explicit mismatch
             is_valid = False
             reasons.append(f"Incompatible research domain: {area} (target: {', '.join(target_lower)})")
 
