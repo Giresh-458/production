@@ -238,6 +238,14 @@ def get_all_open_funding_calls(
         # explicit current-acceptance language, or a concrete submission route
         # paired with an unexpired timeline.
         source_status = str(evidence.get("source_status") or "").strip().lower() if isinstance(evidence, dict) else ""
+        # Commission Funding & Tenders Search API encodes status as numeric portal
+        # codes. Normalize those documented values before the authoritative-current
+        # status gate, rather than letting valid open calls fall through as unknown.
+        source_status = {
+            "31094501": "upcoming",
+            "31094502": "open",
+            "31094503": "closed",
+        }.get(source_status, source_status)
         if source_status in {"forecasted", "upcoming", "upcoming_call"}:
             rejected.append({
                 "title": record.get("title"),
