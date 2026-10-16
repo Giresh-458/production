@@ -378,6 +378,17 @@ def test_eu_eligibility_parser_extracts_specific_criteria_from_beneficiary_html(
     assert "<p>" not in extracted
 
 
+def test_eu_eligibility_parser_rejects_project_fit_language_as_applicant_eligibility():
+    from agents.funding_collector import _extract_eu_eligibility_from_html
+
+    project_fit = (
+        "Applicants should demonstrate their potential to leverage downstream space data, "
+        "such as Earth Observation, remote sensing, and satellite navigation."
+    )
+    assert _extract_eu_eligibility_from_html(project_fit) is None
+
+
+
 def test_eu_eligibility_parser_does_not_promote_generic_process_language():
     from agents.funding_collector import _extract_eu_eligibility_from_html
 
