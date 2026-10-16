@@ -2109,7 +2109,7 @@ def main() -> int:
                 header = (
                     f"{'Source':<35} | {'Method':<6} | {'Pages':<5} | {'PgFail':<6} | "
                     f"{'Detail':<6} | {'Docs':<4} | {'DocFail':<7} | {'Disc':<5} | "
-                    f"{'Valid':<5} | {'RecFail':<7} | {'PagComplete':<11} | "
+                    f"{'Valid':<5} | {'RecFail':<7} | {'Filt':<5} | {'PagComplete':<11} | "
                     f"{'Trunc':<5} | {'Errs':<4} | {'Status':<25}"
                 )
                 print(header)
@@ -2124,7 +2124,7 @@ def main() -> int:
                         f"{res.get('detail_pages_fetched', 0):<6} | "
                         f"{res.get('documents_fetched', 0):<4} | {res.get('documents_failed', 0):<7} | "
                         f"{res.get('records_discovered', 0):<5} | {res.get('records_valid', 0):<5} | "
-                        f"{res.get('records_failed', 0):<7} | {pag_str:<11} | "
+                        f"{res.get('records_failed', 0):<7} | {res.get('records_filtered', 0):<5} | {pag_str:<11} | "
                         f"{str(res.get('truncated', False)):<5} | {len(errors):<4} | "
                         f"{res.get('final_status', 'UNKNOWN'):<25}"
                     )
@@ -2467,6 +2467,8 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "records_discovered": res.records_discovered,
                     "records_valid": res.records_valid,
                     "records_failed": res.records_failed,
+                    "records_filtered": res.records_filtered,
+                    "records_filtered_by_reason": res.records_filtered_by_reason,
                     "duplicates_removed": res.duplicates_removed,
                     "pagination_detected": res.pagination_detected,
                     "pagination_complete": res.pagination_complete,
