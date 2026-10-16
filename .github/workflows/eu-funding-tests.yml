@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/batch1-eu-live-quality-20261016
+      - fix/batch3-normalization-provenance-20261016
   pull_request:
     branches:
       - main
