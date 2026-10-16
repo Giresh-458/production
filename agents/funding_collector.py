@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from html import unescape
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, List, Optional, Iterator
 from urllib.parse import urlparse
@@ -567,6 +567,39 @@ def _eu_status_to_internal(raw_status: str | None) -> str | None:
     return None
 
 
+def _eu_effective_status(
+    raw_status: str | None,
+    deadline_date: str | None,
+    *,
+    today: date | None = None,
+) -> tuple[str | None, str | None]:
+    """Apply a conservative expiry guard to potentially stale portal status metadata.
+
+    The source status is retained separately as provenance. If the API still marks
+    a record open/forthcoming after its explicit deadline has passed, use
+    CLOSED_CALL as the effective status and expose the inconsistency in evidence.
+    Missing or unparseable deadlines do not override the publisher's status.
+    """
+    status = _eu_status_to_internal(raw_status)
+    if status not in {"OPEN_CALL", "UPCOMING_CALL"} or not deadline_date:
+        return status, None
+
+    try:
+        deadline = date.fromisoformat(deadline_date)
+    except (TypeError, ValueError):
+        return status, None
+
+    reference_day = today or datetime.now(UTC).date()
+    if deadline < reference_day:
+        warning = (
+            f"EU Search API reports source status {raw_status!r}, but the explicit "
+            f"deadline {deadline.isoformat()} is before {reference_day.isoformat()}; "
+            "effective status conservatively set to CLOSED_CALL pending source review."
+        )
+        return "CLOSED_CALL", warning
+    return status, None
+
+
 def _collect_eu_funding_tenders(
     source: FundingSource,
     result: CollectionResult,
@@ -650,7 +683,6 @@ def _collect_eu_funding_tenders(
         raw_status = _eu_metadata_value(metadata, "status", "submissionStatus", "callStatus")
         if not raw_status:
             raw_status = _eu_metadata_value(item, "status", "submissionStatus", "callStatus")
-        internal_status = _eu_status_to_internal(raw_status)
         opening_raw = _eu_metadata_value(
             metadata, "openingDate", "startDate", "openingDateTime", "publicationDate"
         )
@@ -661,6 +693,9 @@ def _collect_eu_funding_tenders(
         deadline_dt = parse_date_string(deadline_raw) if deadline_raw else None
         opening_date = opening_dt.date().isoformat() if opening_dt else None
         deadline = deadline_dt.date().isoformat() if deadline_dt else None
+        internal_status, status_consistency_warning = _eu_effective_status(
+            raw_status, deadline
+        )
 
         identifier = _eu_metadata_value(
             metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
@@ -718,6 +753,12 @@ def _collect_eu_funding_tenders(
                 analysis.evidence["source_status_provenance"] = (
                     "European Commission Funding & Tenders public Search API metadata"
                 )
+                if status_consistency_warning:
+                    analysis.evidence["status_consistency_warning"] = status_consistency_warning
+                    analysis.evidence["effective_status_provenance"] = (
+                        "Conservative deadline guard applied because the source status "
+                        "conflicts with its past deadline."
+                    )
             if opening_date:
                 analysis.opening_date = opening_date
                 analysis.evidence["opening_date"] = f"EU Search API opening date: {opening_raw}"
