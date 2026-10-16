@@ -5,7 +5,9 @@ from pathlib import Path
 from core.agent_registry import run_registered_agent
 from core.source_registry import current_force_source_refresh
 from core.shared_crawl_manager import SharedCrawlManager
-from core.funding_selection import FundingCallContext
+from core.funding_selection import (
+    ApplicantProfile, DEFAULT_DB_PATH, FundingCallContext, execute_selection,
+)
 
 def run_pipeline():
     area = "RWA"
@@ -20,15 +22,26 @@ def run_pipeline():
     mgr.stats_actual_fetches = 0
     mgr.stats_in_flight_dedupes = 0
     
-    # 2. Funding Agent (Discover Funding Calls)
+    # 2. Funding Agent (Discover and persist current funding calls).
+    # The collector and selector must use the same canonical SQLite database.
+    db_path = DEFAULT_DB_PATH
     print("Running Funding Agent to discover calls...")
-    run_registered_agent("funding", "configured_scan", area=area, input_data={"output_dir": str(root / "intermediate" / "funding"), "force_refresh": True})
-    
-    # Use real production logic to rank and select the best funding context
-    from core.funding_selection import execute_selection
-    from core.funding_selection import ApplicantProfile
-    db_path = root / "funding.db"
-    
+    funding_response = run_registered_agent(
+        "funding",
+        "configured_scan",
+        area=area,
+        input_data={
+            "output_dir": str(root / "intermediate" / "funding"),
+            "db_path": str(db_path),
+            "analysis_mode": "analyze",
+            "force_refresh": True,
+        },
+    )
+    if funding_response.get("status") == "error":
+        print(f"Funding discovery failed: {funding_response.get('errors', [])}")
+        sys.exit(1)
+
+    # Select only a current open call with concrete applicant eligibility and provenance.
     selection_payload = execute_selection("autonomous", ApplicantProfile(), db_path=db_path)
     
     if not selection_payload.get("selected_funding_call_id"):
