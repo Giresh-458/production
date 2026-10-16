@@ -1082,12 +1082,14 @@ def refresh_intelligence_views(outputs_root: Path) -> Dict[str, Path]:
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
     target_run_id = resolve_refresh_run_id(outputs_root)
 
+    normalization_kwargs = {"filter_func": filter_func}
+    if target_run_id:
+        normalization_kwargs["target_run_id"] = target_run_id
     normalized_outputs = save_normalized_collection_records(
         intermediate_roots,
         outputs_root,
         target_funding_call_id,
-        filter_func=filter_func,
-        target_run_id=target_run_id,
+        **normalization_kwargs,
     )
 
     import json
@@ -1098,11 +1100,17 @@ def refresh_intelligence_views(outputs_root: Path) -> Dict[str, Path]:
     except Exception as e:
         raise RuntimeError(f"Failed to read or parse normalized records from {records_path}") from e
 
-    normalized_records = build_normalized_collection_records(
-        intermediate_roots,
-        target_funding_call_id,
-        target_run_id=target_run_id,
-    )
+    if target_run_id:
+        normalized_records = build_normalized_collection_records(
+            intermediate_roots,
+            target_funding_call_id,
+            target_run_id=target_run_id,
+        )
+    else:
+        normalized_records = build_normalized_collection_records(
+            intermediate_roots,
+            target_funding_call_id,
+        )
     if filter_func:
         filtered_records = []
         for r in normalized_records:
