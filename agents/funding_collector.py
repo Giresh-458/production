@@ -638,9 +638,9 @@ def _extract_eu_eligibility_from_html(value: Any) -> str | None:
         r"\beligible applicants?\s*[:\-]\s*.{15,}",
         r"\bapplicants?\s+(?:must|may|should|need to|are required to|are eligible to)\s+(?:be|include|have|hold|establish|register|reside|operate|meet|demonstrate|provide|form|belong|qualify|include|maintain|undertake|participate|apply)\b",
         r"\bapplications?\s+(?:are|is)\s+open\s+to\b.{15,}",
-        r"\bwho can apply\b.{20,}",
+        r"\bwho can (?:apply|submit)\b.{20,}",
         r"\bonly\b.{0,140}\b(?:may apply|are eligible|can apply)\b",
-        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|must|provided that|support(?:ed)?|are required)\b",
+        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|may submit|can submit|submit grant applications?|must|provided that|support(?:ed)?|are required)\b",
         r"\b(?:legal entities|natural persons|public entities|private entities)\b.{0,140}\b(?:eligible|may apply|can apply|established|registered)\b",
         r"\bconsortiums?\s+must\s+include\b.{20,}",
         r"\b(?:at least|minimum of)\s+\d+\s+(?:independent\s+)?(?:legal entities|partners|beneficiaries|organisations|organizations)\b.{15,}",
@@ -894,10 +894,15 @@ def _collect_eu_funding_tenders(
         # Search hits can omit richer publisher fields. Fetch the documented
         # EU document record only when the hit has no eligibility/content payload.
         detail_reference = str(item.get("reference") or metadata.get("reference") or "").strip()
+        # EU Search hits often omit eligibility-specific keys even when the
+        # official document's description contains an explicit "who can apply"
+        # section. Scan publisher-owned rich-text fields before fetching details.
         detail_keys = (
             "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
             "admissibilityConditions", "eligibilityCriteria", "topicConditions",
             "eligibilityCriteriaHtml", "admissibilityCriteria", "beneficiaryAdministration",
+            "description", "descriptionEn", "descriptionByte", "topicDescription",
+            "scope", "summary",
         )
         metadata_eligibility_present = bool(
             _extract_eu_eligibility_from_html(
@@ -905,11 +910,7 @@ def _collect_eu_funding_tenders(
             )
         ) or any(
             _extract_eu_eligibility_from_html(metadata.get(key))
-            for key in (
-                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
-                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
-                "beneficiaryAdministration",
-            )
+            for key in detail_keys
         )
         if (
             api_config.get("detail_fetch_missing_metadata", True)
@@ -1009,11 +1010,7 @@ def _collect_eu_funding_tenders(
         eligibility = _extract_eu_eligibility_from_html(scalar_eligibility)
         eligibility_source_field = "eligibility"
         if not eligibility:
-            for key in (
-                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
-                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
-                "beneficiaryAdministration",
-            ):
+            for key in detail_keys:
                 extracted = _extract_eu_eligibility_from_html(metadata.get(key))
                 if extracted:
                     eligibility = extracted
