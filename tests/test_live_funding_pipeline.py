@@ -900,7 +900,7 @@ def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls
     raw = {
         "type": "html",
         "url": source.url,
-        "title": "Women TechEU 2 EIC | Climate KIC",
+        "title": "all cookies under each consent category below",
         "content": (
             "Climate KIC navigation describing climate change mitigation and adaptation. "
             "[Skip to content](https://www.climate-kic.org/open-call/women-techeu-2-eic/#content-wrap) "
@@ -918,6 +918,7 @@ def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls
     opportunity = analyze_document(document)
 
     assert "climate change mitigation" not in document.content.casefold()
+    assert document.title == "Women TechEU 2 EIC"
     assert "Women TechEU supports women-led early-stage deep tech startups" in document.content
     assert opportunity.focus_area == "General"
 
