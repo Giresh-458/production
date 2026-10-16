@@ -558,9 +558,9 @@ def _eu_status_to_internal(raw_status: str | None) -> str | None:
     status = re.sub(r"[^a-z0-9]+", "", (raw_status or "").casefold())
     if not status:
         return None
-    if "forthcoming" in status or "upcoming" in status or status == "31094502":
+    if "forthcoming" in status or "upcoming" in status or status == "31094501":
         return "UPCOMING_CALL"
-    if "openforsubmission" in status or status in {"open", "31094501"} or status.startswith("open"):
+    if "openforsubmission" in status or status in {"open", "31094502"} or status.startswith("open"):
         return "OPEN_CALL"
     if "closed" in status or status == "31094503":
         return "CLOSED_CALL"
