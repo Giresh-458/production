@@ -1078,10 +1078,17 @@ def build_operational_views(outputs_root: Path, structured_index: Iterable[Dict[
 def refresh_intelligence_views(outputs_root: Path) -> Dict[str, Path]:
     outputs_root.mkdir(parents=True, exist_ok=True)
 
-    from core.normalization import resolve_refresh_context
+    from core.normalization import resolve_refresh_context, resolve_refresh_run_id
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
+    target_run_id = resolve_refresh_run_id(outputs_root)
 
-    normalized_outputs = save_normalized_collection_records(intermediate_roots, outputs_root, target_funding_call_id, filter_func=filter_func)
+    normalized_outputs = save_normalized_collection_records(
+        intermediate_roots,
+        outputs_root,
+        target_funding_call_id,
+        filter_func=filter_func,
+        target_run_id=target_run_id,
+    )
 
     import json
     records_path = normalized_outputs["records"]
@@ -1091,7 +1098,11 @@ def refresh_intelligence_views(outputs_root: Path) -> Dict[str, Path]:
     except Exception as e:
         raise RuntimeError(f"Failed to read or parse normalized records from {records_path}") from e
 
-    normalized_records = build_normalized_collection_records(intermediate_roots, target_funding_call_id)
+    normalized_records = build_normalized_collection_records(
+        intermediate_roots,
+        target_funding_call_id,
+        target_run_id=target_run_id,
+    )
     if filter_func:
         filtered_records = []
         for r in normalized_records:
