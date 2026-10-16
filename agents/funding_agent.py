@@ -2119,11 +2119,15 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
     connection = db_connect(db_path)
     init_funding_db(connection)
     created = 0
+    refreshed = 0
     for document, analysis in documents_with_analysis:
-        if funding_exists(connection, document.title, document.source):
-            LOGGER.info("Skipping already stored funding item '%s'", document.title)
-            continue
+        already_stored = funding_exists(connection, document.title, document.source)
+        if already_stored:
+            LOGGER.info("Refreshing stored funding item '%s' from %s", document.title, document.source)
         output_path = save_markdown_output(document, analysis, output_dir, run_id=run_id)
+        # save_funding_record uses ON CONFLICT(url) DO UPDATE. Always call it for
+        # an observed source URL so status, deadline and eligibility cannot remain
+        # stale merely because the URL was seen in an earlier scan.
         save_funding_record(
             connection,
             opportunity=analysis,
@@ -2131,9 +2135,13 @@ def process_documents(documents_with_analysis: list[tuple[FundingDocument, Fundi
             source_type=document.source_type,
             year=document.year
         )
-        created += 1
+        if already_stored:
+            refreshed += 1
+        else:
+            created += 1
     connection.commit()
     write_insights(connection, output_dir)
+    LOGGER.info("Funding persistence: %d new records, %d refreshed records", created, refreshed)
     return created
 
 
