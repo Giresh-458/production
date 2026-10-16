@@ -7,11 +7,11 @@ from core.funding_selection import DEFAULT_DB_PATH, FundingCallContext
 
 def test_full_pipeline_analyzes_funding_and_selects_from_the_same_database(tmp_path, monkeypatch):
     import run_full_pipeline
-    import core.funding_selection as funding_selection
+    import run_pipeline
 
     monkeypatch.chdir(tmp_path)
     calls = []
-    selection_db_paths = []
+    selector_calls = []
 
     context = FundingCallContext(
         funding_call_id="CALL-TEST-01",
@@ -56,12 +56,21 @@ def test_full_pipeline_analyzes_funding_and_selects_from_the_same_database(tmp_p
         })
         return {"status": "success", "errors": [], "outputs": [], "items_saved": 0}
 
-    def fake_execute_selection(mode, profile, db_path):
-        selection_db_paths.append(Path(db_path))
-        return selection_payload
+    def fake_get_all_open_funding_calls(funding_result, *, require_domain_match=True):
+        selector_calls.append(require_domain_match)
+        return ([{
+            "title": "Example Research Grant",
+            "program_name": "Example Research Grant",
+            "status": "OPEN_CALL",
+            "focus_area": "DePIN",
+        }], [])
+
+    def fake_build_selected_context(record, mode="autonomous_live"):
+        return context
 
     monkeypatch.setattr(run_full_pipeline, "run_registered_agent", fake_run_registered_agent)
-    monkeypatch.setattr(funding_selection, "execute_selection", fake_execute_selection)
+    monkeypatch.setattr(run_pipeline, "get_all_open_funding_calls", fake_get_all_open_funding_calls)
+    monkeypatch.setattr(run_pipeline, "build__selected_call_context", fake_build_selected_context)
     monkeypatch.setattr(
         "core.normalization.save_normalized_collection_records",
         lambda *args, **kwargs: [],
@@ -72,4 +81,5 @@ def test_full_pipeline_analyzes_funding_and_selects_from_the_same_database(tmp_p
     funding_call = next(call for call in calls if call["agent"] == "funding")
     assert funding_call["input_data"]["analysis_mode"] == "analyze"
     assert Path(funding_call["input_data"]["db_path"]) == DEFAULT_DB_PATH
-    assert selection_db_paths == [DEFAULT_DB_PATH]
+    assert selector_calls == [True]
+    assert all(call["area"] == "DePIN" for call in calls if call["agent"] != "funding")
