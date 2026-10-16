@@ -1,34 +1,52 @@
 # System Architecture
 
-The Research Intelligence Framework (RIF) is built around a modular, multi-agent architecture designed to ensure high-fidelity signal extraction and strict provenance tracking.
+The Research Intelligence Framework (RIF) is built around modular collection,
+processing, and intelligence agents. The canonical orchestration logic lives in
+`run_pipeline.py`; the legacy `run_full_pipeline.py` command delegates to it
+to avoid maintaining two divergent pipeline implementations.
 
 ## Core Modules
 
 ### 1. Agent Registry (`core/agent_registry.py`)
-Provides a unified interface for all agents. The registry allows the orchestrator (`run_full_pipeline.py`) to invoke any collection or processing agent dynamically without tight coupling to its internal implementation. 
+Provides a unified interface for collection, processing, and intelligence agents.
+The registry isolates orchestration from individual agent implementations and
+validates run inputs and agent response structures.
 
-### 2. LLM Provider (`core/llm_provider.py`)
-A centralized routing layer for all language model inferences. 
-- Prevents agents from making direct, unmonitored calls to OpenAI/Anthropic/Ollama.
-- Enforces strict JSON formatting and response validation.
-- Automatically handles network routing (e.g., resolving `OLLAMA_HOST` in containerized environments).
+### 2. Canonical Orchestrator (`run_pipeline.py`)
+Coordinates the funding-to-proposal lifecycle. It creates a unique run-scoped
+output root, qualifies current funding opportunities, filters for research intent,
+dispatches shared collection work, records gate decisions, and refuses to
+continue when required evidence or an upstream stage is missing.
 
-### 3. Funding Context Propagation (`core/funding_context.py`)
-The most critical constraint in the system. 
-- When the pipeline starts, a `FundingCallContext` object is instantiated from the strongest active grant opportunity.
-- This context is passed sequentially to all downstream agents.
-- Agents use this context to filter web signals, ensuring all collected data is directly relevant to the funding parameters.
+### 3. LLM Provider (`core/llm_provider.py`)
+Centralizes language-model inference, response validation, and provider routing.
+Agents should use this module rather than making unmonitored direct model calls.
 
-### 4. SQLite Memory (`core/evidence_ledger.py` & `core/db.py`)
-To prevent memory bloat and API timeout crashes during massive batch runs, RIF relies on local SQLite databases rather than in-memory dictionaries.
-- **Deduplication**: `shared_crawl_manager.py` checks URL hashes against the database to prevent re-scraping.
-- **Persistence**: All normalized signals are saved to disk, allowing processing agents to run as separate asynchronous jobs if necessary.
+### 4. Funding Context Propagation (`core/funding_context.py`)
+A `FundingCallContext` carries the selected funder's constraints and research
+mission to downstream collectors and intelligence agents. In multi-call mode,
+the shared collection phase receives the valid contexts, and per-call processing
+uses the matching context for relevance and proposal gates.
 
-## The Execution Lifecycle
+### 5. Shared Crawl Manager (`core/shared_crawl_manager.py`)
+Provides request deduplication, cache coordination, per-domain concurrency
+limits, HTTP collection, and browser fallback. Crawl telemetry and stop reasons
+are propagated into batch reports.
 
-1. **Initialization**: `run_full_pipeline.py` clears temporary cache files and forces a full source refresh.
-2. **Context Selection**: The orchestrator ranks and selects the target grant opportunity.
-3. **Scatter**: 11 Collection Agents are spawned sequentially (or concurrently depending on the runner) to scrape domains (e.g., GitHub, arXiv, SEC filings).
-4. **Gather**: The extracted intelligence is normalized and written to the SQLite ledger.
-5. **Process**: NLP layers apply tags, cluster identical problems (via deterministic TF-IDF), and identify temporal trends.
-6. **Synthesize**: The synthesis and idea agents compile the structured ledger into a final markdown artifact.
+### 6. Normalization and Evidence Memory (`core/normalization.py`, `core/evidence.py`)
+Normalizes intermediate artifacts into structured records with source URLs,
+collection metadata, run IDs, and funding-call attribution. Per-call relevance
+checks filter the records before NLP and synthesis.
+
+## Execution Lifecycle
+
+1. **Discover:** Gather current funding-call evidence and apply strict qualification.
+2. **Select:** Retain research-eligible calls and construct a validated funding context.
+3. **Collect:** Run the 11 downstream collectors and require a healthy majority with evidence.
+4. **Normalize:** Convert only run-scoped artifacts and enforce funding-call and mission-relevance gates.
+5. **Process:** Tag, cluster, and analyze evidence trends.
+6. **Synthesize:** Build baseline artifacts and research ideas with source provenance.
+7. **Review:** Generate preliminary proposals only when the required upstream gates pass.
+
+The canonical runner stores reports and artifacts under
+`outputs/pipeline_run/<run_id>/`, keeping successive pipeline runs isolated.
