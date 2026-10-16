@@ -15,6 +15,8 @@ on:
       - "sources/funding_sources.yaml"
       - "tests/test_eu_funding_tenders_api.py"
       - "tests/test_live_funding_pipeline.py"
+      - "tests/test_pipeline_multi_call_behavior.py"
+      - "tests/test_source_registry_isolation.py"
       - "tests/test_funding_sources_config.py"
       - ".github/workflows/eu-funding-tests.yml"
 
@@ -42,7 +44,7 @@ jobs:
 
       - name: Run focused regression suite
         run: |
-          python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
+          python -m pytest tests/test_funding_sources_config.py tests/test_funding_source_registry_hardening.py tests/test_domain_relevance_semantics.py tests/test_funding_domain_filter.py tests/test_funding_call_separation.py tests/test_pipeline_multi_call_behavior.py tests/test_source_registry_isolation.py tests/test_live_funding_pipeline.py tests/test_eu_funding_tenders_api.py -q
 
       - name: Run bounded live Batch 1 EU qualification audit
         run: |
