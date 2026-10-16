@@ -51,8 +51,8 @@ def test_stale_document_call_ids_are_recomputed_from_current_evidence():
 
 
 def test_explicit_call_context_overrides_stale_document_ids():
-    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha")
-    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo")
+    call_a = _mock_ctx(funding_call_id="CALL-CURRENT-A", call_title="Current Program Alpha", program_name="Current Program Alpha")
+    call_b = _mock_ctx(funding_call_id="CALL-CURRENT-B", call_title="Current Program Bravo", program_name="Current Program Bravo")
 
     ids = _resolve_funding_call_ids(
         {"funding_call_ids": ["CALL-CURRENT-B"]},
