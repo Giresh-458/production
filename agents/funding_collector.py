@@ -707,10 +707,21 @@ def _collect_eu_funding_tenders(
             metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
         )
         eligibility = _eu_metadata_value(
-            metadata, "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility"
+            metadata, "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
+            "admissibilityConditions", "eligibilityCriteria"
         )
+        eligibility_source_field = "eligibility"
+        if not eligibility:
+            # Search API topicConditions is publisher-provided HTML containing
+            # admissibility/eligibility criteria when no scalar eligibility field exists.
+            eligibility = _eu_metadata_value(
+                metadata, "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria"
+            )
+            if eligibility:
+                eligibility_source_field = "topicConditions"
         description = _eu_metadata_value(
-            metadata, "description", "descriptionEn", "objective", "topicDescription", "scope", "summary", "content"
+            metadata, "description", "descriptionEn", "descriptionByte", "objective",
+            "topicDescription", "scope", "summary", "content"
         )
 
         fields = [
@@ -767,7 +778,12 @@ def _collect_eu_funding_tenders(
                 analysis.evidence["deadline"] = f"EU Search API deadline: {deadline_raw}"
             if eligibility:
                 analysis.eligibility = eligibility
-                analysis.evidence["eligibility"] = f"EU Search API metadata: {eligibility}"
+                analysis.evidence["eligibility"] = (
+                    f"EU Search API metadata field {eligibility_source_field}: {eligibility}"
+                )
+                analysis.evidence["eligibility_provenance"] = (
+                    "European Commission Funding & Tenders public Search API metadata"
+                )
             if amount:
                 analysis.funding_amount = amount
                 analysis.evidence["funding_amount"] = f"EU Search API metadata: {amount}"
