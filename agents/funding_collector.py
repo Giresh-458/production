@@ -682,13 +682,135 @@ def _collect_eu_funding_tenders(
 ) -> CollectionResult:
     """Collect only open/forthcoming EU calls from the Commission Search API."""
     api_config = source.collection.get("api", {}) or {}
-    api_result = eu_funding_tenders_paginated_search(
-        types=[str(value) for value in api_config.get("types", ["1", "2", "8"])],
-        statuses=[str(value) for value in api_config.get("statuses", ["31094501", "31094502"])],
-        page_size=int(api_config.get("page_size", 50)),
-        test_limits=test_limits,
-        source_limits=source_limits,
+    configured_limits = source.collection.get("limits", {}) or {}
+    query_values = api_config.get("search_texts") or ["*"]
+    search_texts = list(dict.fromkeys(
+        str(value).strip() for value in query_values if str(value).strip()
+    )) or ["*"]
+
+    def _effective_limit(name: str, default: int) -> int:
+        values = [
+            limits.get(name)
+            for limits in (configured_limits, source_limits or {}, test_limits or {})
+            if isinstance(limits, dict) and limits.get(name) is not None
+        ]
+        return max(1, min(int(value) for value in values)) if values else default
+
+    max_pages_budget = _effective_limit("max_pages", 5)
+    max_documents_budget = _effective_limit("max_documents", 250)
+    if max_pages_budget < len(search_texts):
+        omitted = search_texts[max_pages_budget:]
+        search_texts = search_texts[:max_pages_budget]
+        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+        warnings_text = (
+            f"{limit_marker}: Search-query budget is {max_pages_budget}; "
+            f"skipped {len(omitted)} configured EU domain query/queries"
+        )
+    else:
+        warnings_text = None
+
+    # Spend the global page/document budget across targeted searches. One page
+    # per query is intentional: it increases RIF-domain recall while the client
+    # still filters expired, ineligible, and weakly matched records.
+    pages_per_query = max(1, max_pages_budget // max(1, len(search_texts)))
+    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
+    documents_per_query = max(
+        1,
+        min(page_size * pages_per_query, (max_documents_budget + len(search_texts) - 1) // len(search_texts)),
     )
+
+    aggregated_records: list[dict] = []
+    aggregated_errors: list[str] = []
+    query_totals: list[int] = []
+    pages_fetched = 0
+    all_queries_complete = warnings_text is None
+    seen_search_refs: set[str] = set()
+    seen_search_urls: set[str] = set()
+    search_duplicates = 0
+
+    for search_text in search_texts:
+        remaining_budget = max_documents_budget - len(aggregated_records)
+        if remaining_budget <= 0:
+            all_queries_complete = False
+            aggregated_errors.append(
+                f"{'TEST_TRUNCATED' if test_limits else 'SOURCE_LIMIT_REACHED'}: "
+                f"Global max documents reached ({max_documents_budget}) before query {search_text!r}"
+            )
+            break
+
+        query_document_cap = min(documents_per_query, remaining_budget)
+        query_page_cap = min(pages_per_query, max(1, (query_document_cap + page_size - 1) // page_size))
+        query_limits = {
+            "max_pages": query_page_cap,
+            "max_documents": query_document_cap,
+        }
+        query_result = eu_funding_tenders_paginated_search(
+            types=[str(value) for value in api_config.get("types", ["1", "2", "8"])],
+            statuses=[str(value) for value in api_config.get("statuses", ["31094501", "31094502"])],
+            search_text=search_text,
+            page_size=min(page_size, query_document_cap),
+            test_limits=query_limits if test_limits else None,
+            source_limits=None if test_limits else query_limits,
+        )
+        pages_fetched += int(query_result.get("pages_fetched", 0) or 0)
+        if query_result.get("total_expected") is not None:
+            try:
+                query_totals.append(int(query_result["total_expected"]))
+            except (TypeError, ValueError):
+                pass
+        if not query_result.get("pagination_complete"):
+            all_queries_complete = False
+
+        for error in query_result.get("errors", []):
+            aggregated_errors.append(f"query={search_text!r}: {error}")
+
+        for item in query_result.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            reference = str(item.get("reference") or "").strip()
+            metadata = item.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            raw_url = item.get("url") or metadata.get("url") or ""
+            if isinstance(raw_url, list):
+                raw_url = next((value for value in raw_url if value), "")
+            canonical_url = ""
+            if str(raw_url).strip().startswith("https://"):
+                parsed = urlparse(str(raw_url).strip())
+                canonical_url = parsed._replace(
+                    scheme=parsed.scheme.lower(),
+                    netloc=parsed.netloc.lower(),
+                    path=parsed.path.rstrip("/") or "/",
+                    fragment="",
+                ).geturl()
+            if (reference and reference in seen_search_refs) or (
+                canonical_url and canonical_url in seen_search_urls
+            ):
+                search_duplicates += 1
+                continue
+            if reference:
+                seen_search_refs.add(reference)
+            if canonical_url:
+                seen_search_urls.add(canonical_url)
+            aggregated_records.append(item)
+
+    if warnings_text:
+        aggregated_errors.append(warnings_text)
+    if len(aggregated_records) >= max_documents_budget and not all_queries_complete:
+        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+        aggregated_errors.append(
+            f"{limit_marker}: Global max documents reached ({max_documents_budget})"
+        )
+
+    api_result = {
+        "results": aggregated_records,
+        "pages_fetched": pages_fetched,
+        # Totals across different text searches overlap, so do not present their
+        # sum as a count of unique opportunities.
+        "total_expected": query_totals[0] if len(search_texts) == 1 and query_totals else None,
+        "pagination_complete": all_queries_complete and not aggregated_errors,
+        "errors": aggregated_errors,
+    }
 
     records = api_result.get("results", [])
     result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
@@ -698,6 +820,7 @@ def _collect_eu_funding_tenders(
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
+    result.duplicates_removed += search_duplicates
 
     for error in api_result.get("errors", []):
         result.errors.append({
