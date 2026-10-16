@@ -36,25 +36,6 @@ sources:
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
-  - name: Chainlink Build Program Status
-    research_domains: [RWA, Stablecoins]
-    url: https://chain.link/blog/build-program-evolution
-    focus: Official Chainlink Build-program status bulletin only, not a direct cash-grant call. The June 26, 2026 announcement says existing Build arrangements are being concluded and the latest Build-related token-reward claims ended July 7, 2026. Do not infer an active grant from general technical support or ecosystem access; require a separately published call with explicit funding terms, eligibility, and application instructions.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - chain.link
-      discovery:
-        start_urls:
-        - https://chain.link/blog/build-program-evolution
-        # Monitor the official programme-status announcement only. Do not follow old
-        # reward, project, or generic ecosystem links as potential grant opportunities.
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
-        pagination: false
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
@@ -67,18 +48,12 @@ sources:
       allowed_domains:
       - solana.org
       - solana.com
-      - earn.superteam.fun
-      - superteam.fun
       # Airtable URLs on the Solana page are submission forms, not detail-call
       # directories. Keep them as evidence/application endpoints in page content,
       # but do not navigate into these forms as crawler candidates.
       discovery:
         start_urls:
         - https://solana.org/grants-funding
-        # Keep the current directory as a bounded seed. Some old navigation links still
-        # point to the broad earn.superteam.fun/grants/ listing; skip that hub while retaining
-        # individual listings under superteam.fun/earn/grants/<slug>.
-        - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
         # A live validation on 2026-10-14 reached 30/30 pages with the discovery queue
         # still populated and 13 records found. Raise only this source's bounded cap so
@@ -89,18 +64,35 @@ sources:
         pagination: true
         exclude_url_patterns:
           - '^https?://solana\.com/news/'
-          - '^https?://earn\.superteam\.fun/(?:earn/)?grants/?(?:[?#].*)?$'
-          - '^https?://superteam\.fun/earn/grants/?(?:[?#].*)?$'
+  - name: Superteam Development Grants
+    research_domains: [RWA, DePIN, MEV, Stablecoins]
+    url: https://superteam.fun/earn/opportunities/development-grants/
+    focus: Official Superteam Earn development-grants directory for Solana and web3 builders. Treat this as a discovery hub, not proof that every listed opportunity is a current cash grant; verify each listing's status, funding or prize terms, eligibility and application instructions.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - superteam.fun
+      - earn.superteam.fun
+      discovery:
+        start_urls:
+        - https://superteam.fun/earn/opportunities/development-grants/
+        max_depth: 3
+        max_pages: 30
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
-    url: https://www.near.org/funding
+    url: https://near.org/funding
     focus: Official NEAR ecosystem grants; retain individual opportunities only when the call has direct evidence for RWA, DID, DePIN, MEV or stablecoins, with current status verified.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - near.org
+      - www.near.org
       - devhub.near.org
       - nearn.io
       - docs.metapool.app
@@ -108,7 +100,7 @@ sources:
       - app.potlock.org
       discovery:
         start_urls:
-        - https://www.near.org/funding
+        - https://near.org/funding
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
@@ -146,21 +138,17 @@ sources:
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
-    focus: XRPL grants for tokenization/RWA and stablecoin/payment infrastructure; verify current round status and application details from programme-level pages.
+    focus: Official XRPL grants directory for RWA/tokenization and stablecoin/payment infrastructure. Crawl the application manager as well as the directory; it can state that no applications are currently open. Require current call-specific evidence before accepting an opportunity.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - xrplgrants.org
-      - brinc.io
-      - tenity.com
+      - submit.xrplgrants.org
       discovery:
-        # Treat the homepage as a directory and verify each linked accelerator on
-        # its own official programme page; the homepage banner can be stale.
         start_urls:
         - https://xrplgrants.org/
-        - https://brinc.io/xrpl-program
-        - https://www.tenity.com/program/sfiip-2026/
+        - https://submit.xrplgrants.org/submit
         max_depth: 1
         max_pages: 10
         follow_detail_pages: true
@@ -170,23 +158,32 @@ sources:
           - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
-    url: https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-    direct_page: true
-    focus: Official Filecoin Open Grants programme page; extract the programme-level amount and continuous-application evidence rather than treating each applicant's GitHub issue as a separate funding call.
+    url: https://fil.org/grants
+    direct_page: false
+    focus: Official Filecoin Foundation grants directory plus the detailed Filecoin Open Grants programme README. The directory is a discovery hub; treat the linked/seeded Open Grants README as the direct programme page and do not treat historical applicant issues as separate funding calls.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
       - github.com
       - raw.githubusercontent.com
+      - fil.org
+      - www.fil.org
       discovery:
         start_urls:
+        - https://fil.org/grants
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
+        max_depth: 2
+        max_pages: 12
+        # The root URL is a directory. Only force-record the README with the
+        # programme's explicit continuous-application and award evidence.
+        direct_page_urls:
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        follow_detail_pages: true
+        follow_pdfs: true
         pagination: false
+        exclude_url_patterns:
+          - '^https?://github\.com/filecoin-project/devgrants/issues(?:/|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
@@ -207,45 +204,100 @@ sources:
         follow_pdfs: false
         pagination: false
   tier_3:
-  - name: Climate Pitch Climate-Tech Grants
+  - name: Climate KIC Open Calls
     research_domains: [ESG]
-    url: https://climatepitch.org/
-    direct_page: true
-    focus: Official Climate Pitch climate-tech grant platform for early-stage startups; retain individual opportunities only when their call text matches ESG evidence such as climate adaptation, emissions, carbon, MRV or sustainability, and verify current deadlines.
+    url: https://www.climate-kic.org/get-involved/open-calls/
+    focus: Official climate-innovation open-call directory. Some entries are accelerators, expressions of interest, or support programmes rather than grants; retain only individual calls with explicit funding/application evidence and direct ESG relevance.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - climatepitch.org
+      - climate-kic.org
+      - www.climate-kic.org
       discovery:
         start_urls:
-        - https://climatepitch.org/
+        - https://www.climate-kic.org/get-involved/open-calls/
+        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         max_depth: 2
-        max_pages: 5
+        max_pages: 15
         follow_detail_pages: true
         follow_pdfs: true
-        pagination: true
-  cps_funding:
-  - name: NSF CPS Foundations and Connected Communities
-    research_domains: [ZK-IoV]
-    url: https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation
-    focus: Official current NSF 25-543 solicitation containing the Cyber-Physical Systems Foundations and Connected Communities programme track; use this canonical solicitation instead of the programme endpoint that returned HTTP 403 in the last live run.
+        pagination: false
+  - name: NSF SBIR Trusted Identity
+    research_domains: [DID]
+    url: https://www.sbir.gov/topics/1012406
+    direct_page: true
+    focus: Official SBIR.gov NSF 26-510 Trusted Identity and Identity Management topic. The listing contains multiple due dates; use the next not-yet-passed date and verify qualifying U.S. small-business eligibility against the linked solicitation.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - nsf.gov
-      - www.nsf.gov
+      - sbir.gov
+      - www.sbir.gov
       discovery:
         start_urls:
-        - https://www.nsf.gov/funding/opportunities/future-core-computer-information-science-engineering-future-computing/nsf25-543/solicitation
-        # This official solicitation contains the CPS track in its own body. Stay on
-        # that canonical document instead of crawling unrelated Future CoRe tracks.
+        - https://www.sbir.gov/topics/1012406
         max_depth: 0
         max_pages: 1
         follow_detail_pages: false
         follow_pdfs: false
         pagination: false
+  - name: NSF SBIR Climate Change Adaptation and Mitigation
+    research_domains: [ESG]
+    url: https://www.sbir.gov/topics/1012419
+    direct_page: true
+    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012419
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: Open SBIR Funding Topics
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://www.sbir.gov/topics?status=Open
+    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed topic is accepting applications now; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence before acceptance.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics?status=Open
+        max_depth: 2
+        max_pages: 30
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery page for open and forthcoming calls for proposals. It is cross-domain discovery only; validate each individual call's status, dates, applicant eligibility, funding terms and direct RIF-domain evidence. Do not infer a ZK-IoV match from an unrelated call.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ec.europa.eu
+      - funding-tenders.ec.europa.eu
+      discovery:
+        start_urls:
+        - https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+        max_depth: 2
+        max_pages: 30
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+  cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
     url: https://idapthub.org/applications/call_for_proposals

@@ -108,8 +108,13 @@ AREA_KEYWORDS = {
         "verifier",
     ],
     "DID": [
-        "did",
         "decentralized identity",
+        "decentralised identity",
+        "self-sovereign identity",
+        "decentralized identifier",
+        "decentralised identifier",
+        "did method",
+        "did document",
         "verifiable credential",
         "verifiable credentials",
         "credential",
@@ -185,10 +190,47 @@ def _keyword_occurrences(text: str, keyword: str) -> int:
     return len(re.findall(pattern, normalized_text))
 
 
+# DOMAIN_REQUIRED_ANCHOR_GROUPS keeps compound domains from being inferred from one unrelated half.
+DOMAIN_REQUIRED_ANCHOR_GROUPS = {
+    "ZK-IoV": (
+        frozenset({
+            "zero-knowledge", "zkvm", "zk proof", "zk proofs", "zkp",
+            "zk-snark", "zk-stark",
+        }),
+        frozenset({
+            "internet of vehicles", "vehicular", "v2x", "connected vehicle",
+            "vehicle-to-everything", "vehicle-to-infrastructure",
+        }),
+    ),
+}
+
+
+def _normalize_research_term(value: Any) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[-_/]+", " ", str(value or "").casefold())).strip()
+
+
+def has_required_domain_anchor_groups(domain: str, matched_terms: Iterable[str]) -> bool:
+    """Return whether evidence contains every required anchor group for a domain."""
+    normalized_domain = normalize_area(domain)
+    groups = DOMAIN_REQUIRED_ANCHOR_GROUPS.get(str(normalized_domain or ""))
+    if not groups:
+        return True
+    matches = {_normalize_research_term(term) for term in (matched_terms or ())}
+    return all(
+        any(_normalize_research_term(anchor) in matches for anchor in group)
+        for group in groups
+    )
+
+
 def score_research_areas(text: str) -> Dict[str, int]:
+    """Count area keywords while enforcing composite-domain evidence."""
     scores: Dict[str, int] = {}
     for area, keywords in AREA_KEYWORDS.items():
-        scores[area] = sum(_keyword_occurrences(text, keyword) for keyword in keywords)
+        matched = [keyword for keyword in keywords if _keyword_occurrences(text, keyword)]
+        score = sum(_keyword_occurrences(text, keyword) for keyword in keywords)
+        if not has_required_domain_anchor_groups(area, matched):
+            score = 0
+        scores[area] = score
     return scores
 
 
@@ -203,17 +245,26 @@ DOMAIN_TERM_WEIGHTS = {
         "proof of reserve": 2.5, "rwa": 2.5,
     },
     "ESG": {
+        "climate change adaptation": 3.0, "climate change mitigation": 3.0,
+        "climate adaptation": 2.5, "climate mitigation": 2.5, "climate resilience": 2.5,
         "carbon credit": 3.0, "carbon": 1.5, "mrv": 2.5, "sustainability": 2.0,
         "emissions": 2.0, "climate": 1.5, "esg": 2.5,
     },
     "ZK-IoV": {
-        "zero-knowledge": 3.0, "zero knowledge": 3.0, "zkvm": 3.0,
-        "internet of vehicles": 3.0, "vehicular": 2.0, "mobility": 1.5,
-        "v2x": 2.5, "iov": 2.5, "zk": 1.0, "proving": 1.5, "verifier": 1.5,
+        "zero-knowledge": 3.0, "zkvm": 3.0, "zk proof": 3.0, "zk proofs": 3.0,
+        "zkp": 3.0, "zk-snark": 3.0, "zk-stark": 3.0,
+        "internet of vehicles": 3.0, "vehicular": 2.0, "connected vehicle": 3.0,
+        "vehicle-to-everything": 3.0, "vehicle-to-infrastructure": 3.0,
+        "mobility": 1.5, "v2x": 2.5, "iov": 1.0, "zk": 1.0,
+        "proving": 1.5, "verifier": 1.5,
     },
     "DID": {
-        "decentralized identity": 3.0, "verifiable credential": 3.0, "verifiable credentials": 3.0,
-        "identity wallet": 3.0, "did": 2.5, "attestation": 2.0, "credential": 1.0,
+        "decentralized identity": 3.0, "decentralised identity": 3.0,
+        "verifiable credential": 3.0, "verifiable credentials": 3.0,
+        "identity wallet": 3.0, "self-sovereign identity": 3.0,
+        "decentralized identifier": 3.0, "decentralised identifier": 3.0,
+        "did method": 2.5, "did document": 2.5,
+        "attestation": 1.5, "credential": 1.0,
     },
     "DePIN": {
         "decentralized physical infrastructure": 3.0, "compute network": 2.5,
@@ -233,15 +284,11 @@ DOMAIN_TERM_WEIGHTS = {
 }
 
 def rank_research_areas(text: str) -> list[Dict[str, Any]]:
-    """Return an evidence-derived 0..1 ranking for all canonical research areas.
-
-    This is deliberately independent from pipeline routing. The caller supplies only
-    the source/evidence text, not the already-selected route, so relevance is based on
-    source content rather than an already-selected route.
-    """
+    """Rank canonical domains from observed text, enforcing compound-domain anchors."""
     lowered = text or ""
     weighted: Dict[str, float] = {}
     matches: Dict[str, list[str]] = {}
+    missing_required_anchors: set[str] = set()
     for area in ALLOWED_RESEARCH_AREAS:
         area_weights = DOMAIN_TERM_WEIGHTS.get(area, {})
         score = 0.0
@@ -251,6 +298,11 @@ def rank_research_areas(text: str) -> list[Dict[str, Any]]:
             if hits:
                 score += hits * weight
                 area_matches.append(term)
+        if not has_required_domain_anchor_groups(area, area_matches):
+            # Never let cryptography-only or vehicle-only evidence masquerade as ZK-IoV.
+            score = 0.0
+            area_matches = []
+            missing_required_anchors.add(area)
         weighted[area] = score
         matches[area] = area_matches
 
@@ -259,15 +311,22 @@ def rank_research_areas(text: str) -> list[Dict[str, Any]]:
     ranked: list[Dict[str, Any]] = []
     for area in ALLOWED_RESEARCH_AREAS:
         score = (weighted[area] / normalization_floor) if normalization_floor else 0.0
+        if area in missing_required_anchors:
+            evidence = (
+                "ZK-IoV requires direct evidence for both zero-knowledge cryptography "
+                "and Internet-of-Vehicles/connected-vehicle technology"
+            )
+        else:
+            evidence = (
+                f"{len(matches[area])} domain-specific term(s) matched"
+                if matches[area] else "No direct domain-specific evidence found"
+            )
         ranked.append({
             "domain": area,
             "score": round(score, 4),
             "raw_score": round(weighted[area], 4),
             "matched_terms": matches[area][:10],
-            "evidence": (
-                f"{len(matches[area])} domain-specific term(s) matched"
-                if matches[area] else "No direct domain-specific evidence found"
-            ),
+            "evidence": evidence,
             "scoring_method": "weighted canonical phrase/term evidence ratio",
         })
     order = {area: idx for idx, area in enumerate(sorted(ALLOWED_RESEARCH_AREAS))}
@@ -275,7 +334,6 @@ def rank_research_areas(text: str) -> list[Dict[str, Any]]:
     for idx, item in enumerate(ranked, 1):
         item["rank"] = idx
     return ranked
-
 
 def resolve_research_area(
     *,

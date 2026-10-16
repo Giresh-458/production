@@ -260,8 +260,8 @@ def test_past_deadline_takes_precedence_over_awardee_copy():
         None,
         None,
         "2026-05-27",
-        "Climate Pitch grants. Grant recipients: 8 startups. Last Date to Apply – 27 May 2026.",
-        "Climate Pitch",
+        "Climate innovation grants. Grant recipients: 8 startups. Last Date to Apply – 27 May 2026.",
+        "Climate-tech funding programme",
     )
     assert status == "CLOSED_CALL"
 
@@ -416,30 +416,115 @@ def test_direct_page_override_applies_only_to_primary_start_url():
     assert [item["url"] for item in result.opportunities] == [primary]
 
 
-def test_chainlink_status_announcement_is_not_misclassified_as_a_funding_call():
+def test_broad_funding_catalogue_roots_are_not_individual_opportunities():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_generic_funding_hub
+
+    samples = [
+        (
+            "https://fil.org/grants",
+            "Filecoin Foundation Grants & Funding Opportunities",
+            "The foundation awards grant funding. Submit a proposal, apply now, "
+            "review eligibility, and check deadlines.",
+        ),
+        (
+            "https://www.climate-kic.org/get-involved/open-calls/",
+            "Climate KIC Open Calls 2027",
+            "Browse open calls, grants, funding, eligibility, application instructions, "
+            "and deadlines for multiple programmes.",
+        ),
+        (
+            "https://www.sbir.gov/topics?status=Open",
+            "Current SBIR topic results",
+            "Open topics list funding amounts, eligibility, calls for proposals, "
+            "deadlines, and application instructions across agencies.",
+        ),
+        (
+            "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502",
+            "Calls for Proposals | EU Funding & Tenders Portal",
+            "Browse open and forthcoming calls for proposals, grant funding, "
+            "eligibility requirements, applications, and deadlines.",
+        ),
+    ]
+
+    for url, title, content in samples:
+        assert _is_generic_funding_hub(url, title, content)
+        assert not _classify_page_stage_b(url, title, content)
+
+
+def test_filecoin_directory_is_not_forced_but_open_grants_readme_is_direct():
+    from unittest.mock import patch
+    from core.crawl4ai_web import crawl_funding_source
+
+    directory = "https://fil.org/grants"
+    program = (
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
+        "Program%20Resources/Open%20Grants%20README.md"
+    )
+
+    def fake_fetch(url):
+        if url == directory:
+            title = "Filecoin Foundation Grants & Funding Opportunities"
+            markdown = (
+                "Filecoin Foundation awards grant funding for development projects. "
+                "Applicants can submit a proposal, review eligibility, apply now, and check deadlines."
+            )
+        else:
+            title = "Open Grants"
+            markdown = "Programme evidence text."
+        return {
+            "html": "<html><body>Funding page</body></html>",
+            "markdown": markdown,
+            "success": True,
+            "error_message": None,
+            "status_code": 200,
+            "url": url,
+            "title": title,
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch), \
+         patch("core.crawl4ai_web._wait_for_host_slot", return_value=True):
+        result = crawl_funding_source(
+            "Filecoin Grants and Funding",
+            directory,
+            {
+                "start_urls": [directory, program],
+                "max_depth": 0,
+                "max_pages": 2,
+                "direct_page_urls": [program],
+                "respect_robots_txt": False,
+            },
+            ["fil.org", "raw.githubusercontent.com"],
+        )
+
+    assert [item["url"] for item in result.opportunities] == [program]
+
+
+def test_ecosystem_status_announcement_is_not_misclassified_as_a_funding_call():
     from core.crawl4ai_web import _classify_page_stage_b
 
-    title = "Evolving the Chainlink Build Program"
+    title = "Evolving an Ecosystem Builder Program"
     content = (
-        "The Chainlink ecosystem is continually evolving how it supports early and mid-stage projects. "
-        "Existing arrangements under the Build program are being concluded, while new commercial "
-        "agreements are established on a case-by-case basis. The latest season of Build-related token "
+        "The blockchain ecosystem is continually evolving how it supports early and mid-stage projects. "
+        "Existing arrangements under the builder programme are being concluded, while new commercial "
+        "agreements are established on a case-by-case basis. The latest season of programme-specific token "
         "rewards marked the conclusion of those rewards, with claims ending July 7, 2026. "
         "This announcement is a program-status update, not an open application call."
     )
     assert _classify_page_stage_b(
-        "https://chain.link/blog/build-program-evolution", title, content
+        "https://funding.example.org/program-status", title, content
     ) is False
 
 
 def test_collection_error_formatter_exposes_operation_url_and_reason():
     error = {
         "operation": "page_fetch",
-        "url": "https://chain.link/community/grants",
+        "url": "https://funding.example.org/previously-configured-route",
         "error": "HTTP 404",
     }
     assert _format_collection_error(error) == (
-        "page_fetch | https://chain.link/community/grants | HTTP 404"
+        "page_fetch | https://funding.example.org/previously-configured-route | HTTP 404"
     )
     assert _format_collection_error("robots.txt disallows this URL") == (
         "robots.txt disallows this URL"
@@ -599,23 +684,23 @@ def test_specific_superteam_h1_precedes_about_section_and_open_badge_is_open():
     assert opportunity.application_url == "https://83chy35k9ea.typeform.com/to/Mgl4epqX"
 
 
-def test_climate_pitch_expired_homepage_is_not_a_funded_project():
+def test_expired_climate_grant_deadline_is_not_a_funded_project():
     from agents.funding_agent import FundingDocument, analyze_document, extract_call_dates
 
     content = (
-        "CLIMATE PITCH. A Grant Funding Platform for Early-stage Startups in Climate Tech.\n"
+        "Climate innovation grant programme for early-stage startups in climate technology.\n"
         "Apply Here. _Last Date to Apply –_ _27 May 2026_.\n"
-        "Climate Pitch Showcase. Grant Support: Up to Rs 20 Lakhs.\n"
+        "Climate innovation showcase. Grant Support: Up to Rs 20 Lakhs.\n"
         "Grant recipients: 8 startups.\n"
-        "Winners of Climate Pitch 2025. Previous Winners.\n"
+        "Previous programme awardees.\n"
     )
     _, deadline = extract_call_dates(content)
     assert deadline == "2026-05-27"
 
     opportunity = analyze_document(FundingDocument(
-        organization="Climate Pitch Climate-Tech Grants",
-        title="Climate Pitch",
-        source="https://climatepitch.org/",
+        organization="Example Climate Funding Programme",
+        title="Climate-tech funding programme",
+        source="https://funding.example.org/climate-call",
         source_type="html",
         content=content,
         year=2026,
@@ -637,3 +722,29 @@ def test_flashbots_markdown_h1_wins_over_url_fallback_title():
         content,
         "Extracted from https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
     ) == "MEV Fellowship Grants"
+
+
+def test_repeated_due_date_schedule_selects_nearest_future_round():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    opening_date = today - timedelta(days=30)
+    past_deadline = today - timedelta(days=10)
+    next_deadline = today + timedelta(days=20)
+    later_deadline = today + timedelta(days=80)
+
+    def display_date(value):
+        return f"{value.strftime('%B')} {value.day}, {value.year}"
+
+    content = (
+        f"Open Date: {display_date(opening_date)}. "
+        f"3. Due Date(s) {display_date(past_deadline)}; "
+        f"{display_date(next_deadline)}; {display_date(later_deadline)}. "
+        f"4. Close Date: {display_date(later_deadline)}. "
+        "Solicitation Status: Open."
+    )
+    opening, deadline = extract_call_dates(content)
+
+    assert opening == opening_date.isoformat()
+    assert deadline == next_deadline.isoformat()
+    assert determine_status(None, opening, deadline, content) == "OPEN_CALL"
