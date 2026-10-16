@@ -32,3 +32,14 @@ A large percentage of official grant guidelines are published directly as `.pdf`
 
 ### 4. LLM Schema Extraction
 Once the recursively discovered pages (and PDFs) are extracted into text, they are passed to the central `llm_provider.py`. The LLM extracts the unstructured text into a strict `FundingOpportunity` JSON schema, validating fields like `Funding Amount`, `Deadline`, and `Eligibility` before writing to the SQLite database.
+
+
+## Structured funding discovery and live completeness
+
+Most sources use the bounded web collector. A source may instead use API mode when its publisher provides a supported public search API. API adapters must keep publisher-defined status filters, page and document limits, deduplication, and explicit partial/failure reporting; reaching a local cap must never be reported as complete coverage.
+
+The EU Funding & Tenders source uses the European Commission's public Search API at https://api.tech.ec.europa.eu/search-api/prod/rest/search. Its query is restricted to call types 1, 2, and 8 and the open/forthcoming status codes 31094501 and 31094502. The official portal listing remains in the source record for provenance, but the static topic-list export is not used as a substitute for the status-filtered API results. Returned records must retain their official detail URL and only use status, dates, eligibility, or funding amounts when those values are present in source metadata.
+
+The sources/funding_sources.yaml catalogue and sources/source_registry.json lifecycle state work together. A URL present in YAML can still be skipped when its matching registry entry is deprecated. When a source is intentionally restored to the active catalogue, restore its registry status in the same change and add a regression test so an apparently successful run cannot silently omit it.
+
+For live quality checks, read the per-source collection status and inspect the generated call records after the crawler completes. VERIFIED describes source-collection completeness within the configured boundary; it does not by itself prove every extracted record is an open, eligible, domain-matched funding opportunity. A page-cap warning or failed robots-policy check remains a coverage gap and should be resolved or preserved as PARTIAL.
