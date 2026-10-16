@@ -928,15 +928,23 @@ def resolve_refresh_context(outputs_root: Path):
     return intermediate_roots, target_funding_call_id, filter_func
 
 
+def resolve_refresh_run_id(outputs_root: Path) -> str | None:
+    """Read the active run ID for a call-scoped output root, if available."""
+    if outputs_root.parent.name != "calls":
+        return None
+    selected_path = outputs_root / "workflow" / "selected_funding_call.json"
+    try:
+        wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    run_value = wrapper.get("run_id") if isinstance(wrapper, dict) else None
+    return _clean(str(run_value or "")) or None
+
+
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
-    target_run_id = None
-    if target_funding_call_id:
-        selected_path = outputs_root / "workflow" / "selected_funding_call.json"
-        wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
-        run_value = wrapper.get("run_id")
-        target_run_id = _clean(str(run_value or "")) or None
+    target_run_id = resolve_refresh_run_id(outputs_root)
 
     newest_intermediate = 0.0
     for ir in intermediate_roots:
