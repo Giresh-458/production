@@ -164,7 +164,49 @@ jobs:
                       "deadline": ((metadata.get("deadlineDate") or [""])[0]),
                       "hits": extract_hits(body),
                   })
-          print(json.dumps({"sort_comparison": sorts, "beneficiary_administration_hits": eligibility}, indent=2, ensure_ascii=False))
+          # Probe the Elasticsearch-style range filter: retain active/forthcoming statuses
+          # but exclude records whose explicit deadline has elapsed.
+          from datetime import datetime, timezone
+          today = datetime.now(timezone.utc).date().isoformat()
+          fresh_query = {"bool": {
+              "must": [
+                  {"terms": {"type": ["1", "2", "8"]}},
+                  {"terms": {"status": ["31094501", "31094502"]}},
+              ],
+              "must_not": [
+                  {"range": {"deadlineDate": {"lt": today}}}
+              ],
+          }}
+          fresh_payload, _ = post_multipart_json(
+              endpoint,
+              params={"apiKey": "SEDIA", "text": "*", "pageNumber": 1,
+                      "pageSize": 10, "sortBy": "deadline", "orderBy": "DESC"},
+              fields={
+                  "query": (None, json.dumps(fresh_query, separators=(",", ":")), "application/json"),
+                  "languages": (None, json.dumps(["en"]), "application/json"),
+                  "displayLanguage": (None, "en", "text/plain"),
+              },
+              headers=headers, timeout=(8, 25), retries=1,
+          )
+          fresh_items = fresh_payload.get("results", [])
+          deadline_filter_probe = {
+              "as_of_utc_date": today,
+              "total_results": fresh_payload.get("totalResults"),
+              "returned": len(fresh_items),
+              "records": [
+                  {
+                      "title": ((item.get("metadata") or {}).get("title") or [""])[0],
+                      "deadline": ((item.get("metadata") or {}).get("deadlineDate") or [""])[0],
+                      "status": ((item.get("metadata") or {}).get("status") or [""])[0],
+                  }
+                  for item in fresh_items[:10]
+              ],
+          }
+          print(json.dumps({
+              "sort_comparison": sorts,
+              "beneficiary_administration_hits": eligibility,
+              "deadline_filter_probe": deadline_filter_probe,
+          }, indent=2, ensure_ascii=False))
           PY
 
       - name: Live EU Search API smoke test (bounded)
