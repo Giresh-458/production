@@ -138,3 +138,53 @@ def test_eu_status_codes_match_portal_reference_values():
     assert _eu_status_to_internal("31094503") == "CLOSED_CALL"
     assert _eu_status_to_internal("Open for Submission") == "OPEN_CALL"
     assert _eu_status_to_internal("Forthcoming") == "UPCOMING_CALL"
+
+
+
+def test_eu_collector_deduplicates_repeated_detail_urls_with_different_references(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    duplicate_url = (
+        "https://ec.europa.eu/funding-tenders/opportunities/portal/"
+        "screen/opportunities/competitive-calls-cs/46786367"
+    )
+    common_metadata = {
+        "title": ["Example live cascade call"],
+        "status": ["31094502"],
+        "deadlineDate": ["2026-12-01"],
+        "callIdentifier": ["EXAMPLE-2026"],
+        "description": ["Research infrastructure funding opportunity."],
+    }
+    records = [
+        {"reference": "first-index-reference", "url": duplicate_url, "metadata": common_metadata},
+        {"reference": "second-index-reference", "url": duplicate_url + "#details", "metadata": common_metadata},
+    ]
+    monkeypatch.setattr(
+        funding_collector,
+        "eu_funding_tenders_paginated_search",
+        lambda **kwargs: {
+            "results": records,
+            "pages_fetched": 1,
+            "total_expected": 2,
+            "pagination_complete": True,
+            "errors": [],
+        },
+    )
+    source = FundingSource(
+        name="EU Open and Forthcoming Funding Calls",
+        url="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals",
+        tier="tier_3",
+        collection={"api": {"types": ["1", "2", "8"], "statuses": ["31094501", "31094502"]}},
+        research_domains=["RWA"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert result.records_discovered == 2
+    assert result.duplicates_removed == 1
+    assert result.records_valid == 1
+    assert len(result.opportunities) == 1
