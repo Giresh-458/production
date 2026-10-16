@@ -219,9 +219,11 @@ class AllCollectionAgentTests(unittest.TestCase):
                 self.assertGreaterEqual(len(result["outputs"]), 1, result)
                 self.assertFalse(result.get("errors"), result)
                 output = result["outputs"][0]
-                self.assertTrue(output.get("source"), output)
-                self.assertTrue(output.get("title"), output)
-                self.assertTrue(output.get("problem"), output)
+                # Funding uses the domain-specific source_url field; other
+                # collection agents expose the common source field.
+                self.assertTrue(output.get("source") or output.get("source_url"), output)
+                self.assertTrue(output.get("title") or output.get("program_name"), output)
+                self.assertTrue(output.get("problem") or output.get("problem_signal"), output)
 
     def test_all_eleven_downstream_agents_preserve_run_and_call_provenance(self):
         """Each downstream collector persists the active run and selected call ID."""
@@ -300,26 +302,20 @@ class AllCollectionAgentTests(unittest.TestCase):
                 self.assertIsInstance(result["errors"], list)
                 self.assertIsInstance(result["warnings"], list)
 
-    def test_data_availability_new_fields_are_present(self):
+    def test_data_availability_does_not_synthesize_llm_fallback(self):
         doc = DataDocument("Benchmark", "Benchmark", "Dataset Description", "ZK-IoV", "evaluation", "manual://x", TEXTS["data_availability"], "Manual")
-        a = data_fallback(doc)
-        self.assertTrue(a.benchmark_gap)
-        self.assertTrue(a.reproducibility)
-        self.assertTrue(a.dataset_scope)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            data_fallback(doc)
 
-    def test_expert_fit_fields_are_present(self):
+    def test_expert_does_not_synthesize_llm_fallback(self):
         doc = ExpertDocument("Professor Profile", "Expert Profile", "Profile", "Professor", "University", "Faculty", "ZK-IoV", "cryptography", "manual://x", TEXTS["expert"], "Manual")
-        a = expert_fallback(doc)
-        self.assertGreaterEqual(a.collaboration_fit_score, 0)
-        self.assertLessEqual(a.collaboration_fit_score, 100)
-        self.assertTrue(a.recent_publication_signal)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            expert_fallback(doc)
 
-    def test_failure_evidence_fields_are_present(self):
+    def test_failure_agent_does_not_synthesize_llm_fallback(self):
         doc = FailureDocument("Bridge Incident", "Postmortem", "Incident Report", "RWA", "bridge exploit", "manual://x", TEXTS["failure"], "Manual")
-        a = failure_fallback(doc)
-        self.assertTrue(a.attack_vector)
-        self.assertTrue(a.evidence_strength)
-        self.assertTrue(a.affected_system)
+        with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
+            failure_fallback(doc)
 
 
 if __name__ == "__main__":
