@@ -518,8 +518,9 @@ def eu_funding_tenders_paginated_search(
             "text": str(search_text or "*").strip() or "*",
             "pageNumber": pages_fetched + 1,
             "pageSize": current_page_size,
-            # Put calls with the latest deadlines first. The portal search index
-            # can retain legacy items whose status still says Open after expiry.
+            # Request the portal's documented deadline ordering, but do not trust
+            # it for currentness: live probes showed expired calls can still appear.
+            # The collector must validate deadlines client-side.
             "sortBy": "deadline",
             "orderBy": "DESC",
         }
