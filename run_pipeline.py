@@ -235,7 +235,7 @@ def get_all_open_funding_calls(
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})
             continue
 
-        if not _has_substantive_eligibility_evidence(record.get("eligibility")):
+        if not has_substantive_eligibility_evidence(record.get("eligibility")):
             rejected.append({
                 "title": record.get("title"),
                 "status": status,
