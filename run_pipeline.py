@@ -161,6 +161,61 @@ def _supported_rif_funding_domains(
     )
 
 
+def _has_substantive_eligibility_evidence(value: Any) -> bool:
+    """Return True only when eligibility text states an applicant rule or category.
+
+    Topic relevance (what a project should demonstrate) is not applicant
+    eligibility (who may apply and under what constraints). Keep this gate
+    conservative because selected calls become the downstream funding context.
+    """
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or text.casefold() in {"none", "null", "unknown", "n/a", "not specified"}:
+        return False
+
+    if re.search(
+        r"\b(?:will then be invited to submit|eligibility criteria "
+        r"(?:specified|set out|described) in the call|"
+        r"pass/fail requirements?.{0,120}\bassessed by)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return False
+
+    applicant_scope = re.search(
+        r"\b(?:eligible applicants?|applicants?|applicant types?|who can apply|"
+        r"legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
+        r"research organisations?|research organizations?|universit(?:y|ies)|"
+        r"public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
+        r"start[- ]ups?|students?|individual developers?|research teams?|"
+        r"companies|businesses|organisations|organizations|consortiums?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    concrete_constraint = re.search(
+        r"\b(?:eligible|eligibility|may apply|can apply|may submit|can submit|"
+        r"must be|must include|must have|are required to|are limited to|"
+        r"not eligible|cannot apply|established|registered|incorporated|"
+        r"resident|reside|domiciled|based in|located in|citizens? of|"
+        r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
+        r"start[- ]up only|open to)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    concrete_subject_or_condition = re.search(
+        r"\b(?:legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
+        r"research organisations?|research organizations?|universit(?:y|ies)|"
+        r"public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
+        r"start[- ]ups?|students?|individual developers?|research teams?|"
+        r"companies|businesses|organisations|organizations|consortiums?|"
+        r"established|registered|incorporated|resident|reside|domiciled|"
+        r"based in|located in|citizens? of|at least\s+\d+)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return bool(applicant_scope and concrete_constraint and concrete_subject_or_condition)
+
+
 def get_all_open_funding_calls(
     funding_result: dict[str, Any], *, require_domain_match: bool = True
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -230,6 +285,15 @@ def get_all_open_funding_calls(
         generic_names = {"how to apply", "apply", "request for proposals", "funding", "grants", "programs"}
         if program_name.lower().rstrip(" .:-") in generic_names:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})
+            continue
+
+        if not _has_substantive_eligibility_evidence(record.get("eligibility")):
+            rejected.append({
+                "title": record.get("title"),
+                "status": status,
+                "reasons": ["missing substantive applicant eligibility evidence"],
+                "source_url": record.get("source_url"),
+            })
             continue
         evidence_score = sum(1 for f in ["deadline", "application_url", "funding_amount", "eligibility", "evaluation_criteria"] if record.get(f))
         has_call_identity = program_name.lower() not in generic_names
@@ -344,6 +408,11 @@ def get_all_open_funding_calls(
         record = dict(record)
         if require_domain_match:
             record["matched_rif_domains"] = matched_rif_domains
+            # The strict domain-evidence gate is stronger than a generic
+            # classifier fallback. Keep the public focus_area aligned with the
+            # canonical domain that actually passed that gate.
+            if normalize_area(str(record.get("focus_area") or "")) not in matched_rif_domains:
+                record["focus_area"] = matched_rif_domains[0]
         record["selection_score"] = round(min(score, 0.99), 4)
         record["call_id"] = call_id
         candidates.append((score, record))
