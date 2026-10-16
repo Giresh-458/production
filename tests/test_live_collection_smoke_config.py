@@ -44,7 +44,7 @@ def test_smoke_config_contains_exactly_one_bounded_real_source(agent: str, tmp_p
 @pytest.mark.parametrize(
     ("agent", "expected_name"),
     [
-        ("company", "Securitize"),
+        ("company", "Ondo Finance"),
         ("expert", "IISc CSA Faculty"),
         ("lab", "Chainlink Labs"),
         ("practitioner", "Ethereum Research"),
