@@ -215,6 +215,7 @@ jobs:
           import json
           from collections import Counter
           from core.structured_sources import eu_funding_tenders_paginated_search
+          from core.http_client import fetch_json
           from agents.funding_collector import _eu_metadata_value, _eu_status_to_internal
 
           result = eu_funding_tenders_paginated_search(
@@ -260,6 +261,42 @@ jobs:
                       "url": item.get("url"),
                   })
 
+          detail_samples = []
+          for item in records[:3]:
+              reference = item.get("reference")
+              if not reference:
+                  continue
+              try:
+                  detail, detail_url = fetch_json(
+                      f"https://api.tech.ec.europa.eu/search-api/prod/rest/document/{reference}",
+                      params={"apiKey": "SEDIA"},
+                      headers={
+                          "Accept": "application/json, text/plain, */*",
+                          "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+                          "Origin": "https://ec.europa.eu",
+                          "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+                      },
+                      timeout=(8, 15),
+                      retries=1,
+                  )
+                  detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                  detail_samples.append({
+                      "reference": reference,
+                      "detail_url": detail_url,
+                      "top_level_keys": list(detail.keys()) if isinstance(detail, dict) else [],
+                      "metadata_keys": list(detail_metadata.keys()) if isinstance(detail_metadata, dict) else [],
+                      "has_eligibility": bool(any(
+                          _eu_metadata_value(detail_metadata, key) for key in (
+                              "eligibility", "eligibilityConditions", "eligibleApplicants",
+                              "applicantEligibility", "admissibilityConditions",
+                              "eligibilityCriteria", "topicConditions", "eligibilityCriteriaHtml",
+                              "admissibilityCriteria"
+                          )
+                      )),
+                  })
+              except Exception as exc:
+                  detail_samples.append({"reference": reference, "detail_error": str(exc)})
+
           output = {
               "records_received": len(records),
               "total_expected": result.get("total_expected"),
@@ -267,6 +304,7 @@ jobs:
               "pagination_complete": result.get("pagination_complete"),
               "status_mapping_counts": dict(statuses),
               "eligibility_metadata_field_counts": dict(eligibility_fields),
+              "detail_endpoint_samples": detail_samples,
               "sample_records": samples,
               "errors": result.get("errors", []),
           }
