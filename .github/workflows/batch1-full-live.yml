@@ -1,0 +1,190 @@
+name: Batch 1 post-fix live validation v2
+
+on:
+  push:
+    branches:
+      - ci-batch1-post56-validation-v2
+
+permissions:
+  contents: read
+
+jobs:
+  batch1-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out Batch 1 quality-hardening candidate
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Batch 1 runtime and audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0"
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run focused Batch 1 and EU regression suite
+        run: |
+          python -m pytest \
+            tests/test_funding_sources_config.py \
+            tests/test_funding_source_registry_hardening.py \
+            tests/test_domain_relevance_semantics.py \
+            tests/test_funding_domain_filter.py \
+            tests/test_funding_call_separation.py \
+            tests/test_live_funding_pipeline.py \
+            tests/test_eu_funding_tenders_api.py -q
+
+      - name: Run full configured Batch 1 collection and production selector
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from datetime import date, datetime
+          from pathlib import Path
+          from agents.funding_agent import run_agent
+          from run_pipeline import get_all_open_funding_calls
+
+          outdir = Path("outputs/ci_batch1_post_fix")
+          outdir.mkdir(parents=True, exist_ok=True)
+          response = run_agent(
+              "configured_scan",
+              None,
+              {
+                  "sources_path": "sources/funding_sources.yaml",
+                  "posts_per_source": 10,
+                  "output_dir": str(outdir),
+                  "db_path": str(outdir / "funding_memory.db"),
+                  "analysis_mode": "analyze",
+                  "is_test_mode": False,
+                  "log_level": "INFO",
+              },
+          )
+          outputs = response.get("outputs", []) or []
+          collection_results = response.get("collection_results", []) or []
+          qualified, rejected = get_all_open_funding_calls(
+              {"outputs": outputs}, require_domain_match=True
+          )
+          today = date.today()
+          generic_title = re.compile(
+              r"^(?:our programs?|grants? and funding|funding|open calls?|calls? for proposals?|"
+              r"grant programs?|funding opportunities?|programs?|topic|home)$",
+              re.I,
+          )
+
+          def safe_date(value):
+              try:
+                  return date.fromisoformat(str(value)[:10]) if value else None
+              except ValueError:
+                  return None
+
+          selected_quality_flags = []
+          qualified_summary = []
+          for record in qualified:
+              title = str(record.get("title") or record.get("program_name") or "").strip()
+              status = str(record.get("status") or "").upper()
+              deadline = safe_date(record.get("deadline"))
+              issues = []
+              if generic_title.fullmatch(title):
+                  issues.append("generic_title")
+              if status != "OPEN_CALL":
+                  issues.append("not_currently_open")
+              if deadline and deadline < today:
+                  issues.append("expired_deadline")
+              if not (record.get("source_url") or record.get("application_url")):
+                  issues.append("missing_source_and_application_url")
+              if not record.get("matched_rif_domains"):
+                  issues.append("missing_proven_canonical_domain")
+              if issues:
+                  selected_quality_flags.append({
+                      "title": title,
+                      "status": status,
+                      "deadline": record.get("deadline"),
+                      "issues": issues,
+                      "source_url": record.get("source_url"),
+                  })
+              qualified_summary.append({
+                  "title": title,
+                  "status": status,
+                  "deadline": record.get("deadline"),
+                  "opening_date": record.get("opening_date"),
+                  "funding_amount": record.get("funding_amount"),
+                  "eligibility": record.get("eligibility"),
+                  "application_url": record.get("application_url"),
+                  "source_url": record.get("source_url"),
+                  "focus_area": record.get("focus_area"),
+                  "matched_rif_domains": record.get("matched_rif_domains"),
+                  "source_status": (record.get("evidence") or {}).get("source_status"),
+              })
+
+          source_summary = []
+          for item in collection_results:
+              source_summary.append({
+                  key: item.get(key) for key in (
+                      "source_id", "method", "final_status", "pages_fetched",
+                      "detail_pages_fetched", "detail_pages_failed", "documents_fetched",
+                      "records_discovered", "records_valid", "records_failed",
+                      "records_filtered", "records_filtered_by_reason",
+                      "duplicates_removed", "truncated", "pagination_complete",
+                  )
+              })
+              source_summary[-1]["errors"] = [
+                  {
+                      "operation": e.get("operation") if isinstance(e, dict) else None,
+                      "url": e.get("url") if isinstance(e, dict) else None,
+                      "error": e.get("error") if isinstance(e, dict) else str(e),
+                  }
+                  for e in (item.get("errors") or [])
+              ][:5]
+
+          rejection_reasons = {}
+          for entry in rejected:
+              for reason in entry.get("reasons", []):
+                  rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+
+          summary = {
+              "run_status": response.get("status"),
+              "items_processed": response.get("items_processed"),
+              "raw_records_count": len(outputs),
+              "raw_current_status_candidates": sum(
+                  str(r.get("status", "")).upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+                  for r in outputs
+              ),
+              "qualified_actionable_count": len(qualified),
+              "qualified_actionable_calls": qualified_summary,
+              "qualified_quality_flags_count": len(selected_quality_flags),
+              "qualified_quality_flags": selected_quality_flags,
+              "rejected_candidates_count": len(rejected),
+              "rejection_reason_counts": rejection_reasons,
+              "source_summary": source_summary,
+              "warnings": response.get("warnings", []),
+          }
+          (outdir / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          (outdir / "records.json").write_text(
+              json.dumps(outputs, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          print(json.dumps(summary, indent=2, ensure_ascii=False))
+          if response.get("status") == "error":
+              raise SystemExit("Batch 1 funding agent returned error status")
+          if not qualified:
+              raise SystemExit("Batch 1 produced no calls accepted by the production eligibility/domain selector")
+          if selected_quality_flags:
+              raise SystemExit("Production selector emitted one or more invalid actionable calls")
+          PY
+
+      - name: Upload full Batch 1 audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch1-post-fix-audit
+          path: outputs/ci_batch1_post_fix/
+          if-no-files-found: warn
+          retention-days: 7
