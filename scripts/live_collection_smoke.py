@@ -48,7 +48,7 @@ AGENT_CONFIGS = {
 }
 PER_AGENT_DEADLINE_SECONDS = 120
 PREFERRED_SOURCES = {
-    "company": ("Securitize", "Ondo Finance"),
+    "company": ("Ondo Finance", "Securitize"),
     "expert": ("IISc CSA Faculty", "IISc CrIS Lab"),
     "lab": ("Chainlink Labs", "Protocol Labs"),
     "practitioner": ("Ethereum Research", "Chainlink Community"),
