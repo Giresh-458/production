@@ -40,6 +40,12 @@ def evaluate_collection_health(collection_tasks: list[dict], min_required_agents
     is_healthy = len(healthy_agents) >= min_required_agents
     return is_healthy, len(healthy_agents)
 
+def minimum_healthy_collectors(total_agents: int) -> int:
+    """Require a strict majority, with a three-agent floor for larger batches."""
+    if total_agents <= 0:
+        return 0
+    return min(total_agents, max(3, total_agents // 2 + 1))
+
 def run_stage(agent: str, mode: str, area: str | None, payload: dict[str, Any], funding_context: FundingCallContext | None = None) -> dict[str, Any]:
     return run_registered_agent(agent, mode, area=area, input_data=payload, funding_context=funding_context)
 
@@ -585,7 +591,7 @@ def main() -> int:
         return 4
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
-    min_required = max(3, len(downstream_agents) // 3)
+    min_required = minimum_healthy_collectors(len(downstream_agents))
     is_healthy, healthy_count = evaluate_collection_health(collection_tasks, min_required)
 
     collector_health = {"healthy_agents": healthy_count, "total_agents": len(downstream_agents), "required": min_required}
