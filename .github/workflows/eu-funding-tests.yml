@@ -32,7 +32,7 @@ permissions:
 jobs:
   eu-funding-quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -46,7 +46,8 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest PyYAML requests beautifulsoup4 python-dotenv pypdf numpy
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+          python -m playwright install --with-deps chromium
 
       - name: Run focused regression suite
         run: |
@@ -122,3 +123,173 @@ jobs:
           if non_cap_errors:
               raise SystemExit("EU qualification audit had non-limit acquisition/normalization errors")
           PY
+
+      - name: Run full configured Batch 1 scan and strict production selector
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          from agents.funding_agent import run_agent
+          from core.funding_selection import has_substantive_eligibility_evidence
+          from core.schemas import normalize_area
+          from run_pipeline import get_all_open_funding_calls
+
+          output_dir = Path("outputs/ci_batch1_full_live")
+          output_dir.mkdir(parents=True, exist_ok=True)
+          run_id = "ci-batch1-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+          response = run_agent(
+              "configured_scan",
+              None,
+              {
+                  "sources_path": "sources/funding_sources.yaml",
+                  "posts_per_source": 10,
+                  "output_dir": str(output_dir / "markdown"),
+                  "db_path": str(output_dir / "funding_memory.db"),
+                  "analysis_mode": "analyze",
+                  "is_test_mode": False,
+                  "force_refresh": True,
+                  "run_id": run_id,
+                  "log_level": "INFO",
+              },
+          )
+          records = response.get("outputs", []) or []
+          collection_results = response.get("collection_results", []) or []
+          selected, rejected = get_all_open_funding_calls(
+              {"outputs": records},
+              require_domain_match=True,
+          )
+          today = datetime.now(timezone.utc).date()
+          generic_title = re.compile(
+              r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
+              r"open grants?|grants? and funding|funding opportunities?|open calls?|"
+              r"calls? for proposals?|topic|home|overview)$",
+              re.IGNORECASE,
+          )
+
+          def as_date(value):
+              try:
+                  return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date() if value else None
+              except ValueError:
+                  return None
+
+          quality_flags = []
+          selected_summary = []
+          for record in selected:
+              title = str(record.get("title") or record.get("program_name") or "").strip()
+              status = str(record.get("status") or "").upper()
+              deadline = as_date(record.get("deadline"))
+              matched_domains = [
+                  normalize_area(str(domain))
+                  for domain in record.get("matched_rif_domains", []) or []
+              ]
+              focus_area = normalize_area(str(record.get("focus_area") or ""))
+              issues = []
+              if not title or generic_title.fullmatch(title):
+                  issues.append("missing_or_generic_title")
+              if status != "OPEN_CALL":
+                  issues.append("not_currently_open")
+              if deadline and deadline < today:
+                  issues.append("expired_deadline")
+              if not (record.get("source_url") or record.get("application_url")):
+                  issues.append("missing_source_or_application_url")
+              if not has_substantive_eligibility_evidence(record.get("eligibility")):
+                  issues.append("missing_substantive_applicant_eligibility")
+              if not matched_domains:
+                  issues.append("missing_proven_canonical_domain")
+              if matched_domains and focus_area not in matched_domains:
+                  issues.append("focus_area_conflicts_with_proven_domain")
+              if issues:
+                  quality_flags.append({
+                      "title": title,
+                      "status": status,
+                      "deadline": record.get("deadline"),
+                      "issues": issues,
+                      "source_url": record.get("source_url"),
+                  })
+              selected_summary.append({
+                  "title": title,
+                  "status": status,
+                  "opening_date": record.get("opening_date"),
+                  "deadline": record.get("deadline"),
+                  "funding_amount": record.get("funding_amount"),
+                  "eligibility": record.get("eligibility"),
+                  "application_url": record.get("application_url"),
+                  "source_url": record.get("source_url"),
+                  "focus_area": record.get("focus_area"),
+                  "matched_rif_domains": matched_domains,
+                  "selection_score": record.get("selection_score"),
+                  "source_status": (record.get("evidence") or {}).get("source_status"),
+              })
+
+          source_summary = []
+          for item in collection_results:
+              source_summary.append({
+                  key: item.get(key) for key in (
+                      "source_id", "method", "final_status", "pages_fetched",
+                      "detail_pages_fetched", "detail_pages_failed", "documents_fetched",
+                      "records_discovered", "records_valid", "records_failed",
+                      "records_filtered", "records_filtered_by_reason",
+                      "duplicates_removed", "truncated", "pagination_complete",
+                  )
+              })
+              source_summary[-1]["errors"] = [
+                  {
+                      "operation": error.get("operation") if isinstance(error, dict) else None,
+                      "url": error.get("url") if isinstance(error, dict) else None,
+                      "error": error.get("error") if isinstance(error, dict) else str(error),
+                  }
+                  for error in (item.get("errors") or [])
+              ][:5]
+
+          rejection_counts = {}
+          for candidate in rejected:
+              for reason in candidate.get("reasons", []):
+                  rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+          summary = {
+              "run_status": response.get("status"),
+              "run_id": run_id,
+              "raw_records_count": len(records),
+              "raw_current_status_candidates": sum(
+                  str(row.get("status") or "").upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+                  for row in records
+              ),
+              "selected_actionable_count": len(selected),
+              "selected_actionable_calls": selected_summary,
+              "selected_quality_flags_count": len(quality_flags),
+              "selected_quality_flags": quality_flags,
+              "rejected_candidates_count": len(rejected),
+              "rejection_reason_counts": rejection_counts,
+              "source_summary": source_summary,
+              "warnings": response.get("warnings", []),
+          }
+          (output_dir / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          (output_dir / "records.json").write_text(
+              json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          (output_dir / "selected.json").write_text(
+              json.dumps(selected_summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          print(json.dumps(summary, indent=2, ensure_ascii=False))
+          if response.get("status") == "error":
+              raise SystemExit("Full configured funding scan returned error status")
+          if not records:
+              raise SystemExit("Full configured Batch 1 scan discovered no funding records")
+          if not selected:
+              raise SystemExit("Strict production selector found no eligible, current, domain-matched funding call")
+          if quality_flags:
+              raise SystemExit("Strict production selector emitted invalid actionable calls")
+          PY
+
+      - name: Upload full Batch 1 audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch1-full-live-audit
+          path: outputs/ci_batch1_full_live/
+          if-no-files-found: warn
+          retention-days: 7
