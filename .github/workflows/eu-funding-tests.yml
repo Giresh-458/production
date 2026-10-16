@@ -49,12 +49,13 @@ jobs:
           python - <<'PY'
           import json
           from datetime import datetime, timezone
+          from pathlib import Path
           from agents.funding_agent import load_sources
           from agents.funding_collector import _collect_eu_funding_tenders
           from core.schemas import CollectionResult
 
           target = "EU Open and Forthcoming Funding Calls"
-          sources = load_sources("sources/funding_sources.yaml")
+          sources = load_sources(Path("sources/funding_sources.yaml"))
           source = next((item for item in sources if item.name == target), None)
           if source is None:
               raise SystemExit(f"Configured EU source not found: {target}")
