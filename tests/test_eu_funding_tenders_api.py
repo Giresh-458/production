@@ -188,3 +188,33 @@ def test_eu_collector_deduplicates_repeated_detail_urls_with_different_reference
     assert result.duplicates_removed == 1
     assert result.records_valid == 1
     assert len(result.opportunities) == 1
+
+
+
+def test_eu_effective_status_closes_open_or_forthcoming_calls_after_deadline():
+    from datetime import date
+    from agents.funding_collector import _eu_effective_status
+
+    status, warning = _eu_effective_status(
+        "31094502", "2026-10-15", today=date(2026, 10, 16)
+    )
+    assert status == "CLOSED_CALL"
+    assert warning and "deadline 2026-10-15" in warning
+
+    status, warning = _eu_effective_status(
+        "31094501", "2026-10-15", today=date(2026, 10, 16)
+    )
+    assert status == "CLOSED_CALL"
+    assert warning
+
+
+def test_eu_effective_status_preserves_open_when_deadline_not_past_or_missing():
+    from datetime import date
+    from agents.funding_collector import _eu_effective_status
+
+    assert _eu_effective_status(
+        "31094502", "2026-12-01", today=date(2026, 10, 16)
+    ) == ("OPEN_CALL", None)
+    assert _eu_effective_status("31094502", None, today=date(2026, 10, 16)) == (
+        "OPEN_CALL", None
+    )
