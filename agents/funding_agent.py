@@ -1109,6 +1109,19 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
             values["opening"] = parsed
             break
 
+    # A structured call page may state its actual application deadline near the
+    # top and then list later selection/notification dates in a project timeline.
+    # Prefer that explicit deadline over downstream milestones. Repeated SBIR-style
+    # rounds are handled separately by the "Due Date(s)" schedule below.
+    primary_deadline = re.search(
+        rf"\bdeadline\b\s*(?:[:\-|]\s*)?[*_`]*({date_token})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if primary_deadline:
+        values["deadline"] = _normalize_date(primary_deadline.group(1))
+        return values["opening"], values["deadline"]
+
     deadline_candidates: list[str] = []
     for match in re.finditer(patterns["deadline"], text, flags=re.IGNORECASE):
         parsed = _normalize_date(match.group(1))
@@ -1355,13 +1368,21 @@ def _extract_application_url(text: str) -> str | None:
             "new issue" in label
             and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
         )
-        # Some official pages label the endpoint "here"; the preceding sentence
-        # can still identify that link as the application endpoint.
-        is_contextual_application_link = bool(re.search(
-            r"\b(?:application|apply|submit|submission)\b[^.!?\n]{0,100}$",
-            before,
-            flags=re.IGNORECASE,
-        ))
+        # A short CTA label such as "here" can inherit meaning from nearby
+        # application instructions. Do not classify an arbitrary repository link
+        # as an application URL merely because the word "applications" appeared
+        # earlier in the same paragraph.
+        short_application_label = label.strip().rstrip(".") in {
+            "here", "this form", "the form", "application form", "application portal"
+        }
+        is_contextual_application_link = bool(
+            short_application_label
+            and re.search(
+                r"\b(?:application|apply|submit|submission|proposal|form)\b",
+                before[-150:],
+                flags=re.IGNORECASE,
+            )
+        )
         if is_application_label or is_grant_issue_template or is_contextual_application_link:
             candidate_url = match.group(2).rstrip(".,")
             if _is_generic_application_url(candidate_url):
@@ -1502,7 +1523,24 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
     if hits:
-        return " ".join(dict.fromkeys(hits))[:max_chars]
+        eligibility_labels = {
+            "eligibility", "who can apply", "eligible applicants", "eligible organizations"
+        }
+        if any(label.casefold() in eligibility_labels for label in labels):
+            # Do not treat application workflow copy as applicant eligibility.
+            # This previously captured phrases like "eligible applicants will then
+            # be invited to submit a Full Proposal" as if they were requirements.
+            hits = [
+                value for value in hits
+                if not re.search(
+                    r"\bwill(?:\s+then)?\s+be\s+invited\s+to\s+submit\b|"
+                    r"\bpass/fail\s+requirements?\b.{0,120}\bassessed\s+by\b",
+                    value,
+                    flags=re.IGNORECASE,
+                )
+            ]
+        if hits:
+            return " ".join(dict.fromkeys(hits))[:max_chars]
     return None
 
 
@@ -1635,7 +1673,7 @@ def _extract_general_themes(content: str) -> list[str]:
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
-    domain_relevance = build_domain_relevance(document.content)
+    domain_relevance = build_domain_relevance(f"{document.title}\n{document.content}")
     # Never route a funding call into a canonical research area because of a few
     # incidental words on a broad landing page. Routing requires both a meaningful
     # normalized share and enough raw domain evidence; otherwise the call remains
@@ -1644,7 +1682,18 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     top_score = float(top_item.get("score", 0.0) or 0.0)
     top_raw = float(top_item.get("raw_score", 0.0) or 0.0)
     top_matches = list(top_item.get("matched_terms", []) or [])
-    focus_area = (str(top_item.get("domain")) if top_score >= 0.30 and top_raw >= 4.0 and len(top_matches) >= 2 else "General")
+    title_has_domain_anchor = any(
+        re.search(rf"\b{re.escape(str(term))}\b", document.title, flags=re.IGNORECASE)
+        for term in top_matches
+        if str(term).strip()
+    )
+    focus_area = (
+        str(top_item.get("domain"))
+        if top_score >= 0.30
+        and top_raw >= 4.0
+        and (len(top_matches) >= 2 or title_has_domain_anchor)
+        else "General"
+    )
     domain_themes = {
         "RWA": ["Real-World Assets", "Asset Tokenization"],
         "ESG": ["ESG", "Carbon and MRV"],
@@ -1685,6 +1734,19 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
+    # SBIR.gov's topic pages sometimes render "Our Programs" as both the browser
+    # title and page chrome. For our two explicitly configured NSF topics, use the
+    # curated source label only when the topic URL is specific and extraction still
+    # has a generic title. Never use the broad "Open SBIR Funding Topics" hub label.
+    normalized_program_name = re.sub(r"[^a-z0-9]+", " ", program_name.casefold()).strip()
+    parsed_source = urlparse(document.source or "")
+    if (
+        normalized_program_name in {"our programs", "programs", "topic", "home", "welcome"}
+        and (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
+        and document.organization.casefold().startswith("nsf sbir ")
+    ):
+        program_name = document.organization.strip()
     status = determine_status(None, opening_date, deadline, document.content, program_name)
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
@@ -2386,7 +2448,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 LOGGER.warning("Could not save funding markdown output: %s", e)
 
             evidence = {"source_url": analysis.source_url, "source_title": analysis.source_title, **analysis.evidence}
-            domains = build_domain_relevance(doc.content)
+            domains = build_domain_relevance(f"{doc.title}\n{doc.content}")
             outputs.append({
                 "funding_body": analysis.funding_body,
                 "program_name": analysis.program_name,
