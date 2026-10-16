@@ -79,6 +79,17 @@ jobs:
                       payload = response.json()
                       sample["response_type"] = type(payload).__name__
                       sample["response_keys"] = sorted(payload.keys()) if isinstance(payload, dict) else []
+                      detail_metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                      sample["detail_metadata_keys"] = sorted(detail_metadata.keys()) if isinstance(detail_metadata, dict) else []
+                      interesting = {}
+                      if isinstance(detail_metadata, dict):
+                          for key, value in detail_metadata.items():
+                              if any(term in key.casefold() for term in (
+                                  "eligib", "applicant", "admiss", "condition", "deadline",
+                                  "beneficiary", "description", "content", "specific", "requirement"
+                              )):
+                                  interesting[key] = str(value)[:1400]
+                      sample["detail_fields_of_interest"] = interesting
                       sample["response_preview"] = json.dumps(payload, ensure_ascii=False)[:1800]
                   except Exception as exc:
                       sample["detail_error"] = f"{type(exc).__name__}: {exc}"
