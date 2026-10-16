@@ -20,6 +20,7 @@ from typing import Any, List, Optional, Iterator
 from urllib.parse import urlparse
 
 from core.schemas import CollectionResult
+from agents.utils import cleaned_text
 from core.structured_sources import (
     grantsgov_paginated_search,
     grantsgov_fetch_opportunity,
