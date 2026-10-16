@@ -26,6 +26,7 @@ from core.structured_sources import (
     grantsgov_fetch_opportunity,
     github_paginated_issues,
     eu_funding_tenders_paginated_search,
+    eu_funding_tenders_fetch_document,
 )
 from core.crawl4ai_web import crawl_funding_source
 from agents.funding_agent import (
@@ -35,6 +36,7 @@ from agents.funding_agent import (
     analyze_document,
     current_year,
     parse_date_string,
+    build_domain_relevance,
 )
 
 LOGGER = logging.getLogger("rif.funding_collector")
@@ -554,6 +556,73 @@ def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
     return None
 
 
+def _extract_eu_eligibility_from_html(value: Any) -> str | None:
+    """Extract explicit applicant criteria from the portal's rich HTML fields.
+
+    A beneficiary-administration field can contain general process guidance rather
+    than eligibility. Return only paragraphs that state applicant types or conditions.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        raw = "\n".join(str(part) for part in value if part not in (None, ""))
+    else:
+        raw = str(value)
+    if not raw.strip():
+        return None
+
+    raw = unescape(raw)
+    raw = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", raw)
+    raw = re.sub(
+        r"(?i)</(?:p|li|div|h[1-6]|tr|section|article|br)\s*>|<br\s*/?>",
+        "\n",
+        raw,
+    )
+    raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+    paragraphs = [
+        re.sub(r"\s+", " ", part).strip(" \t\r\n:;-")
+        for part in raw.splitlines()
+    ]
+    paragraphs = [part for part in paragraphs if part]
+    if not paragraphs:
+        cleaned = _clean_grantsgov_text(raw)
+        paragraphs = [cleaned] if cleaned else []
+
+    explicit_patterns = (
+        r"\beligible applicants?\b.{0,180}\b(?:are|include|must|may|need|should)\b",
+        r"\bapplicants?\s+(?:must|may|should|need to|are required to|are eligible to)\b",
+        r"\bapplications?\s+(?:are|is)\s+open\s+to\b",
+        r"\bwho can apply\b",
+        r"\bonly\b.{0,140}\b(?:may apply|are eligible|can apply)\b",
+        r"\b(?:SMEs?|small and medium[- ]sized enterprises|research organisations?|research organizations?|universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|start[- ]ups?|students?)\b.{0,180}\b(?:eligible|may apply|can apply|must|provided that|support(?:ed)?|are required)\b",
+        r"\b(?:legal entities|natural persons|public entities|private entities)\b.{0,140}\b(?:eligible|may apply|can apply|established|registered)\b",
+    )
+    selected: list[str] = []
+    for paragraph in paragraphs:
+        if any(re.search(pattern, paragraph, flags=re.IGNORECASE) for pattern in explicit_patterns):
+            if not re.search(
+                r"\beligibility criteria (?:specified|set out|described) in the call\b",
+                paragraph,
+                flags=re.IGNORECASE,
+            ):
+                selected.append(paragraph[:1200])
+        if len(selected) >= 4:
+            break
+
+    if not selected:
+        return None
+    return " ".join(dict.fromkeys(selected))[:4000]
+
+
+def _record_eu_filter(result: CollectionResult, reason: str, title: str, url: str) -> None:
+    """Record a deliberate data-quality filter separately from an acquisition failure."""
+    result.records_filtered += 1
+    result.records_filtered_by_reason[reason] = (
+        result.records_filtered_by_reason.get(reason, 0) + 1
+    )
+    LOGGER.info("Filtered EU funding record %r (%s): %s", title, reason, url)
+
+
 def _eu_status_to_internal(raw_status: str | None) -> str | None:
     status = re.sub(r"[^a-z0-9]+", "", (raw_status or "").casefold())
     if not status:
@@ -648,7 +717,36 @@ def _collect_eu_funding_tenders(
             result.records_failed += 1
             continue
         raw_metadata = item.get("metadata")
-        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        # Search hits can omit richer publisher fields. Fetch the documented
+        # EU document record only when the hit has no eligibility/content payload.
+        detail_reference = str(item.get("reference") or metadata.get("reference") or "").strip()
+        detail_keys = (
+            "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
+            "admissibilityConditions", "eligibilityCriteria", "topicConditions",
+            "eligibilityCriteriaHtml", "admissibilityCriteria", "beneficiaryAdministration",
+            "description", "descriptionEn", "descriptionByte", "topicDescription", "scope",
+        )
+        if (
+            api_config.get("detail_fetch_missing_metadata", True)
+            and detail_reference
+            and not any(metadata.get(key) not in (None, "", []) for key in detail_keys)
+        ):
+            result.detail_pages_discovered += 1
+            try:
+                detail = eu_funding_tenders_fetch_document(detail_reference)
+                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                if isinstance(detail_metadata, dict):
+                    for key, value in detail_metadata.items():
+                        if metadata.get(key) in (None, "", []):
+                            metadata[key] = value
+                result.detail_pages_fetched += 1
+            except Exception as exc:
+                result.detail_pages_failed += 1
+                LOGGER.warning(
+                    "EU detail metadata fetch failed for reference %s: %s",
+                    detail_reference, exc,
+                )
         title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
         if not title:
             title = _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name")
@@ -696,6 +794,12 @@ def _collect_eu_funding_tenders(
         internal_status, status_consistency_warning = _eu_effective_status(
             raw_status, deadline
         )
+        if status_consistency_warning:
+            _record_eu_filter(result, "expired_deadline", title, url)
+            continue
+        if internal_status not in {"OPEN_CALL", "UPCOMING_CALL"}:
+            _record_eu_filter(result, "unrecognized_or_noncurrent_status", title, url)
+            continue
 
         identifier = _eu_metadata_value(
             metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
@@ -707,18 +811,20 @@ def _collect_eu_funding_tenders(
             metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
         )
         eligibility = _eu_metadata_value(
-            metadata, "eligibility", "eligibilityConditions", "eligibleApplicants", "applicantEligibility",
-            "admissibilityConditions", "eligibilityCriteria"
+            metadata, "eligibility", "eligibleApplicants", "applicantEligibility"
         )
         eligibility_source_field = "eligibility"
         if not eligibility:
-            # Search API topicConditions is publisher-provided HTML containing
-            # admissibility/eligibility criteria when no scalar eligibility field exists.
-            eligibility = _eu_metadata_value(
-                metadata, "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria"
-            )
-            if eligibility:
-                eligibility_source_field = "topicConditions"
+            for key in (
+                "eligibilityConditions", "admissibilityConditions", "eligibilityCriteria",
+                "topicConditions", "eligibilityCriteriaHtml", "admissibilityCriteria",
+                "beneficiaryAdministration",
+            ):
+                extracted = _extract_eu_eligibility_from_html(metadata.get(key))
+                if extracted:
+                    eligibility = extracted
+                    eligibility_source_field = key
+                    break
         description = _eu_metadata_value(
             metadata, "description", "descriptionEn", "descriptionByte", "objective",
             "topicDescription", "scope", "summary", "content"
@@ -744,6 +850,11 @@ def _collect_eu_funding_tenders(
         if description:
             fields.append(f"Description: {description}")
 
+        require_eligibility = bool(api_config.get("require_eligibility_evidence", True))
+        if require_eligibility and not eligibility:
+            _record_eu_filter(result, "missing_eligibility_evidence", title, url)
+            continue
+
         doc = FundingDocument(
             organization=programme or source.name,
             title=title,
@@ -754,6 +865,13 @@ def _collect_eu_funding_tenders(
         )
         try:
             analysis = analyze_document(doc)
+            require_domain_match = bool(api_config.get("require_domain_match", True))
+            if require_domain_match and (
+                analysis.focus_area == "General"
+                or analysis.focus_area not in set(source.research_domains or [])
+            ):
+                _record_eu_filter(result, "off_domain_or_weak_domain_evidence", title, url)
+                continue
             analysis.program_name = title
             analysis.source_title = title
             if identifier:
@@ -807,6 +925,8 @@ def _collect_eu_funding_tenders(
             result.final_status = "PARTIAL"
     elif result.opportunities:
         result.final_status = "VERIFIED"
+    elif result.records_filtered:
+        result.final_status = "NO_QUALIFIED_OPPORTUNITIES"
     else:
         result.final_status = "NO_ACTIVE_OPPORTUNITIES"
     return result
