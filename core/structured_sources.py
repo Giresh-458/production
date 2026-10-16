@@ -535,14 +535,15 @@ def eu_funding_tenders_paginated_search(
             )
             break
 
-        raw_total = payload.get("totalResults", payload.get("total", payload.get("totalCount", 0)))
-        try:
-            total = int(raw_total)
-        except (TypeError, ValueError):
-            errors.append(f"EU Funding & Tenders Search API returned invalid total count: {raw_total!r}")
-            break
-        if total_expected is None:
-            total_expected = total
+        raw_total = payload.get("totalResults", payload.get("total", payload.get("totalCount")))
+        if raw_total is not None:
+            try:
+                total = int(raw_total)
+            except (TypeError, ValueError):
+                errors.append(f"EU Funding & Tenders Search API returned invalid total count: {raw_total!r}")
+                break
+            if total_expected is None:
+                total_expected = total
 
         page_results = payload.get("results")
         if not isinstance(page_results, list):
