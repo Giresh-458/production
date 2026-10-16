@@ -139,6 +139,7 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
             "status": "OPEN_CALL",
             "source_url": "https://example.com/call",
             "application_url": "https://example.com/call/apply",
+            "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
             "deadline": "2030-01-01",
             "domain_relevance": [{"domain": "DePIN", "score": 0.8, "raw_score": 3.0, "matched_terms": ["depin"]}],
             "research_context": {
