@@ -909,8 +909,9 @@ def test_site_navigation_and_footer_cannot_misclassify_unrelated_deep_tech_calls
             "## Details\n"
             "Women TechEU supports women-led early-stage deep tech startups.\n"
             "DEADLINE 2027-06-14\n"
+            "### Europe’s leading **climate innovation agency** and community\n"
+            "Stichting Climate-KIC International Foundation focuses on climate change mitigation and adaptation.\n"
             "© Climate KIC 2026\n"
-            "Our objective is to contribute to climate change mitigation and adaptation."
         ),
     }
 
