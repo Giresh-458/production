@@ -134,7 +134,7 @@ def extract_page_title(soup: Any, fallback: str) -> str:
         candidates.append(cleaned_text(heading.get_text(" ", strip=True)))
     generic_candidate: str | None = None
     for candidate in candidates:
-        normalized = re.sub(r"\\s+", " ", candidate).strip()
+        normalized = re.sub(r"\s+", " ", candidate).strip()
         if not normalized:
             continue
         if _is_generic_funding_title(normalized):
