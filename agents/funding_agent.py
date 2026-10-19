@@ -107,6 +107,17 @@ GENERIC_PAGE_TITLES = {
     "grants and funding", "development grants", "this listing", "yourself",
 }
 
+def _is_generic_funding_title(value: str | None) -> bool:
+    """Recognize generic browser titles even when the site appends its brand."""
+    normalized = re.sub(r"\s+", " ", str(value or "").casefold()).strip()
+    normalized = re.split(r"\s+[|·—–]\s+|\s+-\s+", normalized, maxsplit=1)[0].strip(" .:-")
+    return (
+        normalized in GENERIC_PAGE_TITLES
+        or normalized in {"getting started", "funding at nsf"}
+        or bool(re.fullmatch(r"documents\s*\|\s*page\s*\d+", normalized))
+    )
+
+
 def extract_page_title(soup: Any, fallback: str) -> str:
     """Choose the call/program title, avoiding generic site chrome headings."""
     candidates: list[str] = []
@@ -1077,11 +1088,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
 
     if status == "OPEN_CALL":
         t_low = re.sub(r"\s+", " ", (title or "").lower()).strip().rstrip(" .:-")
-        is_generic = (
-            t_low in GENERIC_PAGE_TITLES
-            or t_low in {"getting started", "funding at nsf"}
-            or bool(re.search(r"^documents\s*\|\s*page\s*\d+", t_low))
-        )
+        is_generic = _is_generic_funding_title(title)
         # A future date or a link on a directory page is not enough to prove
         # that the page itself represents one identifiable opportunity.
         # Specific configured topics get their title from the source label
@@ -1296,10 +1303,10 @@ def _extract_program_name(text: str, fallback: str) -> str:
         r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
         normalized_title,
     ))
-    if normalized_title not in GENERIC_PAGE_TITLES and title_has_call_identity and len(title) <= 180:
+    if not _is_generic_funding_title(title) and title_has_call_identity and len(title) <= 180:
         return title.rstrip(" .:-")
 
-    if title and normalized_title not in GENERIC_PAGE_TITLES and len(title) <= 180:
+    if title and not _is_generic_funding_title(title) and len(title) <= 180:
         return title.rstrip(" .:-")
     return title or fallback
 
@@ -1791,7 +1798,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # UNKNOWN.
     if status == "UNKNOWN" and deadline and application_url:
         deadline_dt = _parse_date(deadline, end_of_day=True)
-        generic_title = program_name.lower().rstrip(" .:-") in GENERIC_PAGE_TITLES or program_name.lower() in {"funding", "grants", "funding at nsf", "programs"}
+        generic_title = _is_generic_funding_title(program_name)
         if deadline_dt and deadline_dt >= datetime.now(UTC) and not generic_title:
             status = "OPEN_CALL"
     duration = _extract_duration(document.content)
