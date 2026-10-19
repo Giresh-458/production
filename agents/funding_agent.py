@@ -136,7 +136,7 @@ def extract_page_title(soup: Any, fallback: str) -> str:
         normalized = re.sub(r"\s+", " ", candidate).strip()
         if not normalized:
             continue
-        if normalized.lower().rstrip(" .:-") in GENERIC_PAGE_TITLES:
+        if _is_generic_funding_title(normalized):
             continue
         if len(normalized) > 180:
             normalized = normalized[:180].rsplit(" ", 1)[0]
@@ -1271,7 +1271,7 @@ def _extract_program_name(text: str, fallback: str) -> str:
     for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
         candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
         normalized = candidate.lower().rstrip(" .:-")
-        if not candidate or normalized in GENERIC_PAGE_TITLES:
+        if not candidate or _is_generic_funding_title(candidate):
             continue
         if re.search(
             r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
