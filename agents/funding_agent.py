@@ -1111,7 +1111,7 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
         # as a date cue. "Opens:", "opening date", "open date", and
         # "applications open" remain valid date cues.
         "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
-        "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_`]*({date_token})",
+        "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date(?:\s+to\s+apply)?\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bapply\s+by\b|\bsubmit\s+by\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_]*({date_token})",
     }
 
     values: dict[str, str | None] = {"opening": None, "deadline": None}
