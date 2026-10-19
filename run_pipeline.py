@@ -236,7 +236,11 @@ def get_all_open_funding_calls(
             })
             continue
 
-        generic_names = {"how to apply", "apply", "request for proposals", "funding", "grants", "programs"}
+        generic_names = {
+            "how to apply", "apply", "request for proposals", "requests for proposals",
+            "funding", "funding opportunities", "grants", "programs", "our programs",
+            "topic", "topics", "calls for proposals", "program directory", "grant directory",
+        }
         if program_name.lower().rstrip(" .:-") in generic_names:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})
             continue
