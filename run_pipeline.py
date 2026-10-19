@@ -241,7 +241,12 @@ def get_all_open_funding_calls(
             "funding", "funding opportunities", "grants", "programs", "our programs",
             "topic", "topics", "calls for proposals", "program directory", "grant directory",
         }
-        if program_name.lower().rstrip(" .:-") in generic_names:
+        generic_title_key = re.split(
+            r"\\s+[|·—–]\\s+|\\s+-\\s+",
+            program_name.casefold(),
+            maxsplit=1,
+        )[0].strip(" .:-")
+        if generic_title_key in generic_names:
             rejected.append({"title": record.get("title"), "status": status, "reasons": ["generic landing-page title is not an identifiable funding call"], "source_url": record.get("source_url")})
             continue
 
