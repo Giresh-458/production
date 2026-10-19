@@ -1028,3 +1028,74 @@ def test_unpunctuated_eligible_applicants_prose_is_still_extracted():
     assert _extract_section_value(content, ("eligible applicants",)) == (
         "must be legally established in the United States."
     )
+
+def test_generic_program_page_with_future_deadline_and_application_link_is_not_open():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    future = (datetime.now(UTC) + timedelta(days=30)).date().isoformat()
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="our programs | SBIR.gov",
+        source="https://www.sbir.gov/topics?status=Open",
+        source_type="html",
+        content=(
+            f"Deadline: {future}. Eligible applicants must be U.S. small businesses. "
+            "Apply here: https://www.sbir.gov/apply. Funding topics and programs are listed below."
+        ),
+        year=datetime.now(UTC).year,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.status == "UNKNOWN"
+    assert opportunity.program_name.strip().lower().split("|")[0].strip() == "our programs"
+    assert opportunity.application_url is None
+
+
+def test_apply_by_deadline_is_extracted_and_expired_call_is_closed():
+    from agents.funding_agent import determine_status, extract_call_dates
+
+    opening, deadline = extract_call_dates(
+        "Research grant applications. Last Date to Apply: 12 May 2026."
+    )
+
+    assert deadline == "2026-05-12"
+    assert determine_status(
+        None, opening, deadline,
+        "Research grant applications. Last Date to Apply: 12 May 2026.",
+        "Research Grant",
+    ) == "CLOSED_CALL"
+
+
+def test_selector_rejects_generic_directory_title_even_if_other_fields_look_open():
+    now = datetime.now(UTC)
+    record = {
+        "title": "our programs | SBIR.gov",
+        "program_name": "our programs | SBIR.gov",
+        "status": "OPEN_CALL",
+        "deadline": (now + timedelta(days=30)).date().isoformat(),
+        "application_url": "https://www.sbir.gov/apply",
+        "source_url": "https://www.sbir.gov/topics?status=Open",
+        "eligibility": "Eligible applicants must be U.S. small businesses with fewer than 500 employees.",
+        "focus_area": "DID",
+        "source_research_domains": ["DID"],
+        "domain_relevance": [{
+            "domain": "DID",
+            "score": 0.75,
+            "raw_score": 12.0,
+            "matched_terms": ["decentralized identity", "verifiable credentials"],
+        }],
+        "evidence": {
+            "source_status": "open",
+            "status": "Applications are now open. Submit an application.",
+        },
+    }
+
+    selected, rejected = get_all_open_funding_calls({"outputs": [record]}, require_domain_match=False)
+
+    assert selected == []
+    assert any(
+        item["title"] == "our programs | SBIR.gov"
+        and any("generic landing-page title" in reason for reason in item.get("reasons", []))
+        for item in rejected
+    )
