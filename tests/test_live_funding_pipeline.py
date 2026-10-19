@@ -322,7 +322,7 @@ def test_sbir_generic_browser_title_uses_specific_configured_topic_name():
 
     document = FundingDocument(
         organization="NSF SBIR Trusted Identity",
-        title="our programs",
+        title="our programs | SBIR.gov",
         source="https://www.sbir.gov/topics/1012406",
         source_type="html",
         content=(
@@ -1048,7 +1048,7 @@ def test_generic_program_page_with_future_deadline_and_application_link_is_not_o
     opportunity = analyze_document(document)
 
     assert opportunity.status == "UNKNOWN"
-    assert opportunity.program_name.strip().lower() in {"our programs", "open sbir funding topics"}
+    assert opportunity.program_name.strip().lower().split("|")[0].strip() == "our programs"
     assert opportunity.application_url is None
 
 
@@ -1070,8 +1070,8 @@ def test_apply_by_deadline_is_extracted_and_expired_call_is_closed():
 def test_selector_rejects_generic_directory_title_even_if_other_fields_look_open():
     now = datetime.now(UTC)
     record = {
-        "title": "our programs",
-        "program_name": "our programs",
+        "title": "our programs | SBIR.gov",
+        "program_name": "our programs | SBIR.gov",
         "status": "OPEN_CALL",
         "deadline": (now + timedelta(days=30)).date().isoformat(),
         "application_url": "https://www.sbir.gov/apply",
@@ -1095,7 +1095,7 @@ def test_selector_rejects_generic_directory_title_even_if_other_fields_look_open
 
     assert selected == []
     assert any(
-        item["title"] == "our programs"
+        item["title"] == "our programs | SBIR.gov"
         and any("generic landing-page title" in reason for reason in item.get("reasons", []))
         for item in rejected
     )
