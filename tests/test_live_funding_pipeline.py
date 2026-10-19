@@ -322,7 +322,7 @@ def test_sbir_generic_browser_title_uses_specific_configured_topic_name():
 
     document = FundingDocument(
         organization="NSF SBIR Trusted Identity",
-        title="our programs | SBIR.gov",
+        title="our programs",
         source="https://www.sbir.gov/topics/1012406",
         source_type="html",
         content=(
@@ -1035,7 +1035,7 @@ def test_generic_program_page_with_future_deadline_and_application_link_is_not_o
     future = (datetime.now(UTC) + timedelta(days=30)).date().isoformat()
     document = FundingDocument(
         organization="Open SBIR Funding Topics",
-        title="our programs",
+        title="our programs | SBIR.gov",
         source="https://www.sbir.gov/topics?status=Open",
         source_type="html",
         content=(
