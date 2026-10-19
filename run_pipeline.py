@@ -242,7 +242,7 @@ def get_all_open_funding_calls(
             "topic", "topics", "calls for proposals", "program directory", "grant directory",
         }
         generic_title_key = re.split(
-            r"\\s+[|·—–]\\s+|\\s+-\\s+",
+            r"\s+[|·—–]\s+|\s+-\s+",
             program_name.casefold(),
             maxsplit=1,
         )[0].strip(" .:-")
