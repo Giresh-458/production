@@ -1076,11 +1076,11 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         status = "UNKNOWN"
 
     if status == "OPEN_CALL":
-        t_low = re.sub(r"\\s+", " ", (title or "").lower()).strip().rstrip(" .:-")
+        t_low = re.sub(r"\s+", " ", (title or "").lower()).strip().rstrip(" .:-")
         is_generic = (
             t_low in GENERIC_PAGE_TITLES
             or t_low in {"getting started", "funding at nsf"}
-            or bool(re.search(r"^documents\\s*\\|\\s*page\\s*\\d+", t_low))
+            or bool(re.search(r"^documents\s*\|\s*page\s*\d+", t_low))
         )
         # A future date or a link on a directory page is not enough to prove
         # that the page itself represents one identifiable opportunity.
