@@ -97,8 +97,13 @@ FOCUSED_CONTENT_KEYWORDS = [
 FOCUS_AREAS = ["RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"]
 
 GENERIC_PAGE_TITLES = {
-    "how to apply", "apply", "home", "overview", "open rounds",
-    "request for proposals", "rpf", "funding", "grants", "programs",
+    # These are navigation, directory, or browser-chrome labels, not a unique
+    # funding opportunity. Keep them centralized so extraction and status
+    # classification apply the same conservative rule.
+    "how to apply", "apply", "home", "overview", "open rounds", "open calls",
+    "request for proposals", "requests for proposals", "rpf", "rfp", "funding",
+    "funding opportunities", "grants", "programs", "our programs", "topic",
+    "topics", "calls for proposals", "program directory", "grant directory",
     "grants and funding", "development grants", "this listing", "yourself",
 }
 
@@ -1071,13 +1076,17 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         status = "UNKNOWN"
 
     if status == "OPEN_CALL":
-        t_low = (title or "").lower().strip()
+        t_low = re.sub(r"\\s+", " ", (title or "").lower()).strip().rstrip(" .:-")
         is_generic = (
             t_low in GENERIC_PAGE_TITLES
-            or t_low in {"funding", "grants", "programs", "getting started", "funding opportunities"}
-            or bool(re.search(r"^documents\s*\|\s*page\s*\d+", t_low))
+            or t_low in {"getting started", "funding at nsf"}
+            or bool(re.search(r"^documents\\s*\\|\\s*page\\s*\\d+", t_low))
         )
-        if is_generic and not deadline_dt and not explicit_status:
+        # A future date or a link on a directory page is not enough to prove
+        # that the page itself represents one identifiable opportunity.
+        # Specific configured topics get their title from the source label
+        # before this check; generic browser chrome must stay non-actionable.
+        if is_generic and not explicit_status:
             return "UNKNOWN"
 
     if status == "UNKNOWN" and normalized_explicit:
