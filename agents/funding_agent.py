@@ -1284,6 +1284,20 @@ def _extract_program_name(text: str, fallback: str) -> str:
         ):
             return candidate
 
+    # Structured agency pages often expose a useful opportunity name in a labelled
+    # field even when the browser/H1 title is generic (e.g. "Topic | SBIR").
+    # Prefer that source-provided title over the generic browser title.
+    labelled_title_patterns = (
+        r"(?im)^\s*(?:topic title|topic name|solicitation title|funding opportunity title|opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
+        r"(?im)^\s*(?:NOFO title|notice of funding opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
+    )
+    for pattern in labelled_title_patterns:
+        match = re.search(pattern, text)
+        if match:
+            candidate = cleaned_text(match.group(1)).rstrip(" .:-")
+            if candidate and not _is_generic_funding_title(candidate):
+                return candidate
+
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
         r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
@@ -1567,6 +1581,35 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
     return None
 
 
+def _extract_eligibility_from_prose(text: str) -> str | None:
+    """Extract explicit applicant restrictions stated in prose when no labelled section exists."""
+    chunks = [
+        cleaned_text(part)
+        for part in re.split(r"(?<=[.!?])\s+|\n+", str(text or ""))
+        if cleaned_text(part)
+    ]
+    patterns = (
+        r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
+        r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
+        r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
+        r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,160}",
+        r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
+        r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
+    )
+    for chunk in chunks:
+        if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
+            return chunk[:900]
+    return None
+
+
+def _extract_geography_from_prose(text: str) -> str | None:
+    """Preserve explicit country restrictions as source text rather than guessing."""
+    eligibility = _extract_eligibility_from_prose(text)
+    if eligibility and re.search(r"\b(?:United States|U\.?S\.?|USA|United States of America)\b", eligibility, flags=re.IGNORECASE):
+        return eligibility
+    return None
+
+
 def _extract_general_themes(content: str) -> list[str]:
     import re
     from collections import Counter
@@ -1762,7 +1805,15 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     research_intent, research_intent_evidence = detect_research_intent(document.content, focus_area=focus_area, themes=themes)
     mission_ctx = generate_research_mission(themes, priorities, document.title, focus_area, research_intent=research_intent, research_intent_evidence=research_intent_evidence)
     identity_material = "|".join([document.organization.strip().lower(), document.title.strip().lower(), canonicalize_url(document.source)])
-    mission_ctx["funding_call_id"] = "CALL-" + hashlib.sha256(identity_material.encode("utf-8")).hexdigest()[:12].upper()
+    official_id_match = re.search(
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
+        document.content,
+    )
+    mission_ctx["funding_call_id"] = (
+        official_id_match.group(1).upper()
+        if official_id_match
+        else "CALL-" + hashlib.sha256(identity_material.encode("utf-8")).hexdigest()[:12].upper()
+    )
     # Select the primary domain plus genuinely supported secondary domains.
     # Weak incidental keyword hits should not multiply downstream collection.
     selected_domains = []
@@ -1807,8 +1858,14 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             status = "OPEN_CALL"
     duration = _extract_duration(document.content)
 
-    eligibility = _extract_section_value(document.content, ("eligibility", "who can apply", "eligible applicants", "eligible organizations"))
-    geography = _extract_section_value(document.content, ("geographic eligibility", "geography", "eligible countries", "eligible regions"))
+    eligibility = (
+        _extract_section_value(document.content, ("eligibility", "who can apply", "eligible applicants", "eligible organizations"))
+        or _extract_eligibility_from_prose(document.content)
+    )
+    geography = (
+        _extract_section_value(document.content, ("geographic eligibility", "geography", "eligible countries", "eligible regions"))
+        or _extract_geography_from_prose(document.content)
+    )
     trl = _extract_section_value(document.content, ("technology readiness level", "trl", "maturity level"))
     required_partners = _extract_section_value(document.content, ("required partners", "partnerships required", "partner requirements"))
     deliverables = _extract_section_value(document.content, ("deliverables", "expected deliverables", "required outputs"))
