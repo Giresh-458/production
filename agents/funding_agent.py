@@ -1298,6 +1298,19 @@ def _extract_program_name(text: str, fallback: str) -> str:
             if candidate and not _is_generic_funding_title(candidate):
                 return candidate
 
+    # SBIR.gov topic records can expose the formal solicitation title as a plain
+    # body line rather than a heading or labelled "Topic Title" field.
+    formal_sbir_title = re.search(
+        r"(?im)^\s*(.{10,180}\b(?:Small Business Innovation Research|Small Business Technology Transfer|"
+        r"Strategic Breakthrough Award|Trusted Identity and Identity Management|"
+        r"Climate Change Adaptation, Mitigation and Reversal)\b.{0,80})\s*$",
+        text,
+    )
+    if formal_sbir_title:
+        candidate = cleaned_text(formal_sbir_title.group(1)).rstrip(" .:-")
+        if candidate and not _is_generic_funding_title(candidate):
+            return candidate
+
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
         r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
