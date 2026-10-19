@@ -132,16 +132,20 @@ def extract_page_title(soup: Any, fallback: str) -> str:
         candidates.append(cleaned_text(soup.title.get_text(" ", strip=True)))
     for heading in soup.find_all(["h1", "h2", "h3"]):
         candidates.append(cleaned_text(heading.get_text(" ", strip=True)))
+    generic_candidate: str | None = None
     for candidate in candidates:
-        normalized = re.sub(r"\s+", " ", candidate).strip()
+        normalized = re.sub(r"\\s+", " ", candidate).strip()
         if not normalized:
             continue
         if _is_generic_funding_title(normalized):
+            generic_candidate = generic_candidate or normalized
             continue
         if len(normalized) > 180:
             normalized = normalized[:180].rsplit(" ", 1)[0]
         return normalized
-    return fallback
+    # Preserve the generic label instead of falling back to the URL itself;
+    # downstream status/selector gates can then reject the directory page.
+    return generic_candidate or fallback
 
 def is_probable_funding_call_page(url: str, title: str, content: str, application_links: list[str]) -> bool:
     """Require concrete call identity before treating a page as a funding call."""
