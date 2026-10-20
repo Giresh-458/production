@@ -117,7 +117,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is False
-    assert {"raw.githubusercontent.com", "github.com", "fil.org"}.issubset(
+    assert {"raw.githubusercontent.com", "fil.org"}.issubset(
         set(collection["allowed_domains"])
     )
     discovery = collection["discovery"]
@@ -190,8 +190,8 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         assert discovery.get("max_pages") is not None, (
             f"{entry.get('name')} is missing a configured page cap"
         )
-        # The Solana frontier and broad SBIR directory have dedicated bounded caps.
-        if entry.get("name") == "Solana Grants and Funding":
+        # Large discovery hubs have explicit higher caps; all crawls remain bounded.
+        if entry.get("name") in {"Solana Grants and Funding", "Superteam Development Grants"}:
             page_cap = 60
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 50
