@@ -55,10 +55,7 @@ sources:
         start_urls:
         - https://solana.org/grants-funding
         max_depth: 3
-        # A live validation on 2026-10-14 reached 30/30 pages with the discovery queue
-        # still populated and 13 records found. Raise only this source's bounded cap so
-        # the current Superteam listing frontier can be inspected without masking truncation.
-        max_pages: 60
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -226,7 +223,9 @@ sources:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         max_depth: 2
-        max_pages: 30
+        # The 2026-10-20 live scan hit this 30-page ceiling with queued URLs
+        # remaining; raise the bounded cap to allow the discovered call pages to finish.
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false

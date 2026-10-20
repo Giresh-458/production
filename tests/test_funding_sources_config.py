@@ -330,3 +330,16 @@ def test_filecoin_configured_directory_is_not_suppressed_by_deprecated_registry_
     assert len(entries) == 1
     assert entries[0]["status"] == "active"
     assert entries[0]["active_config"] is True
+
+def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
+    by_name = {entry["name"]: entry for entry in _entries()}
+
+    solana_discovery = by_name["Solana Grants and Funding"]["collection"]["discovery"]
+    superteam_discovery = by_name["Superteam Development Grants"]["collection"]["discovery"]
+    climate_kic_discovery = by_name["Climate KIC Open Calls"]["collection"]["discovery"]
+
+    # Keep the Solana directory crawl bounded independently of Superteam.
+    assert solana_discovery["max_pages"] == 30
+    assert superteam_discovery["max_pages"] == 60
+    # Climate KIC reached its former 30-page cap with work still queued.
+    assert climate_kic_discovery["max_pages"] == 60
