@@ -1884,14 +1884,28 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             status = "OPEN_CALL"
     duration = _extract_duration(document.content)
 
-    eligibility = (
-        _extract_section_value(document.content, ("eligibility", "who can apply", "eligible applicants", "eligible organizations"))
-        or _extract_eligibility_from_prose(document.content)
+    eligibility_section = _extract_section_value(
+        document.content,
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
     )
-    geography = (
-        _extract_section_value(document.content, ("geographic eligibility", "geography", "eligible countries", "eligible regions"))
-        or _extract_geography_from_prose(document.content)
+    # Ignore generic site-navigation and selection-process copy as eligibility.
+    if eligibility_section and re.search(
+        r"(?i)better understand the application process|eligibility and final selection|"
+        r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
+        eligibility_section,
+    ):
+        eligibility_section = None
+    eligibility = eligibility_section or _extract_eligibility_from_prose(document.content)
+    geography_section = _extract_section_value(
+        document.content,
+        ("geographic eligibility", "geography", "eligible countries", "eligible regions"),
     )
+    if geography_section and re.search(
+        r"(?i)better understand the application process|eligibility and final selection",
+        geography_section,
+    ):
+        geography_section = None
+    geography = geography_section or _extract_geography_from_prose(document.content)
     trl = _extract_section_value(document.content, ("technology readiness level", "trl", "maturity level"))
     required_partners = _extract_section_value(document.content, ("required partners", "partnerships required", "partner requirements"))
     deliverables = _extract_section_value(document.content, ("deliverables", "expected deliverables", "required outputs"))
