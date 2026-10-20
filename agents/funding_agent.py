@@ -1865,7 +1865,12 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         and document.organization.casefold().startswith("nsf sbir ")
     ):
         program_name = document.organization.strip()
-    status = determine_status(None, opening_date, deadline, document.content, program_name)
+    explicit_status_match = re.search(
+        r"(?im)^\\s*(?:solicitation\\s+status|application\\s+status|call\\s+status)\\s*[:：]\\s*(open|closed|paused|upcoming|funded)\\b",
+        document.content,
+    )
+    explicit_status = explicit_status_match.group(1) if explicit_status_match else None
+    status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)
