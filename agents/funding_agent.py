@@ -1605,7 +1605,7 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
         r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
         r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
-        r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,160}",
+        r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
     )
@@ -1819,7 +1819,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx = generate_research_mission(themes, priorities, document.title, focus_area, research_intent=research_intent, research_intent_evidence=research_intent_evidence)
     identity_material = "|".join([document.organization.strip().lower(), document.title.strip().lower(), canonicalize_url(document.source)])
     official_id_match = re.search(
-        r"(?i)\b(?:solicitation|NOFO|funding opportunity)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity|topic)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
         document.content,
     )
     mission_ctx["funding_call_id"] = (
@@ -1842,7 +1842,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
     # explicit STTR body text establish the distinct official opportunity.
     solicitation_match = re.search(
-        r"(?i)\b(?:solicitation|NOFO|funding opportunity)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity|topic)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
         document.content,
     )
     if (
@@ -1892,7 +1892,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # Remove known page-navigation/selection guidance lines before field
     # extraction so their trailing word "eligibility" cannot be mistaken for a
     # labelled eligibility field by loose HTML-to-text output.
-    eligibility_source_text = "\\n".join(
+    eligibility_source_text = "\n".join(
         line for line in document.content.splitlines()
         if not re.search(
             r"(?i)better understand the application process|eligibility and final selection",
