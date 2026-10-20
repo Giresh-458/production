@@ -31,7 +31,7 @@ def test_funding_sources_yaml_has_no_duplicate_top_level_source_groups():
     import re
 
     text = CATALOG_PATH.read_text(encoding="utf-8")
-    groups = re.findall(r"^  ([A-Za-z0-9_-]+):\\s*$", text, flags=re.MULTILINE)
+    groups = re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", text, flags=re.MULTILINE)
     assert groups
     assert len(groups) == len(set(groups)), (
         "Duplicate top-level source groups would be silently overwritten by YAML parsing"
