@@ -117,9 +117,233 @@ sources:
           - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
-          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)
+          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
           - '^https?://app\.potlock\.org/campaign/\d+\?tab=(?:leaderboard|settings)(?:&|$)'
-          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$''
+          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?
+  - name: Ripple UBRI
+    research_domains: [RWA, DID, Stablecoins]
+    url: https://ripple.com/impact/ubri/
+    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research. Annual research highlights are reports of past activity, not applications; retain only direct call or submission evidence.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ripple.com
+      discovery:
+        start_urls:
+        - https://ripple.com/impact/ubri/
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?ripple\.com/reports/Ripple-UBRI-Research-20\d{2}\.pdf(?:[?#].*)?$'
+  - name: XRPL Grants Program
+    research_domains: [RWA, Stablecoins]
+    url: https://xrplgrants.org/
+    focus: Official XRPL grants directory for RWA/tokenization and stablecoin/payment infrastructure. Crawl the application manager as well as the directory; it can state that no applications are currently open. Require current call-specific evidence before accepting an opportunity.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - xrplgrants.org
+      - submit.xrplgrants.org
+      discovery:
+        start_urls:
+        - https://xrplgrants.org/
+        - https://submit.xrplgrants.org/submit
+        max_depth: 1
+        max_pages: 10
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+          - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
+  - name: Filecoin Grants and Funding
+    research_domains: [DePIN]
+    url: https://fil.org/grants
+    direct_page: false
+    focus: Official Filecoin Foundation grants directory plus the detailed Filecoin Open Grants programme README. The directory is a discovery hub; treat the linked/seeded Open Grants README as the direct programme page and do not treat historical applicant issues as separate funding calls.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - raw.githubusercontent.com
+      - fil.org
+      - www.fil.org
+      discovery:
+        start_urls:
+        - https://fil.org/grants
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        max_depth: 2
+        max_pages: 12
+        # The root URL is a directory. Only force-record the README with the
+        # programme's explicit continuous-application and award evidence.
+        direct_page_urls:
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: false
+        exclude_url_patterns:
+          - '^https?://github\.com/filecoin-project/devgrants/issues(?:/|$)'
+  - name: Flashbots MEV Research Grants
+    research_domains: [MEV]
+    url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
+    direct_page: true
+    focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - github.com
+      - raw.githubusercontent.com
+      # The grants.md file can retain historical rolling-application wording.
+      # Cross-check the repository's current official status before marking it open.
+      status_verification_urls:
+      - https://raw.githubusercontent.com/flashbots/mev-research/main/README.md
+      discovery:
+        start_urls:
+        - https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  tier_3:
+  - name: Climate KIC Open Calls
+    research_domains: [ESG]
+    url: https://www.climate-kic.org/get-involved/open-calls/
+    focus: Official climate-innovation open-call directory. Some entries are accelerators, expressions of interest, or support programmes rather than grants; retain only individual calls with explicit funding/application evidence and direct ESG relevance.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - climate-kic.org
+      - www.climate-kic.org
+      discovery:
+        start_urls:
+        - https://www.climate-kic.org/get-involved/open-calls/
+        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
+        max_depth: 2
+        max_pages: 30
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: false
+  - name: NSF SBIR Trusted Identity
+    research_domains: [DID]
+    url: https://www.sbir.gov/topics/1012406
+    direct_page: true
+    focus: Official SBIR.gov NSF 26-510 Trusted Identity and Identity Management topic. The listing contains multiple due dates; use the next not-yet-passed date and verify qualifying U.S. small-business eligibility against the linked solicitation.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012406
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: NSF SBIR Climate Change Adaptation and Mitigation
+    research_domains: [ESG]
+    url: https://www.sbir.gov/topics/1012419
+    direct_page: true
+    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012419
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: Open SBIR Funding Topics
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://www.sbir.gov/topics?status=Open
+    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed opportunity is currently accepting applications; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence. Exclude historical awards, generic application guidance and unrelated community pages.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics?status=Open
+        max_depth: 2
+        max_pages: 50
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?sbir\.gov/awards(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/apply(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/community/gafc(?:/|\?|#|$)'
+        - '^https?://data\.www\.sbir\.gov/'
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
+    collection:
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
+        detail_fetch_missing_metadata: true
+        require_eligibility_evidence: true
+        require_domain_match: true
+      limits:
+        max_pages: 10
+        max_documents: 500
+  cps_funding:
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
+        follow_detail_pages: true
+        follow_pdfs: true
+        follow_documents: true
+        pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
