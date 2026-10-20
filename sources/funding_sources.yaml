@@ -78,7 +78,7 @@ sources:
         start_urls:
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 30
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -108,7 +108,7 @@ sources:
         max_depth: 2
         # The previous live run exhausted 20 pages and was marked PARTIAL.
         # URL exclusions and targeted portals should reduce waste before raising this cap.
-        max_pages: 20
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -117,7 +117,9 @@ sources:
           - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
-          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
+          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)
+          - '^https?://app\.potlock\.org/campaign/\d+\?tab=(?:leaderboard|settings)(?:&|$)'
+          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$''
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -167,7 +169,6 @@ sources:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - github.com
       - raw.githubusercontent.com
       - fil.org
       - www.fil.org
@@ -225,7 +226,7 @@ sources:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         max_depth: 2
-        max_pages: 15
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
@@ -311,8 +312,8 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        max_pages: 5
-        max_documents: 250
+        max_pages: 10
+        max_documents: 500
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]

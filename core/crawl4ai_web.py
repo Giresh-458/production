@@ -23,7 +23,7 @@ from collections import deque
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any, List, Optional
-from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.parse import urljoin, urlparse, urldefrag, parse_qsl, urlencode
 
 from core.schemas import CollectionResult
 from core.http_client import get_response
@@ -181,13 +181,20 @@ def _normalize_url(url: str) -> str:
 
 
 def _url_dedupe_key(url: str) -> str:
-    """Normalize slash variants for identity checks, not for the URL we fetch."""
+    """Normalize equivalent query ordering and slash variants for identity checks."""
     parsed = urlparse(_normalize_url(url))
     path = parsed.path.rstrip("/") or "/"
+    # Crawlers often discover the same listing URL with query parameters in a
+    # different order. Sort by key (stable for repeated keys) so those aliases
+    # do not consume the page budget; preserve repeated-value order for a key.
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    query_pairs.sort(key=lambda pair: pair[0])
+    normalized_query = urlencode(query_pairs, doseq=True)
     return parsed._replace(
         scheme=parsed.scheme.lower(),
         netloc=parsed.netloc.lower(),
         path=path,
+        query=normalized_query,
     ).geturl()
 
 
