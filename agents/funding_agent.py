@@ -1842,7 +1842,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
     # explicit STTR body text establish the distinct official opportunity.
     solicitation_match = re.search(
-        r"(?i)\\b(?:solicitation|NOFO|funding opportunity)\\s*(?:number|no\\.?|identifier)\\s*[:#]?\\s*([A-Z]{1,8}-\\d{2}-\\d{2,6})\\b",
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
         document.content,
     )
     if (
@@ -1866,7 +1866,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         program_name = document.organization.strip()
     explicit_status_match = re.search(
-        r"(?im)^\\s*(?:solicitation\\s+status|application\\s+status|call\\s+status)\\s*[:：]\\s*(open|closed|paused|upcoming|funded)\\b",
+        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status)\s*[:：]\s*(open|closed|paused|upcoming|funded)\b",
         document.content,
     )
     explicit_status = explicit_status_match.group(1) if explicit_status_match else None
