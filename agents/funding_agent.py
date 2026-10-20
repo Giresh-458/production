@@ -1901,6 +1901,12 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         eligibility_section = None
     eligibility = eligibility_section or _extract_eligibility_from_prose(document.content)
+    if eligibility and re.search(
+        r"(?i)better understand the application process|eligibility and final selection|"
+        r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
+        eligibility,
+    ):
+        eligibility = None
     geography_section = _extract_section_value(
         document.content,
         ("geographic eligibility", "geography", "eligible countries", "eligible regions"),
@@ -1911,6 +1917,11 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         geography_section = None
     geography = geography_section or _extract_geography_from_prose(document.content)
+    if geography and re.search(
+        r"(?i)better understand the application process|eligibility and final selection",
+        geography,
+    ):
+        geography = None
     trl = _extract_section_value(document.content, ("technology readiness level", "trl", "maturity level"))
     required_partners = _extract_section_value(document.content, ("required partners", "partnerships required", "partner requirements"))
     deliverables = _extract_section_value(document.content, ("deliverables", "expected deliverables", "required outputs"))
