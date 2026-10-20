@@ -1238,6 +1238,7 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
 
     opportunity = analyze_document(document)
     assert opportunity.call_id == "PA-27-102"
+    assert opportunity.status == "OPEN_CALL"
     assert opportunity.program_name == (
         "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) "
         "Clinical Trial Optional"
