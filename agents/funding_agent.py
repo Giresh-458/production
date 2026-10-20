@@ -1603,7 +1603,7 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     ]
     patterns = (
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
-        r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
+        r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
         r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
