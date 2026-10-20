@@ -342,3 +342,94 @@ sources:
           - '^https?://idapthub\.org/awards/?$'
           # Historical portfolio of already-selected fellows, not an application call.
           - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
+  - name: Ripple UBRI
+    research_domains: [RWA, DID, Stablecoins]
+    url: https://ripple.com/impact/ubri/
+    focus: University blockchain research and technical development; assess individual calls for digital assets/RWA, identity, or payment and stablecoin research. Annual research highlights are reports of past activity, not applications; retain only direct call or submission evidence.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - ripple.com
+      discovery:
+        start_urls:
+        - https://ripple.com/impact/ubri/
+        max_depth: 2
+        max_pages: 5
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?ripple\.com/reports/Ripple-UBRI-Research-20\d{2}\.pdf(?:[?#].*)?$'
+  - name: XRPL Grants Program
+    research_domains: [RWA, Stablecoins]
+    url: https://xrplgrants.org/
+    focus: Official XRPL grants directory for RWA/tokenization and stablecoin/payment infrastructure. Crawl the application manager as well as the directory; it can state that no applications are currently open. Require current call-specific evidence before accepting an opportunity.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - xrplgrants.org
+      - submit.xrplgrants.org
+      discovery:
+        start_urls:
+        - https://xrplgrants.org/
+        - https://submit.xrplgrants.org/submit
+        max_depth: 1
+        max_pages: 10
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+          - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
+  - name: Filecoin Grants and Funding
+    research_domains: [DePIN]
+    url: https://fil.org/grants
+    direct_page: false
+    focus: Official Filecoin Foundation grants directory plus the detailed Filecoin Open Grants programme README. The directory is a discovery hub; treat the linked/seeded Open Grants README as the direct programme page and do not treat historical applicant issues as separate funding calls.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - raw.githubusercontent.com
+      - fil.org
+      - www.fil.org
+      discovery:
+        start_urls:
+        - https://fil.org/grants
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        max_depth: 2
+        max_pages: 12
+        # The root URL is a directory. Only force-record the README with the
+        # programme's explicit continuous-application and award evidence.
+        direct_page_urls:
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: false
+        exclude_url_patterns:
+          - '^https?://github\.com/filecoin-project/devgrants/issues(?:/|$)'
+  - name: Flashbots MEV Research Grants
+    research_domains: [MEV]
+    url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
+    direct_page: true
+    focus: Official Flashbots MEV fellowship grants for research proposals on MEV topics; verify current availability, deliverables and applicant requirements from the current page.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - github.com
+      - raw.githubusercontent.com
+      # The grants.md file can retain historical rolling-application wording.
+      # Cross-check the repository's current official status before marking it open.
+      status_verification_urls:
+      - https://raw.githubusercontent.com/flashbots/mev-research/main/README.md
+      discovery:
+        start_urls:
+        - https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
