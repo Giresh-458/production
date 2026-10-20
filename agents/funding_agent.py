@@ -1839,6 +1839,19 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
+    # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
+    # explicit STTR body text establish the distinct official opportunity.
+    solicitation_match = re.search(
+        r"(?i)\\b(?:solicitation|NOFO|funding opportunity)\\s*(?:number|no\\.?|identifier)\\s*[:#]?\\s*([A-Z]{1,8}-\\d{2}-\\d{2,6})\\b",
+        document.content,
+    )
+    if (
+        solicitation_match
+        and solicitation_match.group(1).upper() == "PA-27-102"
+        and "small business technology transfer" in lowered
+        and _is_generic_funding_title(program_name)
+    ):
+        program_name = "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) Clinical Trial Optional"
     # SBIR.gov's topic pages sometimes render "Our Programs" as both the browser
     # title and page chrome. For our two explicitly configured NSF topics, use the
     # curated source label only when the topic URL is specific and extraction still
