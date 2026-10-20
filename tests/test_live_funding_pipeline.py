@@ -1196,10 +1196,10 @@ def test_sbir_generic_eligibility_navigation_falls_back_to_us_eligibility_prose(
         source="https://www.sbir.gov/topics/12563",
         source_type="html",
         content=(
-            "Better understand the application process and eligibility\\n"
-            "Topic Number: PA-27-100\\n"
-            "Solicitation Number: PA-27-100\\n"
-            "Solicitation Status: Open\\n"
+            "Better understand the application process and eligibility\n"
+            "Topic Number: PA-27-100\n"
+            "Solicitation Number: PA-27-100\n"
+            "Solicitation Status: Open\n"
             "This NOFO accepts grant applications from eligible United States SBCs. "
             "The Program Director/Principal Investigator must be primarily employed "
             "by the small business."
@@ -1224,9 +1224,9 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
         source="https://www.sbir.gov/topics/12567",
         source_type="html",
         content=(
-            "Topic Number: PA-27-102\\n"
-            "Solicitation Number: PA-27-102\\n"
-            "Solicitation Status: Open\\n"
+            "Topic Number: PA-27-102\n"
+            "Solicitation Number: PA-27-102\n"
+            "Solicitation Status: Open\n"
             "The Small Business Technology Transfer (STTR) program supports a "
             "small business doing research and development in partnership with "
             "a nonprofit research institution. This NOFO accepts STTR Phase I "
