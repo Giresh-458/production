@@ -191,7 +191,10 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
             f"{entry.get('name')} is missing a configured page cap"
         )
         # Large discovery hubs have explicit higher caps; all crawls remain bounded.
-        if entry.get("name") in {"Solana Grants and Funding", "Superteam Development Grants"}:
+        if entry.get("name") in {
+            "Superteam Development Grants",
+            "Climate KIC Open Calls",
+        }:
             page_cap = 60
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 50
@@ -213,7 +216,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert solana["collection"]["discovery"]["start_urls"] == [solana["url"]]
     assert "superteam.fun" not in solana["collection"]["allowed_domains"]
     assert any("/news/" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
-    assert solana["collection"]["discovery"]["max_pages"] == 60
+    assert solana["collection"]["discovery"]["max_pages"] == 30
 
     superteam = by_name["Superteam Development Grants"]
     assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
