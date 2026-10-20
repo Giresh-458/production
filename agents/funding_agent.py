@@ -1010,9 +1010,12 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     if opening_dt and opening_dt <= now and (deadline_dt is None or deadline_dt >= now):
         return "OPEN_CALL"
 
-    # Preserve a validated explicit open label only after date and closure
-    # checks, not before them.
+    # Preserve an explicit open label only when the page title identifies a
+    # specific opportunity. Generic site chrome can carry stale or template
+    # status text and must not become an actionable call by itself.
     if normalized_explicit == "OPEN_CALL":
+        if _is_generic_funding_title(title):
+            return "UNKNOWN"
         return "OPEN_CALL"
 
     # Individual Superteam listings expose a structured badge such as
