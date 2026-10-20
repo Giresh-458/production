@@ -1184,3 +1184,65 @@ def test_us_small_business_eligibility_is_not_silently_left_unknown():
     assert eligibility is not None
     assert "United States small business concerns" in eligibility
     assert geography is not None
+
+
+
+def test_sbir_generic_eligibility_navigation_falls_back_to_us_eligibility_prose():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="NIH, CDC and FDA Small Business Innovation Research Grant",
+        source="https://www.sbir.gov/topics/12563",
+        source_type="html",
+        content=(
+            "Better understand the application process and eligibility\n"
+            "Topic Number: PA-27-100\n"
+            "Solicitation Number: PA-27-100\n"
+            "Solicitation Status: Open\n"
+            "This NOFO accepts grant applications from eligible United States SBCs. "
+            "The Program Director/Principal Investigator must be primarily employed "
+            "by the small business."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+    assert opportunity.eligibility is not None
+    assert "United States" in opportunity.eligibility
+    assert "Better understand the application process" not in opportunity.eligibility
+    assert opportunity.geography is not None
+    assert "United States" in opportunity.geography
+
+
+def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="Topic | SBIR",
+        source="https://www.sbir.gov/topics/12567",
+        source_type="html",
+        content=(
+            "Topic Number: PA-27-102\n"
+            "Solicitation Number: PA-27-102\n"
+            "Solicitation Status: Open\n"
+            "The Small Business Technology Transfer (STTR) program supports a "
+            "small business doing research and development in partnership with "
+            "a nonprofit research institution. This NOFO accepts STTR Phase I "
+            "and Phase II applications from eligible United States SBCs. "
+            "Clinical Trial Optional."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+    assert opportunity.call_id == "PA-27-102"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.program_name == (
+        "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) "
+        "Clinical Trial Optional"
+    )
+    assert opportunity.eligibility is not None
+    assert "United States" in opportunity.eligibility
+    assert opportunity.geography is not None

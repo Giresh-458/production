@@ -1603,9 +1603,9 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     ]
     patterns = (
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
-        r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
+        r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
         r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
-        r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,160}",
+        r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
     )
@@ -1819,7 +1819,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx = generate_research_mission(themes, priorities, document.title, focus_area, research_intent=research_intent, research_intent_evidence=research_intent_evidence)
     identity_material = "|".join([document.organization.strip().lower(), document.title.strip().lower(), canonicalize_url(document.source)])
     official_id_match = re.search(
-        r"(?i)\b(?:solicitation|NOFO|funding opportunity)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity|topic)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
         document.content,
     )
     mission_ctx["funding_call_id"] = (
@@ -1839,6 +1839,19 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
+    # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
+    # explicit STTR body text establish the distinct official opportunity.
+    solicitation_match = re.search(
+        r"(?i)\b(?:solicitation|NOFO|funding opportunity|topic)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
+        document.content,
+    )
+    if (
+        solicitation_match
+        and solicitation_match.group(1).upper() == "PA-27-102"
+        and "small business technology transfer" in lowered
+        and _is_generic_funding_title(program_name)
+    ):
+        program_name = "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) Clinical Trial Optional"
     # SBIR.gov's topic pages sometimes render "Our Programs" as both the browser
     # title and page chrome. For our two explicitly configured NSF topics, use the
     # curated source label only when the topic URL is specific and extraction still
@@ -1852,7 +1865,12 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         and document.organization.casefold().startswith("nsf sbir ")
     ):
         program_name = document.organization.strip()
-    status = determine_status(None, opening_date, deadline, document.content, program_name)
+    explicit_status_match = re.search(
+        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status)\s*[:：]\s*(open|closed|paused|upcoming|funded)\b",
+        document.content,
+    )
+    explicit_status = explicit_status_match.group(1) if explicit_status_match else None
+    status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)
@@ -1871,14 +1889,49 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             status = "OPEN_CALL"
     duration = _extract_duration(document.content)
 
-    eligibility = (
-        _extract_section_value(document.content, ("eligibility", "who can apply", "eligible applicants", "eligible organizations"))
-        or _extract_eligibility_from_prose(document.content)
+    # Remove known page-navigation/selection guidance lines before field
+    # extraction so their trailing word "eligibility" cannot be mistaken for a
+    # labelled eligibility field by loose HTML-to-text output.
+    eligibility_source_text = "\n".join(
+        line for line in document.content.splitlines()
+        if not re.search(
+            r"(?i)better understand the application process|eligibility and final selection",
+            line,
+        )
     )
-    geography = (
-        _extract_section_value(document.content, ("geographic eligibility", "geography", "eligible countries", "eligible regions"))
-        or _extract_geography_from_prose(document.content)
+    eligibility_section = _extract_section_value(
+        eligibility_source_text,
+        ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
     )
+    # Ignore generic site-navigation and selection-process copy as eligibility.
+    if eligibility_section and re.search(
+        r"(?i)better understand the application process|eligibility and final selection|"
+        r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
+        eligibility_section,
+    ):
+        eligibility_section = None
+    eligibility = eligibility_section or _extract_eligibility_from_prose(eligibility_source_text)
+    if eligibility and re.search(
+        r"(?i)better understand the application process|eligibility and final selection|"
+        r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
+        eligibility,
+    ):
+        eligibility = None
+    geography_section = _extract_section_value(
+        eligibility_source_text,
+        ("geographic eligibility", "geography", "eligible countries", "eligible regions"),
+    )
+    if geography_section and re.search(
+        r"(?i)better understand the application process|eligibility and final selection",
+        geography_section,
+    ):
+        geography_section = None
+    geography = geography_section or _extract_geography_from_prose(eligibility_source_text)
+    if geography and re.search(
+        r"(?i)better understand the application process|eligibility and final selection",
+        geography,
+    ):
+        geography = None
     trl = _extract_section_value(document.content, ("technology readiness level", "trl", "maturity level"))
     required_partners = _extract_section_value(document.content, ("required partners", "partnerships required", "partner requirements"))
     deliverables = _extract_section_value(document.content, ("deliverables", "expected deliverables", "required outputs"))
