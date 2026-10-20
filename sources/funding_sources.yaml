@@ -197,6 +197,10 @@ sources:
       allowed_domains:
       - github.com
       - raw.githubusercontent.com
+      # The grants.md file can retain historical rolling-application wording.
+      # Cross-check the repository's current official status before marking it open.
+      status_verification_urls:
+      - https://raw.githubusercontent.com/flashbots/mev-research/main/README.md
       discovery:
         start_urls:
         - https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md

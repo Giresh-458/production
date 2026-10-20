@@ -1099,3 +1099,88 @@ def test_selector_rejects_generic_directory_title_even_if_other_fields_look_open
         and any("generic landing-page title" in reason for reason in item.get("reasons", []))
         for item in rejected
     )
+
+
+
+def test_sbir_source_labelled_title_and_official_solicitation_id_are_extracted():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="Topic | SBIR",
+        source="https://www.sbir.gov/topics/12563",
+        source_type="html",
+        content=(
+            "Topic Title: NIH, CDC and FDA Small Business Innovation Research Grant "
+            "(Parent SBIR R43/R44 Clinical Trial Optional)\n"
+            "Funding Agency: HHS\nSolicitation Number: PA-27-100\n"
+            "Solicitation Status: Open\n"
+            "Due Date(s): September 5, 2026; January 5, 2027; April 5, 2027.\n"
+            "Applications from eligible United States small business concerns may apply."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert "NIH, CDC and FDA Small Business Innovation Research Grant" in opportunity.program_name
+    assert opportunity.call_id == "PA-27-100"
+    assert opportunity.deadline == "2027-01-05"
+    assert opportunity.eligibility is not None
+    assert "United States small business concerns" in opportunity.eligibility
+    assert opportunity.geography is not None
+    assert "United States" in opportunity.geography
+
+
+def test_status_verification_fetch_preserves_official_pause_evidence(monkeypatch):
+    from agents.funding_collector import _fetch_status_verification_context
+    from agents.funding_agent import FundingSource, FundingDocument, analyze_document
+    import core.http_client
+
+    def fake_fetch_text(url, **kwargs):
+        return (
+            "Flashbots Research Proposals are accepted on a rolling basis. "
+            "Grant giving through FRP is currently paused, but collaboration remains welcome.",
+            url,
+        )
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    source = FundingSource(
+        name="Flashbots MEV Research Grants",
+        url="https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
+        tier="tier_2",
+        collection={
+            "status_verification_urls": [
+                "https://raw.githubusercontent.com/flashbots/mev-research/main/README.md"
+            ]
+        },
+    )
+    verification = _fetch_status_verification_context(source)
+    assert "currently paused" in verification.lower()
+
+    doc = FundingDocument(
+        organization=source.name,
+        title="MEV Research Grants",
+        source=source.url,
+        source_type="html",
+        content=(
+            "Proposals are accepted on a rolling basis. "
+            + verification
+        ),
+        year=2026,
+    )
+    assert analyze_document(doc).status == "CLOSED_CALL"
+
+
+def test_us_small_business_eligibility_is_not_silently_left_unknown():
+    from agents.funding_agent import _extract_eligibility_from_prose, _extract_geography_from_prose
+
+    text = (
+        "Applications from eligible United States small business concerns. "
+        "The principal investigator must be primarily employed by the small business."
+    )
+    eligibility = _extract_eligibility_from_prose(text)
+    geography = _extract_geography_from_prose(text)
+    assert eligibility is not None
+    assert "United States small business concerns" in eligibility
+    assert geography is not None

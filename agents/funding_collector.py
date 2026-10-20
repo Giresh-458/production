@@ -1271,6 +1271,41 @@ def _collect_github(
     return result
 
 
+def _fetch_status_verification_context(
+    source: FundingSource,
+    warnings: Optional[List[str]] = None,
+) -> str:
+    """Fetch optional publisher-owned status pages and retain only explicit closure evidence."""
+    urls = source.collection.get("status_verification_urls", [])
+    if not isinstance(urls, list) or not urls:
+        return ""
+
+    from core.http_client import fetch_text
+
+    evidence: list[str] = []
+    closure_pattern = re.compile(
+        r"[^.!?\n]{0,180}\b(?:paused|suspended|closed for applications|no longer accepting|"
+        r"not accepting new submissions|not accepting applications|submissions? will not be processed)\b[^.!?\n]{0,180}[.!?]?",
+        flags=re.IGNORECASE,
+    )
+    for url in urls:
+        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+            continue
+        try:
+            text, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+        except Exception as exc:
+            if warnings is not None:
+                warnings.append(f"{source.name}: status verification could not be fetched from {url}: {exc}")
+            LOGGER.warning("Status verification fetch failed for %s (%s): %s", source.name, url, exc)
+            continue
+        if not text:
+            continue
+        matches = [cleaned_text(match.group(0)) for match in closure_pattern.finditer(text)]
+        for match in matches[:5]:
+            evidence.append(f"Official status page ({final_url or url}): {match}")
+    return "\n".join(dict.fromkeys(evidence))
+
+
 def _collect_web_source(
     source: FundingSource,
     area: Optional[str],
@@ -1299,6 +1334,7 @@ def _collect_web_source(
     result.opportunities = []
     result.records_discovered = len(raw_opps)
 
+    verification_context = _fetch_status_verification_context(source, warnings)
     seen_urls: set[str] = set()
     for raw in raw_opps:
         raw_url = raw.get("url", "")
@@ -1308,6 +1344,12 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        if verification_context:
+            doc.content = (
+                doc.content.rstrip()
+                + "\n\n## Official Status Verification\n"
+                + verification_context
+            )[:50000]
         try:
             analysis = analyze_document(doc)
             result.opportunities.append((doc, analysis))
