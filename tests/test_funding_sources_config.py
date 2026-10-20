@@ -25,6 +25,19 @@ def _entries():
     ]
 
 
+def test_funding_sources_yaml_has_no_duplicate_top_level_source_groups():
+    # PyYAML silently keeps only the last value for a duplicate mapping key.
+    # That can make valid source definitions disappear without a parse error.
+    import re
+
+    text = CATALOG_PATH.read_text(encoding="utf-8")
+    groups = re.findall(r"^  ([A-Za-z0-9_-]+):\\s*$", text, flags=re.MULTILINE)
+    assert groups
+    assert len(groups) == len(set(groups)), (
+        "Duplicate top-level source groups would be silently overwritten by YAML parsing"
+    )
+
+
 def test_funding_source_catalogue_has_unique_names_and_urls():
     entries = _entries()
     names = [str(entry.get("name", "")).strip().casefold() for entry in entries]
