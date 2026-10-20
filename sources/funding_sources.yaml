@@ -106,8 +106,8 @@ sources:
         - https://app.potlock.org/pots
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 2
-        # The previous live run exhausted 20 pages and was marked PARTIAL.
-        # URL exclusions and targeted portals should reduce waste before raising this cap.
+        # The previous live run exhausted 20 pages. Exclusions remove known
+        # PotLock navigation noise; retain a bounded 30-page budget for coverage.
         max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true

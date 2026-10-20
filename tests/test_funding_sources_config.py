@@ -148,10 +148,10 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
     assert discovery["follow_pdfs"] is False
     assert discovery["pagination"] is False
 
-def test_near_page_budget_is_larger_than_the_previous_exhausted_cap():
+def test_near_page_budget_is_raised_after_exhausting_the_previous_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 20
+    assert discovery["max_pages"] == 30
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -219,13 +219,13 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
     assert superteam["collection"]["discovery"]["start_urls"] == [superteam["url"]]
     assert {"superteam.fun", "earn.superteam.fun"}.issubset(set(superteam["collection"]["allowed_domains"]))
-    assert superteam["collection"]["discovery"]["max_pages"] == 30
+    assert superteam["collection"]["discovery"]["max_pages"] == 60
     assert superteam.get("direct_page", False) is False
 
     near_entry = by_name["NEAR Ecosystem Funding"]
     assert near_entry["url"] == "https://near.org/funding"
     near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 20 and near["max_depth"] == 2 and near["exclude_url_patterns"]
+    assert near["max_pages"] == 30 and near["max_depth"] == 2 and near["exclude_url_patterns"]
     assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
     assert "https://near.org/funding" in near["start_urls"]
     assert "https://nearn.io/devhub/" in near["start_urls"]
@@ -248,7 +248,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 15
+    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 30
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -281,8 +281,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert eu["collection"]["provider"] == "eu_funding_tenders"
     assert eu["collection"]["api"]["types"] == ["1", "2", "8"]
     assert eu["collection"]["api"]["statuses"] == ["31094501", "31094502"]
-    assert eu["collection"]["limits"]["max_pages"] == 5
-    assert eu["collection"]["limits"]["max_documents"] == 250
+    assert eu["collection"]["limits"]["max_pages"] == 10
+    assert eu["collection"]["limits"]["max_documents"] == 500
 
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
