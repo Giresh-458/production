@@ -119,7 +119,7 @@ sources:
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
           - '^https?://app\.potlock\.org/campaign/\d+\?tab=(?:leaderboard|settings)(?:&|$)'
-          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?
+          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
