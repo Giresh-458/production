@@ -110,12 +110,13 @@ GENERIC_PAGE_TITLES = {
 def _is_generic_funding_title(value: str | None) -> bool:
     """Recognize generic browser titles even when the site appends its brand."""
     normalized = re.sub(r"\s+", " ", str(value or "").casefold()).strip()
+    # Check browser-generated pagination labels before stripping the suffix
+    # after a pipe; otherwise "Documents | Page 10" becomes "documents" and
+    # escapes this guard.
+    if re.fullmatch(r"documents\s*\|\s*page\s*\d+", normalized):
+        return True
     normalized = re.split(r"\s+[|·—–]\s+|\s+-\s+", normalized, maxsplit=1)[0].strip(" .:-")
-    return (
-        normalized in GENERIC_PAGE_TITLES
-        or normalized in {"getting started", "funding at nsf"}
-        or bool(re.fullmatch(r"documents\s*\|\s*page\s*\d+", normalized))
-    )
+    return normalized in GENERIC_PAGE_TITLES or normalized in {"getting started", "funding at nsf"}
 
 
 def extract_page_title(soup: Any, fallback: str) -> str:
