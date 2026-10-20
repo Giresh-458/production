@@ -1889,8 +1889,18 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             status = "OPEN_CALL"
     duration = _extract_duration(document.content)
 
+    # Remove known page-navigation/selection guidance lines before field
+    # extraction so their trailing word "eligibility" cannot be mistaken for a
+    # labelled eligibility field by loose HTML-to-text output.
+    eligibility_source_text = "\\n".join(
+        line for line in document.content.splitlines()
+        if not re.search(
+            r"(?i)better understand the application process|eligibility and final selection",
+            line,
+        )
+    )
     eligibility_section = _extract_section_value(
-        document.content,
+        eligibility_source_text,
         ("eligibility", "who can apply", "eligible applicants", "eligible organizations"),
     )
     # Ignore generic site-navigation and selection-process copy as eligibility.
@@ -1900,7 +1910,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         eligibility_section,
     ):
         eligibility_section = None
-    eligibility = eligibility_section or _extract_eligibility_from_prose(document.content)
+    eligibility = eligibility_section or _extract_eligibility_from_prose(eligibility_source_text)
     if eligibility and re.search(
         r"(?i)better understand the application process|eligibility and final selection|"
         r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
@@ -1908,7 +1918,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         eligibility = None
     geography_section = _extract_section_value(
-        document.content,
+        eligibility_source_text,
         ("geographic eligibility", "geography", "eligible countries", "eligible regions"),
     )
     if geography_section and re.search(
@@ -1916,7 +1926,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         geography_section,
     ):
         geography_section = None
-    geography = geography_section or _extract_geography_from_prose(document.content)
+    geography = geography_section or _extract_geography_from_prose(eligibility_source_text)
     if geography and re.search(
         r"(?i)better understand the application process|eligibility and final selection",
         geography,
