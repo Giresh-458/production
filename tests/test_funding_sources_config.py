@@ -264,7 +264,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 30
+    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 60
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
