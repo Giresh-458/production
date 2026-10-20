@@ -439,6 +439,26 @@ def test_crawler_url_normalization_preserves_trailing_slashes_but_dedupes_aliase
     assert _url_dedupe_key(canonical) == _url_dedupe_key("https://nearn.io/devhub")
 
 
+def test_crawler_dedupe_key_normalizes_query_parameter_order():
+    from core.crawl4ai_web import _url_dedupe_key
+
+    first = "https://www.sbir.gov/topics?status=Open&keywords=&page=1&close_date_from="
+    reordered = "https://www.sbir.gov/topics?close_date_from=&page=1&keywords=&status=Open"
+    next_page = "https://www.sbir.gov/topics?page=2&status=Open&keywords=&close_date_from="
+
+    assert _url_dedupe_key(first) == _url_dedupe_key(reordered)
+    assert _url_dedupe_key(first) != _url_dedupe_key(next_page)
+
+
+def test_crawler_dedupe_key_preserves_repeated_query_value_order():
+    from core.crawl4ai_web import _url_dedupe_key
+
+    first = "https://example.org/search?tag=one&tag=two"
+    reversed_values = "https://example.org/search?tag=two&tag=one"
+
+    assert _url_dedupe_key(first) != _url_dedupe_key(reversed_values)
+
+
 def test_successful_redirect_uses_destination_status_and_final_url():
     from unittest.mock import patch
     from core.crawl4ai_web import crawl_funding_source

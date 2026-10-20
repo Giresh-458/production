@@ -55,10 +55,7 @@ sources:
         start_urls:
         - https://solana.org/grants-funding
         max_depth: 3
-        # A live validation on 2026-10-14 reached 30/30 pages with the discovery queue
-        # still populated and 13 records found. Raise only this source's bounded cap so
-        # the current Superteam listing frontier can be inspected without masking truncation.
-        max_pages: 60
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -78,7 +75,7 @@ sources:
         start_urls:
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 30
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -106,9 +103,9 @@ sources:
         - https://app.potlock.org/pots
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 2
-        # The previous live run exhausted 20 pages and was marked PARTIAL.
-        # URL exclusions and targeted portals should reduce waste before raising this cap.
-        max_pages: 20
+        # The previous live run exhausted 20 pages. Exclusions remove known
+        # PotLock navigation noise; retain a bounded 30-page budget for coverage.
+        max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -118,6 +115,8 @@ sources:
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
+          - '^https?://app\.potlock\.org/campaign/\d+\?tab=(?:leaderboard|settings)(?:&|$)'
+          - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -167,7 +166,6 @@ sources:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - github.com
       - raw.githubusercontent.com
       - fil.org
       - www.fil.org
@@ -225,7 +223,9 @@ sources:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         max_depth: 2
-        max_pages: 15
+        # The 2026-10-20 live scan hit this 30-page ceiling with queued URLs
+        # remaining; raise the bounded cap to allow the discovered call pages to finish.
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
@@ -311,8 +311,8 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        max_pages: 5
-        max_documents: 250
+        max_pages: 10
+        max_documents: 500
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]

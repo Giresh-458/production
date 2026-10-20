@@ -11,6 +11,7 @@ def test_multiple_open_calls():
                 "program_name": "Call A",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
             },
@@ -19,6 +20,7 @@ def test_multiple_open_calls():
                 "program_name": "Call B",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=20)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://b.org",
                 "call_id": "CALL-B"
             },
@@ -27,6 +29,7 @@ def test_multiple_open_calls():
                 "program_name": "Call C",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=30)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://c.org",
                 "call_id": "CALL-C"
             },
@@ -46,6 +49,7 @@ def test_mixed_candidates():
                 "program_name": "Call A",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
             },
@@ -61,6 +65,7 @@ def test_mixed_candidates():
                 "program_name": "Call C",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=30)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://c.org",
                 "call_id": "CALL-C"
             },
@@ -96,6 +101,7 @@ def test_one_valid_call():
                 "program_name": "Call A",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://a.org",
                 "call_id": "CALL-A"
             }
@@ -115,6 +121,7 @@ def test_duplicate_call():
                 "program_name": "Call A",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://a.org",
                 "call_id": "CALL-A" # Explicit ID duplicate
             },
@@ -123,6 +130,7 @@ def test_duplicate_call():
                 "program_name": "Call A",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://a.org",
                 "call_id": "CALL-A" # Same explicit ID
             },
@@ -131,6 +139,7 @@ def test_duplicate_call():
                 "program_name": "Call B",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://b.org",
                 "source_url": "https://news1.org",
                 # No call_id, should hash combination
@@ -140,6 +149,7 @@ def test_duplicate_call():
                 "program_name": "Call B",
                 "status": "OPEN_CALL", "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}], "source_research_domains": ["DePIN"],
                 "deadline": (now + timedelta(days=14)).date().isoformat(),
+                "eligibility": "Eligible applicants must be registered organizations.",
                 "application_url": "https://b.org",
                 "source_url": "https://news2.org",
                 # Same title/app_url, diff source_url, should deduplicate
@@ -193,7 +203,7 @@ def test_does_not_treat_inferred_open_status_as_independent_evidence():
             "status": "OPEN_CALL",
             "deadline": (now + timedelta(days=30)).date().isoformat(),
             "funding_amount": "$25,000",
-            "eligibility": "Universities and research organizations",
+            "eligibility": "Universities and research organizations established in eligible countries may apply.",
             "source_url": "https://example.org/calls/research-innovation",
             "evidence": {
                 # A classifier may record call-type language here without proving
@@ -201,7 +211,7 @@ def test_does_not_treat_inferred_open_status_as_independent_evidence():
                 "status": "Request for Proposals",
                 "deadline": "Applications close 2027-01-30",
                 "funding_amount": "Awards up to $25,000",
-                "eligibility": "Universities and research organizations",
+                "eligibility": "Universities and research organizations established in eligible countries may apply.",
             },
         }]
     }

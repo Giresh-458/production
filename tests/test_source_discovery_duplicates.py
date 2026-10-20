@@ -130,6 +130,18 @@ Blockchain ledger systems.
 - https://example.org/link-confA
 """, encoding="utf-8")
 
+        # These fixtures represent evidence collected in this pipeline run.
+        # Production normalization deliberately excludes records from other runs.
+        run_id = kwargs["base_input_data"]["run_id"]
+        for artifact in intermediate_dir.glob("*.md"):
+            artifact_text = artifact.read_text(encoding="utf-8")
+            marker = f"- funding_call_id: {call_id}\n"
+            if marker in artifact_text and "- run_id:" not in artifact_text:
+                artifact_text = artifact_text.replace(
+                    marker, marker + f"- run_id: {run_id}\n", 1
+                )
+                artifact.write_text(artifact_text, encoding="utf-8")
+
         return {"tasks": []}
 
     mock_execute_batch.side_effect = fake_execute_batch
