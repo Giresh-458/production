@@ -308,16 +308,12 @@ jobs:
               "source_summary": source_summary,
               "warnings": response.get("warnings", []),
           }
-          (output_dir / "summary.json").write_text(
-              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
-          )
           (output_dir / "records.json").write_text(
               json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8"
           )
           (output_dir / "selected.json").write_text(
               json.dumps(selected_summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
-          print(json.dumps(summary, indent=2, ensure_ascii=False))
           coverage_status_violations = [
               {
                   "source_id": item.get("source_id"),
