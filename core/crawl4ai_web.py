@@ -292,6 +292,14 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     origin = f"{urlparse(url).scheme.lower()}://{urlparse(url).netloc.lower()}"
     combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
 
+    # ESP applicant/RFP/open-round/wishlist routes are landing pages, not one
+    # individual opportunity. A route fallback to the parent applicant page
+    # must never be emitted as a funding call.
+    if origin == "https://esp.ethereum.foundation" and path in {
+        "/applicants", "/applicants/rfp", "/applicants/open-rounds", "/applicants/wishlist",
+    }:
+        return True
+
     # XRPL's home page is a multi-program directory. Its current-looking
     # headline can conflict with linked application pages whose deadlines have
     # passed, so verify each linked programme instead of normalizing the hub.
@@ -710,6 +718,25 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
         }
 
 
+def _extract_docx_title(paragraphs: list[str], url: str) -> str:
+    """Prefer a call/fellowship heading in the document over a filename slug."""
+    title_pattern = re.compile(
+        r"\b(?:call for|proposal call|request for proposals?|funding opportunity|"
+        r"grant(?:s)? program|fellowships?|scholarships?|application for)\b",
+        flags=re.IGNORECASE,
+    )
+    for raw in paragraphs[:40]:
+        candidate = re.sub(r"\s+", " ", str(raw or "")).strip(" \t:.-")
+        if not candidate or len(candidate) > 180 or len(candidate) < 5:
+            continue
+        if "@" in candidate or re.search(r"\b(?:phone|email|www\.)\b", candidate, re.IGNORECASE):
+            continue
+        if title_pattern.search(candidate):
+            return candidate
+    filename = urlparse(url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return re.sub(r"[-_]+", " ", filename).strip() or "Untitled application document"
+
+
 def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
     """Download a DOCX directly and extract paragraph text without browser navigation."""
     try:
@@ -747,6 +774,7 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
         return {
             "success": True,
             "url": url,
+            "title": _extract_docx_title(paragraphs, url),
             "content": content,
             "paragraphs_extracted": len(paragraphs),
             "truncated": truncated,
@@ -1020,7 +1048,7 @@ def crawl_funding_source(
                     "type": "docx",
                     "url": current_url,
                     "content": docx_result["content"],
-                    "title": urlparse(current_url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("-", " ").replace("_", " "),
+                    "title": docx_result.get("title") or urlparse(current_url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("-", " ").replace("_", " "),
                     "paragraphs_extracted": docx_result["paragraphs_extracted"],
                     "truncated": docx_result["truncated"],
                     "retrieved_at": datetime.now(UTC).isoformat(),
@@ -1054,6 +1082,25 @@ def crawl_funding_source(
             continue
 
         page_url = res.get("url") or current_url
+        # A configured detail/listing route that redirects to its parent is not
+        # evidence that the requested route was successfully crawled. Preserve
+        # the gap instead of silently treating the parent page as the child.
+        requested = urlparse(current_url)
+        final = urlparse(page_url)
+        requested_path = requested.path.rstrip("/") or "/"
+        final_path = final.path.rstrip("/") or "/"
+        if (
+            depth == 0
+            and (requested.hostname or "").lower() == (final.hostname or "").lower()
+            and final_path != "/"
+            and requested_path.startswith(final_path + "/")
+        ):
+            result.relevant_urls_skipped += 1
+            result.coverage_gaps.append({
+                "url": current_url,
+                "final_url": page_url,
+                "reason": "configured_start_url_redirected_to_parent_path",
+            })
         # Record the final URL too, preventing redirects from being fetched again.
         visited.add(_url_dedupe_key(page_url))
 

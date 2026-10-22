@@ -1137,3 +1137,90 @@ def test_closed_superteam_listing_does_not_get_an_active_application_url_fallbac
     content = "Agentic Engineering Grants\nApplications Paused\nApply Now"
 
     assert _resolve_application_url(content, source_url, "CLOSED_CALL") is None
+
+
+
+def test_ethereum_esp_applicant_routes_are_hubs_not_individual_calls():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_generic_funding_hub
+
+    content = (
+        "How to Apply. Browse the available Wishlist or RFP items and find one that matches. "
+        "Applications describe methodology, timeline, and deliverables."
+    )
+    for path in (
+        "/applicants",
+        "/applicants/rfp",
+        "/applicants/open-rounds",
+        "/applicants/wishlist",
+    ):
+        url = "https://esp.ethereum.foundation" + path
+        assert _is_generic_funding_hub(url, "Applicants Overview", content)
+        assert not _classify_page_stage_b(url, "Applicants Overview", content)
+
+
+def test_configured_child_route_redirecting_to_parent_is_reported_as_partial():
+    from core.crawl4ai_web import crawl_funding_source
+
+    requested_url = "https://esp.ethereum.foundation/applicants/rfp"
+
+    def fake_fetch(url):
+        return {
+            "html": "<html><body>How to Apply</body></html>",
+            "markdown": "How to Apply. Browse available RFP items and submit applications.",
+            "success": True,
+            "error_message": None,
+            "status_code": 200,
+            "url": "https://esp.ethereum.foundation/applicants",
+            "title": "Applicants Overview",
+            "links": [],
+            "pagination_links": [],
+        }
+
+    with patch("core.crawl4ai_web._fetch_sync", fake_fetch):
+        result = crawl_funding_source(
+            "Ethereum ESP RFPs",
+            requested_url,
+            {
+                "start_urls": [requested_url],
+                "max_depth": 1,
+                "max_pages": 2,
+                "pagination": True,
+            },
+            ["esp.ethereum.foundation"],
+        )
+
+    assert result.opportunities == []
+    assert result.final_status == "PARTIAL"
+    assert any(
+        gap.get("reason") == "configured_start_url_redirected_to_parent_path"
+        and gap.get("url") == requested_url
+        for gap in result.coverage_gaps
+    )
+
+
+def test_docx_title_uses_call_heading_instead_of_filename_slug():
+    from io import BytesIO
+    from types import SimpleNamespace
+    from zipfile import ZipFile
+
+    from core.crawl4ai_web import _fetch_docx
+
+    document_xml = (
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body>'
+        '<w:p><w:r><w:t>I-DAPT-HUB FOUNDATION @ IIT (BHU) Varanasi</w:t></w:r></w:p>'
+        '<w:p><w:r><w:t>Call for Innovative and Entrepreneurial Project Proposals</w:t></w:r></w:p>'
+        '</w:body></w:document>'
+    )
+    archive_bytes = BytesIO()
+    with ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
+
+    response = SimpleNamespace(content=archive_bytes.getvalue())
+    with patch("core.crawl4ai_web.get_response", return_value=response):
+        result = _fetch_docx(
+            "https://idapthub.org/frontend/docs/different-categories-and-duration.docx"
+        )
+
+    assert result["success"] is True
+    assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
