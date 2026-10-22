@@ -1002,6 +1002,10 @@ def _collect_eu_funding_tenders(
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
+        # The portal sometimes exposes an internal numeric programme ID in a
+        # display-name field. Do not publish that ID as the funding-body name.
+        if programme and str(programme).strip().isdigit():
+            programme = None
         amount = _eu_metadata_value(
             metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
         )
