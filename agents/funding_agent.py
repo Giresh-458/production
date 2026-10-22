@@ -2733,7 +2733,6 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "api_records_received": res.api_records_received,
                     "api_expected_records": res.api_expected_records,
                     "pages_discovered": res.pages_discovered,
-                    "pages_discovered": res.pages_discovered,
                     "pages_fetched": res.pages_fetched,
                     "pages_failed": res.pages_failed,
                     "detail_pages_discovered": res.detail_pages_discovered,
