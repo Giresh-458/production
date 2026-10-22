@@ -1134,12 +1134,18 @@ def crawl_funding_source(
                         result.urls_skipped += 1
                         continue
                     if pag_key not in visited:
+                        result.pagination_detected = True
                         if _is_allowed_domain(normalized_pag, base_domain, allowed_domains):
-                            result.pagination_detected = True
                             visited.add(pag_key)
                             queue.append((normalized_pag, depth))  # same depth for pagination
                         else:
                             result.urls_skipped += 1
+                            result.relevant_urls_skipped += 1
+                            result.coverage_gaps.append({
+                                "url": normalized_pag,
+                                "parent_url": page_url,
+                                "reason": "pagination_outside_allowed_domains",
+                            })
 
             # Process discovered links (depth + 1)
             if follow_detail:
