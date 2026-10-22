@@ -147,8 +147,9 @@ FUNDING_CONTENT_SIGNALS = [
     "grant", "funding", "rfp", "request for proposals", "call for proposals",
     "call for applications", "funding opportunity", "foa", "accelerator",
     "builder funding", "research funding", "challenge prize", "bounty",
-    "application program", "open call", "apply now", "submit a proposal",
-    "deadline", "eligibility", "award", "fellowship", "scholarship",
+    "application program", "open call", "apply now", "apply", "application",
+    "submission form", "submit", "submit a proposal", "deadline", "eligibility",
+    "award", "fellowship", "scholarship",
     "seed funding", "ecosystem support", "devgrant", "hackathon funding",
 ]
 
@@ -762,6 +763,45 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
         }
 
 
+def _finalize_collection_status(result: CollectionResult, *, test_limits: bool = False) -> str:
+    """Set a conservative source status from observed coverage, not record count alone."""
+    successful_fetches = result.pages_fetched > 0 or result.documents_fetched > 0
+    has_collection_failures = bool(
+        result.errors or result.pages_failed > 0 or result.documents_failed > 0
+    )
+    has_coverage_gaps = bool(result.coverage_gaps or result.relevant_urls_skipped)
+
+    if has_coverage_gaps:
+        result.discovery_exhausted = False
+        result.pagination_complete = False
+
+    if not successful_fetches and result.pages_failed > 0:
+        result.final_status = "FAIL"
+    elif result.truncated:
+        result.final_status = "TEST_TRUNCATED" if test_limits else "PARTIAL"
+    elif has_collection_failures:
+        result.final_status = "PARTIAL" if successful_fetches else "FAIL"
+    elif has_coverage_gaps:
+        result.final_status = "PARTIAL" if successful_fetches else "FAIL"
+    elif successful_fetches:
+        if result.opportunities:
+            complete = (
+                (result.pagination_detected and result.pagination_complete)
+                or (not result.pagination_detected and result.discovery_exhausted)
+            )
+            result.final_status = "VERIFIED" if complete else "PARTIAL"
+        else:
+            # A zero-result source is negative evidence only after its known
+            # discovery boundary was exhausted without fetch errors or skipped
+            # relevant routes. Otherwise preserve uncertainty as PARTIAL.
+            result.final_status = (
+                "NO_ACTIVE_OPPORTUNITIES" if result.discovery_exhausted else "PARTIAL"
+            )
+    else:
+        result.final_status = "FAIL"
+    return result.final_status
+
+
 def crawl_funding_source(
     source_id: str,
     url: str,
@@ -1113,16 +1153,24 @@ def crawl_funding_source(
                         result.duplicates_removed += 1
                         continue
 
-                    if not _is_allowed_domain(link_url, base_domain, allowed_domains):
-                        result.urls_skipped += 1
-                        continue
-
-                    # Stage A: score the link for relevance
+                    # Score before enforcing the domain boundary so likely call or
+                    # application routes on partner domains are visible in the audit.
                     score = _classify_link_stage_a(
                         link_url,
                         link_info.get("anchor_text", ""),
                         link_info.get("surrounding_text", ""),
                     )
+                    if not _is_allowed_domain(link_url, base_domain, allowed_domains):
+                        result.urls_skipped += 1
+                        if score >= 0.4:
+                            result.relevant_urls_skipped += 1
+                            result.coverage_gaps.append({
+                                "url": link_url,
+                                "parent_url": page_url,
+                                "reason": "relevant_link_outside_allowed_domains",
+                            })
+                        continue
+
                     if score >= 0.4:
                         child_depth = depth + 1
                         if child_depth <= configured_max_depth:
@@ -1131,45 +1179,61 @@ def crawl_funding_source(
                         else:
                             result.urls_skipped += 1
 
+        # At the depth boundary, explicitly report relevant links that could not
+        # be traversed. Pagination links are same-depth links, but a depth limit
+        # can otherwise prevent the crawler from following them silently.
+        if follow_detail and configured_max_depth > 0 and depth >= configured_max_depth:
+            for link_info in res.get("links", []):
+                link_url = _normalize_url(link_info.get("url", ""))
+                if not link_url or _matches_excluded_url(link_url, exclude_url_patterns):
+                    continue
+                link_key = _url_dedupe_key(link_url)
+                if link_key in visited:
+                    continue
+                score = _classify_link_stage_a(
+                    link_url,
+                    link_info.get("anchor_text", ""),
+                    link_info.get("surrounding_text", ""),
+                )
+                if score < 0.4:
+                    continue
+                result.urls_skipped += 1
+                result.relevant_urls_skipped += 1
+                result.coverage_gaps.append({
+                    "url": link_url,
+                    "parent_url": page_url,
+                    "reason": (
+                        "depth_limit_reached"
+                        if _is_allowed_domain(link_url, base_domain, allowed_domains)
+                        else "relevant_link_outside_allowed_domains"
+                    ),
+                })
+            if discovery_config.get("pagination", False):
+                for pag_url in res.get("pagination_links", []):
+                    normalized_pag = _normalize_url(pag_url)
+                    pag_key = _url_dedupe_key(normalized_pag)
+                    if pag_key in visited or _matches_excluded_url(normalized_pag, exclude_url_patterns):
+                        continue
+                    result.pagination_detected = True
+                    result.urls_skipped += 1
+                    result.relevant_urls_skipped += 1
+                    result.coverage_gaps.append({
+                        "url": normalized_pag,
+                        "parent_url": page_url,
+                        "reason": "pagination_not_followed_at_depth_limit",
+                    })
+
     # Determine completeness
     if not result.truncated:
-        # Queue was fully exhausted within the configured discovery boundary
-        result.discovery_exhausted = True
-        if result.pagination_detected:
+        # Queue was fully exhausted within the configured discovery boundary.
+        # Relevant routes skipped by domain/depth boundaries still leave a gap.
+        result.discovery_exhausted = not result.coverage_gaps
+        if result.pagination_detected and result.discovery_exhausted:
             result.pagination_complete = True
         else:
-            # No pagination detected — discovery exhausted within boundary, but
-            # no pagination was present to exhaustively prove completeness.
             result.pagination_complete = False
 
-    # Determine final status conservatively. Exhausting the traversal queue does
-    # not prove complete coverage when discovered pages/documents failed to fetch.
-    successful_fetches = result.pages_fetched > 0 or result.documents_fetched > 0
-    has_collection_failures = bool(
-        result.errors or result.pages_failed > 0 or result.documents_failed > 0
-    )
-
-    if not successful_fetches and result.pages_failed > 0:
-        result.final_status = "FAIL"
-    elif result.truncated:
-        result.final_status = "TEST_TRUNCATED" if test_limits else "PARTIAL"
-    elif has_collection_failures:
-        # Keep any successfully collected evidence, but never label it VERIFIED
-        # or NO_ACTIVE_OPPORTUNITIES when fetch failures leave a coverage gap.
-        result.final_status = "PARTIAL" if successful_fetches else "FAIL"
-    elif successful_fetches:
-        if len(result.opportunities) > 0:
-            if result.pagination_detected and result.pagination_complete:
-                result.final_status = "VERIFIED"
-            elif not result.pagination_detected and result.discovery_exhausted:
-                result.final_status = "VERIFIED"
-            else:
-                result.final_status = "PARTIAL"
-        else:
-            result.final_status = "NO_ACTIVE_OPPORTUNITIES"
-    else:
-        result.final_status = "FAIL"
-
+    _finalize_collection_status(result, test_limits=test_limits)
     result.records_discovered = len(result.opportunities)
 
     return result
