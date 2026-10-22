@@ -2616,6 +2616,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
         outputs = []
         docs_only = []
         for doc, analysis in documents:
+            # Do not emit navigation/portal chrome as a funding opportunity.
+            # Keep the record out of structured output as well as downstream
+            # qualification; generic labels such as "Topic | SBIR" are not calls.
+            if _is_generic_funding_title(analysis.program_name or doc.title):
+                extra_warnings.append(
+                    f"Skipped generic funding-page title: {analysis.program_name or doc.title!r} ({doc.source})"
+                )
+                continue
             docs_only.append(doc)
             output_path = None
             try:
