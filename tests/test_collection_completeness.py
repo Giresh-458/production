@@ -213,3 +213,55 @@ def test_funding_agent_output_downgrades_empty_source_when_discovery_not_exhaust
     _normalize_collection_coverage_status(result)
 
     assert result.final_status == "PARTIAL"
+
+def test_external_pagination_is_recorded_as_coverage_gap(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    external_page = "https://partner.example/page/2"
+
+    monkeypatch.setattr(
+        crawler, "_get_robots_policy",
+        lambda url: (True, 0, ""),
+    )
+    monkeypatch.setattr(
+        crawler, "_wait_for_host_slot",
+        lambda *args: True,
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda url: {
+            "success": True,
+            "url": url,
+            "status_code": 200,
+            "markdown": "Welcome to our website",
+            "html": "",
+            "title": "Home",
+            "links": [],
+            "pagination_links": [external_page],
+        },
+    )
+
+    result = crawler.crawl_funding_source(
+        source_id="external-pagination-test",
+        url="https://example.org/grants",
+        discovery_config={
+            "max_depth": 1,
+            "max_pages": 5,
+            "pagination": True,
+            "follow_detail_pages": False,
+            "respect_robots_txt": True,
+        },
+        allowed_domains=[],
+    )
+
+    assert result.final_status == "PARTIAL"
+    assert result.pagination_detected is True
+    assert result.pagination_complete is False
+    assert result.discovery_exhausted is False
+    assert result.relevant_urls_skipped == 1
+    assert any(
+        gap["url"] == external_page
+        and gap["reason"] == "pagination_outside_allowed_domains"
+        for gap in result.coverage_gaps
+    )
+
