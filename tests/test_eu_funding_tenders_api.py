@@ -92,7 +92,7 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
             "openingDate": ["2026-10-01"],
             "deadlineDate": ["2026-12-01"],
             "callIdentifier": ["HORIZON-CL4-2026-TEST-01"],
-            "programme": ["Horizon Europe"],
+            "programme": ["43108390"],
             "eligibility": ["Eligible applicants are research organisations and SMEs established in an EU Member State."],
             "description": ["ESG carbon-credit MRV, greenhouse-gas emissions measurement, and sustainability research using interoperable data infrastructure."],
         },
