@@ -443,6 +443,7 @@ def _collect_grants_gov(
     result.api_expected_records = api_result["total_expected"]
     result.api_records_received = len(hits)
     result.pagination_complete = api_result["pagination_complete"]
+    result.discovery_exhausted = bool(api_result["pagination_complete"])
     result.pagination_detected = True
     result.records_discovered = len(hits)
 
@@ -866,6 +867,7 @@ def _collect_eu_funding_tenders(
     result.api_records_received = len(records)
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
+    result.discovery_exhausted = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
     result.duplicates_removed += search_duplicates
 
@@ -1161,6 +1163,7 @@ def _collect_github(
     result.api_pages_fetched = api_result["pages_fetched"]
     result.api_records_received = len(issues)
     result.pagination_complete = api_result["pagination_complete"]
+    result.discovery_exhausted = bool(api_result["pagination_complete"])
     result.pagination_detected = True
     result.records_discovered = len(issues)
 
