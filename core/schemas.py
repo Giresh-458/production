@@ -42,6 +42,8 @@ class CollectionResult:
     records_deduplicated: int = 0
     duplicates_removed: int = 0
     urls_skipped: int = 0
+    relevant_urls_skipped: int = 0
+    coverage_gaps: list[dict[str, Any]] = field(default_factory=list)
     # --- traversal state ---
     max_depth: Optional[int] = None
     max_depth_reached: int = 0
