@@ -86,3 +86,71 @@ def test_relevant_unfollowed_pagination_is_not_reported_as_complete():
 
     assert _finalize_collection_status(result) == "PARTIAL"
     assert result.pagination_complete is False
+
+
+
+def test_web_collector_does_not_overwrite_partial_empty_crawl_with_coverage_gaps():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from agents.funding_collector import _collect_web_source
+
+    crawl_result = CollectionResult(
+        source_id="XRPL Grants Program",
+        method="web",
+        final_status="PARTIAL",
+        pages_fetched=2,
+        records_discovered=0,
+        discovery_exhausted=False,
+        relevant_urls_skipped=2,
+        coverage_gaps=[
+            {
+                "url": "https://brinc.io/xrpl-program",
+                "reason": "relevant_link_outside_allowed_domains",
+            }
+        ],
+    )
+    source = SimpleNamespace(
+        name="XRPL Grants Program",
+        url="https://xrplgrants.org/",
+        collection={"allowed_domains": ["xrplgrants.org"], "discovery": {"max_depth": 1}},
+        direct_page=False,
+    )
+
+    with (
+        patch("agents.funding_collector.crawl_funding_source", return_value=crawl_result),
+        patch("agents.funding_collector._fetch_status_verification_context", return_value=""),
+    ):
+        result = _collect_web_source(source, area=None, warnings=[])
+
+    assert result.final_status == "PARTIAL"
+    assert result.discovery_exhausted is False
+    assert result.relevant_urls_skipped == 2
+
+
+def test_web_collector_can_report_empty_only_after_exhausted_gap_free_crawl():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from agents.funding_collector import _collect_web_source
+
+    crawl_result = CollectionResult(
+        source_id="empty-source",
+        method="web",
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+        pages_fetched=1,
+        records_discovered=0,
+        discovery_exhausted=True,
+    )
+    source = SimpleNamespace(
+        name="empty-source",
+        url="https://example.org/grants",
+        collection={"allowed_domains": ["example.org"], "discovery": {"max_depth": 1}},
+        direct_page=False,
+    )
+
+    with (
+        patch("agents.funding_collector.crawl_funding_source", return_value=crawl_result),
+        patch("agents.funding_collector._fetch_status_verification_context", return_value=""),
+    ):
+        result = _collect_web_source(source, area=None, warnings=[])
+
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
