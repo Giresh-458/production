@@ -273,6 +273,9 @@ jobs:
                       "evidence_verified", "currentness_verified",
                   )
               })
+              source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
+              source_summary[-1]["coverage_gaps"] = (item.get("coverage_gaps") or [])[:10]
+              source_summary[-1]["failed_urls"] = (item.get("failed_urls") or [])[:10]
               source_summary[-1]["errors"] = [
                   {
                       "operation": error.get("operation") if isinstance(error, dict) else None,
