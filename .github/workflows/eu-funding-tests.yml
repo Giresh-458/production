@@ -327,7 +327,7 @@ jobs:
                   item.get("coverage_gaps_count", 0) > 0
                   and item.get("final_status") in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"}
               ) or (
-                  item.get("final_status") == "NO_ACTIVE_OPPORTUNITIES"
+                  item.get("final_status") in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"}
                   and (
                       item.get("truncated")
                       or not item.get("discovery_exhausted")
