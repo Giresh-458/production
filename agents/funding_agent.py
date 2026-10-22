@@ -2660,6 +2660,10 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "source_url": analysis.source_url,
                 "source_title": analysis.source_title,
                 "published_at": analysis.published_at,
+                # Preserve provenance timestamps in the structured response.
+                # created_at remains as a backwards-compatible alias for retrieved_at.
+                "retrieved_at": analysis.retrieved_at,
+                "last_verified_at": analysis.last_verified_at,
                 "created_at": analysis.retrieved_at,
                 "problem": doc.content.strip(),
                 "problem_signal": doc.content.strip(),
