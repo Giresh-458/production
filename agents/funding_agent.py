@@ -179,14 +179,14 @@ def _normalize_collection_coverage_status(result: Any) -> Any:
     discovery_exhausted = bool(getattr(result, "discovery_exhausted", False))
     status = str(getattr(result, "final_status", "") or "").upper()
 
-    incomplete = bool(gaps or relevant_skipped or truncated)
-    if status == "NO_ACTIVE_OPPORTUNITIES" and (
-        incomplete
+    incomplete = bool(
+        gaps
+        or relevant_skipped
+        or truncated
         or not discovery_exhausted
         or (pagination_detected and not pagination_complete)
-    ):
-        result.final_status = "PARTIAL" if status != "TEST_TRUNCATED" else status
-    elif status == "VERIFIED" and incomplete:
+    )
+    if status in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"} and incomplete:
         result.final_status = "PARTIAL"
 
     if gaps or relevant_skipped:
