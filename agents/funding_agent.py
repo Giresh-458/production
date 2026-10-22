@@ -167,6 +167,32 @@ def is_probable_funding_call_page(url: str, title: str, content: str, applicatio
         return False
     return (url_call and (explicit_call or application)) or (title_call and explicit_call) or (application and explicit_call)
 LOGGER = logging.getLogger("rif.funding_agent")
+
+
+def _normalize_collection_coverage_status(result: Any) -> Any:
+    """Prevent source-level negative/verified claims when known coverage gaps remain."""
+    gaps = getattr(result, "coverage_gaps", None) or []
+    relevant_skipped = int(getattr(result, "relevant_urls_skipped", 0) or 0)
+    truncated = bool(getattr(result, "truncated", False))
+    pagination_detected = bool(getattr(result, "pagination_detected", False))
+    pagination_complete = bool(getattr(result, "pagination_complete", False))
+    discovery_exhausted = bool(getattr(result, "discovery_exhausted", False))
+    status = str(getattr(result, "final_status", "") or "").upper()
+
+    incomplete = bool(gaps or relevant_skipped or truncated)
+    if status == "NO_ACTIVE_OPPORTUNITIES" and (
+        incomplete
+        or not discovery_exhausted
+        or (pagination_detected and not pagination_complete)
+    ):
+        result.final_status = "PARTIAL" if status != "TEST_TRUNCATED" else status
+    elif status == "VERIFIED" and incomplete:
+        result.final_status = "PARTIAL"
+
+    if gaps or relevant_skipped:
+        result.discovery_exhausted = False
+        result.pagination_complete = False
+    return result
 RECURSIVE_DIRECT_PAGE_CONFIG = RecursiveCollectionConfig(
     # Funding/RFP pages often link from a landing page to the actual call,
     # eligibility, FAQ and application portal. Give the crawler enough budget
@@ -2570,6 +2596,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
                 # Process and save progressively to avoid data loss on crash
                 for res in collection_iterator:
+                    _normalize_collection_coverage_status(res)
                     collection_results.append(res)
                     source_docs = []
                     for doc, analysis in res.opportunities:
