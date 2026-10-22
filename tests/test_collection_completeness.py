@@ -154,3 +154,62 @@ def test_web_collector_can_report_empty_only_after_exhausted_gap_free_crawl():
         result = _collect_web_source(source, area=None, warnings=[])
 
     assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+
+
+def test_funding_agent_output_cannot_keep_no_active_status_with_skipped_routes():
+    from agents.funding_agent import _normalize_collection_coverage_status
+
+    result = CollectionResult(
+        source_id="solana",
+        method="web",
+        pages_fetched=1,
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+        discovery_exhausted=False,
+        relevant_urls_skipped=4,
+        coverage_gaps=[
+            {"url": "https://forms.example/apply", "reason": "relevant_link_outside_allowed_domains"}
+        ],
+    )
+
+    _normalize_collection_coverage_status(result)
+
+    assert result.final_status == "PARTIAL"
+    assert result.discovery_exhausted is False
+    assert result.pagination_complete is False
+
+
+def test_funding_agent_output_downgrades_verified_status_when_coverage_gaps_exist():
+    from agents.funding_agent import _normalize_collection_coverage_status
+
+    result = CollectionResult(
+        source_id="source-with-gap",
+        method="web",
+        pages_fetched=1,
+        opportunities=[{"title": "Example"}],
+        final_status="VERIFIED",
+        discovery_exhausted=True,
+        coverage_gaps=[{"url": "https://partner.example/apply", "reason": "external_route"}],
+    )
+
+    _normalize_collection_coverage_status(result)
+
+    assert result.final_status == "PARTIAL"
+    assert result.discovery_exhausted is False
+    assert result.pagination_complete is False
+
+
+def test_funding_agent_output_downgrades_empty_source_when_discovery_not_exhausted():
+    from agents.funding_agent import _normalize_collection_coverage_status
+
+    result = CollectionResult(
+        source_id="not-exhausted",
+        method="web",
+        pages_fetched=1,
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+        discovery_exhausted=False,
+    )
+
+    _normalize_collection_coverage_status(result)
+
+    assert result.final_status == "PARTIAL"
