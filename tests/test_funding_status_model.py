@@ -1,4 +1,4 @@
-from agents.funding_agent import determine_status
+from agents.funding_agent import _is_generic_funding_title, determine_status
 
 def test_determine_status_generic_page():
     # generic page + open-looking language + no application/deadline -> UNKNOWN
