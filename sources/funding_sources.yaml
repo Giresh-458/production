@@ -311,8 +311,11 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        max_pages: 10
-        max_documents: 500
+        # Five targeted queries need more than two pages each: the previous
+        # budget routinely stopped at 100 results per query. Keep the crawl
+        # bounded, but allow six 50-result pages per query before reporting PARTIAL.
+        max_pages: 30
+        max_documents: 1500
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]

@@ -167,6 +167,32 @@ def is_probable_funding_call_page(url: str, title: str, content: str, applicatio
         return False
     return (url_call and (explicit_call or application)) or (title_call and explicit_call) or (application and explicit_call)
 LOGGER = logging.getLogger("rif.funding_agent")
+
+
+def _normalize_collection_coverage_status(result: Any) -> Any:
+    """Prevent source-level negative/verified claims when known coverage gaps remain."""
+    gaps = getattr(result, "coverage_gaps", None) or []
+    relevant_skipped = int(getattr(result, "relevant_urls_skipped", 0) or 0)
+    truncated = bool(getattr(result, "truncated", False))
+    pagination_detected = bool(getattr(result, "pagination_detected", False))
+    pagination_complete = bool(getattr(result, "pagination_complete", False))
+    discovery_exhausted = bool(getattr(result, "discovery_exhausted", False))
+    status = str(getattr(result, "final_status", "") or "").upper()
+
+    incomplete = bool(
+        gaps
+        or relevant_skipped
+        or truncated
+        or not discovery_exhausted
+        or (pagination_detected and not pagination_complete)
+    )
+    if status in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"} and incomplete:
+        result.final_status = "PARTIAL"
+
+    if gaps or relevant_skipped:
+        result.discovery_exhausted = False
+        result.pagination_complete = False
+    return result
 RECURSIVE_DIRECT_PAGE_CONFIG = RecursiveCollectionConfig(
     # Funding/RFP pages often link from a landing page to the actual call,
     # eligibility, FAQ and application portal. Give the crawler enough budget
@@ -2570,6 +2596,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
                 # Process and save progressively to avoid data loss on crash
                 for res in collection_iterator:
+                    _normalize_collection_coverage_status(res)
                     collection_results.append(res)
                     source_docs = []
                     for doc, analysis in res.opportunities:
@@ -2616,6 +2643,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
         outputs = []
         docs_only = []
         for doc, analysis in documents:
+            # Do not emit navigation/portal chrome as a funding opportunity.
+            # Keep the record out of structured output as well as downstream
+            # qualification; generic labels such as "Topic | SBIR" are not calls.
+            if _is_generic_funding_title(analysis.program_name or doc.title):
+                extra_warnings.append(
+                    f"Skipped generic funding-page title: {analysis.program_name or doc.title!r} ({doc.source})"
+                )
+                continue
             docs_only.append(doc)
             output_path = None
             try:
@@ -2660,6 +2695,10 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "source_url": analysis.source_url,
                 "source_title": analysis.source_title,
                 "published_at": analysis.published_at,
+                # Preserve provenance timestamps in the structured response.
+                # created_at remains as a backwards-compatible alias for retrieved_at.
+                "retrieved_at": analysis.retrieved_at,
+                "last_verified_at": analysis.last_verified_at,
                 "created_at": analysis.retrieved_at,
                 "problem": doc.content.strip(),
                 "problem_signal": doc.content.strip(),
@@ -2673,12 +2712,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             "layer": layer,
             "mode": mode,
             "area": area,
-            "status": "success" if documents else "partial_success",
+            "status": "success" if outputs else "partial_success",
             "outputs": outputs,
             "errors": [],
             "warnings": extra_warnings,
             "items_processed": len(documents),
-            "items_saved": len(documents),
+            "items_saved": len(outputs),
             "metadata": {
                 "started_at": started_at.isoformat(),
                 "finished_at": datetime.now(UTC).isoformat(),
@@ -2702,12 +2741,21 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "documents_discovered": res.documents_discovered,
                     "documents_fetched": res.documents_fetched,
                     "documents_failed": res.documents_failed,
+                    "api_pages_fetched": res.api_pages_fetched,
+                    "api_records_received": res.api_records_received,
+                    "api_expected_records": res.api_expected_records,
                     "records_discovered": res.records_discovered,
                     "records_valid": res.records_valid,
                     "records_failed": res.records_failed,
                     "records_filtered": res.records_filtered,
                     "records_filtered_by_reason": res.records_filtered_by_reason,
                     "duplicates_removed": res.duplicates_removed,
+                    "urls_skipped": res.urls_skipped,
+                    "relevant_urls_skipped": res.relevant_urls_skipped,
+                    "coverage_gaps": res.coverage_gaps,
+                    "failed_urls": res.failed_urls,
+                    "evidence_verified": res.evidence_verified,
+                    "currentness_verified": res.currentness_verified,
                     "pagination_detected": res.pagination_detected,
                     "pagination_complete": res.pagination_complete,
                     "discovery_exhausted": res.discovery_exhausted,

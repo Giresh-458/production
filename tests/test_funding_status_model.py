@@ -1,4 +1,10 @@
-from agents.funding_agent import determine_status
+from agents.funding_agent import _is_generic_funding_title, determine_status
+
+def test_generic_portal_titles_include_brand_suffixes():
+    assert _is_generic_funding_title("Topic | SBIR")
+    assert _is_generic_funding_title("Documents | Page 10")
+    assert not _is_generic_funding_title("Trusted Identity Research Topic 2026")
+
 
 def test_determine_status_generic_page():
     # generic page + open-looking language + no application/deadline -> UNKNOWN

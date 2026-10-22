@@ -443,6 +443,7 @@ def _collect_grants_gov(
     result.api_expected_records = api_result["total_expected"]
     result.api_records_received = len(hits)
     result.pagination_complete = api_result["pagination_complete"]
+    result.discovery_exhausted = bool(api_result["pagination_complete"])
     result.pagination_detected = True
     result.records_discovered = len(hits)
 
@@ -866,6 +867,7 @@ def _collect_eu_funding_tenders(
     result.api_records_received = len(records)
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
+    result.discovery_exhausted = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
     result.duplicates_removed += search_duplicates
 
@@ -1002,6 +1004,10 @@ def _collect_eu_funding_tenders(
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
+        # The portal sometimes exposes an internal numeric programme ID in a
+        # display-name field. Do not publish that ID as the funding-body name.
+        if programme and str(programme).strip().isdigit():
+            programme = None
         amount = _eu_metadata_value(
             metadata, "maximumGrantAmount", "maxGrantAmount", "fundingAmount", "budget"
         )
@@ -1157,6 +1163,7 @@ def _collect_github(
     result.api_pages_fetched = api_result["pages_fetched"]
     result.api_records_received = len(issues)
     result.pagination_complete = api_result["pagination_complete"]
+    result.discovery_exhausted = bool(api_result["pagination_complete"])
     result.pagination_detected = True
     result.records_discovered = len(issues)
 
@@ -1378,7 +1385,19 @@ def _collect_web_source(
         elif result.final_status not in {"PARTIAL", "TEST_TRUNCATED"}:
             result.final_status = "FAIL"
     elif result.records_valid == 0 and result.records_discovered == 0:
-        if result.pages_fetched > 0 and not result.truncated:
+        if (
+            result.pages_fetched > 0
+            and not result.truncated
+            and result.discovery_exhausted
+            and not result.coverage_gaps
+            and result.relevant_urls_skipped == 0
+            and (not result.pagination_detected or result.pagination_complete)
+        ):
             result.final_status = "NO_ACTIVE_OPPORTUNITIES"
+        elif result.pages_fetched > 0 and not result.truncated:
+            # Do not overwrite the crawler's PARTIAL status when it found
+            # relevant routes it could not inspect (for example, external
+            # application forms linked from Solana/XRPL programme pages).
+            result.final_status = "PARTIAL"
 
     return result

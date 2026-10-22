@@ -97,6 +97,16 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
         assert entry.get("collection", {}).get("mode") in {"web", "api"}
 
 
+def test_eu_funding_api_has_bounded_budget_for_all_targeted_queries():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    limits = by_name["EU Open and Forthcoming Funding Calls"]["collection"]["limits"]
+
+    # Five configured searches need enough page budget to inspect beyond the
+    # first 100 results per search while preserving an explicit upper bound.
+    assert limits["max_pages"] >= 25
+    assert limits["max_documents"] >= limits["max_pages"] * 50
+
+
 def test_idapt_config_enables_bounded_docx_document_collection():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]["collection"]["discovery"]
@@ -297,8 +307,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert eu["collection"]["provider"] == "eu_funding_tenders"
     assert eu["collection"]["api"]["types"] == ["1", "2", "8"]
     assert eu["collection"]["api"]["statuses"] == ["31094501", "31094502"]
-    assert eu["collection"]["limits"]["max_pages"] == 10
-    assert eu["collection"]["limits"]["max_documents"] == 500
+    assert eu["collection"]["limits"]["max_pages"] == 30
+    assert eu["collection"]["limits"]["max_documents"] == 1500
 
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):

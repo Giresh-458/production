@@ -92,7 +92,7 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
             "openingDate": ["2026-10-01"],
             "deadlineDate": ["2026-12-01"],
             "callIdentifier": ["HORIZON-CL4-2026-TEST-01"],
-            "programme": ["Horizon Europe"],
+            "programme": ["43108390"],
             "eligibility": ["Eligible applicants are research organisations and SMEs established in an EU Member State."],
             "description": ["ESG carbon-credit MRV, greenhouse-gas emissions measurement, and sustainability research using interoperable data infrastructure."],
         },
@@ -123,6 +123,7 @@ def test_eu_collector_normalizes_current_call_fields_without_inventing_them(monk
     assert result.records_valid == 1
     _, opportunity = result.opportunities[0]
     assert opportunity.program_name == "Blockchain research infrastructure"
+    assert opportunity.funding_body == source.name
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.opening_date == "2026-10-01"
     assert opportunity.deadline == "2026-12-01"
