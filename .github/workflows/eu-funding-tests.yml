@@ -10,6 +10,7 @@ on:
     paths:
       - "agents/funding_collector.py"
       - "agents/funding_agent.py"
+      - "core/crawl4ai_web.py"
       - "core/funding_selection.py"
       - "run_pipeline.py"
       - "run_full_pipeline.py"
@@ -25,6 +26,7 @@ on:
       - "tests/test_multiple_funding_calls.py"
       - "tests/test_funding_rejection.py"
       - "tests/test_funding_status_model.py"
+      - "tests/test_funding_call_separation.py"
       - "tests/test_gate_statistics.py"
       - "tests/test_gate_statistics_extra.py"
       - "tests/test_source_discovery_duplicates.py"
