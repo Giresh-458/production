@@ -278,7 +278,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 180
+    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 240
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -297,7 +297,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
     assert sbir.get("direct_page", False) is False
     assert set(sbir["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
-    assert sbir["collection"]["discovery"]["max_pages"] == 80
+    assert sbir["collection"]["discovery"]["max_pages"] == 120
     sbir_exclusions = sbir["collection"]["discovery"]["exclude_url_patterns"]
     assert any("/awards" in pattern for pattern in sbir_exclusions)
     assert any("/apply" in pattern for pattern in sbir_exclusions)
@@ -372,10 +372,10 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
     # Climate KIC reached its former 30-page cap with work still queued.
-    assert climate_kic_discovery["max_pages"] == 180
+    assert climate_kic_discovery["max_pages"] == 240
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
-    assert sbir_discovery["max_depth"] == 3 and sbir_discovery["max_pages"] == 80
+    assert sbir_discovery["max_depth"] == 4 and sbir_discovery["max_pages"] == 120
 
 
 def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations():
