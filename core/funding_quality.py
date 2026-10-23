@@ -56,7 +56,14 @@ def assess_batch_acceptance(
             f"{title}: " + ", ".join(str(flag) for flag in flags or ["manual review required"]),
         )
 
-    for source in source_summary or ():
+    sources = list(source_summary or ())
+    if not sources:
+        add(
+            "source_coverage_telemetry_missing",
+            "No source-level coverage/verification summary was provided.",
+        )
+
+    for source in sources:
         source_id = str(source.get("source_id") or "(unknown source)")
         status = str(source.get("final_status") or "UNKNOWN").upper()
         gaps = int(source.get("coverage_gaps_count") or len(source.get("coverage_gaps") or []))
@@ -69,8 +76,14 @@ def assess_batch_acceptance(
         pagination_complete = bool(source.get("pagination_complete"))
         exhausted = bool(source.get("discovery_exhausted"))
         errors = source.get("errors") or []
+        evidence_verified = source.get("evidence_verified") is True
+        currentness_verified = source.get("currentness_verified") is True
 
         incomplete_reasons: list[str] = []
+        if not evidence_verified:
+            incomplete_reasons.append("evidence not verified")
+        if not currentness_verified:
+            incomplete_reasons.append("currentness not verified")
         if status in {"PARTIAL", "FAIL", "ERROR", "TEST_TRUNCATED"}:
             incomplete_reasons.append(f"source status={status}")
         if gaps:
