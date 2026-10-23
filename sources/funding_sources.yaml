@@ -384,7 +384,140 @@ sources:
         - '^https?://data\.www\.sbir\.gov/'
         - '^https?://(?:www\.)?grants\.gov/grantors/grantor-help(?:/|\?|#|$)'
         # Generic Grants.gov help/navigation pages are not SBIR topics.
-        - '^https?://(?:www\.)?grants\.gov/(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?grants\.gov/(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:[.]html)?(?:/|\?|#|$)'
+        # NSF general audience pages fan out into unrelated fellowships, student
+        # programmes and generic grant-search navigation. Exclude these hubs, not
+        # individual /funding/opportunities/ solicitation pages.
+        - '^https?://(?:www\\.)?nsf\\.gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?
+        # are not individual funding opportunities; retain specific opportunity URLs.
+        - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
+        - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
+        - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
+        - '^https?://(?:www\.)?youtube\.com/user/GrantsGovUS(?:/|$)'
+        - '^https?://(?:www\.)?twitter\.com/grantsdotgov(?:/|$)'
+        - '^https?://(?:www\.)?x\.com/grantsdotgov(?:/|$)'
+        - '^https?://grantsgovprod\.wordpress\.com(?:/|$)'
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
+    collection:
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
+        detail_fetch_missing_metadata: true
+        require_eligibility_evidence: true
+        require_domain_match: true
+      limits:
+        # Five targeted queries get up to fourteen 50-result pages each.
+        # A live scan retrieved 556 of 567 expected records because a short page
+        # arrived before the reported total; allow bounded continuation pages.
+        max_pages: 70
+        max_documents: 3500
+  cps_funding:
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
+        follow_detail_pages: true
+        follow_pdfs: true
+        follow_documents: true
+        pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
+        - '^https?://new\\.nsf\\.gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?
+        # are not individual funding opportunities; retain specific opportunity URLs.
+        - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
+        - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
+        - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
+        - '^https?://(?:www\.)?youtube\.com/user/GrantsGovUS(?:/|$)'
+        - '^https?://(?:www\.)?twitter\.com/grantsdotgov(?:/|$)'
+        - '^https?://(?:www\.)?x\.com/grantsdotgov(?:/|$)'
+        - '^https?://grantsgovprod\.wordpress\.com(?:/|$)'
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
+    collection:
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
+        detail_fetch_missing_metadata: true
+        require_eligibility_evidence: true
+        require_domain_match: true
+      limits:
+        # Five targeted queries get up to fourteen 50-result pages each.
+        # A live scan retrieved 556 of 567 expected records because a short page
+        # arrived before the reported total; allow bounded continuation pages.
+        max_pages: 70
+        max_documents: 3500
+  cps_funding:
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
+        follow_detail_pages: true
+        follow_pdfs: true
+        follow_documents: true
+        pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
         # NSF administrative, award-management, policy, and general navigation pages
         # are not individual funding opportunities; retain specific opportunity URLs.
         - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
