@@ -498,7 +498,7 @@ def test_successful_redirect_uses_destination_status_and_final_url():
     assert result.pages_fetched == 1
     assert result.pages_failed == 0
     assert result.errors == []
-    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+    assert result.final_status == "PARTIAL"
 
 
 def test_final_page_url_prefers_redirect_destination_for_relative_links():

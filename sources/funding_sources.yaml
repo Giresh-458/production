@@ -39,7 +39,7 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
-    direct_page: true
+    direct_page: false
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
@@ -49,7 +49,6 @@ sources:
       - solana.org
       - solana.com
       - airtable.com
-      - earn.superteam.fun
       # Crawl the public RFP table and official pages; exclude forms and Superteam's
       # directory below because Superteam is separately configured.
       discovery:

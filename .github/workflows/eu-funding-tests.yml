@@ -266,9 +266,9 @@ jobs:
               issues = []
               if len(problem) > 320:
                   issues.append("problem_signal_too_long")
-              if re.search(r"!\\[[^\\]]*\\]\\(|\\[[^\\]]+\\]\\(https?://|https?://\\S+", problem):
+              if re.search(r"!\[[^\]]*\]\(|\[[^\]]+\]\(https?://|https?://\S+", problem):
                   issues.append("markdown_or_url_boilerplate_in_problem_signal")
-              if re.search(r"\\b(?:cookie policy|all rights reserved|log in to read more|click here to subscribe|example implementation)\\b", problem, re.IGNORECASE):
+              if re.search(r"\b(?:cookie policy|all rights reserved|log in to read more|click here to subscribe|example implementation)\b", problem, re.IGNORECASE):
                   issues.append("webpage_boilerplate_or_instruction_in_problem_signal")
               if issues:
                   problem_quality_violations.append({

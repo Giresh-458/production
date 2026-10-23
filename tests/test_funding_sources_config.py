@@ -174,7 +174,7 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
 def test_near_page_budget_is_raised_after_exhausting_the_previous_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 30
+    assert discovery["max_pages"] == 40
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -214,13 +214,16 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
             f"{entry.get('name')} is missing a configured page cap"
         )
         # Large discovery hubs have explicit higher caps; all crawls remain bounded.
-        if entry.get("name") in {
-            "Superteam Development Grants",
-            "Climate KIC Open Calls",
-        }:
-            page_cap = 60
+        if entry.get("name") == "Superteam Development Grants":
+            page_cap = 70
+        elif entry.get("name") == "Climate KIC Open Calls":
+            page_cap = 120
         elif entry.get("name") == "Open SBIR Funding Topics":
-            page_cap = 50
+            page_cap = 60
+        elif entry.get("name") == "NEAR Ecosystem Funding":
+            page_cap = 40
+        elif entry.get("name") == "XRPL Grants Program":
+            page_cap = 20
         else:
             page_cap = 30
         assert 1 <= int(discovery["max_pages"]) <= page_cap
@@ -244,14 +247,15 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     superteam = by_name["Superteam Development Grants"]
     assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
     assert superteam["collection"]["discovery"]["start_urls"] == [superteam["url"]]
-    assert {"superteam.fun", "earn.superteam.fun"}.issubset(set(superteam["collection"]["allowed_domains"]))
-    assert superteam["collection"]["discovery"]["max_pages"] == 60
+    assert {"superteam.fun", "earn.superteam.fun", "solana.org", "solana.foundation"}.issubset(set(superteam["collection"]["allowed_domains"]))
+    assert superteam["collection"]["discovery"]["max_pages"] == 70
+    assert any("docs.google.com/document" in p for p in superteam["collection"]["discovery"]["exclude_url_patterns"])
     assert superteam.get("direct_page", False) is False
 
     near_entry = by_name["NEAR Ecosystem Funding"]
     assert near_entry["url"] == "https://near.org/funding"
     near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 30 and near["max_depth"] == 2 and near["exclude_url_patterns"]
+    assert near["max_pages"] == 40 and near["max_depth"] == 3 and near["exclude_url_patterns"]
     assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
     assert "https://near.org/funding" in near["start_urls"]
     assert "https://nearn.io/devhub/" in near["start_urls"]
@@ -259,8 +263,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
 
     xrpl_entry = by_name["XRPL Grants Program"]
     xrpl = xrpl_entry["collection"]
-    assert {"xrplgrants.org", "submit.xrplgrants.org"}.issubset(set(xrpl["allowed_domains"]))
-    assert xrpl["discovery"]["max_depth"] == 1 and xrpl["discovery"]["max_pages"] == 10
+    assert {"xrplgrants.org", "submit.xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
+    assert xrpl["discovery"]["max_depth"] == 2 and xrpl["discovery"]["max_pages"] == 20
     assert "https://xrplgrants.org/" in xrpl["discovery"]["start_urls"]
     assert "https://submit.xrplgrants.org/submit" in xrpl["discovery"]["start_urls"]
     assert not any("brinc.io" in u or "tenity.com" in u for u in xrpl["discovery"]["start_urls"])
@@ -274,7 +278,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 60
+    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 120
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -293,7 +297,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
     assert sbir.get("direct_page", False) is False
     assert set(sbir["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
-    assert sbir["collection"]["discovery"]["max_pages"] == 50
+    assert sbir["collection"]["discovery"]["max_pages"] == 60
     sbir_exclusions = sbir["collection"]["discovery"]["exclude_url_patterns"]
     assert any("/awards" in pattern for pattern in sbir_exclusions)
     assert any("/apply" in pattern for pattern in sbir_exclusions)
@@ -366,6 +370,6 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
 
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
-    assert superteam_discovery["max_pages"] == 60
+    assert superteam_discovery["max_pages"] == 70
     # Climate KIC reached its former 30-page cap with work still queued.
-    assert climate_kic_discovery["max_pages"] == 60
+    assert climate_kic_discovery["max_pages"] == 120

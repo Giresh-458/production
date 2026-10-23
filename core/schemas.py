@@ -54,8 +54,6 @@ class CollectionResult:
     truncated: bool = False
     evidence_verified: bool = False
     currentness_verified: bool = False
-    # Empty status is valid only when the source explicitly confirms no active calls.
-    no_active_opportunities_confirmed: bool = False
     # --- error tracking ---
     failed_urls: list[str] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
