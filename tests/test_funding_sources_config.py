@@ -393,8 +393,29 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
     assert excluded("https://new.nsf.gov/funding/undergraduates")
     assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960")
     assert excluded("https://resources.research.gov/common/attachment/Desktop/Single_ID_Help_Public.pdf")
+    assert excluded("https://www.nsf.gov/funding/opportunities/mps-astro-mps-astronomical-sciences-research-programs/nsf26-522/solicitation")
+    assert excluded("https://www.nsf.gov/funding/opportunities/grfp-nsf-graduate-research-fellowship-program/nsf26-526/solicitation")
+    assert excluded("https://www.whitehouse.gov/wp-content/uploads/2021/06/M-21-26.pdf")
+    assert excluded("https://www.congress.gov/117/plaws/publ58/PLAW-117publ58.pdf")
     assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960/nsf23-515/solicitation")
     # Individual current NSF SBIR solicitations remain traversable.
     assert not excluded(
         "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
     )
+
+
+def test_climate_kic_excludes_stale_partner_posts_and_social_links():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Climate KIC Open Calls"]["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://innovationstarterbox.bg/blog/11-granta-ot-eit-climate-kic-otivat-v-balgarski-startapi/")
+    assert excluded("https://impacthub.ro/2025/07/02/start-la-inscrieri-in-romania-climaccelerator/")
+    assert excluded("https://www.f6s.com/medclimaccelerator2022/apply")
+    assert excluded("https://www.instagram.com/bgiaccelerator/")
+    assert not excluded("https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/")
