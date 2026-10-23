@@ -1301,12 +1301,24 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 def _extract_program_name(text: str, fallback: str) -> str:
     # Search H1-H6 headings in document order. Browser/page titles such as
     # "Topic" may be generic while the actual solicitation appears in an H2.
-    # Generic navigation headings are skipped below.
-    for heading in re.finditer(r"(?im)^\s*#{1,6}\s+(.{3,180}?)\s*$", text):
-        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
+    # SBIR topic pages are a known layout: the browser title and H1 say "Topic",
+    # while the actual topic title is the first specific H2 and may not contain
+    # words such as "grant" or "funding" (for example, "Trusted Identity and
+    # Identity Management").
+    is_sbir_topic_page = bool(
+        _is_generic_funding_title(fallback)
+        and re.search(r"\b(?:SBIR|STTR)\b", str(fallback or ""), re.IGNORECASE)
+        and re.search(r"\bTopic Number\b", text, re.IGNORECASE)
+        and re.search(r"\bSolicitation Status\s*:", text, re.IGNORECASE)
+    )
+    for heading in re.finditer(r"(?im)^\s*(#{1,6})\s+(.{3,180}?)\s*$", text):
+        heading_level = len(heading.group(1))
+        candidate = cleaned_text(heading.group(2)).rstrip(" .:-")
         normalized = candidate.lower().rstrip(" .:-")
         if not candidate or _is_generic_funding_title(candidate):
             continue
+        if is_sbir_topic_page and heading_level >= 2:
+            return candidate
         if re.search(
             r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
             candidate,

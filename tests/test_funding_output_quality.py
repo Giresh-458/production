@@ -137,6 +137,25 @@ def test_specific_sbir_h2_heading_overrides_generic_topic_page_title():
 
 
 
+def test_sbir_topic_title_without_funding_keyword_is_not_dropped():
+    content = (
+        "# Topic\n"
+        "## Trusted Identity and Identity Management\n"
+        "### Funding Agency\n"
+        "Topic Number: DL14\n"
+        "Solicitation Status: Open\n"
+        "Due Date(s): January 5, 2027; April 5, 2027\n"
+        "Small Business Innovation Research (SBIR)\n"
+    )
+    document = _document(content, title="Topic | SBIR")
+    analysis = analyze_document(document)
+
+    assert analysis.program_name == "Trusted Identity and Identity Management"
+    assert analysis.status == "OPEN_CALL"
+    assert analysis.deadline == "2027-01-05"
+
+
+
 def test_docx_fellowship_title_skips_generic_application_form_heading():
     from core.crawl4ai_web import _extract_docx_title
 
