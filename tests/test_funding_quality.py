@@ -91,3 +91,27 @@ def test_no_selected_call_blocks_even_when_scan_itself_succeeded():
     )
     assert result["status"] == "BLOCKED"
     assert any(item["code"] == "no_actionable_calls" for item in result["blockers"])
+
+
+
+def test_eu_source_searches_all_seven_configured_research_domains():
+    from pathlib import Path
+    import yaml
+
+    config = yaml.safe_load(Path("sources/funding_sources.yaml").read_text(encoding="utf-8"))
+    source = next(
+        item for item in config["sources"]["tier_3"]
+        if item["name"] == "EU Open and Forthcoming Funding Calls"
+    )
+    api = source["collection"]["api"]
+    queries = {query.casefold() for query in api["search_texts"]}
+
+    assert "tokenized real-world assets" in queries
+    assert "carbon credit" in queries
+    assert "mrv emissions" in queries
+    assert "zero-knowledge" in queries
+    assert "decentralized identity" in queries
+    assert "physical infrastructure" in queries
+    assert "maximal extractable value" in queries
+    assert "stablecoin payments" in queries
+    assert source["collection"]["limits"]["max_pages"] >= len(queries)
