@@ -143,3 +143,47 @@ def test_unverified_source_evidence_or_currentness_blocks_acceptance():
     )
     assert "evidence not verified" in blocker["message"]
     assert "currentness not verified" in blocker["message"]
+
+
+
+def test_missing_configured_source_summary_blocks_acceptance():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        expected_source_ids=["source-a", "source-b"],
+        source_summary=[{
+            "source_id": "source-a",
+            "final_status": "VERIFIED",
+            "discovery_exhausted": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    assert any(
+        item["code"] == "source_coverage_telemetry_missing"
+        and item.get("source_id") == "source-b"
+        for item in result["blockers"]
+    )
+
+
+def test_unknown_source_status_blocks_even_when_verification_flags_are_true():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        source_summary=[{
+            "source_id": "unknown-source",
+            "final_status": "UNKNOWN",
+            "discovery_exhausted": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    blocker = next(
+        item for item in result["blockers"]
+        if item.get("source_id") == "unknown-source"
+    )
+    assert "source status unknown" in blocker["message"]
