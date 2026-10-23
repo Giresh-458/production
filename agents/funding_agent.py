@@ -2768,6 +2768,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "problem": (problem_intel := extract_funding_problem_intelligence(doc, analysis)).get("selected_problem"),
                 "problem_signal": problem_intel.get("selected_problem"),
                 "problem_type": problem_intel.get("problem_type"),
+                "problem_signal_status": "resolved" if problem_intel.get("selected_problem") else "unresolved",
                 "problem_confidence": problem_intel.get("problem_confidence"),
                 "problem_evidence": problem_intel.get("problem_evidence") or [],
                 "markdown_path": str(output_path.resolve()) if output_path else None,
