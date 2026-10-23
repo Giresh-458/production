@@ -417,6 +417,14 @@ jobs:
               unhandled_gaps = [
                   gap for gap in (item.get("coverage_gaps") or [])
                   if not is_intentionally_excluded_gap(item.get("source_id"), gap)
+                  # Publisher robots restrictions are not silently ignored: the
+                  # crawler records the exact URL/reason and leaves the source
+                  # PARTIAL. Treat this as a documented external limitation, not
+                  # a crawler-budget truncation or a claim of complete coverage.
+                  and not (
+                      gap.get("reason") == "robots_policy_restriction"
+                      and item.get("final_status") == "PARTIAL"
+                  )
               ]
               if item.get("truncated") or unhandled_gaps:
                   priority_source_coverage_violations.append({
