@@ -1547,6 +1547,20 @@ def _extract_application_url(text: str) -> str | None:
 
 
 
+def _sbir_mirror_disclaims_currentness(source_url: str, content: str) -> bool:
+    """Detect SBIR.gov topic mirrors that explicitly warn their status may be stale."""
+    parsed = urlparse(source_url or "")
+    return bool(
+        (parsed.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed.path.rstrip("/"))
+        and re.search(
+            r"not necessarily the latest and most up-to-date",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _resolve_application_url(content: str, source_url: str, status: str) -> str | None:
     """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
     parsed_source = urlparse(source_url or "")
@@ -2016,6 +2030,12 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     )
     explicit_status = explicit_status_match.group(1) if explicit_status_match else None
     status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
+    if _sbir_mirror_disclaims_currentness(document.source, document.content):
+        # SBIR.gov explicitly says its topic copies may not be current. Preserve
+        # the record, but do not promote mirror dates/status into verified facts.
+        status = "UNKNOWN"
+        opening_date = None
+        deadline = None
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)

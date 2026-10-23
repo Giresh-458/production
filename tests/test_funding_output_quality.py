@@ -14,11 +14,15 @@ from agents.funding_agent import (
 )
 
 
-def _document(content: str, title: str = "Test Funding Call") -> FundingDocument:
+def _document(
+    content: str,
+    title: str = "Test Funding Call",
+    source: str = "https://example.org/funding-call",
+) -> FundingDocument:
     return FundingDocument(
         organization="Test Foundation",
         title=title,
-        source="https://example.org/funding-call",
+        source=source,
         source_type="Manual",
         content=content,
         year=2026,
@@ -255,3 +259,27 @@ def test_labelled_eligibility_section_also_normalizes_duplicate_prefix():
         "Eligible applicants must be based in an EU Member State or a country "
         "associated with Horizon Europe (Pillar 2)."
     )
+
+
+
+def test_sbir_mirror_disclaimer_prevents_unverified_open_status_and_deadline():
+    content = (
+        "# Topic\n"
+        "## Trusted Identity and Identity Management\n"
+        "Topic Number: DL14\n"
+        "Solicitation Status: Open\n"
+        "Due Date(s): January 5, 2027; April 5, 2027\n"
+        "The topics listed on this site are copies from agency solicitations and "
+        "are not necessarily the latest and most up-to-date.\n"
+    )
+    document = _document(
+        content,
+        title="Topic | SBIR",
+        source="https://www.sbir.gov/topics/1012406",
+    )
+    analysis = analyze_document(document)
+
+    assert analysis.program_name == "Trusted Identity and Identity Management"
+    assert analysis.status == "UNKNOWN"
+    assert analysis.opening_date is None
+    assert analysis.deadline is None
