@@ -595,7 +595,8 @@ def process_area(
     allow_llm_analysis: bool = False,
     funding_context: FundingCallContext | None = None,
     run_id: str | None = None,
-) -> int:
+    return_papers: bool = False,
+) -> int | list[Paper]:
     LOGGER.info("Starting collection for area: %s", area)
     
     all_papers = []
@@ -610,7 +611,19 @@ def process_area(
     scored_papers = []
     for p in unique_papers:
         paper_year = p.published.year if p.published else 0
-        if paper_exists(connection, title=p.title, url=p.url, doi=p.doi or "", source_id=p.source_id, authors="; ".join(p.authors), year=paper_year):
+        # CLI/incremental scans keep the historical duplicate suppression. A
+        # run-scoped pipeline scan must re-emit matching papers as this run's
+        # evidence, even when the cross-run SQLite ledger already knows them;
+        # normalization intentionally excludes prior-run artifacts.
+        if not return_papers and paper_exists(
+            connection,
+            title=p.title,
+            url=p.url,
+            doi=p.doi or "",
+            source_id=p.source_id,
+            authors="; ".join(p.authors),
+            year=paper_year,
+        ):
             continue
         cutoff = now - timedelta(days=LOOKBACK_YEARS * 365)
         if p.published is not None and p.published < cutoff:
@@ -626,7 +639,7 @@ def process_area(
     
     if not semantically_ranked:
         LOGGER.info("No valid new papers found for %s", area)
-        return 0
+        return [] if return_papers else 0
 
     if allow_llm_analysis:
         try:
@@ -648,6 +661,13 @@ def process_area(
         )
         
     effective_area = area or "Unscoped"
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", effective_area.lower()).strip("-")
+    # In a pipeline collection run, persist each paper as its own canonical
+    # intermediate artifact below. Keep the aggregate summary in insights.md,
+    # which downstream normalization intentionally skips. CLI / legacy callers
+    # retain the historical per-area summary filename.
+    summary_name = "insights.md" if return_papers else f"{slug}.md"
+    md_path = output_dir / summary_name
     for p in semantically_ranked:
         save_paper_record(
             connection,
@@ -657,7 +677,7 @@ def process_area(
             authors="; ".join(p.authors),
             year=(p.published.year if p.published else 0),
             research_area=effective_area,
-            path=str(output_dir / f"{re.sub(r'[^a-zA-Z0-9]+', '-', effective_area.lower()).strip('-')}.md"),
+            path=str(md_path),
             tags=["#Literature", STATIC_TAGS.get(area, "")],
             concept_tags=[],
             static_tags_by_area=STATIC_TAGS,
@@ -666,8 +686,6 @@ def process_area(
         )
         
     output_dir.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", effective_area.lower()).strip("-")
-    md_path = output_dir / f"{slug}.md"
     
     # The literature collector uses a legacy file-based finalizer rather than
     # the shared intermediate-artifact writer. Add the same machine-readable
@@ -695,6 +713,9 @@ def process_area(
     if primary_source_url:
         lines.append(f"- source: {primary_source_url}")
     if funding_context and funding_context.funding_call_id:
+        # Legacy aggregate summary keeps singular-call metadata when available.
+        # Pipeline-owned per-paper artifacts are finalized separately below and
+        # receive the full active funding_contexts list from the orchestrator.
         lines.append(f"- funding_call_id: {funding_context.funding_call_id}")
         lines.append(f"- funding_call_ids: {funding_context.funding_call_id}")
     if run_id:
@@ -713,7 +734,7 @@ def process_area(
     
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     LOGGER.info("Saved analysis for %s to %s", area, md_path)
-    return len(semantically_ranked)
+    return semantically_ranked if return_papers else len(semantically_ranked)
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -781,7 +802,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Adaptive/unscoped mode: derive compact research terms from the selected call
                 # rather than forcing the call into a fixed taxonomy.
                 scan_area = None
-            count = process_area(
+            papers = process_area(
                 connection,
                 scan_area,
                 output_dir,
@@ -789,13 +810,51 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
                 funding_context=funding_context,
                 run_id=payload.get("run_id"),
+                return_papers=True,
             )
-            return finalize_file_agent_response(
-                agent=agent_name, layer=layer, mode=mode, area=area,
-                items_processed=count, items_saved=count, output_dir=output_dir,
-                before_snapshot=before_snapshot, problem_headings=("Gap", "Insight"),
+            response = finalize_collection_agent_response(
+                agent=agent_name,
+                layer=layer,
+                mode=mode,
+                area=area,
+                documents=papers,
+                output_dir=output_dir,
                 started_at=started_at,
+                funding_context=funding_context,
+                funding_contexts=funding_contexts,
+                run_id=payload.get("run_id"),
+                allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
+
+            # The canonical intermediate Markdown paths now point at individual
+            # paper artifacts. Update the literature ledger from the aggregate
+            # insights.md path to each artifact path that passed collection.
+            persisted_paths = {
+                (str(item.get("title") or "").casefold(), str(item.get("source") or "").strip().casefold()):
+                    str(item.get("markdown_path") or "")
+                for item in (response.get("outputs") or [])
+                if item.get("markdown_path")
+            }
+            for paper in papers:
+                artifact_path = persisted_paths.get((paper.title.casefold(), paper.url.strip().casefold()))
+                if not artifact_path:
+                    continue
+                save_paper_record(
+                    connection,
+                    title=paper.title,
+                    summary=paper.summary,
+                    url=paper.url,
+                    authors="; ".join(paper.authors),
+                    year=(paper.published.year if paper.published else 0),
+                    research_area=area or "Unscoped",
+                    path=artifact_path,
+                    tags=["#Literature", STATIC_TAGS.get(area, "")],
+                    concept_tags=[],
+                    static_tags_by_area=STATIC_TAGS,
+                    source_id=paper.source_id,
+                    doi=paper.doi,
+                )
+            return response
 
         if mode == "manual_url":
             raise LiteratureAgentError("manual_url is not supported for literature because a single URL is not a bibliographic source. Use manual_text or configured_scan.")
