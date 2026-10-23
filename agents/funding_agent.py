@@ -1375,7 +1375,7 @@ def _extract_program_name(text: str, fallback: str) -> str:
 def _extract_funding_amount(text: str) -> str | None:
     """Extract explicit funding amounts without inventing or hard-coding values."""
     unit = r"(?:K|M|B|lakh|crore|million|billion)"
-    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR)"
+    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR|Rs\.?)"
     # Include common web3 grant-denomination tokens when explicitly adjacent
     # to an amount (for example, "$200 USDG cheque").
     token_currency = r"(?:USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)"
@@ -1422,6 +1422,12 @@ def _extract_funding_amount(text: str) -> str | None:
             # Explicit award-form wording supports amounts such as "$200 USDG cheque".
             if re.search(r"\b(?:cheque|check|bounty|prize|stipend)\b", after):
                 is_valid = True
+            # Fellowship/stipend amounts are often expressed as a monthly rate.
+            if (
+                re.search(r"\b(?:fellowship|scholarship|stipend)\s+amount\b", before)
+                and re.search(r"\bper\s+month\b", after)
+            ):
+                is_valid = True
             # Also accept explicit per-unit award wording.
             if re.search(r"^\s*(?:per project|per startup|per applicant|maximum)", after):
                 is_valid = True
@@ -1443,7 +1449,7 @@ def _extract_currency(amount: str | None) -> str | None:
     token_match = re.search(r"\b(USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)\b", amount, re.IGNORECASE)
     if token_match:
         return token_match.group(1).upper()
-    if re.search(r"\bINR\b|₹", amount, re.IGNORECASE):
+    if re.search(r"\bINR\b|₹|\bRs\.?\b", amount, re.IGNORECASE):
         return "INR"
     if re.search(r"\bEUR\b|€", amount, re.IGNORECASE):
         return "EUR"
@@ -1521,6 +1527,14 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         content or "",
     ))
     extracted = _extract_application_url(content)
+
+    # A directly linked DOCX/PDF application form is itself an application
+    # endpoint, even when it contains no HTML-style "Apply" hyperlink.
+    if (
+        parsed_source.path.casefold().endswith((".docx", ".pdf"))
+        and re.search(r"\bapplication form\b", (content or "")[:1200], re.IGNORECASE)
+    ):
+        return source_url
 
     # The SBIR topic page itself is the relevant instructions destination when
     # the only non-generic link discovered is the linked NSF solicitation PDF/page.
@@ -1662,6 +1676,9 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
+        # Explicit qualification statements in fellowship forms often name the
+        # student/applicant category rather than using an "Eligibility" heading.
+        r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
     )
     for chunk in chunks:
         if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
