@@ -1716,15 +1716,41 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     )
     for chunk in chunks:
         if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
-            return chunk[:900]
+            # Some structured source records concatenate a generic eligibility
+            # label with the sentence's own subject, duplicating the prefix.
+            normalized = re.sub(
+                r"^(Eligible applicants must be)\s+Applicants must be\s+",
+                r"\1 ",
+                chunk[:900],
+                flags=re.IGNORECASE,
+            )
+            return cleaned_text(normalized)
     return None
 
 
 def _extract_geography_from_prose(text: str) -> str | None:
-    """Preserve explicit country restrictions as source text rather than guessing."""
+    """Extract only explicitly stated eligible geographies; never infer from source domain."""
     eligibility = _extract_eligibility_from_prose(text)
-    if eligibility and re.search(r"\b(?:United States|U\.?S\.?|USA|United States of America)\b", eligibility, flags=re.IGNORECASE):
-        return eligibility
+    if not eligibility:
+        return None
+
+    if re.search(r"\b(?:United States|U\.?S\.?|USA|United States of America)\b", eligibility, flags=re.IGNORECASE):
+        return "United States"
+
+    explicit_geographies = (
+        (r"\blow-\s*to\s+middle-income countries\b", "Low- and middle-income countries (exceptionally eligible)"),
+        (r"\blow\s+or\s+lower/upper-middle-income countries\b", "Low- and middle-income countries (exceptionally eligible)"),
+        (r"\bAfrican Union member states\b", "African Union member states (exceptionally eligible)"),
+        (r"\bEU Member State\b.{0,100}\bcountry associated with Horizon Europe\b", "EU Member States and Horizon Europe Associated Countries"),
+        (r"\bMember States, Iceland and Norway and associated countries\b", "EU Member States, Iceland, Norway, and associated countries"),
+        (r"\bMember States and Associated Countries\b", "EU Member States and Associated Countries"),
+        (r"\bEU Member State\b", "EU Member States"),
+        (r"\bMission Cities\b", "EU Mission Cities"),
+        (r"\bAustralia, Brazil, Canada, Chile, India, Japan, Mexico, New Zealand, Republic of Korea, Singapore, and USA\b", "Australia, Brazil, Canada, Chile, India, Japan, Mexico, New Zealand, Republic of Korea, Singapore, and USA"),
+    )
+    for pattern, geography in explicit_geographies:
+        if re.search(pattern, eligibility, flags=re.IGNORECASE):
+            return geography
     return None
 
 

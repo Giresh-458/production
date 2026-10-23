@@ -7,6 +7,8 @@ from agents.funding_agent import (
     _extract_eligibility_from_prose,
     _extract_funding_amount,
     _extract_general_themes,
+    _extract_geography_from_prose,
+    _extract_eligibility_from_prose,
     _resolve_application_url,
     analyze_document,
     extract_funding_problem_intelligence,
@@ -207,3 +209,35 @@ def test_direct_downloadable_application_form_is_application_url():
         url,
         "UNKNOWN",
     ) == url
+
+
+
+def test_explicit_geographic_eligibility_is_extracted_without_inference():
+    assert _extract_geography_from_prose(
+        "If eligible for funding, legal entities established in low- to middle-income "
+        "countries automatically eligible for Horizon Europe funding may exceptionally participate."
+    ) == "Low- and middle-income countries (exceptionally eligible)"
+
+    assert _extract_geography_from_prose(
+        "Legal entities established in all African Union member states are exceptionally eligible."
+    ) == "African Union member states (exceptionally eligible)"
+
+    assert _extract_geography_from_prose(
+        "Applicants must be based in an EU Member State or a country associated with Horizon Europe."
+    ) == "EU Member States and Horizon Europe Associated Countries"
+
+    assert _extract_geography_from_prose(
+        "Eligible applicants must be based in the United States."
+    ) == "United States"
+
+
+def test_duplicate_eligibility_prefix_is_normalized():
+    text = (
+        "Eligible applicants must be Applicants must be based in an EU Member State "
+        "or a country associated with Horizon Europe (Pillar 2)."
+    )
+
+    assert _extract_eligibility_from_prose(text) == (
+        "Eligible applicants must be based in an EU Member State or a country "
+        "associated with Horizon Europe (Pillar 2)."
+    )
