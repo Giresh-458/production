@@ -1802,16 +1802,15 @@ def _extract_general_themes(content: str) -> list[str]:
             continue
             
         if len(words) == 1:
-            # Single generic technical tokens often come from navigation or
-            # unrelated page chrome. Require repetition for ordinary single-word
-            # themes; retain acronyms, but prefer informative multi-word phrases.
+            # Generic single-word tokens can come from navigation or page chrome.
+            # Keep specific technical terms (for example, robotics), but suppress
+            # broad/noisy singletons while allowing informative multi-word phrases.
             low_signal_singletons = {"image", "processing", "learning", "vision", "earn", "fun"}
-            repeated_technical_term = (
+            specific_technical_singleton = (
                 words[0] in high_signal_technical
-                and phrase_counts[lower_phrase] >= 2
                 and words[0] not in low_signal_singletons
             )
-            if not (repeated_technical_term or has_acronym):
+            if not (specific_technical_singleton or has_acronym):
                 continue
                 
         # Must be valid
