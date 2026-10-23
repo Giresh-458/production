@@ -292,29 +292,35 @@ sources:
         # unrelated policy documents remain link evidence, not funding records.
         max_pages: 240
         exclude_url_patterns:
-          # Older unrelated partner posts and social/application destinations from cross-KIC pages.
-          - '^https?://mailchi[.]mp/eitfood[.]eu/opportunities(?:[/?#].*)?
-          # The partner home page linked from an older programme entry is not a call.
+          - '^https?://[^/]*typeform[.]com/'
+          - '^https?://(?:www[.])?tally[.]so/'
+          - '^https?://(?:www[.])?forms[.]office[.]com/'
+          - '^https?://[^/]*zoom[.]us/meeting/register/'
+          - '^https?://education[.]ec[.]europa[.]eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0[.]pdf(?:[?#].*)?$'
+          - '^https?://eur03[.]safelinks[.]protection[.]outlook[.]com/'
+          - '^https?://bit[.]ly/'
+          - '^https?://(?:www[.])?lyyti[.]fi/reg/'
+          - '^https?://events[.]conversationstarter[.]net/'
+          - '^https?://(?:www[.])?forms[.]gle/'
+          - '^https?://ee[.]kobotoolbox[.]org/'
+          - '^https?://climatekic[.]tfaforms[.]net/'
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register'
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/docs/.+[.]pdf(?:[?#].*)?$'
+          # Supporting reference documents and archived application forms are not standalone current calls.
+          - '^https?://climatechconnect[.]eu/assets/pdf/list-of-eit-labelled-programmes-update[.]pdf(?:[?#].*)?$'
+          - '^https?://new-european-bauhaus[.]europa[.]eu/system/files/.*/NEB_Compass_V_4[.]pdf(?:[?#].*)?$'
+          - '^https?://seedbook[.]eitrawmaterials[.]eu/AddHeiInitiativeProject[.]aspx[?]CallId=58006(?:[&#].*)?$'
           - '^https?://innonext-project[.]eu/en/?(?:[?#].*)?$'
-          - '^https?://[^/]*typeform\.com/'
-          - '^https?://(?:www\.)?tally\.so/'
-          - '^https?://(?:www\.)?forms\.office\.com/'
-          - '^https?://[^/]*zoom\.us/meeting/register/'
-          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?$'
-          - '^https?://eur03\.safelinks\.protection\.outlook\.com/'
-          - '^https?://bit\.ly/'
-          - '^https?://(?:www\.)?lyyti\.fi/reg/'
-          - '^https?://events\.conversationstarter\.net/'
-          - '^https?://(?:www\.)?forms\.gle/'
-          - '^https?://ee\.kobotoolbox\.org/'
-          - '^https?://climatekic\.tfaforms\.net/'
-          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register'
-          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/docs/.+\.pdf(?:[?#].*)?$'
-          # Supporting reference documents are not standalone open calls.
-          - '^https?://climatechconnect\.eu/assets/pdf/list-of-eit-labelled-programmes-update\.pdf(?:[?#].*)?$'
-          - '^https?://new-european-bauhaus\.europa\.eu/system/files/.*/NEB_Compass_V_4\.pdf(?:[?#].*)?$'
-          # The archived 2025 application form is not a current call.
-          - '^https?://seedbook\.eitrawmaterials\.eu/AddHeiInitiativeProject\.aspx\?CallId=58006(?:[&#].*)?$'
+          # Stale, unrelated partner posts and social/application destinations linked from cross-KIC pages.
+          - '^https?://mailchi[.]mp/eitfood[.]eu/opportunities(?:[/?#].*)?$'
+          - '^https?://(?:www[.])?impacthub[.]ro/2025/07/(?:17/care-sunt-tendintele-in-coworking-in-2025start-la-inscrieri-in-romania-climaccelerator-2|02/start-la-inscrieri-in-romania-climaccelerator)/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?impacthub[.]ro/2024/09/25/13-solutii-digitale-inovatoare-au-intrat-in-acceleratorul-innovators-for-children/?(?:[?#].*)?$'
+          - '^https?://innovationstarterbox[.]bg/blog/(?:11-proekta-poluchavat-100-000-evro-vav-vtoroto-izdanie-na-black-sea-climaccelerator-bulgaria|5-startapa-na-faza-3-v-climaccelerator-black-sea-bulgaria-2022|dopusnati-idei-do-faza-bootcamp-pitching-session-v-climaccelerator-black-sea-bulgaria|11-granta-ot-eit-climate-kic-otivat-v-balgarski-startapi)/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?linkedin[.]com/company/innovation-accelerator-bulgaria(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?facebook[.]com/InnovationStarterAccelerator(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?twitter[.]com/bgiaccelerator(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?instagram[.]com/bgiaccelerator(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?f6s[.]com/medclimaccelerator2022/apply(?:[/?#].*)?$'
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
@@ -519,9 +525,9 @@ sources:
         - '^https?://(?:www[.])?grants[.]gov/grantors/grantor-help(?:/|[?#]|$)'
         # Generic Grants.gov help/navigation pages are not SBIR topics.
         - '^https?://(?:www[.])?grants[.]gov/(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:[.]html)?(?:/|[?#]|$)'
-        # Exclude generic NSF audience hubs, but preserve individual opportunity pages.
-        - "^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$"
-        - "^https?://new[.]nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$"
+        # Exclude generic NSF audience/admin hubs, but preserve individual SBIR/STTR solicitations.
+        - '^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
+        - '^https?://new[.]nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
         - '^https?://(?:www[.])?nsf[.]gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
         - '^https?://new[.]nsf[.]gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
         - '^https?://seedfund[.]nsf[.]gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
@@ -529,7 +535,7 @@ sources:
         - '^https?://(?:www[.])?twitter[.]com/grantsdotgov(?:/|$)'
         - '^https?://(?:www[.])?x[.]com/grantsdotgov(?:/|$)'
         - '^https?://grantsgovprod[.]wordpress[.]com(?:/|$)'
-        # Historical solicitation versions and administrative links are not current topics.
+        # Historical solicitation versions and admin links are not current SBIR topics.
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/(?:sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960|sbirsttr-phase-ii-nsf-small-business-innovation-research-small-business/505989|sbir-sttr-fast-track-nsf-small-business-innovation-research-small-business/506271)/?$'
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/.*/nsf23-(?:515|516)/solicitation(?:[?#].*)?$'
         - '^https?://(?:www[.])?nsf[.]gov/(?:funding/build-america-buy-america|funding/proposal-compliance-checking|policies/SOR_PA_NSF-51_Reviewer_Proposal_File[.]pdf|publications/pub_summ[.]jsp)'
@@ -543,24 +549,17 @@ sources:
         - '^https?://(?:www[.])?cogr[.]edu/sites/default/files/'
         - '^https?://(?:www[.])?congress[.]gov/114/plaws/'
         - '^https?://nsf-gov-resources[.]nsf[.]gov/'
-        # Non-SBIR NSF programme pages discovered through generic cross-links are out of scope.
+        # Generic non-SBIR NSF opportunities reached by cross-links are outside this source's scope.
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/(?:ags-atmospheric-geospace-sciences-program|career-faculty-early-career-development-program|cdse-computational-data-enabled-science-engineering|dcl-veterans-research-supplement-vrs-program|mps-astro-mps-astronomical-sciences-research-programs|mri-major-research-instrumentation-program|ret-research-experiences-teachers-supplement-opportunity|reu-research-experiences-undergraduates|rui-roa-pui-facilitating-research-predominantly-undergraduate|astro-innovations-astronomical-sciences-innovations|astro-core-astronomical-sciences-core-research|ati-astronomical-sciences-technology-instrumentation)(?:/|[?#]|$)'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/dcl-technical-business-assistance-taba-supplement-active/nsf20-070(?:[/?#].*)?
-
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/dcl-technical-business-assistance-taba-supplement-active/nsf20-070(?:[/?#].*)?$'
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/grfp-nsf-graduate-research-fellowship-program(?:/|[?#]|$)'
         - '^https?://(?:www[.])?nsf[.]gov/events/nsf-grfp-(?:applicant-office-hours|applicant-webinar|reviewer-information-session-webinar)(?:/|[?#]|$)'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/information/faq-additional-faq-nsf-graduate-research-fellowship-program(?:[/?#].*)?
-
-        - '^https?://(?:www[.])?nsf[.]gov/notices/important/important-information-updates-graduate-research-fellowship(?:[/?#].*)?
-
-        - '^https?://www[.]research[.]gov/grfp/AwardeeList[.]do(?:[?#].*)?
-
-        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/SBA_SBIR_STTR_POLICY_DIRECTIVE_OCT_2020_v2[.]pdf(?:[?#].*)?
-
-        - '^https?://www[.]whitehouse[.]gov/wp-content/uploads/(?:2021/06/M-21-26|2021/12/M-22-08|2022/04/M-22-11)[.]pdf(?:[?#].*)?
-
-        - '^https?://www[.]congress[.]gov/117/plaws/publ58/PLAW-117publ58[.]pdf(?:[?#].*)?
-
+        - '^https?://(?:www[.])?nsf[.]gov/funding/information/faq-additional-faq-nsf-graduate-research-fellowship-program(?:[/?#].*)?$'
+        - '^https?://(?:www[.])?nsf[.]gov/notices/important/important-information-updates-graduate-research-fellowship(?:[/?#].*)?$'
+        - '^https?://www[.]research[.]gov/grfp/AwardeeList[.]do(?:[?#].*)?$'
+        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/SBA_SBIR_STTR_POLICY_DIRECTIVE_OCT_2020_v2[.]pdf(?:[?#].*)?$'
+        - '^https?://www[.]whitehouse[.]gov/wp-content/uploads/(?:2021/06/M-21-26|2021/12/M-22-08|2022/04/M-22-11)[.]pdf(?:[?#].*)?$'
+        - '^https?://www[.]congress[.]gov/117/plaws/publ58/PLAW-117publ58[.]pdf(?:[?#].*)?$'
         - '^https?://www[.][.]nsf[.]gov/'
   - name: EU Open and Forthcoming Funding Calls
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
