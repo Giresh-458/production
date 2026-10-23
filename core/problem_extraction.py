@@ -49,7 +49,7 @@ def _score_candidate(text: str, research_area: Optional[str] = None) -> Dict[str
     words = text.split()
     specificity_score = min(len(words) / 30.0, 1.0)
     
-    limitation_terms = ("cannot", "fail", "limit", "latency", "bottleneck", "issue", "difficult", "impractical", "friction", "lack", "unable", "prevent", "require", "unreliable", "unresolved")
+    limitation_terms = ("cannot", "fail", "limit", "latency", "bottleneck", "issue", "difficult", "impractical", "friction", "lack", "unable", "prevent", "require", "unreliable", "unresolved", "risk", "threat", "vulnerabilit", "shortage", "fragmented")
     researchability_score = sum(0.2 for term in PROBLEM_SIGNAL_TERMS if term in lowered)
     researchability_score += sum(0.3 for term in limitation_terms if term in lowered)
     researchability_score = min(researchability_score, 1.0)
@@ -134,21 +134,59 @@ Output only the refined single-sentence problem statement, nothing else."""
     return None
 
 def _is_genuine_limitation(text: str) -> bool:
+    """Recognize explicit problem/risk language without treating action verbs as problems."""
     t = text.strip().lower()
     strong = (
         r"\b(?:cannot|can't|fails?|failed|unable|lacks?|lacking|insufficient|limited|limitation|bottleneck|barrier|"
         r"unresolved|unknown|unclear|inadequate|impractical|fragile|unreliable|poor performance|"
-        r"not (?:yet )?(?:possible|well understood|addressed|supported|solved)|remains a challenge|limits?|friction)\b"
+        r"risk|risks|threat|threats|vulnerabilities|shortage|scarcity|fragmented|degraded|"
+        r"not (?:yet )?(?:possible|well understood|addressed|supported|solved)|remains a challenge|friction)\b|"
+        r"\blimits?\s+(?:the\s+)?(?:ability|access|availability|capacity|performance|adoption|reliability|resilience)\b"
     )
     if not re.search(strong, t):
         return False
-    # Background/method boilerplate is rejected unless it contains an explicit
-    # limitation signal. This preserves genuine sentences beginning with "The".
     if len(t.split()) < 6:
         return False
     if re.match(r"^(greetings|welcome|copyright|all rights reserved|please contact|we are thrilled)\b", t):
         return False
     return True
+
+
+def _clean_funding_candidate_text(text: str) -> str:
+    """Strip page chrome/Markdown from a candidate while preserving source wording."""
+    from html import unescape
+
+    value = unescape(str(text or ""))
+    value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1 ", value)
+    value = re.sub(r"\[([^\]]{1,300})\]\((?:https?://|/)[^)]*\)", r"\1", value)
+    value = re.sub(r"<https?://[^>]+>", " ", value)
+    value = re.sub(r"https?://\S+", " ", value)
+    value = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", value)
+    value = re.sub(r"[*_~]{1,3}", "", value)
+    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    value = re.sub(r"\s+", " ", value).strip(" \t\r\n-•:")
+    value = re.sub(
+        r"^(?:expected outcomes?|scope|description|background|rationale|overview|problem preview)\s*:\s*",
+        "", value, flags=re.IGNORECASE,
+    ).strip()
+    return value
+
+
+def _funding_candidate_segments(paragraph: str) -> list[str]:
+    """Split noisy, long funding descriptions into sentence-sized candidates."""
+    cleaned = _clean_funding_candidate_text(paragraph)
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])", cleaned)
+    candidates = []
+    for part in parts:
+        candidate = _clean_funding_candidate_text(part)
+        if len(candidate.split()) < 6:
+            continue
+        if len(candidate) > 500:
+            candidate = candidate[:497].rsplit(" ", 1)[0].rstrip(" ,;:") + "..."
+        candidates.append(candidate)
+    return candidates
 
 def _is_structured_problem_signal(text: str, *, title: str = "", research_area: Optional[str] = None, agent_name: Optional[str] = None) -> tuple[bool, str]:
     """Return whether a source-framed sentence is itself a problem/challenge signal.
@@ -195,25 +233,42 @@ def _is_structured_problem_signal(text: str, *, title: str = "", research_area: 
 
 def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict, *, allow_llm_refinement: bool = True, research_area: Optional[str] = None, agent_name: Optional[str] = None) -> dict:
     paragraphs = _paragraphs(content)
-    
+    if (agent_name or "").strip().lower() == "funding":
+        heading_only = re.compile(
+            r"(?im)^\s{0,3}#{1,6}\s+(?:scope|expected outcomes?|description|background|rationale|overview|"
+            r"problem preview|research mission|focus area|source details|funding details|requirements|"
+            r"deadlines|timeline|call documents|programme theme)\s*$"
+        )
+        cleaned_content = heading_only.sub("", content or "")
+        paragraphs = []
+        for raw_paragraph in _paragraphs(cleaned_content):
+            paragraphs.extend(_funding_candidate_segments(raw_paragraph))
+
     candidates = []
-    
+
     for para in paragraphs:
+        if (agent_name or "").strip().lower() == "funding":
+            para = _clean_funding_candidate_text(para)
         if _is_boilerplate(para):
             continue
-            
         scores = _score_candidate(para, research_area)
         if scores["boilerplate_score"] >= 0.6:
             continue
-            
+
         limitation = _is_genuine_limitation(para)
         structured, structured_type = _is_structured_problem_signal(
             para, title=title, research_area=research_area, agent_name=agent_name
         )
+        # An imperative instruction is not a problem unless it is explicitly framed.
+        if (agent_name or "").strip().lower() == "funding" and re.match(
+            r"^(?:build|create|develop|implement|block|limit|track|submit|apply|provide|support)\b",
+            para, flags=re.IGNORECASE,
+        ) and not structured:
+            limitation = False
         if limitation or structured:
             problem_type = "identified_limitation" if limitation else structured_type
             candidates.append({
-                "problem": para[:300].strip(),
+                "problem": para.strip(),
                 "problem_type": problem_type,
                 "evidence": [para],
                 "evidence_refs": [],
@@ -224,7 +279,10 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
                 "area_signal_count": scores["area_signal_count"],
                 "confidence": (
                     "High" if structured and scores["specificity_score"] >= 0.4
-                    else "Medium" if structured or scores["researchability_score"] >= 0.4
+                    else "Medium" if structured or scores["researchability_score"] >= 0.4 or (
+                        (agent_name or "").strip().lower() == "funding"
+                        and limitation and scores["specificity_score"] >= 0.4
+                    )
                     else "Low"
                 )
             })

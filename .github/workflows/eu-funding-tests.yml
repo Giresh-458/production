@@ -405,6 +405,9 @@ jobs:
               )
           ]
           summary["priority_source_coverage_violations"] = priority_source_coverage_violations
+          (output_dir / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
           if priority_source_coverage_violations:
               raise SystemExit(
                   "Priority Batch 1 sources still have truncation or unhandled relevant links: "

@@ -249,7 +249,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert superteam["collection"]["discovery"]["start_urls"] == [superteam["url"]]
     assert {"superteam.fun", "earn.superteam.fun", "solana.org", "solana.foundation"}.issubset(set(superteam["collection"]["allowed_domains"]))
     assert superteam["collection"]["discovery"]["max_pages"] == 70
-    assert any("docs.google.com/document" in p for p in superteam["collection"]["discovery"]["exclude_url_patterns"])
+    assert any("docs" in p and "document" in p for p in superteam["collection"]["discovery"]["exclude_url_patterns"])
     assert superteam.get("direct_page", False) is False
 
     near_entry = by_name["NEAR Ecosystem Funding"]

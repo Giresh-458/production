@@ -78,7 +78,9 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             robots_url,
             headers={"User-Agent": _ROBOTS_USER_AGENT},
             timeout=(5.0, 10.0),
-            retries=1,
+            # Respect Retry-After on transient rate limits. If the robots policy
+            # remains unavailable, fail closed and report the source as partial.
+            retries=2,
             expected_status=(200, 404, 410),
         )
         status_code = int(response.status_code)
@@ -486,6 +488,27 @@ def _superteam_directory_wait_options(url: str) -> dict[str, Any]:
     }
 
 
+def _ethereum_esp_wait_options(url: str) -> dict[str, Any]:
+    """Wait for ESP's client-rendered RFP cards before extracting links."""
+    parsed = urlparse(url)
+    if (parsed.netloc or "").lower() not in {
+        "esp.ethereum.foundation", "www.esp.ethereum.foundation"
+    }:
+        return {}
+    if parsed.path.rstrip("/") not in {"/applicants/rfp", "/applicants/open-rounds"}:
+        return {}
+    return {
+        "js_code_before_wait": "window.scrollTo(0, document.body.scrollHeight);",
+        "wait_for": (
+            "js:() => document.querySelectorAll("
+            "'a[href*=\"/applicants/rfp/\"], a[href*=\"/applicants/open-rounds/\"]'"
+            ").length > 0 || document.body.innerText.toLowerCase().includes("
+            "'there are no active grant rounds')"
+        ),
+        "delay_before_return_html": 0.75,
+    }
+
+
 def _raw_markdown_text(result: Any) -> str:
     """Read the generated Markdown across Crawl4AI result API variants."""
     for attribute in ("markdown", "markdown_v2"):
@@ -561,6 +584,7 @@ async def _fetch_url(url: str) -> dict:
         "cache_mode": CacheMode.BYPASS,
         "page_timeout": int(timeout * 1000),
         **_superteam_directory_wait_options(url),
+        **_ethereum_esp_wait_options(url),
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -834,7 +858,9 @@ def _finalize_collection_status(result: CollectionResult, *, test_limits: bool =
             # discovery boundary was exhausted without fetch errors or skipped
             # relevant routes. Otherwise preserve uncertainty as PARTIAL.
             result.final_status = (
-                "NO_ACTIVE_OPPORTUNITIES" if result.discovery_exhausted else "PARTIAL"
+                "NO_ACTIVE_OPPORTUNITIES"
+                if result.discovery_exhausted and result.no_active_opportunities_confirmed
+                else "PARTIAL"
             )
     else:
         result.final_status = "FAIL"
@@ -1150,6 +1176,8 @@ def crawl_funding_source(
 
         page_content = res["markdown"] or res["html"] or ""
         page_title = res.get("title", "")
+        if depth == 0 and _reports_no_active_funding(page_url, page_title, page_content):
+            result.no_active_opportunities_confirmed = True
 
         # Stage B: classify this page
         is_funding_page = _classify_page_stage_b(page_url, page_title, page_content)
