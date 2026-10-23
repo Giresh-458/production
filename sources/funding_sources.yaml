@@ -392,7 +392,7 @@ sources:
         - '^https?://data[.]www[.]sbir[.]gov/'
         - '^https?://(?:www[.])?grants[.]gov/grantors/grantor-help(?:/|[?#]|$)'
         # Generic Grants.gov help/navigation pages are not SBIR topics.
-        - '^https?://(?:www[.])?grants[.]gov/(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:[.]html)?(?:/|[?#]|$)'
+        - '^https?://(?:www[.])?grants[.]gov/(?:help/)?(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:[.]html)?(?:/|[?#]|$)'
         # The legacy Grants.gov apply portal emits generic navigation links, not SBIR topics.
         - '^https?://apply[0-9]+[.]grants[.]gov/apply/(?:spoExit[.]jsp|login[.]faces|javax[.]faces[.]resource)(?:[/?#].*)?$'
         # Exclude generic NSF audience/admin hubs, but preserve individual SBIR/STTR solicitations.
