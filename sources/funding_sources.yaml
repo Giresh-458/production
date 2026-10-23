@@ -301,19 +301,29 @@ sources:
         types: ["1", "2", "8"]
         statuses: ["31094501", "31094502"]
         page_size: 50
+        # Keep a distinct search route for every RIF domain. These are
+        # discovery queries, not proof of domain fit; the collector still
+        # requires call-level eligibility and domain evidence.
         search_texts:
+        - tokenized real-world assets
         - carbon credit
         - MRV emissions
         - sustainability data
+        - zero-knowledge
+        - internet of vehicles
         - decentralized identity
         - physical infrastructure
+        - maximal extractable value
+        - stablecoin payments
         detail_fetch_missing_metadata: true
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        # Five targeted queries need more than two pages each: the previous
-        # budget routinely stopped at 100 results per query. Keep the crawl
-        # bounded, but allow six 50-result pages per query before reporting PARTIAL.
+        # Ten targeted queries cover the seven RIF domains (ESG uses several
+        # complementary queries, and ZK-IoV needs both cryptography and vehicle
+        # terminology). A 30-page budget permits three pages per query, while the
+        # global 1,500-document cap limits each query to 150 records. Any
+        # unexhausted query remains explicitly PARTIAL.
         max_pages: 30
         max_documents: 1500
   cps_funding:

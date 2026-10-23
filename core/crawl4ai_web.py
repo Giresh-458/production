@@ -376,6 +376,17 @@ def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
     url_lower = url.lower()
     combined = f"{title}\n{content}".lower()
 
+    # This I-DAPT DOCX is the proposal template linked from the actual call page,
+    # not a second independently published funding opportunity. The parent call
+    # retains the application link to this document.
+    parsed_url = urlparse(url)
+    if (
+        (parsed_url.hostname or "").casefold() in {"idapthub.org", "www.idapthub.org"}
+        and parsed_url.path.rstrip("/").casefold()
+        == "/frontend/docs/project_proposal_document_new.docx"
+    ):
+        return False
+
     # Explicitly empty listings and ecosystem directories are traversal roots,
     # not individual applications. Their links are still explored below.
     if _reports_no_active_funding(url, title, content) or _is_generic_funding_hub(url, title, content):
@@ -460,6 +471,18 @@ def _get_final_page_url(result: Any, requested_url: str) -> str:
         or getattr(result, "url", None)
         or requested_url
     )
+
+
+def _is_supporting_funding_document(url: str) -> bool:
+    """Return True for known application templates, not standalone funding calls."""
+    parsed = urlparse(url)
+    return (
+        (parsed.hostname or "").casefold() in {"idapthub.org", "www.idapthub.org"}
+        and parsed.path.rstrip("/").casefold()
+        == "/frontend/docs/project_proposal_document_new.docx"
+    )
+
+
 
 
 def _superteam_directory_wait_options(url: str) -> dict[str, Any]:
@@ -719,15 +742,23 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
 
 
 def _extract_docx_title(paragraphs: list[str], url: str) -> str:
-    """Prefer a call/fellowship heading in the document over a filename slug."""
+    """Prefer a specific call/fellowship heading over generic form banners or filename slugs."""
     title_pattern = re.compile(
         r"\b(?:call for|proposal call|request for proposals?|funding opportunity|"
         r"grant(?:s)? program|fellowships?|scholarships?|application for)\b",
         flags=re.IGNORECASE,
     )
-    for raw in paragraphs[:40]:
+    generic_document_titles = {
+        "application form",
+        "fellowship application form",
+        "chanakya fellowship application form",
+    }
+    for raw in paragraphs[:60]:
         candidate = re.sub(r"\s+", " ", str(raw or "")).strip(" \t:.-")
         if not candidate or len(candidate) > 180 or len(candidate) < 5:
+            continue
+        normalized = re.sub(r"[^a-z0-9]+", " ", candidate.casefold()).strip()
+        if normalized in generic_document_titles:
             continue
         if "@" in candidate or re.search(r"\b(?:phone|email|www\.)\b", candidate, re.IGNORECASE):
             continue
@@ -735,7 +766,6 @@ def _extract_docx_title(paragraphs: list[str], url: str) -> str:
             return candidate
     filename = urlparse(url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
     return re.sub(r"[-_]+", " ", filename).strip() or "Untitled application document"
-
 
 def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
     """Download a DOCX directly and extract paragraph text without browser navigation."""
@@ -1044,6 +1074,10 @@ def crawl_funding_source(
                     ctx.add_page()
                 if docx_result["truncated"]:
                     result.truncated = True
+                # Keep proposal templates available as application documents on
+                # their parent call, but never emit them as separate opportunities.
+                if _is_supporting_funding_document(current_url):
+                    continue
                 result.opportunities.append({
                     "type": "docx",
                     "url": current_url,
