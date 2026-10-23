@@ -4,8 +4,10 @@ from agents.funding_agent import (
     FundingDocument,
     FundingOpportunity,
     _extract_currency,
+    _extract_eligibility_from_prose,
     _extract_funding_amount,
     _extract_general_themes,
+    _resolve_application_url,
     analyze_document,
     extract_funding_problem_intelligence,
 )
@@ -111,3 +113,47 @@ def test_markdown_heading_markers_are_removed_from_structured_titles():
     analysis = analyze_document(document)
 
     assert not analysis.program_name.lstrip().startswith("#")
+
+
+
+def test_docx_fellowship_title_skips_generic_application_form_heading():
+    from core.crawl4ai_web import _extract_docx_title
+
+    title = _extract_docx_title(
+        [
+            "CHANAKYA FELLOWSHIP – APPLICATION FORM",
+            "CHANAKYA UG Fellowship – I",
+            "The fellowship is for motivated undergraduate students.",
+        ],
+        "https://idapthub.org/frontend/docs/chanakya/2_chanakya_ug_fellowship_II.docx",
+    )
+
+    assert title == "CHANAKYA UG Fellowship – I"
+
+
+def test_explicit_fellowship_monthly_amount_and_currency_are_extracted():
+    amount = _extract_funding_amount(
+        "The fellowship amount is Rs. 4,000/- per month."
+    )
+
+    assert amount == "Rs. 4,000"
+    assert _extract_currency(amount) == "INR"
+
+
+def test_fellowship_form_eligibility_is_extracted_from_explicit_prose():
+    sentence = (
+        "B.Tech./B.E. students registered in any recognised college "
+        "can apply through a mentor."
+    )
+
+    assert _extract_eligibility_from_prose(sentence) == sentence
+
+
+def test_direct_downloadable_application_form_is_application_url():
+    url = "https://idapthub.org/frontend/docs/chanakya/2_chanakya_ug_fellowship_II.docx"
+
+    assert _resolve_application_url(
+        "CHANAKYA FELLOWSHIP – APPLICATION FORM\nCHANAKYA UG Fellowship – I",
+        url,
+        "UNKNOWN",
+    ) == url
