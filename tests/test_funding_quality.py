@@ -12,6 +12,8 @@ def test_acceptance_requires_successful_scan_and_actionable_call():
             "discovery_exhausted": True,
             "pagination_detected": True,
             "pagination_complete": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
         }],
     )
     assert result["status"] == "ACCEPTED"
@@ -110,8 +112,34 @@ def test_eu_source_searches_all_seven_configured_research_domains():
     assert "carbon credit" in queries
     assert "mrv emissions" in queries
     assert "zero-knowledge" in queries
+    assert "internet of vehicles" in queries
     assert "decentralized identity" in queries
     assert "physical infrastructure" in queries
     assert "maximal extractable value" in queries
     assert "stablecoin payments" in queries
     assert source["collection"]["limits"]["max_pages"] >= len(queries)
+
+
+
+def test_unverified_source_evidence_or_currentness_blocks_acceptance():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        source_summary=[{
+            "source_id": "unverified",
+            "final_status": "VERIFIED",
+            "discovery_exhausted": True,
+            "pagination_detected": True,
+            "pagination_complete": True,
+            "evidence_verified": False,
+            "currentness_verified": False,
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    blocker = next(
+        item for item in result["blockers"]
+        if item.get("source_id") == "unverified"
+    )
+    assert "evidence not verified" in blocker["message"]
+    assert "currentness not verified" in blocker["message"]
