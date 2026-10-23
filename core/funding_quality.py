@@ -16,6 +16,7 @@ def assess_batch_acceptance(
     selected_quality_flags: Iterable[dict[str, Any]] = (),
     selected_manual_review_flags: Iterable[dict[str, Any]] = (),
     source_summary: Iterable[dict[str, Any]] = (),
+    expected_source_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Return ACCEPTED/BLOCKED plus explicit, deterministic blockers.
 
@@ -63,6 +64,24 @@ def assess_batch_acceptance(
             "No source-level coverage/verification summary was provided.",
         )
 
+    provided_ids = [str(source.get("source_id") or "").strip() for source in sources]
+    provided_id_set = {source_id for source_id in provided_ids if source_id}
+    expected_ids = {str(source_id).strip() for source_id in (expected_source_ids or ()) if str(source_id).strip()}
+    if expected_ids:
+        for missing_id in sorted(expected_ids - provided_id_set):
+            add(
+                "source_coverage_telemetry_missing",
+                "Configured source is missing from the source-level audit summary.",
+                missing_id,
+            )
+        duplicate_ids = sorted({source_id for source_id in provided_ids if source_id and provided_ids.count(source_id) > 1})
+        for duplicate_id in duplicate_ids:
+            add(
+                "source_coverage_telemetry_duplicate",
+                "Configured source appears more than once in the source-level audit summary.",
+                duplicate_id,
+            )
+
     for source in sources:
         source_id = str(source.get("source_id") or "(unknown source)")
         status = str(source.get("final_status") or "UNKNOWN").upper()
@@ -80,6 +99,8 @@ def assess_batch_acceptance(
         currentness_verified = source.get("currentness_verified") is True
 
         incomplete_reasons: list[str] = []
+        if status in {"", "UNKNOWN"}:
+            incomplete_reasons.append("source status unknown")
         if not evidence_verified:
             incomplete_reasons.append("evidence not verified")
         if not currentness_verified:
