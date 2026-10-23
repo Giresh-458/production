@@ -1372,6 +1372,25 @@ def _extract_program_name(text: str, fallback: str) -> str:
     return title or fallback
 
 
+def _split_funding_sentences(text: str) -> list[str]:
+    """Split source text into sentences without breaking common abbreviations.
+
+    Funding pages frequently use labels such as Rs., B.Tech., M.E. and Ph.D.
+    Splitting on every period can detach the amount/eligibility cue from its value.
+    """
+    protected = re.sub(
+        r"\b(?:Rs|B\.Tech|B\.E|M\.Tech|M\.E|Ph\.D|U\.S|U\.K)\.",
+        lambda match: match.group(0).replace(".", "¤"),
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+    return [
+        part.replace("¤", ".").strip()
+        for part in re.split(r"(?<=[.!?])\s+|\n+", protected)
+        if part.strip()
+    ]
+
+
 def _extract_funding_amount(text: str) -> str | None:
     """Extract explicit funding amounts without inventing or hard-coding values."""
     unit = r"(?:K|M|B|lakh|crore|million|billion)"
@@ -1385,7 +1404,7 @@ def _extract_funding_amount(text: str) -> str | None:
         re.IGNORECASE,
     )
     labelled: list[str] = []
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+    for sentence in _split_funding_sentences(text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1407,7 +1426,7 @@ def _extract_funding_amount(text: str) -> str | None:
     strict_prefix = r"(?:grant|award|funding|budget|prize|fund|request)s?(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?\s*$"
     strict_suffix = r"^\s*(?:grant|award|funding|budget|prize|fund)s?"
     
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+    for sentence in _split_funding_sentences(text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1666,7 +1685,7 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     """Extract explicit applicant restrictions stated in prose when no labelled section exists."""
     chunks = [
         cleaned_text(part)
-        for part in re.split(r"(?<=[.!?])\s+|\n+", str(text or ""))
+        for part in _split_funding_sentences(text)
         if cleaned_text(part)
     ]
     patterns = (
