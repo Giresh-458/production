@@ -775,7 +775,6 @@ def _collect_eu_funding_tenders(
     all_queries_complete = warnings_text is None
     seen_search_refs: set[str] = set()
     seen_search_urls: set[str] = set()
-    search_duplicates = 0
 
     for search_text in search_texts:
         remaining_budget = max_documents_budget - len(aggregated_records)
@@ -838,7 +837,6 @@ def _collect_eu_funding_tenders(
             if (reference and reference in seen_search_refs) or (
                 canonical_url and canonical_url in seen_search_urls
             ):
-                search_duplicates += 1
                 continue
             if reference:
                 seen_search_refs.add(reference)
@@ -876,7 +874,8 @@ def _collect_eu_funding_tenders(
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.discovery_exhausted = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
-    result.duplicates_removed += search_duplicates
+    # Count duplicates removed both within a query's pages and across query terms.
+    result.duplicates_removed += max(0, raw_records_received - len(records))
 
     for error in api_result.get("errors", []):
         result.errors.append({
