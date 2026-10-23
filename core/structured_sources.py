@@ -605,7 +605,9 @@ def eu_funding_tenders_paginated_search(
                 if pages_fetched < max_pages:
                     continue
                 errors.append(
-                    f"EU Funding & Tenders Search API returned a short page: retrieved {len(results)} of {total_expected} expected records"
+                    f"{limit_kind}: EU Funding & Tenders Search API returned a short page: "
+                    f"retrieved {len(results)} of {total_expected} expected records; "
+                    f"max pages reached ({max_pages})"
                 )
             else:
                 pagination_complete = True
