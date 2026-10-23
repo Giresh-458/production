@@ -75,6 +75,10 @@ sources:
       - earn.superteam.fun
       - solana.org
       - solana.foundation
+      - solana.com
+      - airtable.com
+      - share.hsforms.com
+      - typeform.com
       discovery:
         start_urls:
         - https://superteam.fun/earn/opportunities/development-grants/
@@ -85,6 +89,12 @@ sources:
         pagination: true
         exclude_url_patterns:
           - '^https?://docs\.google\.com/document/'
+          # Direct application forms are links to apply, not separate grant records.
+          - '^https?://[^/]*typeform\.com/'
+          - '^https?://share\.hsforms\.com/'
+          - '^https?://airtable\.com/'
+          # Announcement articles are not individual funding calls.
+          - '^https?://(?:www\.)?solana\.com/news/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
@@ -160,17 +170,21 @@ sources:
       - submit.xrplgrants.org
       - brinc.io
       - tenity.com
+      - airtable.com
       discovery:
         start_urls:
         - https://xrplgrants.org/
         - https://submit.xrplgrants.org/submit
-        max_depth: 2
-        max_pages: 20
+        max_depth: 3
+        max_pages: 24
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
           - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
+          - '^https?://airtable\.com/'
+          # Investor/news articles are not XRPL funding opportunities.
+          - '^https?://(?:www\.)?tenity\.com/(?:keyrock-reaches|tenity-joins|tenity-backs)/'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
     url: https://fil.org/grants
