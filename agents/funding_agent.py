@@ -1710,6 +1710,9 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
+        # Explicit geographic eligibility clauses may be phrased as an
+        # establishment rule without the words "applicants must".
+        r"\b(?:legal entities|entities|organisations?|organizations?)\s+established\s+in\s+.{8,220}\b(?:eligible|may participate|can apply|may apply)\b.{0,160}",
         # Explicit qualification statements in fellowship forms often name the
         # student/applicant category rather than using an "Eligibility" heading.
         r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",

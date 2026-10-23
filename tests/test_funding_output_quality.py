@@ -8,7 +8,6 @@ from agents.funding_agent import (
     _extract_funding_amount,
     _extract_general_themes,
     _extract_geography_from_prose,
-    _extract_eligibility_from_prose,
     _resolve_application_url,
     analyze_document,
     extract_funding_problem_intelligence,
