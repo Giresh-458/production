@@ -319,9 +319,9 @@ sources:
         require_domain_match: true
       limits:
         # Nine domain-targeted queries need a bounded page budget that permits
-        # several pages per query. With 45 pages, the collector can inspect up to
-        # five 50-result pages per query (subject to the global document cap).
-        # Any unexhausted query remains explicitly PARTIAL.
+        # several pages per query. With 45 pages and a global 1,500-document cap,
+        # each query can inspect up to four full 50-result pages before its
+        # per-query document allocation is exhausted. Any unexhausted query remains PARTIAL.
         max_pages: 45
         max_documents: 1500
   cps_funding:
