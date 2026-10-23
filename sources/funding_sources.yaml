@@ -290,7 +290,7 @@ sources:
         max_depth: 3
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
-        max_pages: 180
+        max_pages: 240
         exclude_url_patterns:
           # The partner home page linked from an older programme entry is not a call.
           - '^https?://innonext-project[.]eu/en/?(?:[?#].*)?$'
