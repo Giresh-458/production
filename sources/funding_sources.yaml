@@ -187,6 +187,7 @@ sources:
           - '^https?://(?:www\.)?tenity\.com/(?:keyrock-reaches|tenity-joins|tenity-backs|tenity-invests-in)[^/]*'
           # Submittable's generic powered-by landing page is vendor navigation, not a funding call.
           - '^https?://(?:www[.])?submittable[.]com/what-is-submittable/'
+          - '^https?://manager[.]submittable[.]com/user/submissions(?:[/?#].*)?$'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
     url: https://fil.org/grants
@@ -288,10 +289,10 @@ sources:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
-        max_depth: 3
+        max_depth: 4
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
-        max_pages: 400
+        max_pages: 600
         exclude_url_patterns:
           - '^https?://[^/]*typeform[.]com/'
           - '^https?://(?:www[.])?tally[.]so/'
@@ -307,6 +308,24 @@ sources:
           - '^https?://climatekic[.]tfaforms[.]net/'
           - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register'
           - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/docs/.+[.]pdf(?:[?#].*)?$'
+          # The EU topic catalogue is covered by the dedicated EU API source; do not fan out across its historical topic index.
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/data/topic-list[.]html(?:[?#].*)?$'
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details(?:/|[?#]|$)'
+          # Vendor forms, past-call archives, event pages, and unrelated partner news are not separate current calls.
+          - '^https?://6740820[.]extforms[.]netsuite[.]com/'
+          - '^https?://(?:www[.])?heinnovate[.]eu/en/events-webinars/'
+          - '^https?://(?:www[.])?eit-hei[.]eu/events/'
+          - '^https?://(?:www[.])?eit-hei[.]eu/funding-support/funding-opportunities/past-calls(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit-hei[.]eu/theme/call-application(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit-hei[.]eu/theme/call-2026/?[?#].*post-type=event(?:&|$)'
+          - '^https?://opencalls[.]fund/open-calls/(?:all|closed)(?:/|[?#]|$)'
+          - '^https?://socialtechlab[.]org/socialtech-labs-social-impact-generator-hub-selected-as-a-finalist-for-the-new-european-bauhaus-prizes-2026/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/global-challenges/about-our-knowledge-and-innovation-communities(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/activities/eit-awards-our-prime-innovation-competition(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/opportunities/about-eu-public-procurement(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/work-with-us/procurement/(?:calls|other-calls)(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/call-for-eit-communities/2021/faq(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/tags/new-bauhaus-eit-cross-kic-call(?:/|[?#]|$)'
           # Supporting reference documents and archived application forms are not standalone current calls.
           - '^https?://climatechconnect[.]eu/assets/pdf/list-of-eit-labelled-programmes-update[.]pdf(?:[?#].*)?$'
           - '^https?://new-european-bauhaus[.]europa[.]eu/system/files/.*/NEB_Compass_V_4[.]pdf(?:[?#].*)?$'
