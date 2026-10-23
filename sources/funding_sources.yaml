@@ -290,7 +290,17 @@ sources:
           - '^https?://(?:www\.)?tally\.so/'
           - '^https?://(?:www\.)?forms\.office\.com/'
           - '^https?://[^/]*zoom\.us/meeting/register/'
-          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?
+          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?$'
+          # Tracking redirects, event registrations and generic forms are not calls.
+          - '^https?://eur03\.safelinks\.protection\.outlook\.com/'
+          - '^https?://bit\.ly/'
+          - '^https?://(?:www\.)?lyyti\.fi/reg/'
+          - '^https?://events\.conversationstarter\.net/'
+          - '^https?://(?:www\.)?forms\.gle/'
+          - '^https?://ee\.kobotoolbox\.org/'
+          - '^https?://climatekic\.tfaforms\.net/'
+          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register'
+          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/docs/.+\.pdf(?:[?#].*)?$'
         pagination: false
   - name: NSF SBIR Trusted Identity
     research_domains: [DID]
