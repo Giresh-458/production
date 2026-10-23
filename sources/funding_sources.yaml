@@ -250,6 +250,33 @@ sources:
       - neb.eitcommunity.eu
       - eit-hei.eu
       - womentecheurope.eu
+      - cascadefunding.sploro.eu
+      - bioeconomygiants.com
+      - inonext-project.eu
+      - www.jetro.go.jp
+      - opencalls.fund
+      - www.eitfood.eu
+      - climatelaunchpad.org
+      - www.circlethemed.com
+      - cleancities-accelerator.com
+      - pcp-wise.eu
+      - www.pathways2resilience.eu
+      - www.eiturbanmobility.eu
+      - eit.europa.eu
+      - ec.europa.eu
+      - neb.awardsplatform.com
+      - neb-catalyse.awardsplatform.com
+      - seedbook-portal.eitrawmaterials.eu
+      - www.kcicconsulting.com
+      - blackseaclimaccelerator.eu
+      - www.impacthub.ro
+      - accelerator.bg
+      - cdr-accelerator.com
+      - www.bgi.pt
+      - medclimaccelerator.com
+      - sell.amazon.co.uk
+      - www.eit-circulareconomy.eu
+      - www.cleancities.network
       discovery:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
@@ -257,13 +284,272 @@ sources:
         max_depth: 3
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
-        max_pages: 120
+        max_pages: 180
         exclude_url_patterns:
           - '^https?://[^/]*typeform\.com/'
           - '^https?://(?:www\.)?tally\.so/'
           - '^https?://(?:www\.)?forms\.office\.com/'
           - '^https?://[^/]*zoom\.us/meeting/register/'
-          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?$'
+          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?
+        follow_pdfs: true
+        pagination: false
+  - name: NSF SBIR Trusted Identity
+    research_domains: [DID]
+    url: https://www.sbir.gov/topics/1012406
+    direct_page: true
+    focus: Official SBIR.gov NSF 26-510 Trusted Identity and Identity Management topic. The listing contains multiple due dates; use the next not-yet-passed date and verify qualifying U.S. small-business eligibility against the linked solicitation.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012406
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: NSF SBIR Climate Change Adaptation and Mitigation
+    research_domains: [ESG]
+    url: https://www.sbir.gov/topics/1012419
+    direct_page: true
+    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012419
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: Open SBIR Funding Topics
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://www.sbir.gov/topics?status=Open
+    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed opportunity is currently accepting applications; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence. Exclude historical awards, generic application guidance and unrelated community pages.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      - simpler.grants.gov
+      - grants.gov
+      - nsf.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics?status=Open
+        max_depth: 3
+        max_pages: 80
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
+        - '^https?://(?:www\.)?sbir\.gov/awards(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/apply(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/community/gafc(?:/|\?|#|$)'
+        - '^https?://data\.www\.sbir\.gov/'
+        - '^https?://(?:www\.)?grants\.gov/grantors/grantor-help(?:/|\?|#|$)'
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
+    collection:
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
+        detail_fetch_missing_metadata: true
+        require_eligibility_evidence: true
+        require_domain_match: true
+      limits:
+        # Five targeted queries get up to fourteen 50-result pages each.
+        # A live scan retrieved 556 of 567 expected records because a short page
+        # arrived before the reported total; allow bounded continuation pages.
+        max_pages: 70
+        max_documents: 3500
+  cps_funding:
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
+        follow_detail_pages: true
+        follow_pdfs: true
+        follow_documents: true
+        pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
+          # Tracking redirects, event registrations and generic forms are not calls.
+          - '^https?://eur03\.safelinks\.protection\.outlook\.com/'
+          - '^https?://bit\.ly/'
+          - '^https?://(?:www\.)?lyyti\.fi/reg/'
+          - '^https?://events\.conversationstarter\.net/'
+          - '^https?://(?:www\.)?forms\.gle/'
+          - '^https?://ee\.kobotoolbox\.org/'
+          - '^https?://climatekic\.tfaforms\.net/'
+          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register'
+          - '^https?://(?:www\.)?ec\.europa\.eu/info/funding-tenders/opportunities/docs/.+\.pdf(?:[?#].*)?
+        follow_pdfs: true
+        pagination: false
+  - name: NSF SBIR Trusted Identity
+    research_domains: [DID]
+    url: https://www.sbir.gov/topics/1012406
+    direct_page: true
+    focus: Official SBIR.gov NSF 26-510 Trusted Identity and Identity Management topic. The listing contains multiple due dates; use the next not-yet-passed date and verify qualifying U.S. small-business eligibility against the linked solicitation.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012406
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: NSF SBIR Climate Change Adaptation and Mitigation
+    research_domains: [ESG]
+    url: https://www.sbir.gov/topics/1012419
+    direct_page: true
+    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics/1012419
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
+        pagination: false
+  - name: Open SBIR Funding Topics
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://www.sbir.gov/topics?status=Open
+    focus: Broad official SBIR.gov discovery portal for open and forthcoming topics across agencies. This is a discovery hub, not proof every listed opportunity is currently accepting applications; validate each topic's status, next due date, U.S. small-business eligibility and direct RIF-domain evidence. Exclude historical awards, generic application guidance and unrelated community pages.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - sbir.gov
+      - www.sbir.gov
+      - simpler.grants.gov
+      - grants.gov
+      - nsf.gov
+      discovery:
+        start_urls:
+        - https://www.sbir.gov/topics?status=Open
+        max_depth: 2
+        max_pages: 60
+        follow_detail_pages: true
+        follow_pdfs: true
+        pagination: true
+        exclude_url_patterns:
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
+        - '^https?://(?:www\.)?sbir\.gov/awards(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/apply(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?sbir\.gov/community/gafc(?:/|\?|#|$)'
+        - '^https?://data\.www\.sbir\.gov/'
+  - name: EU Open and Forthcoming Funding Calls
+    research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
+    url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
+    focus: Official EU Funding & Tenders Portal discovery source. Query the Commission's public Search API for open and forthcoming proposal/cascade-funding call types; validate each call's status, deadline, applicant eligibility, funding terms and direct RIF-domain evidence before selection.
+    collection:
+      mode: api
+      provider: eu_funding_tenders
+      api:
+        types: ["1", "2", "8"]
+        statuses: ["31094501", "31094502"]
+        page_size: 50
+        search_texts:
+        - carbon credit
+        - MRV emissions
+        - sustainability data
+        - decentralized identity
+        - physical infrastructure
+        detail_fetch_missing_metadata: true
+        require_eligibility_evidence: true
+        require_domain_match: true
+      limits:
+        # Five targeted queries get up to fourteen 50-result pages each.
+        # A live scan retrieved 556 of 567 expected records because a short page
+        # arrived before the reported total; allow bounded continuation pages.
+        max_pages: 70
+        max_documents: 3500
+  cps_funding:
+  - name: I-DAPT Hub Cyber-Physical Systems Calls
+    research_domains: [ESG, ZK-IoV]
+    url: https://idapthub.org/applications/call_for_proposals
+    direct_page: true
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    collection:
+      mode: web
+      engine: crawl4ai
+      allowed_domains:
+      - idapthub.org
+      - www.idapthub.org
+      discovery:
+        start_urls:
+        - https://idapthub.org/applications/call_for_proposals
+        max_depth: 2
+        # The last live scan discovered 12 URLs, including downloadable DOCX
+        # proposal/call documents. Keep a bounded budget large enough to inspect
+        # that observed frontier instead of stopping after the fifth successful fetch.
+        max_pages: 20
+        follow_detail_pages: true
+        follow_pdfs: true
+        follow_documents: true
+        pagination: true
+        # This navigation target is stale (HTTP 404), not an application call.
+        exclude_url_patterns:
+          - '^https?://idapthub\.org/awards/?$'
+          # Historical portfolio of already-selected fellows, not an application call.
+          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
