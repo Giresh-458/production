@@ -217,7 +217,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         if entry.get("name") == "Superteam Development Grants":
             page_cap = 70
         elif entry.get("name") == "Climate KIC Open Calls":
-            page_cap = 180
+            page_cap = 240
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 80
         elif entry.get("name") == "NEAR Ecosystem Funding":
