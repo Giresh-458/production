@@ -1443,8 +1443,11 @@ def _extract_funding_amount(text: str) -> str | None:
                 is_valid = True
             # Fellowship/stipend amounts are often expressed as a monthly rate.
             if (
-                re.search(r"\b(?:fellowship|scholarship|stipend)\s+amount\b", before)
-                and re.search(r"\bper\s+month\b", after)
+                re.search(
+                    r"\b(?:fellowship|scholarship|stipend)\s+(?:amount\b|will\s+be\b|is\b)",
+                    before,
+                )
+                and re.search(r"\b(?:per\s+month|monthly|consolidated)\b", after)
             ):
                 is_valid = True
             # Also accept explicit per-unit award wording.

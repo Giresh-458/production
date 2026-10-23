@@ -140,6 +140,16 @@ def test_explicit_fellowship_monthly_amount_and_currency_are_extracted():
     assert _extract_currency(amount) == "INR"
 
 
+
+def test_consolidated_fellowship_amount_is_extracted_without_inference():
+    amount = _extract_funding_amount(
+        "The fellowship will be Rs. 80,000/- (Consolidated)."
+    )
+
+    assert amount == "Rs. 80,000"
+    assert _extract_currency(amount) == "INR"
+
+
 def test_fellowship_form_eligibility_is_extracted_from_explicit_prose():
     sentence = (
         "B.Tech./B.E. students registered in any recognised college "
