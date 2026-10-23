@@ -292,6 +292,8 @@ sources:
         # unrelated policy documents remain link evidence, not funding records.
         max_pages: 180
         exclude_url_patterns:
+          # The partner home page linked from an older programme entry is not a call.
+          - '^https?://innonext-project[.]eu/en/?(?:[?#].*)?$'
           - '^https?://[^/]*typeform\.com/'
           - '^https?://(?:www\.)?tally\.so/'
           - '^https?://(?:www\.)?forms\.office\.com/'
@@ -382,7 +384,16 @@ sources:
         - '^https?://data\.www\.sbir\.gov/'
         - '^https?://(?:www\.)?grants\.gov/grantors/grantor-help(?:/|\?|#|$)'
         # Generic Grants.gov help/navigation pages are not SBIR topics.
-        - '^https?://(?:www\.)?grants\.gov/learn-grants(?:/|\?|#|$)'
+        - '^https?://(?:www\.)?grants\.gov/(?:learn-grants|search-grants|applicants|grantors|system-to-system|forms|support)(?:/|\?|#|$)'
+        # NSF administrative, award-management, policy, and general navigation pages
+        # are not individual funding opportunities; retain specific opportunity URLs.
+        - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
+        - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
+        - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
+        - '^https?://(?:www\.)?youtube\.com/user/GrantsGovUS(?:/|$)'
+        - '^https?://(?:www\.)?twitter\.com/grantsdotgov(?:/|$)'
+        - '^https?://(?:www\.)?x\.com/grantsdotgov(?:/|$)'
+        - '^https?://grantsgovprod\.wordpress\.com(?:/|$)'
   - name: EU Open and Forthcoming Funding Calls
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
