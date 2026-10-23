@@ -116,6 +116,27 @@ def test_markdown_heading_markers_are_removed_from_structured_titles():
 
 
 
+def test_specific_sbir_h2_heading_overrides_generic_topic_page_title():
+    content = (
+        "# Topic\n"
+        "Funding Opportunities\n"
+        "## NIH Small Business Technology Transfer Grant "
+        "(Parent STTR [R41/R42] Clinical Trial Optional)\n"
+        "Solicitation Status: Open\n"
+        "Due Date(s): January 5, 2027; April 5, 2027\n"
+    )
+    document = _document(content, title="Topic | SBIR")
+    analysis = analyze_document(document)
+
+    assert analysis.program_name.startswith(
+        "NIH Small Business Technology Transfer Grant"
+    )
+    assert "Topic" != analysis.program_name
+    assert analysis.status == "OPEN_CALL"
+    assert analysis.deadline == "2027-01-05"
+
+
+
 def test_docx_fellowship_title_skips_generic_application_form_heading():
     from core.crawl4ai_web import _extract_docx_title
 

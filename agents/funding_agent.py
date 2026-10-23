@@ -1299,10 +1299,10 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
-    # Prefer a specific Markdown H1 before scanning broad section headings such
-    # as "About DD.xyz". The H1 often identifies the opportunity when the browser
-    # title or fallback title is unrelated.
-    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
+    # Search H1-H6 headings in document order. Browser/page titles such as
+    # "Topic" may be generic while the actual solicitation appears in an H2.
+    # Generic navigation headings are skipped below.
+    for heading in re.finditer(r"(?im)^\s*#{1,6}\s+(.{3,180}?)\s*$", text):
         candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
         normalized = candidate.lower().rstrip(" .:-")
         if not candidate or _is_generic_funding_title(candidate):
