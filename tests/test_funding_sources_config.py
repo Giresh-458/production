@@ -219,7 +219,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         elif entry.get("name") == "Climate KIC Open Calls":
             page_cap = 240
         elif entry.get("name") == "Open SBIR Funding Topics":
-            page_cap = 80
+            page_cap = 120
         elif entry.get("name") == "NEAR Ecosystem Funding":
             page_cap = 40
         elif entry.get("name") == "XRPL Grants Program":
@@ -391,7 +391,10 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
     assert excluded("https://www.grants.gov/search-grants.html?agencyCode=NSF")
     assert excluded("https://www.nsf.gov/funding/postdocs")
     assert excluded("https://new.nsf.gov/funding/undergraduates")
-    # Individual NSF SBIR solicitations remain traversable.
+    assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960")
+    assert excluded("https://resources.research.gov/common/attachment/Desktop/Single_ID_Help_Public.pdf")
+    assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960/nsf23-515/solicitation")
+    # Individual current NSF SBIR solicitations remain traversable.
     assert not excluded(
         "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
     )
