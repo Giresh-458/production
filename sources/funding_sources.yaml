@@ -311,12 +311,11 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        # Five targeted queries need up to twelve 50-result pages each: a prior
-        # live scan stopped after six pages and returned 298 of 567 results for
-        # "sustainability data". Keep an explicit ceiling, but let this query
-        # finish its reported result set before marking the source PARTIAL.
-        max_pages: 60
-        max_documents: 3000
+        # Five targeted queries get up to fourteen 50-result pages each.
+        # A live scan retrieved 556 of 567 expected records because a short page
+        # arrived before the reported total; allow bounded continuation pages.
+        max_pages: 70
+        max_documents: 3500
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]

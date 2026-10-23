@@ -1299,26 +1299,14 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
-    # Search H1-H6 headings in document order. Browser/page titles such as
-    # "Topic" may be generic while the actual solicitation appears in an H2.
-    # SBIR topic pages are a known layout: the browser title and H1 say "Topic",
-    # while the actual topic title is the first specific H2 and may not contain
-    # words such as "grant" or "funding" (for example, "Trusted Identity and
-    # Identity Management").
-    is_sbir_topic_page = bool(
-        _is_generic_funding_title(fallback)
-        and re.search(r"\b(?:SBIR|STTR)\b", str(fallback or ""), re.IGNORECASE)
-        and re.search(r"\bTopic Number\b", text, re.IGNORECASE)
-        and re.search(r"\bSolicitation Status\s*:", text, re.IGNORECASE)
-    )
-    for heading in re.finditer(r"(?im)^\s*(#{1,6})\s+(.{3,180}?)\s*$", text):
-        heading_level = len(heading.group(1))
-        candidate = cleaned_text(heading.group(2)).rstrip(" .:-")
+    # Prefer a specific Markdown H1 before scanning broad section headings such
+    # as "About DD.xyz". The H1 often identifies the opportunity when the browser
+    # title or fallback title is unrelated.
+    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
+        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
         normalized = candidate.lower().rstrip(" .:-")
         if not candidate or _is_generic_funding_title(candidate):
             continue
-        if is_sbir_topic_page and heading_level >= 2:
-            return candidate
         if re.search(
             r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
             candidate,
@@ -1384,39 +1372,17 @@ def _extract_program_name(text: str, fallback: str) -> str:
     return title or fallback
 
 
-def _split_funding_sentences(text: str) -> list[str]:
-    """Split source text into sentences without breaking common abbreviations.
-
-    Funding pages frequently use labels such as Rs., B.Tech., M.E. and Ph.D.
-    Splitting on every period can detach the amount/eligibility cue from its value.
-    """
-    protected = re.sub(
-        r"\b(?:Rs|B\.Tech|B\.E|M\.Tech|M\.E|Ph\.D|U\.S|U\.K)\.",
-        lambda match: match.group(0).replace(".", "¤"),
-        str(text or ""),
-        flags=re.IGNORECASE,
-    )
-    return [
-        part.replace("¤", ".").strip()
-        for part in re.split(r"(?<=[.!?])\s+|\n+", protected)
-        if part.strip()
-    ]
-
-
 def _extract_funding_amount(text: str) -> str | None:
     """Extract explicit funding amounts without inventing or hard-coding values."""
     unit = r"(?:K|M|B|lakh|crore|million|billion)"
-    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR|Rs\.?)"
-    # Include common web3 grant-denomination tokens when explicitly adjacent
-    # to an amount (for example, "$200 USDG cheque").
-    token_currency = r"(?:USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)"
+    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR)"
     number = r"\d[\d,]*(?:\.\d+)?"
     amount_re = re.compile(
-        rf"(?:{currency}\s*{number}(?:\s*{unit})?(?:\s*{token_currency})?(?:\s*[–-]\s*(?:{currency}\s*)?{number}(?:\s*{unit})?(?:\s*{token_currency})?)?|{number}\s*(?:{unit}|{token_currency})(?:\s*[–-]\s*{number}\s*(?:{unit}|{token_currency}))?)",
+        rf"(?:{currency}\s*{number}(?:\s*{unit})?(?:\s*[–-]\s*(?:{currency}\s*)?{number}(?:\s*{unit})?)?|{number}\s*{unit}(?:\s*[–-]\s*{number}\s*{unit})?)",
         re.IGNORECASE,
     )
     labelled: list[str] = []
-    for sentence in _split_funding_sentences(text):
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1438,7 +1404,7 @@ def _extract_funding_amount(text: str) -> str | None:
     strict_prefix = r"(?:grant|award|funding|budget|prize|fund|request)s?(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?\s*$"
     strict_suffix = r"^\s*(?:grant|award|funding|budget|prize|fund)s?"
     
-    for sentence in _split_funding_sentences(text):
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1450,19 +1416,7 @@ def _extract_funding_amount(text: str) -> str | None:
             if re.search(strict_prefix, before) or re.search(strict_suffix, after):
                 is_valid = True
             
-            # Explicit award-form wording supports amounts such as "$200 USDG cheque".
-            if re.search(r"\b(?:cheque|check|bounty|prize|stipend)\b", after):
-                is_valid = True
-            # Fellowship/stipend amounts are often expressed as a monthly rate.
-            if (
-                re.search(
-                    r"\b(?:fellowship|scholarship|stipend)\s+(?:amount\b|will\s+be\b|is\b)",
-                    before,
-                )
-                and re.search(r"\b(?:per\s+month|monthly|consolidated)\b", after)
-            ):
-                is_valid = True
-            # Also accept explicit per-unit award wording.
+            # Additional heuristic: if it's explicitly stated as "X per project" etc.
             if re.search(r"^\s*(?:per project|per startup|per applicant|maximum)", after):
                 is_valid = True
                 
@@ -1474,24 +1428,6 @@ def _extract_funding_amount(text: str) -> str | None:
                 amounts.append(amount)
                 
     return "; ".join(amounts[:8]) or None
-
-
-def _extract_currency(amount: str | None) -> str | None:
-    """Return a currency/token only when it is explicit in the extracted amount."""
-    if not amount:
-        return None
-    token_match = re.search(r"\b(USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)\b", amount, re.IGNORECASE)
-    if token_match:
-        return token_match.group(1).upper()
-    if re.search(r"\bINR\b|₹|\bRs\.?\b", amount, re.IGNORECASE):
-        return "INR"
-    if re.search(r"\bEUR\b|€", amount, re.IGNORECASE):
-        return "EUR"
-    if re.search(r"\bGBP\b|£", amount, re.IGNORECASE):
-        return "GBP"
-    if re.search(r"\bUSD\b|\$", amount, re.IGNORECASE):
-        return "USD"
-    return None
 
 
 def _extract_duration(text: str) -> str | None:
@@ -1561,14 +1497,6 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         content or "",
     ))
     extracted = _extract_application_url(content)
-
-    # A directly linked DOCX/PDF application form is itself an application
-    # endpoint, even when it contains no HTML-style "Apply" hyperlink.
-    if (
-        parsed_source.path.casefold().endswith((".docx", ".pdf"))
-        and re.search(r"\bapplication form\b", (content or "")[:1200], re.IGNORECASE)
-    ):
-        return source_url
 
     # The SBIR topic page itself is the relevant instructions destination when
     # the only non-generic link discovered is the linked NSF solicitation PDF/page.
@@ -1700,7 +1628,7 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     """Extract explicit applicant restrictions stated in prose when no labelled section exists."""
     chunks = [
         cleaned_text(part)
-        for part in _split_funding_sentences(text)
+        for part in re.split(r"(?<=[.!?])\s+|\n+", str(text or ""))
         if cleaned_text(part)
     ]
     patterns = (
@@ -1710,9 +1638,6 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
-        # Explicit qualification statements in fellowship forms often name the
-        # student/applicant category rather than using an "Eligibility" heading.
-        r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
     )
     for chunk in chunks:
         if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
@@ -1768,7 +1693,7 @@ def _extract_general_themes(content: str) -> list[str]:
         'focus', 'focuses', 'focused', 'focusing', 'target', 'targets', 'targeted', 'targeting',
         'significantly', 'systematically', 'example', 'scope', 'content', 'traditional',
         'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects',
-        'applications', 'fun', 'earn'
+        'applications'
     }
     
     generic_administrative = {
@@ -1836,15 +1761,7 @@ def _extract_general_themes(content: str) -> list[str]:
             continue
             
         if len(words) == 1:
-            # Generic single-word tokens can come from navigation or page chrome.
-            # Keep specific technical terms (for example, robotics), but suppress
-            # broad/noisy singletons while allowing informative multi-word phrases.
-            low_signal_singletons = {"image", "processing", "learning", "vision", "earn", "fun"}
-            specific_technical_singleton = (
-                words[0] in high_signal_technical
-                and words[0] not in low_signal_singletons
-            )
-            if not (specific_technical_singleton or has_acronym):
+            if not (words[0] in high_signal_technical or has_acronym):
                 continue
                 
         # Must be valid
@@ -1952,9 +1869,6 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
-    # HTML/Markdown extraction can leave heading markers in the title. Keep the
-    # structured title human-readable without changing its source wording.
-    program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
     # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
     # explicit STTR body text establish the distinct official opportunity.
     solicitation_match = re.search(
@@ -2104,7 +2018,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         opening_date=opening_date,
         deadline=deadline,
         funding_amount=amount,
-        currency=_extract_currency(amount),
+        currency=None,  # Do not hardcode — extract from amount string if present
         duration=duration,
         eligibility=eligibility,
         geography=geography,
@@ -2138,27 +2052,6 @@ def build_domain_relevance(text: str) -> list[dict]:
     from core.schemas import rank_research_areas
 
     return rank_research_areas(text)
-
-
-def extract_funding_problem_intelligence(document: FundingDocument, analysis: FundingOpportunity) -> dict:
-    """Extract a concise, source-grounded problem signal instead of copying the page.
-
-    Funding pages often contain navigation, eligibility rules and application
-    instructions rather than a concrete technical problem. In that case the
-    signal stays unresolved; the source text is not promoted as if it were a
-    problem statement. Every selected signal must retain its supporting passage.
-    """
-    from core.problem_extraction import extract_problem_intelligence
-
-    evidence_snippets = [str(value) for value in (analysis.evidence or {}).values() if str(value).strip()]
-    return extract_problem_intelligence(
-        content=document.content,
-        title=analysis.program_name,
-        evidence_bundle={"evidence_snippets": evidence_snippets},
-        allow_llm_refinement=False,
-        research_area=analysis.focus_area,
-        agent_name="funding",
-    )
 
 
 def build_tags(analysis: FundingOpportunity) -> list[str]:
@@ -2196,7 +2089,16 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
 
     run_id_line = f"\n        - Run Id: {run_id}" if run_id else ""
 
-    intel = extract_funding_problem_intelligence(document, analysis)
+    from core.problem_extraction import extract_problem_intelligence
+    content_for_extraction = "\n".join(analysis.evidence.values()) if analysis.evidence else document.content
+    intel = extract_problem_intelligence(
+        content=content_for_extraction,
+        title=analysis.program_name,
+        evidence_bundle={"evidence_snippets": list(analysis.evidence.values())} if analysis.evidence else {},
+        allow_llm_refinement=False,
+        research_area=analysis.focus_area,
+        agent_name="funding"
+    )
     selected_problem = intel.get("selected_problem") or "Insufficient problem signal"
     problem_confidence = intel.get("problem_confidence") or "Low"
 
@@ -2768,7 +2670,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "opening_date": analysis.opening_date,
                 "deadline": analysis.deadline,
                 "funding_amount": analysis.funding_amount,
-                "currency": _extract_currency(analysis.funding_amount),
+                "currency": analysis.currency,
                 "duration": analysis.duration,
                 "eligibility": analysis.eligibility,
                 "geography": analysis.geography,
@@ -2798,12 +2700,8 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "retrieved_at": analysis.retrieved_at,
                 "last_verified_at": analysis.last_verified_at,
                 "created_at": analysis.retrieved_at,
-                "problem": (problem_intel := extract_funding_problem_intelligence(doc, analysis)).get("selected_problem"),
-                "problem_signal": problem_intel.get("selected_problem"),
-                "problem_type": problem_intel.get("problem_type"),
-                "problem_signal_status": "resolved" if problem_intel.get("selected_problem") else "unresolved",
-                "problem_confidence": problem_intel.get("problem_confidence"),
-                "problem_evidence": problem_intel.get("problem_evidence") or [],
+                "problem": doc.content.strip(),
+                "problem_signal": doc.content.strip(),
                 "markdown_path": str(output_path.resolve()) if output_path else None,
                 "evidence": {k: v for k, v in evidence.items() if v},
                 "provenance_type": "observed_source_with_deterministic_extraction",

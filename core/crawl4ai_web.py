@@ -731,17 +731,6 @@ def _extract_docx_title(paragraphs: list[str], url: str) -> str:
             continue
         if "@" in candidate or re.search(r"\b(?:phone|email|www\.)\b", candidate, re.IGNORECASE):
             continue
-        # Many downloadable forms begin with a repeated document label such as
-        # "CHANAKYA FELLOWSHIP – APPLICATION FORM". It identifies the artifact,
-        # not the particular fellowship category; continue to the next heading.
-        generic_form_title = re.fullmatch(
-            r"(?:(?:[A-Z0-9][A-Z0-9 .&()/–—-]{1,60})\s+)?"
-            r"(?:FELLOWSHIP|SCHOLARSHIP)\s*[–—-]\s*APPLICATION FORM",
-            candidate,
-            flags=re.IGNORECASE,
-        )
-        if generic_form_title:
-            continue
         if title_pattern.search(candidate):
             return candidate
     filename = urlparse(url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0]

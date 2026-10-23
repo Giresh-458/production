@@ -223,15 +223,7 @@ class AllCollectionAgentTests(unittest.TestCase):
                 # collection agents expose the common source field.
                 self.assertTrue(output.get("source") or output.get("source_url"), output)
                 self.assertTrue(output.get("title") or output.get("program_name"), output)
-                if name == "funding" and output.get("problem_type") == "unresolved":
-                    # A missing problem statement is acceptable only when extraction
-                    # explicitly marks it unresolved and carries no fabricated evidence.
-                    self.assertIsNone(output.get("problem"), output)
-                    self.assertIsNone(output.get("problem_signal"), output)
-                    self.assertEqual(output.get("problem_evidence"), [], output)
-                    self.assertEqual(output.get("problem_signal_status"), "unresolved", output)
-                else:
-                    self.assertTrue(output.get("problem") or output.get("problem_signal"), output)
+                self.assertTrue(output.get("problem") or output.get("problem_signal"), output)
 
     def test_all_eleven_downstream_agents_preserve_run_and_call_provenance(self):
         """Each downstream collector persists the active run and selected call ID."""

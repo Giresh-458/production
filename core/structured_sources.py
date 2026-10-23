@@ -597,6 +597,13 @@ def eu_funding_tenders_paginated_search(
             break
         if len(page_results) < current_page_size:
             if total_expected is not None and len(results) < total_expected:
+                # A short page is not necessarily the final page: the API can
+                # return fewer unique records than totalResults after overlaps or
+                # transient omissions. Continue within the explicit page budget;
+                # an empty/repeated page or exhausted budget will still be reported
+                # as incomplete rather than silently marked complete.
+                if pages_fetched < max_pages:
+                    continue
                 errors.append(
                     f"EU Funding & Tenders Search API returned a short page: retrieved {len(results)} of {total_expected} expected records"
                 )
