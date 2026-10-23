@@ -1260,6 +1260,7 @@ def test_idapt_parent_call_page_remains_a_funding_call_candidate():
         "Call for Proposals",
         (
             "Call for Innovative and Entrepreneurial Research Projects. "
+            "This research grant provides funding for eligible projects. "
             "Eligibility requirements and funding amount are described below. "
             "How to apply: applications can be submitted at any time. "
             "Currently not accepting any fresh applications for Research Projects."
