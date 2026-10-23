@@ -388,7 +388,7 @@ sources:
         # NSF general audience pages fan out into unrelated fellowships, student
         # programmes and generic grant-search navigation. Exclude these hubs, not
         # individual /funding/opportunities/ solicitation pages.
-        - '^https?://(?:www\\.)?nsf\\.gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?
+        - '^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
         # are not individual funding opportunities; retain specific opportunity URLs.
         - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
         - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
@@ -399,20 +399,20 @@ sources:
         - '^https?://grantsgovprod\.wordpress\.com(?:/|$)'
         # Historical solicitation versions and administrative links from active
         # solicitations are not separate current SBIR topics.
-        - '^https?://(?:www\\.)?nsf\\.gov/funding/opportunities/(?:sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960|sbirsttr-phase-ii-nsf-small-business-innovation-research-small-business/505989|sbir-sttr-fast-track-nsf-small-business-innovation-research-small-business/506271)/?
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/(?:sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960|sbirsttr-phase-ii-nsf-small-business-innovation-research-small-business/505989|sbir-sttr-fast-track-nsf-small-business-innovation-research-small-business/506271)/?$'
 
-        - '^https?://(?:www\\.)?nsf\\.gov/funding/opportunities/.*/nsf23-(?:515|516)/solicitation(?:[?#].*)?
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/.*/nsf23-(?:515|516)/solicitation(?:[?#].*)?$'
 
-        - '^https?://(?:www\\.)?nsf\\.gov/(?:funding/build-america-buy-america|funding/proposal-compliance-checking|policies/SOR_PA_NSF-51_Reviewer_Proposal_File[.]pdf|publications/pub_summ[.]jsp)'
-        - '^https?://(?:www\\.)?nsf\\.gov/awardsearch/'
+        - '^https?://(?:www[.])?nsf[.]gov/(?:funding/build-america-buy-america|funding/proposal-compliance-checking|policies/SOR_PA_NSF-51_Reviewer_Proposal_File[.]pdf|publications/pub_summ[.]jsp)'
+        - '^https?://(?:www[.])?nsf[.]gov/awardsearch/'
         - '^https?://tableau[.]external[.]nsf[.]gov/views/ProgramAwards/'
-        - '^https?://(?:www\\.)?sbir[.]gov/sites/default/files/Guide_for_completing_commercialization_Report_SBIR_Gov_09_15_20[.]pdf'
-        - '^https?://(?:www\\.)?nsfgrfp[.]org/'
+        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/Guide_for_completing_commercialization_Report_SBIR_Gov_09_15_20[.]pdf'
+        - '^https?://(?:www[.])?nsfgrfp[.]org/'
         - '^https?://iperf[.]asee[.]org/'
         - '^https?://resources[.]research[.]gov/common/attachment/'
         - '^https?://sam[.]gov/content/home'
-        - '^https?://(?:www\\.)?cogr[.]edu/sites/default/files/'
-        - '^https?://(?:www\\.)?congress[.]gov/114/plaws/'
+        - '^https?://(?:www[.])?cogr[.]edu/sites/default/files/'
+        - '^https?://(?:www[.])?congress[.]gov/114/plaws/'
         - '^https?://nsf-gov-resources[.]nsf[.]gov/'
   - name: EU Open and Forthcoming Funding Calls
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
