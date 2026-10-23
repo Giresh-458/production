@@ -376,3 +376,22 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 3 and sbir_discovery["max_pages"] == 80
+
+
+def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://www.grants.gov/search-grants.html?agencyCode=NSF")
+    assert excluded("https://www.nsf.gov/funding/postdocs")
+    assert excluded("https://new.nsf.gov/funding/undergraduates")
+    # Individual NSF SBIR solicitations remain traversable.
+    assert not excluded(
+        "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
+    )
