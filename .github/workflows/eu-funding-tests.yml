@@ -87,9 +87,10 @@ jobs:
               source,
               CollectionResult(source_id=source.name, method="api"),
               warnings=[],
-              # This is per search term: one page of 25 rows across the five
-              # configured queries keeps the live qualification probe bounded.
-              source_limits={"max_pages": 1, "max_documents": 25},
+              # The collector treats max_pages as a global search-query budget
+              # and splits it across the five configured search terms. Five pages
+              # therefore checks one page per term; 250 caps the global record budget.
+              source_limits={"max_pages": 5, "max_documents": 250},
           )
           today = datetime.now(timezone.utc).date()
           qualified = []
