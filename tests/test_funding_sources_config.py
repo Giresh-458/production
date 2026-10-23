@@ -217,7 +217,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         if entry.get("name") == "Superteam Development Grants":
             page_cap = 70
         elif entry.get("name") == "Climate KIC Open Calls":
-            page_cap = 240
+            page_cap = 400
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 120
         elif entry.get("name") == "NEAR Ecosystem Funding":
@@ -269,6 +269,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://submit.xrplgrants.org/submit" in xrpl["discovery"]["start_urls"]
     assert not any("brinc.io" in u or "tenity.com" in u for u in xrpl["discovery"]["start_urls"])
     assert any("awardees" in p for p in xrpl["discovery"]["exclude_url_patterns"])
+    assert any("submittable" in p and "what-is-submittable" in p for p in xrpl["discovery"]["exclude_url_patterns"])
 
     filecoin = by_name["Filecoin Grants and Funding"]
     assert filecoin["url"] == "https://fil.org/grants"
@@ -278,7 +279,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 240
+    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 400
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -371,8 +372,8 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # Climate KIC reached its former 30-page cap with work still queued.
-    assert climate_kic_discovery["max_pages"] == 240
+    # Climate KIC reached its 240-request cap with work still queued.
+    assert climate_kic_discovery["max_pages"] == 400
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 4 and sbir_discovery["max_pages"] == 120
@@ -389,6 +390,10 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
     assert excluded("https://www.grants.gov/search-grants.html?agencyCode=NSF")
+    assert excluded("https://apply07.grants.gov/apply/spoExit.jsp?p=learn-grants")
+    assert excluded("https://www.grants.gov/help/search-grants/site-search-results")
+    # Preserve current opportunity detail pages and their solicitation attachments.
+    assert not excluded("https://www.simpler.grants.gov/opportunity/active-example")
     assert excluded("https://www.nsf.gov/funding/postdocs")
     assert excluded("https://new.nsf.gov/funding/undergraduates")
     assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960")
