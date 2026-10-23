@@ -1251,7 +1251,14 @@ def test_docx_title_skips_generic_chanakya_form_banner(specific_title):
     ) == specific_title
 
 def test_idapt_proposal_template_is_not_a_second_funding_call():
-    from core.crawl4ai_web import _classify_page_stage_b
+    from core.crawl4ai_web import _classify_page_stage_b, _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(
+        "https://idapthub.org/frontend/docs/project_proposal_document_new.docx"
+    ) is True
+    assert _is_supporting_funding_document(
+        "https://idapthub.org/frontend/docs/chanakya/1_chanakya_ug_fellowship_I.docx"
+    ) is False
 
     assert _classify_page_stage_b(
         "https://idapthub.org/frontend/docs/project_proposal_document_new.docx",

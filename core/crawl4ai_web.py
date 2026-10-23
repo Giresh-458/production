@@ -473,6 +473,18 @@ def _get_final_page_url(result: Any, requested_url: str) -> str:
     )
 
 
+def _is_supporting_funding_document(url: str) -> bool:
+    """Return True for known application templates, not standalone funding calls."""
+    parsed = urlparse(url)
+    return (
+        (parsed.hostname or "").casefold() in {"idapthub.org", "www.idapthub.org"}
+        and parsed.path.rstrip("/").casefold()
+        == "/frontend/docs/project_proposal_document_new.docx"
+    )
+
+
+
+
 def _superteam_directory_wait_options(url: str) -> dict[str, Any]:
     """Wait for current grant-card anchors on known Superteam directory routes."""
     parsed = urlparse(url)
@@ -1062,6 +1074,10 @@ def crawl_funding_source(
                     ctx.add_page()
                 if docx_result["truncated"]:
                     result.truncated = True
+                # Keep proposal templates available as application documents on
+                # their parent call, but never emit them as separate opportunities.
+                if _is_supporting_funding_document(current_url):
+                    continue
                 result.opportunities.append({
                     "type": "docx",
                     "url": current_url,
