@@ -184,7 +184,7 @@ sources:
           - '^https?://xrplgrants[.]org/(?:awardees|accelerator|about|faq|judges)'
           - '^https?://airtable\.com/'
           # Investor/news articles are not XRPL funding opportunities.
-          - '^https?://(?:www\.)?tenity\.com/(?:keyrock-reaches|tenity-joins|tenity-backs|tenity-invests-in)/'
+          - '^https?://(?:www\.)?tenity\.com/(?:keyrock-reaches|tenity-joins|tenity-backs|tenity-invests-in)[^/]*'
           - '^https?://keyrock\.com/keyrock-secures-series-c-funding-from-sc-ventures/'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
