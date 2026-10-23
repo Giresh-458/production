@@ -389,7 +389,7 @@ sources:
         # programmes and generic grant-search navigation. Exclude these hubs, not
         # individual /funding/opportunities/ solicitation pages.
         - '^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
-        # are not individual funding opportunities; retain specific opportunity URLs.
+
         - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
         - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
         - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
@@ -470,8 +470,8 @@ sources:
           # Historical portfolio of already-selected fellows, not an application call.
           - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
 
-        - '^https?://new\\.nsf\\.gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?
-        # are not individual funding opportunities; retain specific opportunity URLs.
+        - '^https?://new[.]nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
+
         - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
         - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
         - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
@@ -536,7 +536,7 @@ sources:
           - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
 
         # NSF administrative, award-management, policy, and general navigation pages
-        # are not individual funding opportunities; retain specific opportunity URLs.
+
         - '^https?://(?:www\.)?nsf\.gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
         - '^https?://new\.nsf\.gov/(?:awards(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|learn(?:/|$)|initiatives(?:/|$)|opportunities/?$))'
         - '^https?://seedfund\.nsf\.gov/(?:resources/awardees(?:/|$)|awardees/history(?:/|$)|assets/files/awardees(?:/|$)|apply(?:/|$)|what-we-fund/?$|requirements/?$|solicitation-proposal/?$)'
