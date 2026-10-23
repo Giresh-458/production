@@ -2056,6 +2056,13 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         eligibility_section = None
     eligibility = eligibility_section or _extract_eligibility_from_prose(eligibility_source_text)
+    if eligibility:
+        eligibility = re.sub(
+            r"^(Eligible applicants must be)\s+Applicants must be\s+",
+            r"\1 ",
+            eligibility,
+            flags=re.IGNORECASE,
+        )
     if eligibility and re.search(
         r"(?i)better understand the application process|eligibility and final selection|"
         r"eligible applicants? will be evaluated|eligible applicants? will then be invited",

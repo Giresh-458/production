@@ -240,3 +240,18 @@ def test_duplicate_eligibility_prefix_is_normalized():
         "Eligible applicants must be based in an EU Member State or a country "
         "associated with Horizon Europe (Pillar 2)."
     )
+
+
+
+def test_labelled_eligibility_section_also_normalizes_duplicate_prefix():
+    document = _document(
+        "Eligibility: Eligible applicants must be Applicants must be based in an "
+        "EU Member State or a country associated with Horizon Europe (Pillar 2).",
+        title="Climate-smart use of wood",
+    )
+    analysis = analyze_document(document)
+
+    assert analysis.eligibility == (
+        "Eligible applicants must be based in an EU Member State or a country "
+        "associated with Horizon Europe (Pillar 2)."
+    )
