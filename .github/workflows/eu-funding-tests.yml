@@ -34,6 +34,8 @@ on:
       - "tests/test_source_registry_isolation.py"
       - "tests/test_funding_sources_config.py"
       - "tests/test_collection_completeness.py"
+      - "tests/test_funding_quality.py"
+      - "core/funding_quality.py"
       - ".github/workflows/eu-funding-tests.yml"
 
 permissions:
@@ -76,6 +78,7 @@ jobs:
           from agents.funding_collector import _collect_eu_funding_tenders
           from core.schemas import CollectionResult
           from core.funding_selection import has_substantive_eligibility_evidence
+          from core.funding_quality import assess_batch_acceptance
 
           target = "EU Open and Forthcoming Funding Calls"
           sources = load_sources(Path("sources/funding_sources.yaml"))
@@ -341,10 +344,23 @@ jobs:
               )
           ]
           summary["coverage_status_invariant_violations"] = coverage_status_violations
+          summary["batch_acceptance"] = assess_batch_acceptance(
+              run_status=response.get("status"),
+              raw_records_count=len(records),
+              selected_actionable_count=len(selected),
+              selected_quality_flags=quality_flags,
+              selected_manual_review_flags=review_flags,
+              source_summary=source_summary,
+          )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
           print(json.dumps(summary, indent=2, ensure_ascii=False))
+          if summary["batch_acceptance"]["status"] != "ACCEPTED":
+              print(
+                  "BATCH ACCEPTANCE BLOCKED: "
+                  + json.dumps(summary["batch_acceptance"]["blockers"], ensure_ascii=False)
+              )
           if coverage_status_violations:
               raise SystemExit(
                   "Source status contradicts incomplete discovery/coverage gaps: "
