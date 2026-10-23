@@ -173,19 +173,33 @@ def _clean_funding_candidate_text(text: str) -> str:
 
 
 def _funding_candidate_segments(paragraph: str) -> list[str]:
-    """Split noisy, long funding descriptions into sentence-sized candidates."""
-    cleaned = _clean_funding_candidate_text(paragraph)
-    if not cleaned:
+    """Split funding copy into source-grounded, concise candidates without hard truncation."""
+    raw = str(paragraph or "").strip()
+    if not raw:
         return []
-    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])", cleaned)
+
+    # Split Markdown list items before whitespace cleanup; otherwise independent
+    # grant-purpose bullets can be concatenated into one misleading long signal.
+    chunks = re.split(r"\n\s*(?=(?:[-*•]|\d+[.)])\s+)", raw)
     candidates = []
-    for part in parts:
-        candidate = _clean_funding_candidate_text(part)
-        if len(candidate.split()) < 6:
+    for chunk in chunks:
+        # Semicolon-separated clauses often encode distinct research needs or
+        # populations in EU call text. Keep the source wording, but evaluate each
+        # clause independently rather than cutting a sentence at an arbitrary index.
+        cleaned = _clean_funding_candidate_text(chunk)
+        if not cleaned:
             continue
-        if len(candidate) > 500:
-            candidate = candidate[:497].rsplit(" ", 1)[0].rstrip(" ,;:") + "..."
-        candidates.append(candidate)
+        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])|;\s+", cleaned)
+        for part in parts:
+            candidate = _clean_funding_candidate_text(part)
+            if len(candidate.split()) < 6:
+                continue
+            # Do not truncate a source statement into a potentially misleading
+            # fragment. Overlong candidates are skipped; shorter source clauses
+            # can still be selected independently.
+            if len(candidate) > 320:
+                continue
+            candidates.append(candidate)
     return candidates
 
 def _is_structured_problem_signal(text: str, *, title: str = "", research_area: Optional[str] = None, agent_name: Optional[str] = None) -> tuple[bool, str]:
