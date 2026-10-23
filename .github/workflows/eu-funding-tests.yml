@@ -148,7 +148,7 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          from agents.funding_agent import run_agent
+          from agents.funding_agent import load_sources, run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
           from core.schemas import normalize_area
           from run_pipeline import get_all_open_funding_calls
@@ -309,7 +309,7 @@ jobs:
                   )
               })
               source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
-              source_summary[-1]["coverage_gaps"] = (item.get("coverage_gaps") or [])[:10]
+              source_summary[-1]["coverage_gaps"] = item.get("coverage_gaps") or []
               source_summary[-1]["failed_urls"] = (item.get("failed_urls") or [])[:10]
               source_summary[-1]["errors"] = [
                   {
@@ -392,21 +392,41 @@ jobs:
               "NEAR Ecosystem Funding", "XRPL Grants Program",
               "Climate KIC Open Calls", "Open SBIR Funding Topics",
           }
-          priority_source_coverage_violations = [
-              {
-                  "source_id": item.get("source_id"),
-                  "final_status": item.get("final_status"),
-                  "truncated": item.get("truncated"),
-                  "relevant_urls_skipped": item.get("relevant_urls_skipped"),
-                  "coverage_gaps_count": item.get("coverage_gaps_count", 0),
-              }
-              for item in source_summary
-              if item.get("source_id") in priority_sources and (
-                  item.get("truncated")
-                  or int(item.get("relevant_urls_skipped") or 0) > 0
-                  or int(item.get("coverage_gaps_count") or 0) > 0
+          configured_sources = {
+              item.name: item
+              for item in load_sources(Path("sources/funding_sources.yaml"))
+          }
+
+          def is_intentionally_excluded_gap(source_id, gap):
+              configured = configured_sources.get(source_id)
+              if configured is None:
+                  return False
+              discovery = (configured.collection or {}).get("discovery", {}) or {}
+              patterns = discovery.get("exclude_url_patterns", []) or []
+              url = str(gap.get("url") or "")
+              return any(
+                  re.search(pattern, url, flags=re.IGNORECASE)
+                  for pattern in patterns
+                  if isinstance(pattern, str) and pattern
               )
-          ]
+
+          priority_source_coverage_violations = []
+          for item in source_summary:
+              if item.get("source_id") not in priority_sources:
+                  continue
+              unhandled_gaps = [
+                  gap for gap in (item.get("coverage_gaps") or [])
+                  if not is_intentionally_excluded_gap(item.get("source_id"), gap)
+              ]
+              if item.get("truncated") or unhandled_gaps:
+                  priority_source_coverage_violations.append({
+                      "source_id": item.get("source_id"),
+                      "final_status": item.get("final_status"),
+                      "truncated": item.get("truncated"),
+                      "relevant_urls_skipped": item.get("relevant_urls_skipped"),
+                      "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+                      "unhandled_coverage_gaps": unhandled_gaps[:10],
+                  })
           summary["priority_source_coverage_violations"] = priority_source_coverage_violations
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
