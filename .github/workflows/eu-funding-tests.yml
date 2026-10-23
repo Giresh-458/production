@@ -87,7 +87,9 @@ jobs:
               source,
               CollectionResult(source_id=source.name, method="api"),
               warnings=[],
-              source_limits={"max_pages": 5, "max_documents": 250},
+              # This is per search term: one page of 25 rows across the five
+              # configured queries keeps the live qualification probe bounded.
+              source_limits={"max_pages": 1, "max_documents": 25},
           )
           today = datetime.now(timezone.utc).date()
           qualified = []
