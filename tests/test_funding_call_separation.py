@@ -1224,3 +1224,43 @@ def test_docx_title_uses_call_heading_instead_of_filename_slug():
 
     assert result["success"] is True
     assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
+
+
+def test_docx_title_skips_generic_chanakya_form_banner():
+    from core.crawl4ai_web import _extract_docx_title
+
+    assert _extract_docx_title(
+        [
+            "CHANAKYA FELLOWSHIP – APPLICATION FORM",
+            "CHANAKYA UG Fellowship – I",
+            "The fellowship is for motivated undergraduate students.",
+        ],
+        "https://idapthub.org/frontend/docs/chanakya/1_chanakya_ug_fellowship_I.docx",
+    ) == "CHANAKYA UG Fellowship – I"
+
+
+def test_idapt_proposal_template_is_not_a_second_funding_call():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    assert _classify_page_stage_b(
+        "https://idapthub.org/frontend/docs/project_proposal_document_new.docx",
+        "different categories and the duration of project proposals",
+        (
+            "Call for Innovative and Entrepreneurial Project Proposals. "
+            "Funding amount up to Rs. 15 Lakh. Eligibility and proposal submission."
+        ),
+    ) is False
+
+
+def test_idapt_parent_call_page_remains_a_funding_call_candidate():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    assert _classify_page_stage_b(
+        "https://idapthub.org/applications/call_for_proposals",
+        "Call for Proposals",
+        (
+            "Call for Innovative and Entrepreneurial Research Projects. "
+            "Applications can be submitted at any time. "
+            "Currently not accepting any fresh applications for Research Projects."
+        ),
+    ) is True
