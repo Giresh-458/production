@@ -1226,18 +1226,29 @@ def test_docx_title_uses_call_heading_instead_of_filename_slug():
     assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
 
 
-def test_docx_title_skips_generic_chanakya_form_banner():
+@pytest.mark.parametrize(
+    "specific_title",
+    [
+        "CHANAKYA UG Fellowship – I",
+        "CHANAKYA UG Fellowship – II",
+        "CHANAKYA PG Fellowship (Startup/Product Development)",
+        "CHANAKYA PG Top-up Fellowship",
+        "CHANAKYA Doctoral Top-up Fellowship",
+        "CHANAKYA Post-Doctoral Top-up Fellowship",
+        "CHANAKYA Post Doctoral Fellowship",
+    ],
+)
+def test_docx_title_skips_generic_chanakya_form_banner(specific_title):
     from core.crawl4ai_web import _extract_docx_title
 
     assert _extract_docx_title(
         [
             "CHANAKYA FELLOWSHIP – APPLICATION FORM",
-            "CHANAKYA UG Fellowship – I",
-            "The fellowship is for motivated undergraduate students.",
+            specific_title,
+            "The fellowship is for motivated students.",
         ],
-        "https://idapthub.org/frontend/docs/chanakya/1_chanakya_ug_fellowship_I.docx",
-    ) == "CHANAKYA UG Fellowship – I"
-
+        "https://idapthub.org/frontend/docs/chanakya/fellowship.docx",
+    ) == specific_title
 
 def test_idapt_proposal_template_is_not_a_second_funding_call():
     from core.crawl4ai_web import _classify_page_stage_b
