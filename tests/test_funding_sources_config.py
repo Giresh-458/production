@@ -230,6 +230,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         assert 0 <= int(discovery.get("max_depth", 0)) <= 4
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
+    import re
     by_name = {entry["name"]: entry for entry in _entries()}
     assert "Chainlink Build Program Status" not in by_name
     assert "Climate Pitch Climate-Tech Grants" not in by_name
