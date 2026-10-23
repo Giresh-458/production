@@ -150,6 +150,7 @@ jobs:
 
           from agents.funding_agent import run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
+          from core.funding_quality import assess_batch_acceptance
           from core.schemas import normalize_area
           from run_pipeline import get_all_open_funding_calls
 
