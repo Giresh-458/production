@@ -1395,6 +1395,7 @@ def _collect_web_source(
             result.pages_fetched > 0
             and not result.truncated
             and result.discovery_exhausted
+            and result.no_active_opportunities_confirmed
             and not result.coverage_gaps
             and result.relevant_urls_skipped == 0
             and (not result.pagination_detected or result.pagination_complete)

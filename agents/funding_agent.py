@@ -105,6 +105,9 @@ GENERIC_PAGE_TITLES = {
     "funding opportunities", "grants", "programs", "our programs", "topic",
     "topics", "calls for proposals", "program directory", "grant directory",
     "grants and funding", "development grants", "this listing", "yourself",
+    "open call", "call documents", "programme theme", "program theme",
+    "grant details", "funding allocation", "funding and prizes", "details",
+    "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
 }
 
 def _is_generic_funding_title(value: str | None) -> bool:
@@ -2152,7 +2155,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         elif key == "application_url" and application_url and application_url in str(ev):
             evidence[key] = ev
 
-    return FundingOpportunity(
+    analysis = FundingOpportunity(
         funding_body=funding_body,
         program_name=program_name,
         call_id=mission_ctx.get("funding_call_id"),
@@ -2183,6 +2186,17 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         last_verified_at=datetime.now(UTC).isoformat(),
         evidence=evidence,
     )
+    # Reuse a source-grounded problem sentence in the research context. Do not
+    # invent a generic challenge merely to fill a missing field.
+    problem_intel = extract_funding_problem_intelligence(document, analysis)
+    source_problem = problem_intel.get("selected_problem")
+    if source_problem:
+        mission_ctx["inferred_challenges"] = [source_problem]
+        mission_ctx["evidence_refs"] = [document.source]
+        mission_ctx["inference_provenance"] = ["source_grounded_problem_extraction"]
+        mission_ctx["confidence"] = problem_intel.get("problem_confidence") or "Medium"
+        analysis.research_context = mission_ctx
+    return analysis
 
 def build_domain_relevance(text: str) -> list[dict]:
     """Return the canonical seven-domain relevance ranking for a funding call.

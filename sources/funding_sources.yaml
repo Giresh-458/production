@@ -39,7 +39,7 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
-    direct_page: false
+    direct_page: true
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
@@ -48,9 +48,10 @@ sources:
       allowed_domains:
       - solana.org
       - solana.com
-      # Airtable URLs on the Solana page are submission forms, not detail-call
-      # directories. Keep them as evidence/application endpoints in page content,
-      # but do not navigate into these forms as crawler candidates.
+      - airtable.com
+      - earn.superteam.fun
+      # Crawl the public RFP table and official pages; exclude forms and Superteam's
+      # directory below because Superteam is separately configured.
       discovery:
         start_urls:
         - https://solana.org/grants-funding
@@ -60,6 +61,8 @@ sources:
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
+          - '^https?://(?:www\.)?share\.hsforms\.com/'
+          - '^https?://earn\.superteam\.fun/grants(?:/|\?|$)'
           - '^https?://solana\.com/news/'
   - name: Superteam Development Grants
     research_domains: [RWA, DePIN, MEV, Stablecoins]
@@ -71,14 +74,18 @@ sources:
       allowed_domains:
       - superteam.fun
       - earn.superteam.fun
+      - solana.org
+      - solana.foundation
       discovery:
         start_urls:
         - https://superteam.fun/earn/opportunities/development-grants/
         max_depth: 3
-        max_pages: 60
+        max_pages: 70
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
+        exclude_url_patterns:
+          - '^https?://docs\.google\.com/document/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
@@ -102,15 +109,20 @@ sources:
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
         # Explicit portal roots allow shallow traversal to current individual calls.
-        max_depth: 2
-        # The previous live run exhausted 20 pages. Exclusions remove known
-        # PotLock navigation noise; retain a bounded 30-page budget for coverage.
-        max_pages: 30
+        max_depth: 3
+        # Leave room for current opportunities while excluding non-call social/docs links.
+        max_pages: 40
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
         exclude_url_patterns:
+          - '^https?://(?:www\.)?x\.com/'
+          - '^https?://(?:www\.)?linkedin\.com/'
+          - '^https?://(?:www\.)?t\.me/'
+          - '^https?://github\.com/NEAR-DevHub(?:/|$)'
+          - '^https?://docs\.potlock\.io/user-guides/campaigns(?:/|$)'
+          - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/as-validator(?:/|$)'
           - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
@@ -136,6 +148,7 @@ sources:
         pagination: true
         exclude_url_patterns:
         - '^https?://(?:www\.)?ripple\.com/reports/Ripple-UBRI-Research-20\d{2}\.pdf(?:[?#].*)?$'
+        - '^https?://docs\.google\.com/forms/'
   - name: XRPL Grants Program
     research_domains: [RWA, Stablecoins]
     url: https://xrplgrants.org/
@@ -146,12 +159,14 @@ sources:
       allowed_domains:
       - xrplgrants.org
       - submit.xrplgrants.org
+      - brinc.io
+      - tenity.com
       discovery:
         start_urls:
         - https://xrplgrants.org/
         - https://submit.xrplgrants.org/submit
-        max_depth: 1
-        max_pages: 10
+        max_depth: 2
+        max_pages: 20
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -167,6 +182,7 @@ sources:
       engine: crawl4ai
       allowed_domains:
       - raw.githubusercontent.com
+      - github.com
       - fil.org
       - www.fil.org
       discovery:
@@ -218,14 +234,23 @@ sources:
       allowed_domains:
       - climate-kic.org
       - www.climate-kic.org
+      - neb.eitcommunity.eu
+      - eit-hei.eu
+      - womentecheurope.eu
       discovery:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
-        max_depth: 2
-        # The 2026-10-20 live scan hit this 30-page ceiling with queued URLs
-        # remaining; raise the bounded cap to allow the discovered call pages to finish.
-        max_pages: 60
+        max_depth: 3
+        # Official partner call pages are opportunity details. Forms, webinars, and
+        # unrelated policy documents remain link evidence, not funding records.
+        max_pages: 120
+        exclude_url_patterns:
+          - '^https?://[^/]*typeform\.com/'
+          - '^https?://(?:www\.)?tally\.so/'
+          - '^https?://(?:www\.)?forms\.office\.com/'
+          - '^https?://[^/]*zoom\.us/meeting/register/'
+          - '^https?://education\.ec\.europa\.eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0\.pdf(?:[?#].*)?$'
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
@@ -277,15 +302,20 @@ sources:
       allowed_domains:
       - sbir.gov
       - www.sbir.gov
+      - simpler.grants.gov
+      - grants.gov
+      - nsf.gov
       discovery:
         start_urls:
         - https://www.sbir.gov/topics?status=Open
         max_depth: 2
-        max_pages: 50
+        max_pages: 60
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
+        - '^https?://(?:www\.)?sbir\.gov/javascript\.void'
         - '^https?://(?:www\.)?sbir\.gov/awards(?:/|\?|#|$)'
         - '^https?://(?:www\.)?sbir\.gov/apply(?:/|\?|#|$)'
         - '^https?://(?:www\.)?sbir\.gov/community/gafc(?:/|\?|#|$)'

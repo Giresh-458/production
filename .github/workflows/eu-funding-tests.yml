@@ -42,7 +42,7 @@ permissions:
 jobs:
   eu-funding-quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -258,6 +258,35 @@ jobs:
                   "manual_review_flags": manual_review,
               })
 
+          problem_quality_violations = []
+          for record in records:
+              problem = str(record.get("problem") or record.get("problem_signal") or "").strip()
+              if not problem:
+                  continue
+              issues = []
+              if len(problem) > 320:
+                  issues.append("problem_signal_too_long")
+              if re.search(r"!\\[[^\\]]*\\]\\(|\\[[^\\]]+\\]\\(https?://|https?://\\S+", problem):
+                  issues.append("markdown_or_url_boilerplate_in_problem_signal")
+              if re.search(r"\\b(?:cookie policy|all rights reserved|log in to read more|click here to subscribe|example implementation)\\b", problem, re.IGNORECASE):
+                  issues.append("webpage_boilerplate_or_instruction_in_problem_signal")
+              if issues:
+                  problem_quality_violations.append({
+                      "title": record.get("title") or record.get("program_name"),
+                      "source_url": record.get("source_url"),
+                      "issues": issues,
+                      "problem_preview": problem[:180],
+                  })
+
+          blocking_review_flags = [
+              {"title": item.get("title"), "source_url": item.get("source_url"),
+               "flags": [flag for flag in item.get("flags", []) if flag in {
+                   "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"
+               }]}
+              for item in review_flags
+              if any(flag in {"research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"} for flag in item.get("flags", []))
+          ]
+
           source_summary = []
           for item in collection_results:
               source_summary.append({
@@ -273,6 +302,7 @@ jobs:
                       "max_depth", "max_depth_reached", "urls_skipped",
                       "relevant_urls_skipped", "coverage_gaps", "failed_urls",
                       "evidence_verified", "currentness_verified",
+                      "no_active_opportunities_confirmed",
                   )
               })
               source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
@@ -305,6 +335,9 @@ jobs:
               "selected_quality_flags": quality_flags,
               "selected_manual_review_flags_count": len(review_flags),
               "selected_manual_review_flags": review_flags,
+              "blocking_manual_review_flags": blocking_review_flags,
+              "problem_quality_violations_count": len(problem_quality_violations),
+              "problem_quality_violations": problem_quality_violations[:20],
               "rejected_candidates_count": len(rejected),
               "rejection_reason_counts": rejection_counts,
               "source_summary": source_summary,
@@ -349,6 +382,43 @@ jobs:
               raise SystemExit(
                   "Source status contradicts incomplete discovery/coverage gaps: "
                   + json.dumps(coverage_status_violations, ensure_ascii=False)
+              )
+          priority_sources = {
+              "Ethereum ESP RFPs", "Ethereum ESP Open Rounds",
+              "Solana Grants and Funding", "Superteam Development Grants",
+              "NEAR Ecosystem Funding", "XRPL Grants Program",
+              "Climate KIC Open Calls", "Open SBIR Funding Topics",
+          }
+          priority_source_coverage_violations = [
+              {
+                  "source_id": item.get("source_id"),
+                  "final_status": item.get("final_status"),
+                  "truncated": item.get("truncated"),
+                  "relevant_urls_skipped": item.get("relevant_urls_skipped"),
+                  "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+              }
+              for item in source_summary
+              if item.get("source_id") in priority_sources and (
+                  item.get("truncated")
+                  or int(item.get("relevant_urls_skipped") or 0) > 0
+                  or int(item.get("coverage_gaps_count") or 0) > 0
+              )
+          ]
+          summary["priority_source_coverage_violations"] = priority_source_coverage_violations
+          if priority_source_coverage_violations:
+              raise SystemExit(
+                  "Priority Batch 1 sources still have truncation or unhandled relevant links: "
+                  + json.dumps(priority_source_coverage_violations, ensure_ascii=False)
+              )
+          if problem_quality_violations:
+              raise SystemExit(
+                  "Funding problem fields contain raw page boilerplate/links: "
+                  + json.dumps(problem_quality_violations[:10], ensure_ascii=False)
+              )
+          if blocking_review_flags:
+              raise SystemExit(
+                  "Selected actionable calls still have unresolved research-context/problem evidence: "
+                  + json.dumps(blocking_review_flags, ensure_ascii=False)
               )
           if response.get("status") == "error":
               raise SystemExit("Full configured funding scan returned error status")
