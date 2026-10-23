@@ -498,6 +498,7 @@ def eu_funding_tenders_paginated_search(
     results: list[dict] = []
     errors: list[str] = []
     total_expected: int | None = None
+    raw_records_received = 0
     pages_fetched = 0
     pagination_complete = False
     seen_refs: set[str] = set()
@@ -557,11 +558,11 @@ def eu_funding_tenders_paginated_search(
             )
             break
         if not page_results:
-            if total_expected == 0 or (total_expected is not None and len(results) >= total_expected):
+            if total_expected == 0 or (total_expected is not None and raw_records_received >= total_expected):
                 pagination_complete = True
             elif total_expected is not None:
                 errors.append(
-                    f"EU Funding & Tenders Search API returned an empty page after {len(results)} of {total_expected} expected records"
+                    f"EU Funding & Tenders Search API returned an empty page after {raw_records_received} of {total_expected} raw records"
                 )
             else:
                 pagination_complete = True
@@ -583,20 +584,23 @@ def eu_funding_tenders_paginated_search(
             )
             break
 
+        # totalResults counts raw API rows; results is deduplicated by reference.
+        # Keep both counts so overlapping pages do not look like missing pages.
+        raw_records_received += len(page_results)
         results.extend(new_items)
         pages_fetched += 1
 
         if max_documents is not None and len(results) >= max_documents:
-            if total_expected is not None and len(results) < total_expected:
+            if total_expected is not None and raw_records_received < total_expected:
                 errors.append(f"{limit_kind}: Max documents reached ({max_documents})")
             else:
                 pagination_complete = True
             break
-        if total_expected is not None and len(results) >= total_expected:
+        if total_expected is not None and raw_records_received >= total_expected:
             pagination_complete = True
             break
         if len(page_results) < current_page_size:
-            if total_expected is not None and len(results) < total_expected:
+            if total_expected is not None and raw_records_received < total_expected:
                 # A short page is not necessarily the final page: the API can
                 # return fewer unique records than totalResults after overlaps or
                 # transient omissions. Continue within the explicit page budget;
@@ -606,8 +610,8 @@ def eu_funding_tenders_paginated_search(
                     continue
                 errors.append(
                     f"{limit_kind}: EU Funding & Tenders Search API returned a short page: "
-                    f"retrieved {len(results)} of {total_expected} expected records; "
-                    f"max pages reached ({max_pages})"
+                    f"received {raw_records_received} of {total_expected} raw records "
+                    f"({len(results)} unique retained); max pages reached ({max_pages})"
                 )
             else:
                 pagination_complete = True
@@ -615,14 +619,17 @@ def eu_funding_tenders_paginated_search(
 
     if not pagination_complete and not errors:
         errors.append(
-            f"{limit_kind}: Max pages reached ({max_pages}); retrieved {len(results)} of "
-            f"{total_expected if total_expected is not None else 'an unknown total'} records"
+            f"{limit_kind}: Max pages reached ({max_pages}); received {raw_records_received} raw records "
+            f"({len(results)} unique retained) of "
+            f"{total_expected if total_expected is not None else 'an unknown total'} expected records"
         )
 
     return {
         "results": results,
         "pagination_complete": pagination_complete,
         "total_expected": total_expected,
+        "raw_records_received": raw_records_received,
+        "unique_records_retained": len(results),
         "pages_fetched": pages_fetched,
         "errors": errors,
     }

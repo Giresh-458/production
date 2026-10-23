@@ -771,6 +771,7 @@ def _collect_eu_funding_tenders(
     aggregated_errors: list[str] = []
     query_totals: list[int] = []
     pages_fetched = 0
+    raw_records_received = 0
     all_queries_complete = warnings_text is None
     seen_search_refs: set[str] = set()
     seen_search_urls: set[str] = set()
@@ -801,6 +802,9 @@ def _collect_eu_funding_tenders(
             source_limits=None if test_limits else query_limits,
         )
         pages_fetched += int(query_result.get("pages_fetched", 0) or 0)
+        raw_records_received += int(
+            query_result.get("raw_records_received", len(query_result.get("results", []))) or 0
+        )
         if query_result.get("total_expected") is not None:
             try:
                 query_totals.append(int(query_result["total_expected"]))
@@ -853,6 +857,9 @@ def _collect_eu_funding_tenders(
     api_result = {
         "results": aggregated_records,
         "pages_fetched": pages_fetched,
+        # Raw counts may include duplicates across query texts; records_discovered
+        # remains the unique retained opportunity count.
+        "raw_records_received": raw_records_received,
         # Totals across different text searches overlap, so do not present their
         # sum as a count of unique opportunities.
         "total_expected": query_totals[0] if len(search_texts) == 1 and query_totals else None,
@@ -864,7 +871,7 @@ def _collect_eu_funding_tenders(
     result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
     result.api_pages_fetched = result.pages_fetched
     result.api_expected_records = api_result.get("total_expected")
-    result.api_records_received = len(records)
+    result.api_records_received = int(api_result.get("raw_records_received", len(records)) or 0)
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.discovery_exhausted = bool(api_result.get("pagination_complete"))

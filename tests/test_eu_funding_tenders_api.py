@@ -55,6 +55,35 @@ def test_eu_search_api_paginates_and_filters_open_forthcoming_calls(monkeypatch)
     assert result["errors"] == []
 
 
+def test_eu_search_api_counts_raw_rows_separately_from_unique_records(monkeypatch):
+    def fake_post(url, *, params, fields, headers, timeout, retries):
+        page = params["pageNumber"]
+        results_by_page = {
+            1: [
+                {"reference": "a", "url": "https://ec.europa.eu/a", "metadata": {"title": ["A"]}},
+                {"reference": "b", "url": "https://ec.europa.eu/b", "metadata": {"title": ["B"]}},
+                {"reference": "c", "url": "https://ec.europa.eu/c", "metadata": {"title": ["C"]}},
+            ],
+            2: [
+                {"reference": "c", "url": "https://ec.europa.eu/c", "metadata": {"title": ["C"]}},
+                {"reference": "d", "url": "https://ec.europa.eu/d", "metadata": {"title": ["D"]}},
+            ],
+        }
+        return {"totalResults": 5, "results": results_by_page.get(page, [])}, url
+
+    monkeypatch.setattr(structured_sources, "post_multipart_json", fake_post)
+    result = structured_sources.eu_funding_tenders_paginated_search(
+        page_size=3,
+        source_limits={"max_pages": 4, "max_documents": 10},
+    )
+
+    assert result["pagination_complete"] is True
+    assert result["raw_records_received"] == 5
+    assert result["unique_records_retained"] == 4
+    assert len(result["results"]) == 4
+    assert result["errors"] == []
+
+
 def test_eu_search_api_continues_after_short_page_when_total_not_reached(monkeypatch):
     calls = []
 
