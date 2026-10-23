@@ -993,9 +993,17 @@ def crawl_funding_source(
             permitted, robots_delay, robots_reason = _get_robots_policy(current_url)
             delay_seconds = max(delay_seconds, robots_delay)
             if not permitted:
+                # A publisher policy restriction is an explicit access limitation,
+                # not a crawler-budget truncation. Record the skipped route as a
+                # coverage gap and keep the source PARTIAL; never bypass robots.txt.
                 result.urls_skipped += 1
-                result.truncated = True
-                result.pagination_complete = False
+                result.relevant_urls_skipped += 1
+                result.coverage_gaps.append({
+                    "url": current_url,
+                    "parent_url": None,
+                    "reason": "robots_policy_restriction",
+                    "detail": robots_reason or "robots.txt does not permit this URL",
+                })
                 result.errors.append({
                     "url": current_url,
                     "operation": "robots_txt_policy",
