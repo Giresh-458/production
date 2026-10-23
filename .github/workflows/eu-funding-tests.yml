@@ -147,6 +147,7 @@ jobs:
           import re
           from datetime import datetime, timezone
           from pathlib import Path
+          import yaml
 
           from agents.funding_agent import run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
@@ -345,6 +346,15 @@ jobs:
               )
           ]
           summary["coverage_status_invariant_violations"] = coverage_status_violations
+          source_config = yaml.safe_load(Path("sources/funding_sources.yaml").read_text(encoding="utf-8")) or {}
+          source_sections = source_config.get("sources", {})
+          expected_source_ids = [
+              str(source["name"]).strip()
+              for entries in source_sections.values()
+              if isinstance(entries, list)
+              for source in entries
+              if isinstance(source, dict) and source.get("name")
+          ]
           summary["batch_acceptance"] = assess_batch_acceptance(
               run_status=response.get("status"),
               raw_records_count=len(records),
@@ -352,6 +362,7 @@ jobs:
               selected_quality_flags=quality_flags,
               selected_manual_review_flags=review_flags,
               source_summary=source_summary,
+              expected_source_ids=expected_source_ids,
           )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
