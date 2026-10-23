@@ -217,7 +217,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         if entry.get("name") == "Superteam Development Grants":
             page_cap = 70
         elif entry.get("name") == "Climate KIC Open Calls":
-            page_cap = 400
+            page_cap = 600
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 120
         elif entry.get("name") == "NEAR Ecosystem Funding":
@@ -270,6 +270,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert not any("brinc.io" in u or "tenity.com" in u for u in xrpl["discovery"]["start_urls"])
     assert any("awardees" in p for p in xrpl["discovery"]["exclude_url_patterns"])
     assert any("submittable" in p and "what-is-submittable" in p for p in xrpl["discovery"]["exclude_url_patterns"])
+    assert any(re.search(p, "https://manager.submittable.com/user/submissions", re.IGNORECASE) for p in xrpl["discovery"]["exclude_url_patterns"])
 
     filecoin = by_name["Filecoin Grants and Funding"]
     assert filecoin["url"] == "https://fil.org/grants"
@@ -279,7 +280,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 400
+    assert climate_discovery["max_depth"] == 4 and climate_discovery["max_pages"] == 600
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -372,8 +373,8 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # Climate KIC reached its 240-request cap with work still queued.
-    assert climate_kic_discovery["max_pages"] == 400
+    # Climate KIC hit its 400-attempt cap; scope exclusions remove a huge unrelated EU topic-list fan-out, while depth 4 follows current call details.
+    assert climate_kic_discovery["max_pages"] == 600
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 4 and sbir_discovery["max_pages"] == 120
@@ -424,3 +425,13 @@ def test_climate_kic_excludes_stale_partner_posts_and_social_links():
     assert excluded("https://www.f6s.com/medclimaccelerator2022/apply")
     assert excluded("https://www.instagram.com/bgiaccelerator/")
     assert not excluded("https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/")
+    assert excluded("https://ec.europa.eu/info/funding-tenders/opportunities/data/topic-list.html")
+    assert excluded("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-CL5-2026-01")
+    assert excluded("https://6740820.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=1509&deploy=1")
+    assert excluded("https://eit-hei.eu/funding-support/funding-opportunities/past-calls/call-for-proposals-3/")
+    assert excluded("https://eit-hei.eu/events/introduction-to-heinnovate-call-2026-info-sessions/")
+    assert excluded("https://opencalls.fund/open-calls/closed")
+    assert excluded("https://www.heinnovate.eu/en/events-webinars/heinnovate-information-session-eit-higher-education-initiative-call-2026")
+    assert excluded("https://socialtechlab.org/socialtech-labs-social-impact-generator-hub-selected-as-a-finalist-for-the-new-european-bauhaus-prizes-2026/")
+    # Keep an individual current EIT opportunity traversable; only generic/historical navigation is excluded.
+    assert not excluded("https://www.eit.europa.eu/our-activities/opportunities/enhance-neb-open-call-2027")
