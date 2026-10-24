@@ -490,7 +490,7 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
 
 
-def test_filecoin_excludes_github_issue_query_navigation_and_crawls_ipfs_grants():
+def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_programme():
     import re
 
     by_name = {entry["name"]: entry for entry in _entries()}
