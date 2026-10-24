@@ -138,7 +138,7 @@ sources:
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
           - '^https?://app\.potlock\.org/campaign/\d+\?tab=(?:leaderboard|settings)(?:&|$)'
           # Rendered template placeholders are not real Potlock campaigns.
-          - '^https?://app.potlock.org/campaign/(?:\\?[campaignId\\?]|%5BcampaignId%5D)(?:[/?#].*)?
+          - '^https?://app\.potlock\.org/campaign/[^?]*campaignId[^?]*(?:\?|$)'
           - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
