@@ -114,3 +114,56 @@ def test_robots_restriction_is_recorded_as_partial_coverage_not_budget_truncatio
         "detail": "could not verify robots.txt policy (403)",
     }]
     assert result.errors[0]["operation"] == "robots_txt_policy"
+
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404, 410])
+def test_robots_client_error_other_than_rate_limit_means_policy_unavailable(monkeypatch, status_code):
+    """RFC 9309 treats a 4xx robots response as unavailable, not as a disallow rule."""
+    _clear_caches()
+    response = MagicMock()
+    response.status_code = status_code
+    response.text = ""
+    monkeypatch.setattr("core.crawl4ai_web.get_response", lambda *a, **k: response)
+
+    allowed, delay, reason = crawl4ai_web._get_robots_policy(
+        "https://example.test/public/call"
+    )
+
+    assert allowed is True
+    assert delay >= 1.0
+    assert reason is None
+
+
+def test_robots_rate_limit_fails_closed_after_bounded_retry(monkeypatch):
+    _clear_caches()
+    response = MagicMock()
+    response.status_code = 429
+    response.text = "rate limited"
+    response.headers = {}
+    monkeypatch.setattr("core.crawl4ai_web.get_response", lambda *a, **k: response)
+
+    allowed, delay, reason = crawl4ai_web._get_robots_policy(
+        "https://example.test/public/call"
+    )
+
+    assert allowed is False
+    assert delay >= 1.0
+    assert "could not verify robots.txt policy" in reason
+    assert "429" in reason
+
+
+def test_robots_server_error_fails_closed(monkeypatch):
+    _clear_caches()
+    response = MagicMock()
+    response.status_code = 503
+    response.text = "temporarily unavailable"
+    monkeypatch.setattr("core.crawl4ai_web.get_response", lambda *a, **k: response)
+
+    allowed, delay, reason = crawl4ai_web._get_robots_policy(
+        "https://example.test/public/call"
+    )
+
+    assert allowed is False
+    assert delay >= 1.0
+    assert "could not verify robots.txt policy" in reason
