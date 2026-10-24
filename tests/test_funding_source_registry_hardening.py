@@ -38,7 +38,7 @@ def test_funding_registry_uses_exact_curated_batch_one_sources():
         "NSF SBIR Climate Change Adaptation and Mitigation": "https://www.sbir.gov/topics/1012419",
         "Open SBIR Funding Topics": "https://www.sbir.gov/topics?status=Open",
         "EU Open and Forthcoming Funding Calls": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502",
-        "I-DAPT Hub Cyber-Physical Systems Calls": "https://idapthub.org/applications/call_for_proposals",
+        "I-DAPT Hub Cyber-Physical Systems Calls": "https://www.idapthub.org/applications/call_for_proposals",
     }
     assert sources == expected
     assert len(sources) == 15
