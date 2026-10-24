@@ -436,3 +436,26 @@ def test_climate_kic_excludes_stale_partner_posts_and_social_links():
     assert excluded("https://socialtechlab.org/socialtech-labs-social-impact-generator-hub-selected-as-a-finalist-for-the-new-european-bauhaus-prizes-2026/")
     # Keep an individual current EIT opportunity traversable; only generic/historical navigation is excluded.
     assert not excluded("https://www.eit.europa.eu/our-activities/opportunities/enhance-neb-open-call-2027")
+
+
+
+def test_batch1_known_navigation_exclusions_preserve_call_pages():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    near = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]["exclude_url_patterns"]
+    climate = by_name["Climate KIC Open Calls"]["collection"]["discovery"]["exclude_url_patterns"]
+    sbir = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]["exclude_url_patterns"]
+
+    def excluded(patterns, url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded(near, "https://app.potlock.org/campaign/[campaignId]?tab=leaderboard")
+    assert not excluded(near, "https://app.potlock.org/campaign/12345")
+    assert excluded(sbir, "https://www.grants.gov/")
+    assert not excluded(sbir, "https://www.simpler.grants.gov/opportunity/active-example")
+    assert excluded(climate, "https://apps.apple.com/us/app/eu-funding-me/id6733238007")
+    assert excluded(climate, "https://www.eit.europa.eu/library/list-awarded-contracts-2024")
+    assert excluded(climate, "https://opencalls.fund/open-call/ofelia/faq")
+    assert not excluded(climate, "https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
+    assert not excluded(climate, "https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
