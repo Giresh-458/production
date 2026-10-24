@@ -1806,7 +1806,7 @@ sources:
 
           # EU expert-account support, manuals, and reference material are not open calls.
           - '^https?://(?:www[.])?ec[.]europa[.]eu/research/participants/data/(?:support/expert/|ref/h2020/experts_manual/)'
-          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/screen/(?:support/(?:faq|videos|manuals)(?:/|[?#]|$)|how-to-participate/reference-documents(?:/|[?#]|$)|display/IT/Duplicate+Profile+and+Account+Deletion(?:/|[?#]|$))'
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/screen/(?:support/(?:faq|videos|manuals)(?:/|[?#]|$)|how-to-participate/reference-documents(?:/|[?#]|$)|display/IT/Duplicate.Profile.and.Account.Deletion(?:/|[?#]|$))'
           # Store listings and marketplace application/account routes are not RIF funding calls.
           - '^https?://apps[.]apple[.]com/'
           - '^https?://sell[.]amazon[.]co[.]uk/'
