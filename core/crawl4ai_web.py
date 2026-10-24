@@ -1103,8 +1103,15 @@ def crawl_funding_source(
         if depth > result.max_depth_reached:
             result.max_depth_reached = depth
 
-        # Determine if this is a PDF
-        is_pdf = current_url.lower().split("?", 1)[0].endswith(".pdf")
+        # Determine whether the URL identifies a PDF. Some document providers
+        # expose PDFs through download endpoints whose path has no file extension
+        # (for example, NetSuite media.nl?...&_xt=.pdf). Detect that explicit
+        # publisher-supplied extension rather than navigating the binary as HTML.
+        parsed_current_url = urlparse(current_url)
+        is_pdf = parsed_current_url.path.lower().endswith(".pdf") or any(
+            key.casefold() == "_xt" and value.strip().casefold() == ".pdf"
+            for key, value in parse_qsl(parsed_current_url.query, keep_blank_values=True)
+        )
 
         if is_pdf:
             result.documents_discovered += 1
