@@ -1291,10 +1291,15 @@ def test_generic_opportunity_navigation_is_not_a_call_detail_candidate():
         "Find funding and opportunities for your project",
     ) < 0.4
     assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding",
+        "Calls and funding",
+        "Explore our opportunities",
+    ) < 0.4
+    assert _classify_link_stage_a(
         "https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects",
         "Innovation projects",
         "Explore our opportunities",
-    ) < 0.4
+    ) >= 0.4
 
 
 def test_specific_funding_detail_routes_remain_discoverable():
