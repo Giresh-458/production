@@ -358,6 +358,12 @@ sources:
           - '^https?://socialtechlab[.]org/socialtech-labs-social-impact-generator-hub-selected-as-a-finalist-for-the-new-european-bauhaus-prizes-2026/?(?:[?#].*)?$'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/global-challenges/about-our-knowledge-and-innovation-communities(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/activities/eit-awards-our-prime-innovation-competition(?:/|[?#]|$)'
+          # Historical EIT-network calls with verified expired deadlines must not fan out to their old application portals.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:eit-manufacturing-boostup-2022-call-now-open|eit-health-drive-2022-apply-now|eit-hub-israel-disrupt-me-2021|eit-manufacturing-apply-expert|open-ris-call-women-innovators-manufacturing|erma-booster-call-2025|spin-rise-2025|eit-deep-tech-talent-initiative-call-training-proposals-2025)(?:/|[?#]|$)'
+          # News/results pages and login screens are not active funding opportunities.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/news-events/news/eit-food-selected-65-startups-2026(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/meet-the-awarded-projects-under-the-sme-market-expansion-call-2026(?:/|[?#]|$)'
+          - '^https?://apply[.]eithealth[.]eu/s_Login[.]jsp(?:/|[?#]|$)'
           # Historical procurement/contract-award and expert/vendor registers are not funding calls.
           - '^https?://(?:www[.])?eit[.]europa[.]eu/library/(?:eitlist-contracts-awarded-20[0-9][0-9]|list-awarded-contracts-20[0-9][0-9])(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/sites/default/files/(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]/)?(?:list[_%20-].*contracts[_%20-]awarded|list[_%20-]of[_%20-]expert[_%20-]contracts|established[_%20-]list[_%20-]of[_%20-]vendors|list[_%20-]of[_%20-]experts)(?:.*)$'
