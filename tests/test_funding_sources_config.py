@@ -86,7 +86,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
         "NSF SBIR Climate Change Adaptation and Mitigation": ("https://www.sbir.gov/topics/1012419", {"ESG"}),
         "Open SBIR Funding Topics": ("https://www.sbir.gov/topics?status=Open", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
         "EU Open and Forthcoming Funding Calls": ("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
-        "I-DAPT Hub Cyber-Physical Systems Calls": ("https://idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
+        "I-DAPT Hub Cyber-Physical Systems Calls": ("https://www.idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
     }
 
     assert set(by_name) == set(expected)
@@ -140,7 +140,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is False
-    assert {"raw.githubusercontent.com", "fil.org"}.issubset(
+    assert {"raw.githubusercontent.com", "fil.org", "ipfsgrants.io"}.issubset(
         set(collection["allowed_domains"])
     )
     discovery = collection["discovery"]
@@ -148,8 +148,8 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
         official_url,
         readme_url,
     ]
-    assert discovery["max_depth"] == 2
-    assert discovery["max_pages"] == 12
+    assert discovery["max_depth"] == 3
+    assert discovery["max_pages"] == 30
     assert discovery["direct_page_urls"] == [readme_url]
     assert discovery["follow_detail_pages"] is True
     assert any("devgrants/issues" in pattern for pattern in discovery["exclude_url_patterns"])
@@ -281,7 +281,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 4 and climate_discovery["max_pages"] == 600
+    assert climate_discovery["max_depth"] == 5 and climate_discovery["max_pages"] == 600
+    assert climate_discovery["follow_documents"] is True
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -487,3 +488,24 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
     assert excluded("https://www.myeitfood.eu/s/login/?ec=302")
     assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
+
+
+def test_filecoin_excludes_github_issue_query_navigation_and_crawls_ipfs_grants():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    entry = by_name["Filecoin Grants and Funding"]
+    discovery = entry["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+    assert "ipfsgrants.io" in entry["collection"]["allowed_domains"]
+    assert discovery["max_depth"] == 3
+    assert discovery["max_pages"] == 30
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://github.com/filecoin-project/devgrants/issues?q=is%3Aissue+state%3Aopen")
+    assert excluded("https://github.com/filecoin-project/devgrants/issues/293")
+    assert excluded("https://github.com/filecoin-project/devgrants/milestones")
+    assert not excluded("https://github.com/filecoin-project/devgrants")
+    assert not excluded("https://ipfsgrants.io/")
