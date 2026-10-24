@@ -244,10 +244,13 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
             score += 0.5
             break
 
-    # Surrounding text signals
+    # Surrounding text is weak evidence: a page about funding can contain
+    # navigation, policy, account, or vendor links that are not opportunities.
+    # Do not let context alone cross the 0.4 crawl threshold; path or anchor
+    # evidence (or an explicit document URL) must support candidate relevance.
     for signal in FUNDING_CONTENT_SIGNALS:
         if signal in context_lower:
-            score += 0.3
+            score += 0.1
             break
 
     # PDF/document link bonus
