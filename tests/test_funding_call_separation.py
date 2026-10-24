@@ -1279,3 +1279,30 @@ def test_official_full_announcement_attachment_is_relevant_without_generic_ancho
         "Download document",
         "Documents Download all",
     ) < 0.4
+
+
+def test_generic_opportunity_navigation_is_not_a_call_detail_candidate():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # Broad directory paths should not block coverage by themselves.
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities",
+        "Your opportunities",
+        "Find funding and opportunities for your project",
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects",
+        "Innovation projects",
+        "Explore our opportunities",
+    ) < 0.4
+
+
+def test_specific_funding_detail_routes_remain_discoverable():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/grants/agentic-engineering", "", ""
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/calls-for-proposals/climate-innovation", "", ""
+    ) >= 0.4
