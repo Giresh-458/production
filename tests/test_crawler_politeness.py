@@ -135,7 +135,7 @@ def test_robots_client_error_other_than_rate_limit_means_policy_unavailable(monk
     assert reason is None
 
 
-def test_robots_rate_limit_fails_closed_after_bounded_retry(monkeypatch):
+def test_robots_rate_limit_fails_closed(monkeypatch):
     _clear_caches()
     response = MagicMock()
     response.status_code = 429
