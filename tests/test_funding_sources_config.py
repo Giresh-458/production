@@ -497,7 +497,7 @@ def test_filecoin_excludes_github_issue_query_navigation_and_crawls_ipfs_grants(
     entry = by_name["Filecoin Grants and Funding"]
     discovery = entry["collection"]["discovery"]
     patterns = discovery.get("exclude_url_patterns", [])
-    assert "ipfsgrants.io" in entry["collection"]["allowed_domains"]
+    assert "ipfsgrants.io" not in entry["collection"]["allowed_domains"]
     assert discovery["max_depth"] == 3
     assert discovery["max_pages"] == 30
 
@@ -507,5 +507,7 @@ def test_filecoin_excludes_github_issue_query_navigation_and_crawls_ipfs_grants(
     assert excluded("https://github.com/filecoin-project/devgrants/issues?q=is%3Aissue+state%3Aopen")
     assert excluded("https://github.com/filecoin-project/devgrants/issues/293")
     assert excluded("https://github.com/filecoin-project/devgrants/milestones")
+    assert excluded("https://github.com/ipfs/devgrants/issues/293")
     assert not excluded("https://github.com/filecoin-project/devgrants")
-    assert not excluded("https://ipfsgrants.io/")
+    assert excluded("https://ipfsgrants.io/")
+
