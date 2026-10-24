@@ -1266,3 +1266,65 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
     assert opportunity.eligibility is not None
     assert "United States" in opportunity.eligibility
     assert opportunity.geography is not None
+
+
+def test_generic_simpler_title_uses_source_opportunity_title(monkeypatch):
+    import agents.funding_agent as funding_agent
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    monkeypatch.setattr(
+        funding_agent, "_extract_program_name",
+        lambda text, fallback: "Simpler.Grants.gov",
+    )
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title=(
+            "Opportunity Listing - NIH Small Business Innovation Research (SBIR) "
+            "Phase IIB Strategic Breakthrough Award (Parent [R44] Clinical Trial Optional)"
+        ),
+        source="https://simpler.grants.gov/opportunity/example",
+        source_type="html",
+        content="Funding opportunity number: PA-27-101. Solicitation Status: Open.",
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name.startswith("NIH Small Business Innovation Research")
+    assert "Simpler.Grants.gov" not in opportunity.program_name
+
+
+def test_grants_opportunity_expiry_is_not_application_deadline_when_full_announcement_is_linked():
+    from agents.funding_agent import extract_call_dates
+
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        "Closing: April 5, 2029. Archive date: June 4, 2029."
+    )
+
+    opening, deadline = extract_call_dates(content)
+
+    assert opening is None
+    assert deadline is None
+
+
+def test_grants_full_announcement_schedule_uses_next_future_due_date():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    past = (today - timedelta(days=30)).isoformat()
+    next_due = (today + timedelta(days=30)).isoformat()
+    later_due = (today + timedelta(days=90)).isoformat()
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        f"Closing: {(today + timedelta(days=900)).isoformat()}. "
+        f"Due Date(s): {past}; {next_due}; {later_due}."
+    )
+
+    _, deadline = extract_call_dates(content)
+
+    assert deadline == next_due
