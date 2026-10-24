@@ -187,13 +187,20 @@ def _normalize_url(url: str) -> str:
 
 
 def _url_dedupe_key(url: str) -> str:
-    """Normalize equivalent query ordering and slash variants for identity checks."""
+    """Normalize URL aliases and strip common tracking parameters for identity checks."""
     parsed = urlparse(_normalize_url(url))
     path = parsed.path.rstrip("/") or "/"
-    # Crawlers often discover the same listing URL with query parameters in a
-    # different order. Sort by key (stable for repeated keys) so those aliases
-    # do not consume the page budget; preserve repeated-value order for a key.
-    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    # Tracking parameters do not identify distinct content. Remove them before
+    # sorting query pairs so links to the same call from multiple campaign cards
+    # do not consume the crawl budget or inflate the unresolved coverage frontier.
+    tracking_params = {
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "gclid", "fbclid",
+    }
+    query_pairs = [
+        (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key.lower() not in tracking_params
+    ]
     query_pairs.sort(key=lambda pair: pair[0])
     normalized_query = urlencode(query_pairs, doseq=True)
     return parsed._replace(
@@ -201,6 +208,7 @@ def _url_dedupe_key(url: str) -> str:
         netloc=parsed.netloc.lower(),
         path=path,
         query=normalized_query,
+        fragment="",
     ).geturl()
 
 
