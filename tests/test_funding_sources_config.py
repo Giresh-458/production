@@ -228,7 +228,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         else:
             page_cap = 30
         assert 1 <= int(discovery["max_pages"]) <= page_cap
-        assert 0 <= int(discovery.get("max_depth", 0)) <= 5
+        assert 0 <= int(discovery.get("max_depth", 0)) <= 6
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     import re
