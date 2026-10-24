@@ -1292,7 +1292,7 @@ def test_generic_opportunity_navigation_is_not_a_call_detail_candidate():
     ) < 0.4
     assert _classify_link_stage_a(
         "https://eit-culture-creativity.eu/your-opportunities/calls-funding",
-        "Calls and funding",
+        "Browse all",
         "Explore our opportunities",
     ) < 0.4
     assert _classify_link_stage_a(
