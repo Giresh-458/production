@@ -368,7 +368,9 @@ sources:
           # A sample application form and webinar deck are supporting documents,
           # not separate funding opportunities. Keep the canonical call page and
           # Call Manual eligible for extraction/verification.
-                    - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2026/10/SAMPLE_Application_form_SME-Market-Expansion-Call-2027[.]pdf(?:[?#].*)?
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2026/10/SAMPLE_Application_form_SME-Market-Expansion-Call-2027[.]pdf(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2026/10/.*(?:Info.?session|Info.?days|webinar|presentation).*[.]pdf(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/events/sme-market-expansion-call-2027-info-session(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/news-events/news/eit-climate-kics-accelerator-programme-secures-key-partners(?:/|[?#]|$)'
           - '^https?://(?:www[.])?climate-kic[.]org/news/(?:eit-climate-kic-new-accelerator-programme-expressions-of-interest-partners|open-accelerator-eit-climate-kic-climate-change|new-accelerator-programme-for-systemic-change-secures-key-partners)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/partnering-eit-climate-kic-new-accelerator-call-expression-interest(?:/|[?#]|$)'
