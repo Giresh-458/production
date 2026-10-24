@@ -376,6 +376,8 @@ sources:
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/what-we-offer/support-to-startups/accelerate-startup/(?:inclusive-mobility|smart-mobility-accelerator)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?bettermobility[.]eu/accelerator(?:/|[?#]|$)'
           - '^https?://eiturbanmobility[.]awardsplatform[.]com/(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/strategic-innovation-open-call-winners(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/call-for-proposals/scaling-startups-programme-call(?:/|[?#]|$)'
           # Generic expenditure policies and historic programme application packs are
           # supporting material, not independent opportunities. The current call page
           # remains in scope and is seeded explicitly.
