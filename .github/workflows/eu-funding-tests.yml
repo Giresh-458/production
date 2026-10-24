@@ -114,11 +114,24 @@ jobs:
                   "url": document.source,
               })
 
+          cap_markers = ("SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached")
+          detail_fetch_warnings = [
+              error for error in result.errors
+              if isinstance(error, dict)
+              and error.get("operation") == "fetch_detail_metadata"
+              and not any(marker in str(error.get("error", error)) for marker in cap_markers)
+          ]
+          # A failed detail lookup only excludes that candidate when its eligibility
+          # cannot be established. It must remain visible in the audit, but should not
+          # invalidate other independently qualified records. Search/API acquisition
+          # failures still block this check; records_valid == 0 is checked below.
           non_cap_errors = [
               error for error in result.errors
-              if not any(marker in str(error.get("error", error)) for marker in (
-                  "SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached"
-              ))
+              if not (
+                  isinstance(error, dict)
+                  and error.get("operation") == "fetch_detail_metadata"
+              )
+              and not any(marker in str(error.get("error", error)) for marker in cap_markers)
           ]
           print(json.dumps({
               "records_discovered": result.records_discovered,
@@ -130,6 +143,7 @@ jobs:
               "detail_pages_failed": result.detail_pages_failed,
               "final_status": result.final_status,
               "qualified_samples": qualified[:10],
+              "detail_fetch_warnings": detail_fetch_warnings,
               "non_cap_errors": non_cap_errors,
           }, indent=2, ensure_ascii=False))
           if not result.records_discovered:
