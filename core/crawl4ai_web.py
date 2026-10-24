@@ -1208,12 +1208,51 @@ def crawl_funding_source(
         try:
             res = _fetch_sync(current_url)
         except Exception as e:
+            error_text = str(e)
+            # Some publishers serve files from extensionless download routes.
+            # Crawl4AI's browser raises "Download is starting" instead of
+            # returning HTML; retry the same public URL with the direct PDF
+            # fetcher rather than misclassifying a downloadable PDF as a page
+            # failure. This is a normal fetch fallback, not an access-control
+            # bypass.
+            if "download is starting" in error_text.casefold():
+                result.pages_discovered = max(0, result.pages_discovered - 1)
+                result.documents_discovered += 1
+                pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
+                if pdf_result["success"]:
+                    result.documents_fetched += 1
+                    if ctx:
+                        ctx.add_document()
+                        ctx.add_page()
+                    if pdf_result["truncated"]:
+                        result.truncated = True
+                    download_path = urlparse(current_url).path.rstrip("/")
+                    result.opportunities.append({
+                        "type": "pdf",
+                        "url": current_url,
+                        "content": pdf_result["content"],
+                        "title": download_path.split("/")[-1] or "downloaded PDF",
+                        "total_pages": pdf_result["total_pages"],
+                        "pages_processed": pdf_result["pages_processed"],
+                        "retrieved_at": datetime.now(UTC).isoformat(),
+                    })
+                else:
+                    result.documents_failed += 1
+                    result.failed_urls.append(current_url)
+                    result.errors.append({
+                        "url": current_url,
+                        "operation": "pdf_fetch_after_browser_download",
+                        "error": pdf_result.get("error") or error_text,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    })
+                continue
+
             result.pages_failed += 1
             result.failed_urls.append(current_url)
             result.errors.append({
                 "url": current_url,
                 "operation": "page_fetch",
-                "error": str(e),
+                "error": error_text,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
