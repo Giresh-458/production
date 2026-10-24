@@ -518,7 +518,19 @@ jobs:
                       and item.get("final_status") == "PARTIAL"
                   )
               ]
-              if item.get("truncated") or unhandled_gaps:
+              # A browser-triggered download must be handled by the document
+              # fetch path. If it leaks through as a page_fetch failure, the live
+              # audit must fail rather than passing with a hidden collector bug.
+              unhandled_download_failures = [
+                  error for error in (item.get("errors") or [])
+                  if error.get("operation") == "page_fetch"
+                  and re.search(
+                      r"download\\s+(?:is\\s+starting|started|is\\s+being\\s+handled)",
+                      str(error.get("error") or ""),
+                      re.IGNORECASE,
+                  )
+              ]
+              if item.get("truncated") or unhandled_gaps or unhandled_download_failures:
                   priority_source_coverage_violations.append({
                       "source_id": item.get("source_id"),
                       "final_status": item.get("final_status"),
@@ -526,6 +538,7 @@ jobs:
                       "relevant_urls_skipped": item.get("relevant_urls_skipped"),
                       "coverage_gaps_count": item.get("coverage_gaps_count", 0),
                       "unhandled_coverage_gaps": unhandled_gaps[:10],
+                      "unhandled_download_failures": unhandled_download_failures[:10],
                   })
           summary["priority_source_coverage_violations"] = priority_source_coverage_violations
           (output_dir / "summary.json").write_text(
