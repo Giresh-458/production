@@ -207,12 +207,17 @@ sources:
         start_urls:
         - https://fil.org/grants
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        # Official Filecoin Foundation grants page links to this separate builder programme.
+        # Seed its authoritative programme description because fil.org/grants is rate-limited
+        # at robots.txt in some runs; this does not bypass that site's access policy.
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         max_depth: 3
         max_pages: 30
         # The root URL is a directory. Only force-record the README with the
         # programme's explicit continuous-application and award evidence.
         direct_page_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         follow_detail_pages: true
         follow_pdfs: true
         pagination: false
