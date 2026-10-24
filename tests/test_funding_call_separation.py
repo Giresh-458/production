@@ -1264,3 +1264,18 @@ def test_funding_evidence_can_still_make_pdf_link_relevant():
     assert _classify_link_stage_a(
         "https://example.org/files/open-call-guidelines.pdf", "Grant application guidelines", ""
     ) >= 0.4
+
+
+def test_official_full_announcement_attachment_is_relevant_without_generic_anchor_text():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://files.simpler.grants.gov/opportunities/example/attachments/PA-27-101-Revised-Full-Announcement.html",
+        "PA-27-101-Revised-Full-Announcement.html",
+        "Documents Download all",
+    ) >= 0.5
+    assert _classify_link_stage_a(
+        "https://example.org/attachments/general-guidance.html",
+        "Download document",
+        "Documents Download all",
+    ) < 0.4
