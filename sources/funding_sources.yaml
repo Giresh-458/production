@@ -372,7 +372,7 @@ sources:
           - '^https?://(?:www[.])?climate-kic[.]org/news/(?:eit-climate-kic-new-accelerator-programme-expressions-of-interest-partners|open-accelerator-eit-climate-kic-climate-change|new-accelerator-programme-for-systemic-change-secures-key-partners)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/partnering-eit-climate-kic-new-accelerator-call-expression-interest(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/eit-urban-moblity-startup-investments-2021-q2(?:/|[?#]|$)'
-          - '^https?://(?:www[.])?eiturbanmobility[.]eu/(?:arise-project-piloted-on-the-zaragoza-tram-wins-global-light-rail-award-for-best-safety-initiative|sme-market-expansion-open-call-2027|accessible-cities-cleaner-road-transport-and-safer-trams-meet-our-2026-eit-awards-nominees)(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/(?:arise-project-piloted-on-the-zaragoza-tram-wins-global-light-rail-award-for-best-safety-initiative|accessible-cities-cleaner-road-transport-and-safer-trams-meet-our-2026-eit-awards-nominees)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/what-we-offer/support-to-startups/accelerate-startup/(?:inclusive-mobility|smart-mobility-accelerator)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?bettermobility[.]eu/accelerator(?:/|[?#]|$)'
           - '^https?://eiturbanmobility[.]awardsplatform[.]com/(?:[?#].*)?$'
