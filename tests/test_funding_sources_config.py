@@ -140,9 +140,10 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is False
-    assert {"raw.githubusercontent.com", "fil.org", "ipfsgrants.io"}.issubset(
+    assert {"raw.githubusercontent.com", "fil.org"}.issubset(
         set(collection["allowed_domains"])
     )
+    assert "ipfsgrants.io" not in collection["allowed_domains"]
     discovery = collection["discovery"]
     assert discovery["start_urls"] == [
         official_url,
