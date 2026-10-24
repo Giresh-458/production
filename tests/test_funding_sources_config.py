@@ -475,7 +475,7 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 5
+    assert discovery["max_depth"] == 6
     # Crawl official partner detail pages and official attachments, not just the directory.
     assert "eit-culture-creativity.eu" in domains
     assert "eitcc-dev.wmstudio.space" in domains
