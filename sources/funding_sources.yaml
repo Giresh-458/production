@@ -326,7 +326,8 @@ sources:
           - '^https?://(?:www[.])?eit[.]europa[.]eu/activities/eit-awards-our-prime-innovation-competition(?:/|[?#]|$)'
           # Historical procurement/contract-award and expert/vendor registers are not funding calls.
           - '^https?://(?:www[.])?eit[.]europa[.]eu/library/(?:eitlist-contracts-awarded-20[0-9][0-9]|list-awarded-contracts-20[0-9][0-9])(?:/|[?#]|$)'
-          - '^https?://(?:www[.])?eit[.]europa[.]eu/sites/default/files/(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]/)?(?:list[_%20-].*contracts[_%20-]awarded|list[_%20-]of[_%20-]expert[_%20-]contracts|established[_%20-]list[_%20-]of[_%20-]vendors|list[_%20-]of[_%20-]experts)(?:.*)          - '^https?://(?:www[.])?eit[.]europa[.]eu/opportunities/about-eu-public-procurement(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/sites/default/files/(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]/)?(?:list[_%20-].*contracts[_%20-]awarded|list[_%20-]of[_%20-]expert[_%20-]contracts|established[_%20-]list[_%20-]of[_%20-]vendors|list[_%20-]of[_%20-]experts)(?:.*)$'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/opportunities/about-eu-public-procurement(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/work-with-us/procurement/(?:calls|other-calls)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/call-for-eit-communities/2021/faq(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/tags/new-bauhaus-eit-cross-kic-call(?:/|[?#]|$)'
