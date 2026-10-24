@@ -167,3 +167,53 @@ def test_robots_server_error_fails_closed(monkeypatch):
     assert allowed is False
     assert delay >= 1.0
     assert "could not verify robots.txt policy" in reason
+
+def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch):
+    _clear_caches()
+    url = "https://www.climate-kic.org/download/72240/?tmstv=1761558226"
+    monkeypatch.setattr(
+        "core.crawl4ai_web._get_robots_policy",
+        lambda candidate: (True, 0.0, None),
+    )
+    monkeypatch.setattr(
+        "core.crawl4ai_web._wait_for_host_slot",
+        lambda *args, **kwargs: True,
+    )
+
+    def raise_download_start(candidate):
+        raise RuntimeError("Page.goto: Download is starting")
+
+    monkeypatch.setattr("core.crawl4ai_web._fetch_sync", raise_download_start)
+    monkeypatch.setattr(
+        "core.crawl4ai_web._fetch_pdf",
+        lambda candidate, max_pdf_pages=None: {
+            "success": True,
+            "content": "Verified PDF text",
+            "total_pages": 1,
+            "pages_processed": 1,
+            "truncated": False,
+        },
+    )
+
+    result = crawl4ai_web.crawl_funding_source(
+        source_id="Climate KIC Open Calls",
+        url=url,
+        discovery_config={
+            "start_urls": [url],
+            "max_depth": 1,
+            "max_pages": 5,
+            "follow_detail_pages": True,
+            "follow_pdfs": True,
+            "pagination": False,
+        },
+        allowed_domains=[],
+    )
+
+    assert result.pages_discovered == 0
+    assert result.pages_failed == 0
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert result.failed_urls == []
+    assert result.opportunities[0]["type"] == "pdf"
+    assert result.opportunities[0]["content"] == "Verified PDF text"
