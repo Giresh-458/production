@@ -135,6 +135,10 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
         "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
+    next_step_url = (
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
+        "Program%20Resources/Builder%20Next%20Step%20Grants.md"
+    )
     entry = by_name["Filecoin Grants and Funding"]
     assert entry["url"] == official_url
     collection = entry["collection"]
@@ -148,10 +152,11 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     assert discovery["start_urls"] == [
         official_url,
         readme_url,
+        next_step_url,
     ]
     assert discovery["max_depth"] == 3
     assert discovery["max_pages"] == 30
-    assert discovery["direct_page_urls"] == [readme_url]
+    assert discovery["direct_page_urls"] == [readme_url, next_step_url]
     assert discovery["follow_detail_pages"] is True
     assert any("devgrants/" in pattern and "milestones" in pattern for pattern in discovery["exclude_url_patterns"])
 
