@@ -602,6 +602,47 @@ def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
     return None
 
 
+def _eu_application_url(metadata: dict, detail_url: str) -> tuple[str | None, str | None]:
+    """Resolve an EU call's application entry point without inventing external URLs.
+
+    Prefer an explicit publisher-supplied submission URL. When the Commission API
+    omits one, its own topic-details page is the official landing page from which
+    applicants can open the submission system.
+    """
+    explicit = _eu_metadata_value(
+        metadata,
+        "applicationUrl",
+        "applicationURL",
+        "submissionUrl",
+        "submissionURL",
+        "applyUrl",
+        "applicationLink",
+        "submissionLink",
+        "applicationPortalUrl",
+    )
+    if explicit:
+        parsed_explicit = urlparse(explicit)
+        if parsed_explicit.scheme.lower() == "https" and parsed_explicit.netloc:
+            return explicit, "EU Search API application/submission URL metadata"
+
+    parsed = urlparse(detail_url)
+    if (
+        parsed.scheme.lower() == "https"
+        and parsed.netloc.lower() in {"ec.europa.eu", "www.ec.europa.eu"}
+        and parsed.path.startswith(
+            "/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/"
+        )
+    ):
+        landing_page = parsed._replace(
+            scheme="https",
+            netloc=parsed.netloc.lower(),
+            fragment="",
+        ).geturl()
+        return landing_page, "Official EU Funding & Tenders topic-details submission landing page"
+
+    return None, None
+
+
 def _extract_eu_eligibility_from_html(value: Any) -> str | None:
     """Extract explicit applicant criteria from the portal's rich HTML fields.
 
@@ -1078,6 +1119,14 @@ def _collect_eu_funding_tenders(
                 continue
             analysis.program_name = title
             analysis.source_title = title
+            application_url, application_url_provenance = _eu_application_url(
+                metadata, canonical_detail_url
+            )
+            if application_url:
+                analysis.application_url = application_url
+                analysis.evidence["application_url"] = (
+                    f"{application_url_provenance}: {application_url}"
+                )
             if identifier:
                 analysis.call_id = identifier
             if internal_status:
