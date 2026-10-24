@@ -364,6 +364,22 @@ jobs:
               if any(flag in {"research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"} for flag in item.get("flags", []))
           ]
 
+          def summarize_audit_error(error):
+              if isinstance(error, dict):
+                  operation = error.get("operation")
+                  url = error.get("url")
+                  message = str(error.get("error") or "")
+              else:
+                  operation = None
+                  url = None
+                  message = str(error)
+              return {
+                  "operation": operation,
+                  "url": url,
+                  "error": message[:2000],
+                  "error_truncated": len(message) > 2000,
+              }
+
           source_summary = []
           for item in collection_results:
               source_summary.append({
@@ -384,15 +400,12 @@ jobs:
               })
               source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
               source_summary[-1]["coverage_gaps"] = item.get("coverage_gaps") or []
-              source_summary[-1]["failed_urls"] = (item.get("failed_urls") or [])[:10]
-              source_summary[-1]["errors"] = [
-                  {
-                      "operation": error.get("operation") if isinstance(error, dict) else None,
-                      "url": error.get("url") if isinstance(error, dict) else None,
-                      "error": error.get("error") if isinstance(error, dict) else str(error),
-                  }
-                  for error in (item.get("errors") or [])
-              ][:5]
+              failed_urls = item.get("failed_urls") or []
+              errors = item.get("errors") or []
+              source_summary[-1]["failed_urls"] = failed_urls
+              source_summary[-1]["failed_urls_count"] = len(failed_urls)
+              source_summary[-1]["errors"] = [summarize_audit_error(error) for error in errors]
+              source_summary[-1]["errors_count"] = len(errors)
 
           rejection_counts = {}
           for candidate in rejected:
