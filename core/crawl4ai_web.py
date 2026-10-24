@@ -78,16 +78,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             robots_url,
             headers={"User-Agent": _ROBOTS_USER_AGENT},
             timeout=(5.0, 10.0),
-            # Respect Retry-After on transient rate limits. If the robots policy
-            # remains unavailable, fail closed and report the source as partial.
+            # A 4xx response (except 429) means robots.txt is unavailable under
+            # RFC 9309; this crawler explicitly permits the resource in that case.
+            # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
             retries=2,
-            expected_status=(200, 404, 410),
+            expected_status=(200, *range(400, 500)),
         )
         status_code = int(response.status_code)
-        if status_code in {404, 410}:
+        if status_code == 429:
+            raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
+        if 400 <= status_code < 500:
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
-                    time.monotonic() + _ROBOTS_CACHE_TTL, None, True,
+                    time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
                     _DEFAULT_HOST_DELAY, None,
                 )
             return True, _DEFAULT_HOST_DELAY, None
@@ -253,10 +256,9 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
             score += 0.1
             break
 
-    # PDF/document link bonus
-    if url_lower.endswith(".pdf"):
-        score += 0.5
-
+    # File type alone is not evidence of funding relevance: these sites also link
+    # privacy policies, procurement archives, and generic manuals as PDFs. A PDF
+    # with funding-specific path or anchor evidence already receives a normal score.
     return min(score, 1.0)
 
 
@@ -830,7 +832,27 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
 
 
 def _finalize_collection_status(result: CollectionResult, *, test_limits: bool = False) -> str:
-    """Set a conservative source status from observed coverage, not record count alone."""
+    """Set a conservative source status from observed coverage, not record count alone.
+
+    A candidate may be linked by multiple cards or parent pages. Preserve the first
+    parent for diagnostics but count each normalized URL/reason pair only once.
+    """
+    unique_gaps = []
+    seen_gap_keys = set()
+    for gap in result.coverage_gaps or []:
+        url = str(gap.get("url") or "").strip()
+        reason = str(gap.get("reason") or "")
+        key = (_url_dedupe_key(url) if url else "", reason)
+        if key in seen_gap_keys:
+            continue
+        seen_gap_keys.add(key)
+        unique_gaps.append(gap)
+    result.coverage_gaps = unique_gaps
+    if result.coverage_gaps:
+        result.relevant_urls_skipped = len({
+            _url_dedupe_key(str(gap.get("url") or ""))
+            for gap in result.coverage_gaps if gap.get("url")
+        })
     successful_fetches = result.pages_fetched > 0 or result.documents_fetched > 0
     has_collection_failures = bool(
         result.errors or result.pages_failed > 0 or result.documents_failed > 0
