@@ -1215,7 +1215,7 @@ def crawl_funding_source(
             # fetcher rather than misclassifying a downloadable PDF as a page
             # failure. This is a normal fetch fallback, not an access-control
             # bypass.
-            normalized_error = re.sub(r"\\s+", " ", error_text).strip().casefold()
+            normalized_error = re.sub(r"\s+", " ", error_text).strip().casefold()
             is_browser_download = (
                 "download is starting" in normalized_error
                 or "download started" in normalized_error
