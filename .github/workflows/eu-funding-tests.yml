@@ -465,6 +465,7 @@ jobs:
               "Solana Grants and Funding", "Superteam Development Grants",
               "NEAR Ecosystem Funding", "XRPL Grants Program",
               "Climate KIC Open Calls", "Open SBIR Funding Topics",
+              "Filecoin Grants and Funding",
           }
           configured_sources = {
               item.name: item
