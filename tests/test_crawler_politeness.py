@@ -168,7 +168,12 @@ def test_robots_server_error_fails_closed(monkeypatch):
     assert delay >= 1.0
     assert "could not verify robots.txt policy" in reason
 
-def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch):
+@pytest.mark.parametrize("error_message", [
+    "Page.goto: Download is starting",
+    "Browser download started",
+    "Page.goto:   Download   is   starting",
+])
+def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch, error_message):
     _clear_caches()
     url = "https://www.climate-kic.org/download/72240/?tmstv=1761558226"
     monkeypatch.setattr(
@@ -181,7 +186,7 @@ def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch):
     )
 
     def raise_download_start(candidate):
-        raise RuntimeError("Page.goto: Download is starting")
+        raise RuntimeError(error_message)
 
     monkeypatch.setattr("core.crawl4ai_web._fetch_sync", raise_download_start)
     monkeypatch.setattr(
