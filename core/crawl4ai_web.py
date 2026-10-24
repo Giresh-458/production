@@ -1215,7 +1215,13 @@ def crawl_funding_source(
             # fetcher rather than misclassifying a downloadable PDF as a page
             # failure. This is a normal fetch fallback, not an access-control
             # bypass.
-            if "download is starting" in error_text.casefold():
+            normalized_error = re.sub(r"\\s+", " ", error_text).strip().casefold()
+            is_browser_download = (
+                "download is starting" in normalized_error
+                or "download started" in normalized_error
+                or "download is being handled" in normalized_error
+            )
+            if is_browser_download:
                 result.pages_discovered = max(0, result.pages_discovered - 1)
                 result.documents_discovered += 1
                 pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
