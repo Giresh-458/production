@@ -263,11 +263,13 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     # Explicit document filenames can identify useful evidence even when the
     # directory path is generic (e.g. proposal-template.docx). Keep this narrower
     # than a file-extension bonus: annual reports and privacy PDFs are not calls.
-    is_document = bool(re.search(r"\.(?:pdf|docx?|xlsx?|odt|rtf)$", path))
+    document_name = path.rsplit("/", 1)[-1]
+    is_document = bool(re.search(r"\.(?:pdf|docx?|xlsx?|odt|rtf)$", document_name))
     document_evidence = re.search(
-        r"(?:proposal|application|guidelines?|call|grant|funding|eligibility|"
-        r"template|solicitation|nofo|innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2})",
-        f"{path} {anchor_lower}",
+        r"(?:\bproposal\b|\bapplication\b|\bguidelines?\b|\bcall\b|\bgrants?\b|"
+        r"\bfunding\b|\beligibility\b|\btemplate\b|\bsolicitation\b|\bnofo\b|"
+        r"innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2})",
+        f"{document_name} {anchor_lower}",
         flags=re.IGNORECASE,
     )
     if is_document and document_evidence:
