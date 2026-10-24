@@ -211,7 +211,7 @@ def _is_climate_kic_download_url(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     return (
         host in {"climate-kic.org", "www.climate-kic.org"}
-        and re.fullmatch(r"/download/\\d+", parsed.path.rstrip("/")) is not None
+        and re.fullmatch(r"/download/\d+", parsed.path.rstrip("/")) is not None
     )
 
 
