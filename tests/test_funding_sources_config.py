@@ -456,6 +456,11 @@ def test_batch1_known_navigation_exclusions_preserve_call_pages():
     assert excluded(near, "https://app.potlock.org/campaign/[campaignId]?tab=leaderboard")
     assert not excluded(near, "https://app.potlock.org/campaign/12345")
     assert excluded(sbir, "https://www.grants.gov/")
+    # SAM.gov registration is ancillary application setup, not a separate funding call.
+    assert excluded(sbir, "https://sam.gov/SAM/")
+    # The generic NSF index is out of scope; individual NSF solicitations remain discoverable.
+    assert excluded(sbir, "https://www.nsf.gov/funding/opportunities")
+    assert not excluded(sbir, "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation")
     assert not excluded(sbir, "https://www.simpler.grants.gov/opportunity/active-example")
     assert excluded(climate, "https://apps.apple.com/us/app/eu-funding-me/id6733238007")
     assert excluded(climate, "https://www.eit.europa.eu/library/list-awarded-contracts-2024")
@@ -476,6 +481,23 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
     assert discovery["max_depth"] == 6
+    # The current 2027 SME Market Expansion call is seeded canonically, rather
+    # than relying on a deep link from a historical investment-news page.
+    current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
+    assert current_eit_um_call in discovery["start_urls"]
+    assert current_eit_um_call in discovery["direct_page_urls"]
+    assert not excluded(current_eit_um_call)
+    # Historical news/results, expired accelerator routes, generic portals, and
+    # policy-only PDFs are excluded without excluding the current canonical call.
+    assert excluded("https://www.eit.europa.eu/news-events/news/eit-climate-kics-accelerator-programme-secures-key-partners")
+    assert excluded("https://www.climate-kic.org/news/eit-climate-kic-new-accelerator-programme-expressions-of-interest-partners/")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/partnering-eit-climate-kic-new-accelerator-call-expression-interest")
+    assert excluded("https://www.eiturbanmobility.eu/eit-urban-moblity-startup-investments-2021-q2/")
+    assert excluded("https://www.eiturbanmobility.eu/accessible-cities-cleaner-road-transport-and-safer-trams-meet-our-2026-eit-awards-nominees/")
+    assert excluded("https://www.bettermobility.eu/accelerator/")
+    assert excluded("https://eiturbanmobility.awardsplatform.com/")
+    assert excluded("https://www.eiturbanmobility.eu/wp-content/uploads/2024/11/EIT-UM-Eligibility-expenditure.pdf")
+    assert excluded("https://www.eiturbanmobility.eu/call-for-proposals/scaling-startups-programme-call/")
     # Crawl official partner detail pages and official attachments, not just the directory.
     assert "eit-culture-creativity.eu" in domains
     assert "eitcc-dev.wmstudio.space" in domains
