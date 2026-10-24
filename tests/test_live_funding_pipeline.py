@@ -1328,3 +1328,54 @@ def test_grants_full_announcement_schedule_uses_next_future_due_date():
     _, deadline = extract_call_dates(content)
 
     assert deadline == next_due
+
+def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_not_sample_form():
+    from agents.funding_agent import FundingDocument, analyze_document
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    source_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    sample_form_url = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf"
+    )
+    document = FundingDocument(
+        organization="Climate KIC Open Calls",
+        title="SME Market Expansion Open Call 2027",
+        source=source_url,
+        source_type="html",
+        content=(
+            "SME Market Expansion Open Call 2027. "
+            "The Call is designed to promote business growth and market expansion. "
+            "The Call will focus on five topics: Public and Shared Transport, Urban Logistics, "
+            "Electrification of transport and alternative fuels, Mobility data management, "
+            "Health and mobility. "
+            "Each awarded entity will receive a fixed lump sum grant of EUR 60,000. "
+            "Who can apply? This Call is a mono-beneficiary call addressed to small and "
+            "medium enterprises (SMEs) that are supported by an end client, a public or "
+            "private entity, committed to testing and demonstrating the solution. "
+            "Call opening: 9 October 2026. "
+            "Call closing (submission of completed application): 1 December 2026 at 17.00 CET. "
+            f"[Application form sample]({sample_form_url}) "
+            "Access the EIT UM Programmes Portal and submit your application form within the given deadline."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name == "SME Market Expansion Open Call 2027"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.opening_date == "2026-10-09"
+    assert opportunity.deadline == "2026-12-01"
+    assert opportunity.funding_amount is not None
+    assert "60,000" in opportunity.funding_amount
+    assert opportunity.eligibility is not None
+    assert "SMEs" in opportunity.eligibility
+    assert "end client" in opportunity.eligibility
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+    assert opportunity.focus_area == "ESG"
+    assert opportunity.application_url == source_url
+
