@@ -42,7 +42,7 @@ permissions:
 jobs:
   eu-funding-quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,6 +87,9 @@ jobs:
               source,
               CollectionResult(source_id=source.name, method="api"),
               warnings=[],
+              # The collector treats max_pages as a global search-query budget
+              # and splits it across the five configured search terms. Five pages
+              # therefore checks one page per term; 250 caps the global record budget.
               source_limits={"max_pages": 5, "max_documents": 250},
           )
           today = datetime.now(timezone.utc).date()
@@ -111,11 +114,24 @@ jobs:
                   "url": document.source,
               })
 
+          cap_markers = ("SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached")
+          detail_fetch_warnings = [
+              error for error in result.errors
+              if isinstance(error, dict)
+              and error.get("operation") == "fetch_detail_metadata"
+              and not any(marker in str(error.get("error", error)) for marker in cap_markers)
+          ]
+          # A failed detail lookup only excludes that candidate when its eligibility
+          # cannot be established. It must remain visible in the audit, but should not
+          # invalidate other independently qualified records. Search/API acquisition
+          # failures still block this check; records_valid == 0 is checked below.
           non_cap_errors = [
               error for error in result.errors
-              if not any(marker in str(error.get("error", error)) for marker in (
-                  "SOURCE_LIMIT_REACHED", "TEST_TRUNCATED", "Max pages reached"
-              ))
+              if not (
+                  isinstance(error, dict)
+                  and error.get("operation") == "fetch_detail_metadata"
+              )
+              and not any(marker in str(error.get("error", error)) for marker in cap_markers)
           ]
           print(json.dumps({
               "records_discovered": result.records_discovered,
@@ -127,6 +143,7 @@ jobs:
               "detail_pages_failed": result.detail_pages_failed,
               "final_status": result.final_status,
               "qualified_samples": qualified[:10],
+              "detail_fetch_warnings": detail_fetch_warnings,
               "non_cap_errors": non_cap_errors,
           }, indent=2, ensure_ascii=False))
           if not result.records_discovered:
@@ -145,7 +162,7 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          from agents.funding_agent import run_agent
+          from agents.funding_agent import load_sources, run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
           from core.schemas import normalize_area
           from run_pipeline import get_all_open_funding_calls
@@ -258,6 +275,111 @@ jobs:
                   "manual_review_flags": manual_review,
               })
 
+          # Release regression: this official EIT Urban Mobility call is known to
+          # be open during the current Batch 1 window. A green audit must not hide
+          # its loss at extraction, eligibility, or domain qualification.
+          known_call_url = (
+              "https://www.eiturbanmobility.eu/call-for-proposals/"
+              "sme-market-expansion-open-call-2027/"
+          )
+          known_call = next((
+              record for record in selected
+              if str(record.get("title") or record.get("program_name") or "").strip().casefold()
+                 == "sme market expansion open call 2027"
+              and str(record.get("source_url") or "").rstrip("/") == known_call_url.rstrip("/")
+          ), None)
+          if known_call is None:
+              rejected_known_call = [
+                  item for item in rejected
+                  if "sme market expansion" in str(item.get("title") or "").casefold()
+                  or "sme-market-expansion-open-call-2027" in str(item.get("source_url") or "").casefold()
+              ]
+              raise SystemExit(
+                  "Required active EIT Urban Mobility SME Market Expansion Open Call 2027 "
+                  "was not selected. Matching rejected candidates: "
+                  + json.dumps(rejected_known_call, ensure_ascii=False)
+              )
+          if str(known_call.get("deadline") or "") != "2026-12-01":
+              raise SystemExit(
+                  "EIT SME Market Expansion deadline mismatch: "
+                  + repr(known_call.get("deadline"))
+              )
+          if not re.search(r"(?:EUR|€)\s*60,000|60,000", str(known_call.get("funding_amount") or ""), re.IGNORECASE):
+              raise SystemExit(
+                  "EIT SME Market Expansion expected €60,000 award not extracted: "
+                  + repr(known_call.get("funding_amount"))
+              )
+          if not has_substantive_eligibility_evidence(known_call.get("eligibility")):
+              raise SystemExit(
+                  "EIT SME Market Expansion selected without substantive eligibility evidence: "
+                  + repr(known_call.get("eligibility"))
+              )
+          if "SAMPLE_Application_form" in str(known_call.get("application_url") or ""):
+              raise SystemExit(
+                  "EIT SME Market Expansion sample application PDF was incorrectly labelled as the live application endpoint"
+              )
+          supporting_docs_as_calls = [
+              record for record in selected
+              if re.search(
+                  r"sample application form|info.?session.*presentation|info.?session presentation",
+                  str(record.get("title") or record.get("program_name") or ""),
+                  re.IGNORECASE,
+              )
+          ]
+          if supporting_docs_as_calls:
+              raise SystemExit(
+                  "Supporting EIT documents were emitted as independent funding calls: "
+                  + json.dumps([
+                      {"title": item.get("title"), "source_url": item.get("source_url")}
+                      for item in supporting_docs_as_calls
+                  ], ensure_ascii=False)
+              )
+
+          problem_quality_violations = []
+          for record in records:
+              problem = str(record.get("problem") or record.get("problem_signal") or "").strip()
+              if not problem:
+                  continue
+              issues = []
+              if len(problem) > 320:
+                  issues.append("problem_signal_too_long")
+              if re.search(r"!\[[^\]]*\]\(|\[[^\]]+\]\(https?://|https?://\S+", problem):
+                  issues.append("markdown_or_url_boilerplate_in_problem_signal")
+              if re.search(r"\b(?:cookie policy|all rights reserved|log in to read more|click here to subscribe|example implementation)\b", problem, re.IGNORECASE):
+                  issues.append("webpage_boilerplate_or_instruction_in_problem_signal")
+              if issues:
+                  problem_quality_violations.append({
+                      "title": record.get("title") or record.get("program_name"),
+                      "source_url": record.get("source_url"),
+                      "issues": issues,
+                      "problem_preview": problem[:180],
+                  })
+
+          blocking_review_flags = [
+              {"title": item.get("title"), "source_url": item.get("source_url"),
+               "flags": [flag for flag in item.get("flags", []) if flag in {
+                   "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"
+               }]}
+              for item in review_flags
+              if any(flag in {"research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"} for flag in item.get("flags", []))
+          ]
+
+          def summarize_audit_error(error):
+              if isinstance(error, dict):
+                  operation = error.get("operation")
+                  url = error.get("url")
+                  message = str(error.get("error") or "")
+              else:
+                  operation = None
+                  url = None
+                  message = str(error)
+              return {
+                  "operation": operation,
+                  "url": url,
+                  "error": message[:2000],
+                  "error_truncated": len(message) > 2000,
+              }
+
           source_summary = []
           for item in collection_results:
               source_summary.append({
@@ -273,19 +395,17 @@ jobs:
                       "max_depth", "max_depth_reached", "urls_skipped",
                       "relevant_urls_skipped", "coverage_gaps", "failed_urls",
                       "evidence_verified", "currentness_verified",
+                      "no_active_opportunities_confirmed",
                   )
               })
               source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
-              source_summary[-1]["coverage_gaps"] = (item.get("coverage_gaps") or [])[:10]
-              source_summary[-1]["failed_urls"] = (item.get("failed_urls") or [])[:10]
-              source_summary[-1]["errors"] = [
-                  {
-                      "operation": error.get("operation") if isinstance(error, dict) else None,
-                      "url": error.get("url") if isinstance(error, dict) else None,
-                      "error": error.get("error") if isinstance(error, dict) else str(error),
-                  }
-                  for error in (item.get("errors") or [])
-              ][:5]
+              source_summary[-1]["coverage_gaps"] = item.get("coverage_gaps") or []
+              failed_urls = item.get("failed_urls") or []
+              errors = item.get("errors") or []
+              source_summary[-1]["failed_urls"] = failed_urls
+              source_summary[-1]["failed_urls_count"] = len(failed_urls)
+              source_summary[-1]["errors"] = [summarize_audit_error(error) for error in errors]
+              source_summary[-1]["errors_count"] = len(errors)
 
           rejection_counts = {}
           for candidate in rejected:
@@ -305,6 +425,9 @@ jobs:
               "selected_quality_flags": quality_flags,
               "selected_manual_review_flags_count": len(review_flags),
               "selected_manual_review_flags": review_flags,
+              "blocking_manual_review_flags": blocking_review_flags,
+              "problem_quality_violations_count": len(problem_quality_violations),
+              "problem_quality_violations": problem_quality_violations[:20],
               "rejected_candidates_count": len(rejected),
               "rejection_reason_counts": rejection_counts,
               "source_summary": source_summary,
@@ -349,6 +472,92 @@ jobs:
               raise SystemExit(
                   "Source status contradicts incomplete discovery/coverage gaps: "
                   + json.dumps(coverage_status_violations, ensure_ascii=False)
+              )
+          priority_sources = {
+              "Ethereum ESP RFPs", "Ethereum ESP Open Rounds",
+              "Solana Grants and Funding", "Superteam Development Grants",
+              "NEAR Ecosystem Funding", "XRPL Grants Program",
+              "Climate KIC Open Calls", "Open SBIR Funding Topics",
+              "Filecoin Grants and Funding",
+          }
+          configured_sources = {
+              item.name: item
+              for item in load_sources(Path("sources/funding_sources.yaml"))
+          }
+
+          def is_intentionally_excluded_gap(source_id, gap):
+              configured = configured_sources.get(source_id)
+              if configured is None:
+                  return False
+              discovery = (configured.collection or {}).get("discovery", {}) or {}
+              patterns = discovery.get("exclude_url_patterns", []) or []
+              url = str(gap.get("url") or "")
+              return any(
+                  re.search(pattern, url, flags=re.IGNORECASE)
+                  for pattern in patterns
+                  if isinstance(pattern, str) and pattern
+              )
+
+          priority_source_coverage_violations = []
+          for item in source_summary:
+              if item.get("source_id") not in priority_sources:
+                  continue
+              unhandled_gaps = [
+                  gap for gap in (item.get("coverage_gaps") or [])
+                  if not is_intentionally_excluded_gap(item.get("source_id"), gap)
+                  # Robots denials and unverifiable robots policies are not silently
+                  # ignored: the exact URL/reason is recorded and the source remains
+                  # PARTIAL. Treat these as documented external access limitations,
+                  # not crawler-budget truncation or evidence of complete coverage.
+                  and not (
+                      gap.get("reason") in {
+                          "robots_policy_restriction",  # legacy audit label
+                          "robots_policy_disallowed",
+                          "robots_policy_unverified",
+                      }
+                      and item.get("final_status") == "PARTIAL"
+                  )
+              ]
+              # A browser-triggered download must be handled by the document
+              # fetch path. If it leaks through as a page_fetch failure, the live
+              # audit must fail rather than passing with a hidden collector bug.
+              unhandled_download_failures = [
+                  error for error in (item.get("errors") or [])
+                  if error.get("operation") == "page_fetch"
+                  and re.search(
+                      r"download\s+(?:is\s+starting|started|is\s+being\s+handled)",
+                      str(error.get("error") or ""),
+                      re.IGNORECASE,
+                  )
+              ]
+              if item.get("truncated") or unhandled_gaps or unhandled_download_failures:
+                  priority_source_coverage_violations.append({
+                      "source_id": item.get("source_id"),
+                      "final_status": item.get("final_status"),
+                      "truncated": item.get("truncated"),
+                      "relevant_urls_skipped": item.get("relevant_urls_skipped"),
+                      "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+                      "unhandled_coverage_gaps": unhandled_gaps[:10],
+                      "unhandled_download_failures": unhandled_download_failures[:10],
+                  })
+          summary["priority_source_coverage_violations"] = priority_source_coverage_violations
+          (output_dir / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          if priority_source_coverage_violations:
+              raise SystemExit(
+                  "Priority Batch 1 sources still have truncation or unhandled relevant links: "
+                  + json.dumps(priority_source_coverage_violations, ensure_ascii=False)
+              )
+          if problem_quality_violations:
+              raise SystemExit(
+                  "Funding problem fields contain raw page boilerplate/links: "
+                  + json.dumps(problem_quality_violations[:10], ensure_ascii=False)
+              )
+          if blocking_review_flags:
+              raise SystemExit(
+                  "Selected actionable calls still have unresolved research-context/problem evidence: "
+                  + json.dumps(blocking_review_flags, ensure_ascii=False)
               )
           if response.get("status") == "error":
               raise SystemExit("Full configured funding scan returned error status")

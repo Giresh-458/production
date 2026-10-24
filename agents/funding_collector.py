@@ -602,6 +602,47 @@ def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
     return None
 
 
+def _eu_application_url(metadata: dict, detail_url: str) -> tuple[str | None, str | None]:
+    """Resolve an EU call's application entry point without inventing external URLs.
+
+    Prefer an explicit publisher-supplied submission URL. When the Commission API
+    omits one, its own topic-details page is the official landing page from which
+    applicants can open the submission system.
+    """
+    explicit = _eu_metadata_value(
+        metadata,
+        "applicationUrl",
+        "applicationURL",
+        "submissionUrl",
+        "submissionURL",
+        "applyUrl",
+        "applicationLink",
+        "submissionLink",
+        "applicationPortalUrl",
+    )
+    if explicit:
+        parsed_explicit = urlparse(explicit)
+        if parsed_explicit.scheme.lower() == "https" and parsed_explicit.netloc:
+            return explicit, "EU Search API application/submission URL metadata"
+
+    parsed = urlparse(detail_url)
+    if (
+        parsed.scheme.lower() == "https"
+        and parsed.netloc.lower() in {"ec.europa.eu", "www.ec.europa.eu"}
+        and parsed.path.startswith(
+            "/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/"
+        )
+    ):
+        landing_page = parsed._replace(
+            scheme="https",
+            netloc=parsed.netloc.lower(),
+            fragment="",
+        ).geturl()
+        return landing_page, "Official EU Funding & Tenders topic-details submission landing page"
+
+    return None, None
+
+
 def _extract_eu_eligibility_from_html(value: Any) -> str | None:
     """Extract explicit applicant criteria from the portal's rich HTML fields.
 
@@ -771,10 +812,10 @@ def _collect_eu_funding_tenders(
     aggregated_errors: list[str] = []
     query_totals: list[int] = []
     pages_fetched = 0
+    raw_records_received = 0
     all_queries_complete = warnings_text is None
     seen_search_refs: set[str] = set()
     seen_search_urls: set[str] = set()
-    search_duplicates = 0
 
     for search_text in search_texts:
         remaining_budget = max_documents_budget - len(aggregated_records)
@@ -801,6 +842,9 @@ def _collect_eu_funding_tenders(
             source_limits=None if test_limits else query_limits,
         )
         pages_fetched += int(query_result.get("pages_fetched", 0) or 0)
+        raw_records_received += int(
+            query_result.get("raw_records_received", len(query_result.get("results", []))) or 0
+        )
         if query_result.get("total_expected") is not None:
             try:
                 query_totals.append(int(query_result["total_expected"]))
@@ -834,7 +878,6 @@ def _collect_eu_funding_tenders(
             if (reference and reference in seen_search_refs) or (
                 canonical_url and canonical_url in seen_search_urls
             ):
-                search_duplicates += 1
                 continue
             if reference:
                 seen_search_refs.add(reference)
@@ -853,6 +896,9 @@ def _collect_eu_funding_tenders(
     api_result = {
         "results": aggregated_records,
         "pages_fetched": pages_fetched,
+        # Raw counts may include duplicates across query texts; records_discovered
+        # remains the unique retained opportunity count.
+        "raw_records_received": raw_records_received,
         # Totals across different text searches overlap, so do not present their
         # sum as a count of unique opportunities.
         "total_expected": query_totals[0] if len(search_texts) == 1 and query_totals else None,
@@ -864,12 +910,13 @@ def _collect_eu_funding_tenders(
     result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
     result.api_pages_fetched = result.pages_fetched
     result.api_expected_records = api_result.get("total_expected")
-    result.api_records_received = len(records)
+    result.api_records_received = int(api_result.get("raw_records_received", len(records)) or 0)
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.discovery_exhausted = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
-    result.duplicates_removed += search_duplicates
+    # Count duplicates removed both within a query's pages and across query terms.
+    result.duplicates_removed += max(0, raw_records_received - len(records))
 
     for error in api_result.get("errors", []):
         result.errors.append({
@@ -1072,6 +1119,14 @@ def _collect_eu_funding_tenders(
                 continue
             analysis.program_name = title
             analysis.source_title = title
+            application_url, application_url_provenance = _eu_application_url(
+                metadata, canonical_detail_url
+            )
+            if application_url:
+                analysis.application_url = application_url
+                analysis.evidence["application_url"] = (
+                    f"{application_url_provenance}: {application_url}"
+                )
             if identifier:
                 analysis.call_id = identifier
             if internal_status:
@@ -1389,6 +1444,7 @@ def _collect_web_source(
             result.pages_fetched > 0
             and not result.truncated
             and result.discovery_exhausted
+            and result.no_active_opportunities_confirmed
             and not result.coverage_gaps
             and result.relevant_urls_skipped == 0
             and (not result.pagination_detected or result.pagination_complete)

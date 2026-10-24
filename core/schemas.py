@@ -54,6 +54,8 @@ class CollectionResult:
     truncated: bool = False
     evidence_verified: bool = False
     currentness_verified: bool = False
+    # Empty status is valid only when the source explicitly confirms no active calls.
+    no_active_opportunities_confirmed: bool = False
     # --- error tracking ---
     failed_urls: list[str] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
@@ -253,6 +255,11 @@ DOMAIN_TERM_WEIGHTS = {
         "climate adaptation": 2.5, "climate mitigation": 2.5, "climate resilience": 2.5,
         "carbon credit": 3.0, "carbon": 1.5, "mrv": 2.5, "sustainability": 2.0,
         "emissions": 2.0, "climate": 1.5, "esg": 2.5,
+        # Direct transport-decarbonisation terms are ESG evidence in mobility calls;
+        # generic "mobility" alone remains insufficient to classify a call as ESG.
+        "electrification of transport": 2.5, "alternative fuels": 2.0,
+        "low-emission transport": 2.5, "zero-emission": 2.5,
+        "transport decarbonization": 3.0, "transport decarbonisation": 3.0,
     },
     "ZK-IoV": {
         "zero-knowledge": 3.0, "zkvm": 3.0, "zk proof": 3.0, "zk proofs": 3.0,

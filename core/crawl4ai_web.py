@@ -78,14 +78,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             robots_url,
             headers={"User-Agent": _ROBOTS_USER_AGENT},
             timeout=(5.0, 10.0),
-            retries=1,
-            expected_status=(200, 404, 410),
+            # A 4xx response (except 429) means robots.txt is unavailable under
+            # RFC 9309; this crawler explicitly permits the resource in that case.
+            # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
+            retries=2,
+            expected_status=(200, *range(400, 500)),
         )
         status_code = int(response.status_code)
-        if status_code in {404, 410}:
+        if status_code == 429:
+            raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
+        if 400 <= status_code < 500:
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
-                    time.monotonic() + _ROBOTS_CACHE_TTL, None, True,
+                    time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
                     _DEFAULT_HOST_DELAY, None,
                 )
             return True, _DEFAULT_HOST_DELAY, None
@@ -181,14 +186,50 @@ def _normalize_url(url: str) -> str:
     return defragged
 
 
+def _robots_gap_reason(reason: str | None) -> str:
+    """Distinguish a confirmed robots denial from an unverifiable robots policy."""
+    normalized = str(reason or "").casefold()
+    if "robots.txt disallows this url" in normalized:
+        return "robots_policy_disallowed"
+    return "robots_policy_unverified"
+
+
+def _is_pdf_url(url: str) -> bool:
+    """Recognize PDF URLs with either a .pdf path or an explicit NetSuite _xt=.pdf marker."""
+    parsed = urlparse(url)
+    if parsed.path.lower().endswith(".pdf"):
+        return True
+    return any(
+        key.casefold() == "_xt" and value.strip().casefold() == ".pdf"
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+    )
+
+
+def _is_climate_kic_download_url(url: str) -> bool:
+    """Recognize Climate KIC's extensionless numeric download routes as documents."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return (
+        host in {"climate-kic.org", "www.climate-kic.org"}
+        and re.fullmatch(r"/download/\d+", parsed.path.rstrip("/")) is not None
+    )
+
+
 def _url_dedupe_key(url: str) -> str:
-    """Normalize equivalent query ordering and slash variants for identity checks."""
+    """Normalize URL aliases and strip common tracking parameters for identity checks."""
     parsed = urlparse(_normalize_url(url))
     path = parsed.path.rstrip("/") or "/"
-    # Crawlers often discover the same listing URL with query parameters in a
-    # different order. Sort by key (stable for repeated keys) so those aliases
-    # do not consume the page budget; preserve repeated-value order for a key.
-    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    # Tracking parameters do not identify distinct content. Remove them before
+    # sorting query pairs so links to the same call from multiple campaign cards
+    # do not consume the crawl budget or inflate the unresolved coverage frontier.
+    tracking_params = {
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "gclid", "fbclid",
+    }
+    query_pairs = [
+        (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key.lower() not in tracking_params
+    ]
     query_pairs.sort(key=lambda pair: pair[0])
     normalized_query = urlencode(query_pairs, doseq=True)
     return parsed._replace(
@@ -196,6 +237,7 @@ def _url_dedupe_key(url: str) -> str:
         netloc=parsed.netloc.lower(),
         path=path,
         query=normalized_query,
+        fragment="",
     ).geturl()
 
 
@@ -229,12 +271,39 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     anchor_lower = (anchor_text or "").lower()
     context_lower = (surrounding_text or "").lower()
 
-    # URL path signals
-    path = urlparse(url_lower).path
-    for signal in DISCOVERY_PATH_SIGNALS:
-        if signal in path:
-            score += 0.4
-            break
+    # Distinguish individual-call routes from broad navigation labels.
+    # A path like /your-opportunities or /funding is usually a directory, not
+    # evidence that the linked page is itself an opportunity. Specific call
+    # routes and item slugs retain the high-recall score; broad terms alone are
+    # weak signals and must not create a coverage blocker without corroboration.
+    path = urlparse(url_lower).path.rstrip("/") or "/"
+    strong_path_patterns = (
+        r"(?:^|/)(?:open-calls?|calls?-for-proposals?|calls?-for-applications?|"
+        r"funding-opportunities|grant-opportunities|rfp|rfps|foa|nofo|solicitation)(?:/|$)",
+        r"(?:^|/)(?:grants?|opportunities|campaigns?|devhub|devgrants)/[^/]+(?:/|$)",
+        r"(?:^|/)calls?-funding/[^/]+(?:/|$)",
+        r"(?:^|/)(?:builder-fund|open-call|devgrant)(?:[-/]|$)",
+    )
+    if any(re.search(pattern, path) for pattern in strong_path_patterns):
+        score += 0.4
+    elif any(signal in path for signal in DISCOVERY_PATH_SIGNALS):
+        score += 0.25
+
+    # Explicit document filenames can identify useful evidence even when the
+    # directory path is generic (e.g. proposal-template.docx). Keep this narrower
+    # than a file-extension bonus: annual reports and privacy PDFs are not calls.
+    document_name = path.rsplit("/", 1)[-1]
+    is_document = bool(re.search(r"\.(?:pdf|docx?|xlsx?|odt|rtf)$", document_name))
+    document_evidence = re.search(
+        r"(?:\bproposal\b|\bapplication\b|\bguidelines?\b|\bcall\b|\bgrants?\b|"
+        r"\bfunding\b|\beligibility\b|\btemplate\b|\bsolicitation\b|\bnofo\b|"
+        r"innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2}|"
+        r"skills(?:%20|[-_ ])based(?:%20|[-_ ])20\d{2})",
+        f"{document_name} {anchor_lower}",
+        flags=re.IGNORECASE,
+    )
+    if is_document and document_evidence:
+        score = max(score, 0.4)
 
     # Anchor text signals
     for signal in FUNDING_CONTENT_SIGNALS:
@@ -242,16 +311,31 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
             score += 0.5
             break
 
-    # Surrounding text signals
+    # Official opportunity attachments can have opaque/generated URLs and a
+    # filename such as PA-27-101-Revised-Full-Announcement.html. Treat only
+    # explicit solicitation/NOFO/full-announcement markers as strong evidence;
+    # do not make every generic attachment or PDF relevant.
+    official_notice_signal = re.search(
+        r"(?:full[-_ ]announcement|notice[-_ ]of[-_ ]funding[-_ ]opportunity|"
+        r"(?:^|[/_.-])solicitation(?:[/_.-]|$)|(?:^|[/_.-])nofo(?:[/_.-]|$))",
+        f"{path} {anchor_lower}",
+        flags=re.IGNORECASE,
+    )
+    if official_notice_signal:
+        score = max(score, 0.5)
+
+    # Surrounding text is weak evidence: a page about funding can contain
+    # navigation, policy, account, or vendor links that are not opportunities.
+    # Do not let context alone cross the 0.4 crawl threshold; path or anchor
+    # evidence (or an explicit document URL) must support candidate relevance.
     for signal in FUNDING_CONTENT_SIGNALS:
         if signal in context_lower:
-            score += 0.3
+            score += 0.1
             break
 
-    # PDF/document link bonus
-    if url_lower.endswith(".pdf"):
-        score += 0.5
-
+    # File type alone is not evidence of funding relevance: these sites also link
+    # privacy policies, procurement archives, and generic manuals as PDFs. A PDF
+    # with funding-specific path or anchor evidence already receives a normal score.
     return min(score, 1.0)
 
 
@@ -486,6 +570,27 @@ def _superteam_directory_wait_options(url: str) -> dict[str, Any]:
     }
 
 
+def _ethereum_esp_wait_options(url: str) -> dict[str, Any]:
+    """Wait for ESP's client-rendered RFP cards before extracting links."""
+    parsed = urlparse(url)
+    if (parsed.netloc or "").lower() not in {
+        "esp.ethereum.foundation", "www.esp.ethereum.foundation"
+    }:
+        return {}
+    if parsed.path.rstrip("/") not in {"/applicants/rfp", "/applicants/open-rounds"}:
+        return {}
+    return {
+        "js_code_before_wait": "window.scrollTo(0, document.body.scrollHeight);",
+        "wait_for": (
+            "js:() => document.querySelectorAll("
+            "'a[href*=\"/applicants/rfp/\"], a[href*=\"/applicants/open-rounds/\"]'"
+            ").length > 0 || document.body.innerText.toLowerCase().includes("
+            "'there are no active grant rounds')"
+        ),
+        "delay_before_return_html": 0.75,
+    }
+
+
 def _raw_markdown_text(result: Any) -> str:
     """Read the generated Markdown across Crawl4AI result API variants."""
     for attribute in ("markdown", "markdown_v2"):
@@ -561,6 +666,7 @@ async def _fetch_url(url: str) -> dict:
         "cache_mode": CacheMode.BYPASS,
         "page_timeout": int(timeout * 1000),
         **_superteam_directory_wait_options(url),
+        **_ethereum_esp_wait_options(url),
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -731,6 +837,17 @@ def _extract_docx_title(paragraphs: list[str], url: str) -> str:
             continue
         if "@" in candidate or re.search(r"\b(?:phone|email|www\.)\b", candidate, re.IGNORECASE):
             continue
+        # Many downloadable forms begin with a repeated document label such as
+        # "CHANAKYA FELLOWSHIP – APPLICATION FORM". It identifies the artifact,
+        # not the particular fellowship category; continue to the next heading.
+        generic_form_title = re.fullmatch(
+            r"(?:(?:[A-Z0-9][A-Z0-9 .&()/–—-]{1,60})\s+)?"
+            r"(?:FELLOWSHIP|SCHOLARSHIP)\s*[–—-]\s*APPLICATION FORM",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        if generic_form_title:
+            continue
         if title_pattern.search(candidate):
             return candidate
     filename = urlparse(url).path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
@@ -792,7 +909,27 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
 
 
 def _finalize_collection_status(result: CollectionResult, *, test_limits: bool = False) -> str:
-    """Set a conservative source status from observed coverage, not record count alone."""
+    """Set a conservative source status from observed coverage, not record count alone.
+
+    A candidate may be linked by multiple cards or parent pages. Preserve the first
+    parent for diagnostics but count each normalized URL/reason pair only once.
+    """
+    unique_gaps = []
+    seen_gap_keys = set()
+    for gap in result.coverage_gaps or []:
+        url = str(gap.get("url") or "").strip()
+        reason = str(gap.get("reason") or "")
+        key = (_url_dedupe_key(url) if url else "", reason)
+        if key in seen_gap_keys:
+            continue
+        seen_gap_keys.add(key)
+        unique_gaps.append(gap)
+    result.coverage_gaps = unique_gaps
+    if result.coverage_gaps:
+        result.relevant_urls_skipped = len({
+            _url_dedupe_key(str(gap.get("url") or ""))
+            for gap in result.coverage_gaps if gap.get("url")
+        })
     successful_fetches = result.pages_fetched > 0 or result.documents_fetched > 0
     has_collection_failures = bool(
         result.errors or result.pages_failed > 0 or result.documents_failed > 0
@@ -823,7 +960,9 @@ def _finalize_collection_status(result: CollectionResult, *, test_limits: bool =
             # discovery boundary was exhausted without fetch errors or skipped
             # relevant routes. Otherwise preserve uncertainty as PARTIAL.
             result.final_status = (
-                "NO_ACTIVE_OPPORTUNITIES" if result.discovery_exhausted else "PARTIAL"
+                "NO_ACTIVE_OPPORTUNITIES"
+                if result.discovery_exhausted and result.no_active_opportunities_confirmed
+                else "PARTIAL"
             )
     else:
         result.final_status = "FAIL"
@@ -956,9 +1095,17 @@ def crawl_funding_source(
             permitted, robots_delay, robots_reason = _get_robots_policy(current_url)
             delay_seconds = max(delay_seconds, robots_delay)
             if not permitted:
+                # A publisher policy restriction is an explicit access limitation,
+                # not a crawler-budget truncation. Record the skipped route as a
+                # coverage gap and keep the source PARTIAL; never bypass robots.txt.
                 result.urls_skipped += 1
-                result.truncated = True
-                result.pagination_complete = False
+                result.relevant_urls_skipped += 1
+                result.coverage_gaps.append({
+                    "url": current_url,
+                    "parent_url": None,
+                    "reason": _robots_gap_reason(robots_reason),
+                    "detail": robots_reason or "robots.txt policy could not be verified",
+                })
                 result.errors.append({
                     "url": current_url,
                     "operation": "robots_txt_policy",
@@ -985,8 +1132,10 @@ def crawl_funding_source(
         if depth > result.max_depth_reached:
             result.max_depth_reached = depth
 
-        # Determine if this is a PDF
-        is_pdf = current_url.lower().split("?", 1)[0].endswith(".pdf")
+        # Handle direct PDFs, explicit query markers, and Climate KIC numeric
+        # download routes before browser navigation. These routes commonly send
+        # Content-Disposition: attachment without a .pdf URL suffix.
+        is_pdf = _is_pdf_url(current_url) or _is_climate_kic_download_url(current_url)
 
         if is_pdf:
             result.documents_discovered += 1
@@ -1071,12 +1220,57 @@ def crawl_funding_source(
         try:
             res = _fetch_sync(current_url)
         except Exception as e:
+            error_text = str(e)
+            # Some publishers serve files from extensionless download routes.
+            # Crawl4AI's browser raises "Download is starting" instead of
+            # returning HTML; retry the same public URL with the direct PDF
+            # fetcher rather than misclassifying a downloadable PDF as a page
+            # failure. This is a normal fetch fallback, not an access-control
+            # bypass.
+            normalized_error = re.sub(r"\s+", " ", error_text).strip().casefold()
+            is_browser_download = (
+                "download is starting" in normalized_error
+                or "download started" in normalized_error
+                or "download is being handled" in normalized_error
+            )
+            if is_browser_download:
+                result.pages_discovered = max(0, result.pages_discovered - 1)
+                result.documents_discovered += 1
+                pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
+                if pdf_result["success"]:
+                    result.documents_fetched += 1
+                    if ctx:
+                        ctx.add_document()
+                        ctx.add_page()
+                    if pdf_result["truncated"]:
+                        result.truncated = True
+                    download_path = urlparse(current_url).path.rstrip("/")
+                    result.opportunities.append({
+                        "type": "pdf",
+                        "url": current_url,
+                        "content": pdf_result["content"],
+                        "title": download_path.split("/")[-1] or "downloaded PDF",
+                        "total_pages": pdf_result["total_pages"],
+                        "pages_processed": pdf_result["pages_processed"],
+                        "retrieved_at": datetime.now(UTC).isoformat(),
+                    })
+                else:
+                    result.documents_failed += 1
+                    result.failed_urls.append(current_url)
+                    result.errors.append({
+                        "url": current_url,
+                        "operation": "pdf_fetch_after_browser_download",
+                        "error": pdf_result.get("error") or error_text,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    })
+                continue
+
             result.pages_failed += 1
             result.failed_urls.append(current_url)
             result.errors.append({
                 "url": current_url,
                 "operation": "page_fetch",
-                "error": str(e),
+                "error": error_text,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
@@ -1139,6 +1333,8 @@ def crawl_funding_source(
 
         page_content = res["markdown"] or res["html"] or ""
         page_title = res.get("title", "")
+        if depth == 0 and _reports_no_active_funding(page_url, page_title, page_content):
+            result.no_active_opportunities_confirmed = True
 
         # Stage B: classify this page
         is_funding_page = _classify_page_stage_b(page_url, page_title, page_content)

@@ -1224,3 +1224,137 @@ def test_docx_title_uses_call_heading_instead_of_filename_slug():
 
     assert result["success"] is True
     assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
+
+
+
+def test_stage_a_context_alone_does_not_mark_generic_navigation_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # A page's surrounding funding copy is not enough to turn a generic link
+    # into a coverage gap; otherwise unrelated footer/navigation links explode
+    # the live audit's skipped-link count.
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Account", "Funding opportunities are available"
+    ) < 0.4
+
+    # Explicit route or anchor evidence must still be followed.
+    assert _classify_link_stage_a(
+        "https://example.com/open-calls/current", "Details", "Read more"
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Apply for grant funding", "Read more"
+    ) >= 0.4
+
+
+
+def test_pdf_file_type_alone_does_not_make_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/privacy-policy.pdf", "", ""
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/files/annual-report.pdf", "Download", "About our organization"
+    ) < 0.4
+
+
+def test_funding_evidence_can_still_make_pdf_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/open-call-guidelines.pdf", "Grant application guidelines", ""
+    ) >= 0.4
+
+
+def test_official_full_announcement_attachment_is_relevant_without_generic_anchor_text():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://files.simpler.grants.gov/opportunities/example/attachments/PA-27-101-Revised-Full-Announcement.html",
+        "PA-27-101-Revised-Full-Announcement.html",
+        "Documents Download all",
+    ) >= 0.5
+    assert _classify_link_stage_a(
+        "https://example.org/attachments/general-guidance.html",
+        "Download document",
+        "Documents Download all",
+    ) < 0.4
+
+
+def test_generic_opportunity_navigation_is_not_a_call_detail_candidate():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # Broad directory paths should not block coverage by themselves.
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities",
+        "Your opportunities",
+        "Find funding and opportunities for your project",
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding",
+        "Browse all",
+        "Explore our opportunities",
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects",
+        "Innovation projects",
+        "Explore our opportunities",
+    ) >= 0.4
+
+
+def test_specific_funding_detail_routes_remain_discoverable():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/grants/agentic-engineering", "", ""
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/calls-for-proposals/climate-innovation", "", ""
+    ) >= 0.4
+
+
+def test_named_funding_documents_remain_discoverable_without_generic_file_bonus():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/docs/proposal-template.docx",
+        "Download proposal document",
+        "Grant funding application proposal",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/sites/default/files/2026-10/EITCC_Innovation%20projects%202026_v1.pdf",
+        "EITCC_Innovation projects 2026_v1.pdf",
+        "Call for proposals",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/sites/default/files/2026-10/EITCC_2026%20CPD%20Skills-based_Call%20Guidelines.pdf",
+        "EITCC 2026 CPD Skills-based Call Guidelines",
+        "",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/files/annual-report.pdf", "Download", "About our organization"
+    ) < 0.4
+
+
+def test_eu_application_url_prefers_publisher_link_then_official_topic_landing_page():
+    from agents.funding_collector import _eu_application_url
+
+    topic_url = (
+        "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/"
+        "opportunities/topic-details/HORIZON-BRIDGING-2027-04-08"
+    )
+    assert _eu_application_url(
+        {"applicationUrl": "https://ec.europa.eu/submission-system/start/123"},
+        topic_url,
+    ) == (
+        "https://ec.europa.eu/submission-system/start/123",
+        "EU Search API application/submission URL metadata",
+    )
+    assert _eu_application_url({}, topic_url) == (
+        topic_url,
+        "Official EU Funding & Tenders topic-details submission landing page",
+    )
+    assert _eu_application_url({}, "https://example.org/funding/call-123") == (None, None)
+    assert _eu_application_url(
+        {}, "https://ec.europa.eu/info/funding-tenders/opportunities/other-page"
+    ) == (None, None)

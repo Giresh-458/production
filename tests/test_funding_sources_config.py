@@ -86,7 +86,7 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
         "NSF SBIR Climate Change Adaptation and Mitigation": ("https://www.sbir.gov/topics/1012419", {"ESG"}),
         "Open SBIR Funding Topics": ("https://www.sbir.gov/topics?status=Open", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
         "EU Open and Forthcoming Funding Calls": ("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
-        "I-DAPT Hub Cyber-Physical Systems Calls": ("https://idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
+        "I-DAPT Hub Cyber-Physical Systems Calls": ("https://www.idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
     }
 
     assert set(by_name) == set(expected)
@@ -135,6 +135,10 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
         "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
+    next_step_url = (
+        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
+        "Program%20Resources/Builder%20Next%20Step%20Grants.md"
+    )
     entry = by_name["Filecoin Grants and Funding"]
     assert entry["url"] == official_url
     collection = entry["collection"]
@@ -143,16 +147,18 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     assert {"raw.githubusercontent.com", "fil.org"}.issubset(
         set(collection["allowed_domains"])
     )
+    assert "ipfsgrants.io" not in collection["allowed_domains"]
     discovery = collection["discovery"]
     assert discovery["start_urls"] == [
         official_url,
         readme_url,
+        next_step_url,
     ]
-    assert discovery["max_depth"] == 2
-    assert discovery["max_pages"] == 12
-    assert discovery["direct_page_urls"] == [readme_url]
+    assert discovery["max_depth"] == 3
+    assert discovery["max_pages"] == 30
+    assert discovery["direct_page_urls"] == [readme_url, next_step_url]
     assert discovery["follow_detail_pages"] is True
-    assert any("devgrants/issues" in pattern for pattern in discovery["exclude_url_patterns"])
+    assert any("devgrants/" in pattern and "milestones" in pattern for pattern in discovery["exclude_url_patterns"])
 
 def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
     by_name = {entry["name"]: entry for entry in _entries()}
@@ -174,7 +180,7 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
 def test_near_page_budget_is_raised_after_exhausting_the_previous_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 30
+    assert discovery["max_pages"] == 40
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -214,19 +220,23 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
             f"{entry.get('name')} is missing a configured page cap"
         )
         # Large discovery hubs have explicit higher caps; all crawls remain bounded.
-        if entry.get("name") in {
-            "Superteam Development Grants",
-            "Climate KIC Open Calls",
-        }:
-            page_cap = 60
+        if entry.get("name") == "Superteam Development Grants":
+            page_cap = 70
+        elif entry.get("name") == "Climate KIC Open Calls":
+            page_cap = 600
         elif entry.get("name") == "Open SBIR Funding Topics":
-            page_cap = 50
+            page_cap = 120
+        elif entry.get("name") == "NEAR Ecosystem Funding":
+            page_cap = 40
+        elif entry.get("name") == "XRPL Grants Program":
+            page_cap = 24
         else:
             page_cap = 30
         assert 1 <= int(discovery["max_pages"]) <= page_cap
-        assert 0 <= int(discovery.get("max_depth", 0)) <= 4
+        assert 0 <= int(discovery.get("max_depth", 0)) <= 6
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
+    import re
     by_name = {entry["name"]: entry for entry in _entries()}
     assert "Chainlink Build Program Status" not in by_name
     assert "Climate Pitch Climate-Tech Grants" not in by_name
@@ -244,14 +254,15 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     superteam = by_name["Superteam Development Grants"]
     assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
     assert superteam["collection"]["discovery"]["start_urls"] == [superteam["url"]]
-    assert {"superteam.fun", "earn.superteam.fun"}.issubset(set(superteam["collection"]["allowed_domains"]))
-    assert superteam["collection"]["discovery"]["max_pages"] == 60
+    assert {"superteam.fun", "earn.superteam.fun", "solana.org", "solana.foundation"}.issubset(set(superteam["collection"]["allowed_domains"]))
+    assert superteam["collection"]["discovery"]["max_pages"] == 70
+    assert any("docs" in p and "document" in p for p in superteam["collection"]["discovery"]["exclude_url_patterns"])
     assert superteam.get("direct_page", False) is False
 
     near_entry = by_name["NEAR Ecosystem Funding"]
     assert near_entry["url"] == "https://near.org/funding"
     near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 30 and near["max_depth"] == 2 and near["exclude_url_patterns"]
+    assert near["max_pages"] == 40 and near["max_depth"] == 3 and near["exclude_url_patterns"]
     assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
     assert "https://near.org/funding" in near["start_urls"]
     assert "https://nearn.io/devhub/" in near["start_urls"]
@@ -259,12 +270,14 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
 
     xrpl_entry = by_name["XRPL Grants Program"]
     xrpl = xrpl_entry["collection"]
-    assert {"xrplgrants.org", "submit.xrplgrants.org"}.issubset(set(xrpl["allowed_domains"]))
-    assert xrpl["discovery"]["max_depth"] == 1 and xrpl["discovery"]["max_pages"] == 10
+    assert {"xrplgrants.org", "submit.xrplgrants.org", "brinc.io", "tenity.com"}.issubset(set(xrpl["allowed_domains"]))
+    assert xrpl["discovery"]["max_depth"] == 3 and xrpl["discovery"]["max_pages"] == 24
     assert "https://xrplgrants.org/" in xrpl["discovery"]["start_urls"]
     assert "https://submit.xrplgrants.org/submit" in xrpl["discovery"]["start_urls"]
     assert not any("brinc.io" in u or "tenity.com" in u for u in xrpl["discovery"]["start_urls"])
     assert any("awardees" in p for p in xrpl["discovery"]["exclude_url_patterns"])
+    assert any("submittable" in p and "what-is-submittable" in p for p in xrpl["discovery"]["exclude_url_patterns"])
+    assert any(re.search(p, "https://manager.submittable.com/user/submissions", re.IGNORECASE) for p in xrpl["discovery"]["exclude_url_patterns"])
 
     filecoin = by_name["Filecoin Grants and Funding"]
     assert filecoin["url"] == "https://fil.org/grants"
@@ -274,7 +287,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 60
+    assert climate_discovery["max_depth"] == 6 and climate_discovery["max_pages"] == 600
+    assert climate_discovery["follow_documents"] is True
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -293,7 +307,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
     assert sbir.get("direct_page", False) is False
     assert set(sbir["research_domains"]) == set(ALLOWED_RESEARCH_AREAS)
-    assert sbir["collection"]["discovery"]["max_pages"] == 50
+    assert sbir["collection"]["discovery"]["max_pages"] == 120
     sbir_exclusions = sbir["collection"]["discovery"]["exclude_url_patterns"]
     assert any("/awards" in pattern for pattern in sbir_exclusions)
     assert any("/apply" in pattern for pattern in sbir_exclusions)
@@ -307,8 +321,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert eu["collection"]["provider"] == "eu_funding_tenders"
     assert eu["collection"]["api"]["types"] == ["1", "2", "8"]
     assert eu["collection"]["api"]["statuses"] == ["31094501", "31094502"]
-    assert eu["collection"]["limits"]["max_pages"] == 30
-    assert eu["collection"]["limits"]["max_documents"] == 1500
+    assert eu["collection"]["limits"]["max_pages"] == 70
+    assert eu["collection"]["limits"]["max_documents"] == 3500
 
 
 def test_load_sources_preserves_direct_page_for_collection_and_checkpoint_fingerprint(tmp_path, monkeypatch):
@@ -366,6 +380,215 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
 
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
-    assert superteam_discovery["max_pages"] == 60
-    # Climate KIC reached its former 30-page cap with work still queued.
-    assert climate_kic_discovery["max_pages"] == 60
+    assert superteam_discovery["max_pages"] == 70
+    # The depth-6 crawl reaches official call attachments, while max_pages keeps discovery bounded.
+    assert climate_kic_discovery["max_depth"] == 6
+    assert climate_kic_discovery["max_pages"] == 600
+    # The SBIR discovery portal needs its restored bounded depth/page budget.
+    sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
+    assert sbir_discovery["max_depth"] == 4 and sbir_discovery["max_pages"] == 120
+
+
+def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://www.grants.gov/search-grants.html?agencyCode=NSF")
+    assert excluded("https://apply07.grants.gov/apply/spoExit.jsp?p=learn-grants")
+    assert excluded("https://www.grants.gov/help/search-grants/site-search-results")
+    # Preserve current opportunity detail pages and their solicitation attachments.
+    assert not excluded("https://www.simpler.grants.gov/opportunity/active-example")
+    assert excluded("https://www.nsf.gov/funding/postdocs")
+    assert excluded("https://new.nsf.gov/funding/undergraduates")
+    assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960")
+    assert excluded("https://resources.research.gov/common/attachment/Desktop/Single_ID_Help_Public.pdf")
+    assert excluded("https://www.nsf.gov/funding/opportunities/mps-astro-mps-astronomical-sciences-research-programs/nsf26-522/solicitation")
+    assert excluded("https://www.nsf.gov/funding/opportunities/grfp-nsf-graduate-research-fellowship-program/nsf26-526/solicitation")
+    assert excluded("https://www.whitehouse.gov/wp-content/uploads/2021/06/M-21-26.pdf")
+    assert excluded("https://www.congress.gov/117/plaws/publ58/PLAW-117publ58.pdf")
+    assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960/nsf23-515/solicitation")
+    # Individual current NSF SBIR solicitations remain traversable.
+    assert not excluded(
+        "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
+    )
+
+
+def test_climate_kic_excludes_stale_partner_posts_and_social_links():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Climate KIC Open Calls"]["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://innovationstarterbox.bg/blog/11-granta-ot-eit-climate-kic-otivat-v-balgarski-startapi/")
+    assert excluded("https://impacthub.ro/2025/07/02/start-la-inscrieri-in-romania-climaccelerator/")
+    assert excluded("https://www.f6s.com/medclimaccelerator2022/apply")
+    assert excluded("https://www.instagram.com/bgiaccelerator/")
+    assert not excluded("https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/")
+    assert excluded("https://ec.europa.eu/info/funding-tenders/opportunities/data/topic-list.html")
+    assert excluded("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-CL5-2026-01")
+    assert excluded("https://6740820.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=1509&deploy=1")
+    assert excluded("https://eit-hei.eu/funding-support/funding-opportunities/past-calls/call-for-proposals-3/")
+    assert excluded("https://eit-hei.eu/events/introduction-to-heinnovate-call-2026-info-sessions/")
+    assert excluded("https://opencalls.fund/open-calls/closed")
+    assert excluded("https://www.heinnovate.eu/en/events-webinars/heinnovate-information-session-eit-higher-education-initiative-call-2026")
+    assert excluded("https://socialtechlab.org/socialtech-labs-social-impact-generator-hub-selected-as-a-finalist-for-the-new-european-bauhaus-prizes-2026/")
+    # Keep an individual current EIT opportunity traversable; only generic/historical navigation is excluded.
+    assert not excluded("https://www.eit.europa.eu/our-activities/opportunities/enhance-neb-open-call-2027")
+
+
+
+def test_batch1_known_navigation_exclusions_preserve_call_pages():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    near = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]["exclude_url_patterns"]
+    climate = by_name["Climate KIC Open Calls"]["collection"]["discovery"]["exclude_url_patterns"]
+    sbir = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]["exclude_url_patterns"]
+
+    def excluded(patterns, url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded(near, "https://app.potlock.org/campaign/[campaignId]?tab=leaderboard")
+    assert not excluded(near, "https://app.potlock.org/campaign/12345")
+    assert excluded(sbir, "https://www.grants.gov/")
+    # SAM.gov registration is ancillary application setup, not a separate funding call.
+    assert excluded(sbir, "https://sam.gov/SAM/")
+    # The generic NSF index is out of scope; individual NSF solicitations remain discoverable.
+    assert excluded(sbir, "https://www.nsf.gov/funding/opportunities")
+    assert not excluded(sbir, "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation")
+    assert not excluded(sbir, "https://www.simpler.grants.gov/opportunity/active-example")
+    assert excluded(climate, "https://apps.apple.com/us/app/eu-funding-me/id6733238007")
+    assert excluded(climate, "https://www.eit.europa.eu/library/list-awarded-contracts-2024")
+    assert excluded(climate, "https://opencalls.fund/open-call/ofelia/faq")
+    assert not excluded(climate, "https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
+    assert not excluded(climate, "https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
+
+
+def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
+    import re
+
+    source = next(entry for entry in _entries() if entry["name"] == "Climate KIC Open Calls")
+    discovery = source["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+    domains = set(source["collection"]["allowed_domains"])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert discovery["max_depth"] == 6
+    assert discovery["max_pages"] == 600
+    # The current 2027 SME Market Expansion call is seeded canonically, rather
+    # than relying on a deep link from a historical investment-news page.
+    current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
+    assert current_eit_um_call in discovery["start_urls"]
+    assert current_eit_um_call in discovery["direct_page_urls"]
+    assert not excluded(current_eit_um_call)
+    # Historical news/results, expired accelerator routes, generic portals, and
+    # policy-only PDFs are excluded without excluding the current canonical call.
+    assert excluded("https://www.eit.europa.eu/news-events/news/eit-climate-kics-accelerator-programme-secures-key-partners")
+    assert excluded("https://www.climate-kic.org/news/eit-climate-kic-new-accelerator-programme-expressions-of-interest-partners/")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/partnering-eit-climate-kic-new-accelerator-call-expression-interest")
+    assert excluded("https://www.eiturbanmobility.eu/eit-urban-moblity-startup-investments-2021-q2/")
+    assert excluded("https://www.eiturbanmobility.eu/accessible-cities-cleaner-road-transport-and-safer-trams-meet-our-2026-eit-awards-nominees/")
+    assert excluded("https://www.bettermobility.eu/accelerator/")
+    assert excluded("https://eiturbanmobility.awardsplatform.com/")
+    assert excluded("https://www.eiturbanmobility.eu/wp-content/uploads/2024/11/EIT-UM-Eligibility-expenditure.pdf")
+    assert excluded("https://www.eiturbanmobility.eu/call-for-proposals/scaling-startups-programme-call/")
+    # Crawl official partner detail pages and official attachments, not just the directory.
+    assert "eit-culture-creativity.eu" in domains
+    assert "eitcc-dev.wmstudio.space" in domains
+    assert "eit-girlsgostem.eu" in domains
+    assert "assets.eitfood.eu" in domains
+    assert not excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects")
+    assert not excluded("https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
+    assert not excluded("https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
+    # Generic taxonomy, procurement archives, result pages and login routes are not call details.
+    assert excluded("https://www.eit.europa.eu/tags/opportunity-0")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/erma-booster-call-2025")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/eit-health-drive-2022-apply-now")
+    assert excluded("https://www.eit.europa.eu/news-events/news/eit-food-selected-65-startups-2026")
+    assert excluded("https://apply.eithealth.eu/s_Login.jsp")
+    assert excluded("https://eit.europa.eu/sites/default/files/2024-03/List%20of%20contracts%20awarded%20in%202023.pdf")
+    assert excluded("https://opencalls.fund/open-call/results/ofelia")
+    assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
+    assert excluded("https://www.myeitfood.eu/s/login/?ec=302")
+    assert excluded("https://wkf.ms/4ohKxeg")
+    assert excluded("https://forms.monday.com/forms/7ba45f0c5473520c6f4ef1ad733807c1?r=euc1")
+    assert excluded("https://eitcc-dev.wmstudio.space/private/login")
+    assert not excluded("https://eitcc-dev.wmstudio.space/sites/default/files/2026-10/EITCC_Open%20call_Innovation%20projects_21.10.2026.pdf")
+    assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
+
+
+def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_programme():
+    import re
+
+    by_name = {entry["name"]: entry for entry in _entries()}
+    entry = by_name["Filecoin Grants and Funding"]
+    discovery = entry["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+    assert "ipfsgrants.io" not in entry["collection"]["allowed_domains"]
+    assert discovery["max_depth"] == 3
+    assert discovery["max_pages"] == 30
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert excluded("https://github.com/filecoin-project/devgrants/issues?q=is%3Aissue+state%3Aopen")
+    assert excluded("https://github.com/filecoin-project/devgrants/issues/293")
+    assert excluded("https://github.com/filecoin-project/devgrants/milestones")
+    assert excluded("https://github.com/ipfs/devgrants/issues/293")
+    assert excluded("https://github.com/ipfs/devgrants/tree/main/open-grants")
+    assert not excluded("https://github.com/filecoin-project/devgrants")
+    assert excluded("https://ipfsgrants.io/")
+
+
+def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_other_valid_records():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
+    assert 'error.get("operation") == "fetch_detail_metadata"' in workflow
+    assert '"detail_fetch_warnings": detail_fetch_warnings' in workflow
+    assert '"non_cap_errors": non_cap_errors' in workflow
+    # Root/search API acquisition errors remain blocking; only detail-fetch errors
+    # are separated as warnings, and the audit still fails when no valid records remain.
+    assert 'if non_cap_errors:' in workflow
+    assert 'if result.records_valid == 0:' in workflow
+
+def test_eit_urban_mobility_sample_form_and_info_session_are_not_call_records():
+    import re
+
+    climate = next(
+        entry for entry in _entries()
+        if entry["name"] == "Climate KIC Open Calls"
+    )
+    patterns = climate["collection"]["discovery"]["exclude_url_patterns"]
+    sample_form = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf"
+    )
+    info_session = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SME-Market-Expansion-Call-2027-Info-session-presentation.pdf"
+    )
+    canonical_call = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    call_manual = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "Call-Manual_SME-Market-Expansion-Call-2027_final_09102026.pdf"
+    )
+
+    assert any(re.search(pattern, sample_form, re.IGNORECASE) for pattern in patterns)
+    assert any(re.search(pattern, info_session, re.IGNORECASE) for pattern in patterns)
+    assert not any(re.search(pattern, canonical_call, re.IGNORECASE) for pattern in patterns)
+    assert not any(re.search(pattern, call_manual, re.IGNORECASE) for pattern in patterns)
+

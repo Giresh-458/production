@@ -498,7 +498,7 @@ def test_successful_redirect_uses_destination_status_and_final_url():
     assert result.pages_fetched == 1
     assert result.pages_failed == 0
     assert result.errors == []
-    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+    assert result.final_status == "PARTIAL"
 
 
 def test_final_page_url_prefers_redirect_destination_for_relative_links():
@@ -1266,3 +1266,133 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
     assert opportunity.eligibility is not None
     assert "United States" in opportunity.eligibility
     assert opportunity.geography is not None
+
+
+def test_generic_simpler_title_uses_source_opportunity_title(monkeypatch):
+    import agents.funding_agent as funding_agent
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    monkeypatch.setattr(
+        funding_agent, "_extract_program_name",
+        lambda text, fallback: "Simpler.Grants.gov",
+    )
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title=(
+            "Opportunity Listing - NIH Small Business Innovation Research (SBIR) "
+            "Phase IIB Strategic Breakthrough Award (Parent [R44] Clinical Trial Optional)"
+        ),
+        source="https://simpler.grants.gov/opportunity/example",
+        source_type="html",
+        content="Funding opportunity number: PA-27-101. Solicitation Status: Open.",
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name.startswith("NIH Small Business Innovation Research")
+    assert "Simpler.Grants.gov" not in opportunity.program_name
+
+
+def test_grants_opportunity_expiry_is_not_application_deadline_when_full_announcement_is_linked():
+    from agents.funding_agent import extract_call_dates
+
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        "Closing: April 5, 2029. Archive date: June 4, 2029."
+    )
+
+    opening, deadline = extract_call_dates(content)
+
+    assert opening is None
+    assert deadline is None
+
+
+def test_grants_full_announcement_schedule_uses_next_future_due_date():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    past = (today - timedelta(days=30)).isoformat()
+    next_due = (today + timedelta(days=30)).isoformat()
+    later_due = (today + timedelta(days=90)).isoformat()
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        f"Closing: {(today + timedelta(days=900)).isoformat()}. "
+        f"Due Date(s): {past}; {next_due}; {later_due}."
+    )
+
+    _, deadline = extract_call_dates(content)
+
+    assert deadline == next_due
+
+def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_not_sample_form():
+    from agents.funding_agent import FundingDocument, analyze_document
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    source_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    sample_form_url = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf"
+    )
+    document = FundingDocument(
+        organization="Climate KIC Open Calls",
+        title="SME Market Expansion Open Call 2027",
+        source=source_url,
+        source_type="html",
+        content=(
+            "SME Market Expansion Open Call 2027. "
+            "The Call is designed to promote business growth and market expansion. "
+            "The Call will focus on five topics: Public and Shared Transport, Urban Logistics, "
+            "Electrification of transport and alternative fuels, Mobility data management, "
+            "Health and mobility. "
+            "Each awarded entity will receive a fixed lump sum grant of EUR 60,000. "
+            "Who can apply? This Call is a mono-beneficiary call addressed to small and "
+            "medium enterprises (SMEs) that are supported by an end client, a public or "
+            "private entity, committed to testing and demonstrating the solution. "
+            "Call opening: 9 October 2026. "
+            "Call closing (submission of completed application): 1 December 2026 at 17.00 CET. "
+            f"[Application form sample]({sample_form_url}) "
+            "Access the EIT UM Programmes Portal and submit your application form within the given deadline."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name == "SME Market Expansion Open Call 2027"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.opening_date == "2026-10-09"
+    assert opportunity.deadline == "2026-12-01"
+    assert opportunity.funding_amount is not None
+    assert "60,000" in opportunity.funding_amount
+    assert opportunity.eligibility is not None
+    assert "SMEs" in opportunity.eligibility
+    assert "end client" in opportunity.eligibility
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+    assert opportunity.focus_area == "ESG"
+    assert opportunity.application_url == source_url
+
+    # Exercise the same strict production selector used by the live audit.
+    from dataclasses import asdict
+    from core.schemas import rank_research_areas
+    from run_pipeline import get_all_open_funding_calls
+
+    record = asdict(opportunity)
+    record["title"] = opportunity.program_name
+    record["domain_relevance"] = rank_research_areas(
+        document.title + "\n" + document.content
+    )
+    record["source_research_domains"] = ["ESG"]
+    selected, rejected = get_all_open_funding_calls({"outputs": [record]})
+    assert len(selected) == 1, rejected
+    assert selected[0]["title"] == "SME Market Expansion Open Call 2027"
+    assert selected[0]["deadline"] == "2026-12-01"
+    assert selected[0]["application_url"] == source_url
+
