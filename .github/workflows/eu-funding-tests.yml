@@ -525,7 +525,7 @@ jobs:
                   error for error in (item.get("errors") or [])
                   if error.get("operation") == "page_fetch"
                   and re.search(
-                      r"download\\s+(?:is\\s+starting|started|is\\s+being\\s+handled)",
+                      r"download\s+(?:is\s+starting|started|is\s+being\s+handled)",
                       str(error.get("error") or ""),
                       re.IGNORECASE,
                   )
