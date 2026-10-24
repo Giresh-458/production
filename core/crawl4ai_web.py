@@ -252,6 +252,7 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
         r"(?:^|/)(?:open-calls?|calls?-for-proposals?|calls?-for-applications?|"
         r"funding-opportunities|grant-opportunities|rfp|rfps|foa|nofo|solicitation)(?:/|$)",
         r"(?:^|/)(?:grants?|opportunities|campaigns?|devhub|devgrants)/[^/]+(?:/|$)",
+        r"(?:^|/)calls?-funding/[^/]+(?:/|$)",
         r"(?:^|/)(?:builder-fund|open-call|devgrant)(?:[-/]|$)",
     )
     if any(re.search(pattern, path) for pattern in strong_path_patterns):
