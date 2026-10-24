@@ -315,7 +315,7 @@ sources:
           - '^https?://(?:www[.])?myeitfood[.]eu/'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:quality-assurance-services-for-eit-community-education-2026-2028|support-for-the-eit-food-agrifood-investors-network-connecta2invest)(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/join-us/(?:request-for-proposals|call-for-proposals)(?:/|[?#]|$)'
-          - '^https?://assets[.]eitfood[.]eu/files/.*(?:Agreement|agreement|Budget[_-]?template|budget[_-]?template|Calculator|calculator|Framework-Agreement|Framework-Agreement|LumpSum-Subgrant-Agreement|Letter-of-Intent-Template|Info-Session|Information-Session).*[.](?:pdf|docx?|xlsx?)(?:[?#].*)?$'
+          - '^https?://assets[.]eitfood[.]eu/files/.*(?:Agreement|agreement|Contract|contract|Budget[_-]?template|budget[_-]?template|Calculator|calculator|Framework-Agreement|Framework-Agreement|LumpSum-Subgrant-Agreement|Letter-of-Intent-Template|Info-Session|Information-Session).*[.](?:pdf|docx?|xlsx?)(?:[?#].*)?$'
           - '^https?://[^/]*typeform[.]com/'
           - '^https?://(?:www[.])?tally[.]so/'
           - '^https?://(?:www[.])?forms[.]office[.]com/'
@@ -376,6 +376,7 @@ sources:
           - '^https?://(?:www[.])?f6s[.]com/medclimaccelerator2022/apply(?:[/?#].*)?$'
         follow_detail_pages: true
         follow_pdfs: true
+        follow_documents: true
         pagination: false
   - name: NSF SBIR Trusted Identity
     research_domains: [DID]
