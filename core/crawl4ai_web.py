@@ -242,12 +242,22 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     anchor_lower = (anchor_text or "").lower()
     context_lower = (surrounding_text or "").lower()
 
-    # URL path signals
-    path = urlparse(url_lower).path
-    for signal in DISCOVERY_PATH_SIGNALS:
-        if signal in path:
-            score += 0.4
-            break
+    # Distinguish individual-call routes from broad navigation labels.
+    # A path like /your-opportunities or /funding is usually a directory, not
+    # evidence that the linked page is itself an opportunity. Specific call
+    # routes and item slugs retain the high-recall score; broad terms alone are
+    # weak signals and must not create a coverage blocker without corroboration.
+    path = urlparse(url_lower).path.rstrip("/") or "/"
+    strong_path_patterns = (
+        r"(?:^|/)(?:open-calls?|calls?-for-proposals?|calls?-for-applications?|"
+        r"funding-opportunities|grant-opportunities|rfp|rfps|foa|nofo|solicitation)(?:/|$)",
+        r"(?:^|/)(?:grants?|opportunities|campaigns?|devhub|devgrants)/[^/]+(?:/|$)",
+        r"(?:^|/)(?:builder-fund|open-call|devgrant)(?:[-/]|$)",
+    )
+    if any(re.search(pattern, path) for pattern in strong_path_patterns):
+        score += 0.4
+    elif any(signal in path for signal in DISCOVERY_PATH_SIGNALS):
+        score += 0.25
 
     # Anchor text signals
     for signal in FUNDING_CONTENT_SIGNALS:
