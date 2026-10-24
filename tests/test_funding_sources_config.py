@@ -282,7 +282,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 5 and climate_discovery["max_pages"] == 600
+    assert climate_discovery["max_depth"] == 6 and climate_discovery["max_pages"] == 600
     assert climate_discovery["follow_documents"] is True
     assert climate.get("direct_page", False) is False
 
@@ -376,7 +376,8 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # Climate KIC hit its 400-attempt cap; scope exclusions remove a huge unrelated EU topic-list fan-out, while depth 4 follows current call details.
+    # The depth-6 crawl reaches official call attachments, while max_pages keeps discovery bounded.
+    assert climate_kic_discovery["max_depth"] == 6
     assert climate_kic_discovery["max_pages"] == 600
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
