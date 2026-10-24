@@ -299,7 +299,9 @@ sources:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
-        max_depth: 5
+        # One extra level fetches current-call attachments linked from official
+        # partner detail pages; max_pages remains a hard cap against crawl fan-out.
+        max_depth: 6
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
         max_pages: 600
