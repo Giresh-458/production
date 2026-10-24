@@ -203,12 +203,13 @@ sources:
       - github.com
       - fil.org
       - www.fil.org
+      - ipfsgrants.io
       discovery:
         start_urls:
         - https://fil.org/grants
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        max_depth: 2
-        max_pages: 12
+        max_depth: 3
+        max_pages: 30
         # The root URL is a directory. Only force-record the README with the
         # programme's explicit continuous-application and award evidence.
         direct_page_urls:
@@ -217,7 +218,7 @@ sources:
         follow_pdfs: true
         pagination: false
         exclude_url_patterns:
-          - '^https?://github\.com/filecoin-project/devgrants/issues(?:/|$)'
+          - '^https?://github\.com/filecoin-project/devgrants/(?:issues|milestones|labels)(?:/|[?#]|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
@@ -515,7 +516,7 @@ sources:
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
-    url: https://idapthub.org/applications/call_for_proposals
+    url: https://www.idapthub.org/applications/call_for_proposals
     direct_page: true
     focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
     collection:
@@ -526,7 +527,7 @@ sources:
       - www.idapthub.org
       discovery:
         start_urls:
-        - https://idapthub.org/applications/call_for_proposals
+        - https://www.idapthub.org/applications/call_for_proposals
         max_depth: 2
         # The last live scan discovered 12 URLs, including downloadable DOCX
         # proposal/call documents. Keep a bounded budget large enough to inspect
