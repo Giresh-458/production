@@ -256,6 +256,7 @@ sources:
       allowed_domains:
       - assets.eitfood.eu
       - eit-culture-creativity.eu
+      - eitcc-dev.wmstudio.space
       - eit-girlsgostem.eu
       - apply.eithealth.eu
       - climate-kic.org
@@ -327,6 +328,11 @@ sources:
           - '^https?://wkf[.]ms/'
           - '^https?://(?:www[.])?tally[.]so/'
           - '^https?://(?:www[.])?forms[.]office[.]com/'
+          # The CMS dev host is used for official call attachments; do not crawl its non-file routes.
+          - '^https?://eitcc-dev[.]wmstudio[.]space/(?!sites/default/files/)'
+          # Application forms are terminal destinations, not independent call-detail pages.
+          - '^https?://forms[.]monday[.]com/forms/'
+          - '^https?://(?:www[.])?link[.]webropolsurveys[.]com/'
           - '^https?://[^/]*zoom[.]us/meeting/register/'
           - '^https?://education[.]ec[.]europa[.]eu/sites/default/files/2025-03/STEM_Education_Strategic_Plan_COM_2025_89_1_EN_0[.]pdf(?:[?#].*)?$'
           - '^https?://eur03[.]safelinks[.]protection[.]outlook[.]com/'
