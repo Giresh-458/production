@@ -250,6 +250,10 @@ sources:
       mode: web
       engine: crawl4ai
       allowed_domains:
+      - assets.eitfood.eu
+      - eit-culture-creativity.eu
+      - eit-girlsgostem.eu
+      - apply.eithealth.eu
       - climate-kic.org
       - www.climate-kic.org
       - neb.eitcommunity.eu
@@ -291,11 +295,27 @@ sources:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
-        max_depth: 4
+        max_depth: 5
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
         max_pages: 600
         exclude_url_patterns:
+          # EIT taxonomy, historical news, procurement, and expert-account navigation are not funding opportunities.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/tags/opportunity-0(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/news-events/news/european-prize-women-innovators-2026-celebrates-visionary-women(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/opportunities/about-eu-public-procurement(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/sites/default/files/.*(?:contracts|contract).*awarded.*[.]pdf(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/call-for-eit-communities/2021(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?ec[.]europa[.]eu/research/participants/data/ref/h2020/(?:other/)?experts_manual/'
+          - '^https?://webgate[.]ec[.]europa[.]eu/funding-tenders-opportunities/display/IT/Duplicate[+]Profile[+]and[+]Account[+]Deletion(?:/|[?#]|$)'
+          - '^https?://opencalls[.]fund/open-call/results/[^/?#]+(?:[/?#].*)?$'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-community-joint-programme-start-future(?:/|[?#]|$)'
+          - '^https?://cutt[.]ly/Cnhivhz/?(?:[?#].*)?$'
+          - '^https?://forms[.]monday[.]com/forms/7bcb9806fbdc1de36f8b5360d3ed1263(?:[?#].*)?$'
+          - '^https?://(?:www[.])?myeitfood[.]eu/'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:quality-assurance-services-for-eit-community-education-2026-2028|support-for-the-eit-food-agrifood-investors-network-connecta2invest)(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/join-us/(?:request-for-proposals|call-for-proposals)(?:/|[?#]|$)'
+          - '^https?://assets[.]eitfood[.]eu/files/.*(?:Agreement|agreement|Budget[_-]?template|budget[_-]?template|Calculator|calculator|Framework-Agreement|Framework-Agreement|LumpSum-Subgrant-Agreement|Letter-of-Intent-Template|Info-Session|Information-Session).*[.](?:pdf|docx?|xlsx?)(?:[?#].*)?$'
           - '^https?://[^/]*typeform[.]com/'
           - '^https?://(?:www[.])?tally[.]so/'
           - '^https?://(?:www[.])?forms[.]office[.]com/'
