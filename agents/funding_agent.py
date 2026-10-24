@@ -1456,7 +1456,11 @@ def _extract_funding_amount(text: str) -> str | None:
     amounts: list[str] = []
     # Require a strict semantic relationship, not just proximity
     # Matches patterns like "grant of $X", "award up to $X", "$X budget"
-    strict_prefix = r"(?:grant|award|funding|budget|prize|fund|request)s?(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?\s*$"
+    strict_prefix = (
+        r"(?:grant|award|funding|budget|prize|fund|request)s?"
+        r"(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?"
+        r"\s*(?:₹|\$|€|£|USD|EUR|GBP|INR|Rs\.?)?\s*$"
+    )
     strict_suffix = r"^\s*(?:grant|award|funding|budget|prize|fund)s?"
     
     for sentence in _split_funding_sentences(text):
