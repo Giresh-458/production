@@ -260,6 +260,19 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     elif any(signal in path for signal in DISCOVERY_PATH_SIGNALS):
         score += 0.25
 
+    # Explicit document filenames can identify useful evidence even when the
+    # directory path is generic (e.g. proposal-template.docx). Keep this narrower
+    # than a file-extension bonus: annual reports and privacy PDFs are not calls.
+    is_document = bool(re.search(r"\.(?:pdf|docx?|xlsx?|odt|rtf)$", path))
+    document_evidence = re.search(
+        r"(?:proposal|application|guidelines?|call|grant|funding|eligibility|"
+        r"template|solicitation|nofo|innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2})",
+        f"{path} {anchor_lower}",
+        flags=re.IGNORECASE,
+    )
+    if is_document and document_evidence:
+        score = max(score, 0.4)
+
     # Anchor text signals
     for signal in FUNDING_CONTENT_SIGNALS:
         if signal in anchor_lower:
