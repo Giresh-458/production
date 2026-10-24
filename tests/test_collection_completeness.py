@@ -320,3 +320,21 @@ def test_funding_problem_does_not_promote_imperative_instruction():
     assert result["selected_problem"] is None
     assert result["problem_type"] == "unresolved"
     assert result["problem_evidence"] == []
+
+
+def test_repeated_coverage_gap_urls_are_deduplicated_before_status_reporting():
+    result = CollectionResult(
+        source_id="repeated-frontier",
+        method="web",
+        pages_fetched=1,
+        relevant_urls_skipped=3,
+        coverage_gaps=[
+            {"url": "https://example.org/call/1?utm_source=a", "parent_url": "https://example.org/", "reason": "depth_limit_reached"},
+            {"url": "https://example.org/call/1?utm_source=b", "parent_url": "https://example.org/list", "reason": "depth_limit_reached"},
+            {"url": "https://example.org/call/2", "parent_url": "https://example.org/", "reason": "depth_limit_reached"},
+        ],
+    )
+
+    assert _finalize_collection_status(result) == "PARTIAL"
+    assert len(result.coverage_gaps) == 2
+    assert result.relevant_urls_skipped == 2
