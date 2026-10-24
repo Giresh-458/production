@@ -545,3 +545,13 @@ def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_progr
     assert not excluded("https://github.com/filecoin-project/devgrants")
     assert excluded("https://ipfsgrants.io/")
 
+
+def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_other_valid_records():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
+    assert 'error.get("operation") == "fetch_detail_metadata"' in workflow
+    assert '"detail_fetch_warnings": detail_fetch_warnings' in workflow
+    assert '"non_cap_errors": non_cap_errors' in workflow
+    # Root/search API acquisition errors remain blocking; only detail-fetch errors
+    # are separated as warnings, and the audit still fails when no valid records remain.
+    assert 'if non_cap_errors:' in workflow
+    assert 'if result.records_valid == 0:' in workflow
