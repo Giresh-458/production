@@ -1597,6 +1597,24 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     ))
     extracted = _extract_application_url(content)
 
+    # A linked sample/template is supporting material, not a live submission
+    # endpoint. If the official call page itself gives submission instructions,
+    # retain that call-specific page as the application instructions destination
+    # rather than mislabelling a sample PDF as the endpoint.
+    if (
+        extracted
+        and re.search(
+            r"(?i)(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            urlparse(extracted).path,
+        )
+        and re.search(
+            r"(?i)\b(?:submit|submission|apply|application portal|application form)\b",
+            content or "",
+        )
+        and not parsed_source.path.casefold().endswith((".docx", ".pdf"))
+    ):
+        return source_url
+
     # A directly linked DOCX/PDF application form is itself an application
     # endpoint, even when it contains no HTML-style "Apply" hyperlink.
     if (
@@ -1742,6 +1760,10 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
         r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
         r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
+        # Official call pages sometimes state applicant scope as "the call is
+        # addressed to..." rather than using a dedicated Eligibility heading.
+        # Preserve that source wording; do not infer criteria absent from the page.
+        r"\b(?:this\s+)?(?:call|programme|program)\s+(?:is|will be)\s+(?:a\s+)?(?:mono[- ]beneficiary\s+)?call\s+addressed\s+to\s+.{8,260}",
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
