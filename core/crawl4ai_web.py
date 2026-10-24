@@ -205,6 +205,16 @@ def _is_pdf_url(url: str) -> bool:
     )
 
 
+def _is_climate_kic_download_url(url: str) -> bool:
+    """Recognize Climate KIC's extensionless numeric download routes as documents."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return (
+        host in {"climate-kic.org", "www.climate-kic.org"}
+        and re.fullmatch(r"/download/\\d+", parsed.path.rstrip("/")) is not None
+    )
+
+
 def _url_dedupe_key(url: str) -> str:
     """Normalize URL aliases and strip common tracking parameters for identity checks."""
     parsed = urlparse(_normalize_url(url))
@@ -1122,8 +1132,10 @@ def crawl_funding_source(
         if depth > result.max_depth_reached:
             result.max_depth_reached = depth
 
-        # Handle direct .pdf paths and explicit query-parameter download markers.
-        is_pdf = _is_pdf_url(current_url)
+        # Handle direct PDFs, explicit query markers, and Climate KIC numeric
+        # download routes before browser navigation. These routes commonly send
+        # Content-Disposition: attachment without a .pdf URL suffix.
+        is_pdf = _is_pdf_url(current_url) or _is_climate_kic_download_url(current_url)
 
         if is_pdf:
             result.documents_discovered += 1
