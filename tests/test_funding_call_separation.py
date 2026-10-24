@@ -1224,3 +1224,23 @@ def test_docx_title_uses_call_heading_instead_of_filename_slug():
 
     assert result["success"] is True
     assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
+
+
+
+def test_stage_a_context_alone_does_not_mark_generic_navigation_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # A page's surrounding funding copy is not enough to turn a generic link
+    # into a coverage gap; otherwise unrelated footer/navigation links explode
+    # the live audit's skipped-link count.
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Account", "Funding opportunities are available"
+    ) < 0.4
+
+    # Explicit route or anchor evidence must still be followed.
+    assert _classify_link_stage_a(
+        "https://example.com/open-calls/current", "Details", "Read more"
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Apply for grant funding", "Read more"
+    ) >= 0.4
