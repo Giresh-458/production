@@ -459,3 +459,31 @@ def test_batch1_known_navigation_exclusions_preserve_call_pages():
     assert excluded(climate, "https://opencalls.fund/open-call/ofelia/faq")
     assert not excluded(climate, "https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
     assert not excluded(climate, "https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
+
+
+def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
+    import re
+
+    source = next(entry for entry in _entries() if entry["name"] == "Climate KIC Open Calls")
+    discovery = source["collection"]["discovery"]
+    patterns = discovery.get("exclude_url_patterns", [])
+    domains = set(source["collection"]["allowed_domains"])
+
+    def excluded(url):
+        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
+
+    assert discovery["max_depth"] == 5
+    # Crawl official partner detail pages and official attachments, not just the directory.
+    assert "eit-culture-creativity.eu" in domains
+    assert "eit-girlsgostem.eu" in domains
+    assert "assets.eitfood.eu" in domains
+    assert not excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects")
+    assert not excluded("https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
+    assert not excluded("https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
+    # Generic taxonomy, procurement archives, result pages and login routes are not call details.
+    assert excluded("https://www.eit.europa.eu/tags/opportunity-0")
+    assert excluded("https://eit.europa.eu/sites/default/files/2024-03/List%20of%20contracts%20awarded%20in%202023.pdf")
+    assert excluded("https://opencalls.fund/open-call/results/ofelia")
+    assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
+    assert excluded("https://www.myeitfood.eu/s/login/?ec=302")
+    assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
