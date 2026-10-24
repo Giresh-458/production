@@ -1327,5 +1327,10 @@ def test_named_funding_documents_remain_discoverable_without_generic_file_bonus(
         "Call for proposals",
     ) >= 0.4
     assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/sites/default/files/2026-10/EITCC_2026%20CPD%20Skills-based_Call%20Guidelines.pdf",
+        "EITCC 2026 CPD Skills-based Call Guidelines",
+        "",
+    ) >= 0.4
+    assert _classify_link_stage_a(
         "https://example.org/files/annual-report.pdf", "Download", "About our organization"
     ) < 0.4
