@@ -1,4 +1,4 @@
-from core.crawl4ai_web import _is_pdf_url
+from core.crawl4ai_web import _is_climate_kic_download_url, _is_pdf_url
 
 
 def test_pdf_detection_accepts_standard_pdf_paths():
@@ -25,3 +25,13 @@ def test_robots_audit_distinguishes_denial_from_unverified_policy():
     assert _robots_gap_reason(
         "could not verify robots.txt policy (RuntimeError: robots.txt returned HTTP 429)"
     ) == "robots_policy_unverified"
+
+
+
+def test_climate_kic_extensionless_download_routes_are_documents():
+    assert _is_climate_kic_download_url("https://www.climate-kic.org/download/76438/")
+    assert _is_climate_kic_download_url(
+        "https://www.climate-kic.org/download/65405/?tmstv=1792753854"
+    )
+    assert not _is_climate_kic_download_url("https://www.climate-kic.org/open-call/example/")
+    assert not _is_climate_kic_download_url("https://example.org/download/76438/")
