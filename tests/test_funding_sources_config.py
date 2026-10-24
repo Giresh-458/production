@@ -488,6 +488,7 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert excluded("https://opencalls.fund/open-call/results/ofelia")
     assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
     assert excluded("https://www.myeitfood.eu/s/login/?ec=302")
+    assert excluded("https://wkf.ms/4ohKxeg")
     assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
 
 
