@@ -203,7 +203,6 @@ sources:
       - github.com
       - fil.org
       - www.fil.org
-      - ipfsgrants.io
       discovery:
         start_urls:
         - https://fil.org/grants
@@ -218,7 +217,10 @@ sources:
         follow_pdfs: true
         pagination: false
         exclude_url_patterns:
-          - '^https?://github\.com/filecoin-project/devgrants/(?:issues|milestones|labels)(?:/|[?#]|$)'
+          # GitHub issue history is not current programme detail content.
+          - '^https?://github\.com/(?:filecoin-project|ipfs)/devgrants/(?:issues|milestones|labels)(?:/|[?#]|$)'
+          # IPFS Implementation Fund is a separate programme; keep it out of Filecoin Foundation scope.
+          - '^https?://(?:www\.)?ipfsgrants\.io(?:/|[?#]|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
