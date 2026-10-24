@@ -478,6 +478,7 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert discovery["max_depth"] == 5
     # Crawl official partner detail pages and official attachments, not just the directory.
     assert "eit-culture-creativity.eu" in domains
+    assert "eitcc-dev.wmstudio.space" in domains
     assert "eit-girlsgostem.eu" in domains
     assert "assets.eitfood.eu" in domains
     assert not excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects")
@@ -490,6 +491,9 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
     assert excluded("https://www.myeitfood.eu/s/login/?ec=302")
     assert excluded("https://wkf.ms/4ohKxeg")
+    assert excluded("https://forms.monday.com/forms/7ba45f0c5473520c6f4ef1ad733807c1?r=euc1")
+    assert excluded("https://eitcc-dev.wmstudio.space/private/login")
+    assert not excluded("https://eitcc-dev.wmstudio.space/sites/default/files/2026-10/EITCC_Open%20call_Innovation%20projects_21.10.2026.pdf")
     assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
 
 
