@@ -492,6 +492,9 @@ sources:
         - '^https?://apply[0-9]+[.]grants[.]gov/apply/(?:spoExit[.]jsp|login[.]faces|javax[.]faces[.]resource)(?:[/?#].*)?$'
         # Generic Grants.gov root links from the legacy login portal are navigation, not SBIR topics.
         - '^https?://(?:www[.])?grants[.]gov/?(?:[?#].*)?$'
+        # The broad NSF opportunity index is not the SBIR topic feed and is
+        # blocked by anti-bot protection; individual solicitation pages remain allowed.
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/?(?:[?#].*)?$'
         # Exclude generic NSF audience/admin hubs, but preserve individual SBIR/STTR solicitations.
         - '^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
         - '^https?://new[.]nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
@@ -512,7 +515,8 @@ sources:
         - '^https?://(?:www[.])?nsfgrfp[.]org/'
         - '^https?://iperf[.]asee[.]org/'
         - '^https?://resources[.]research[.]gov/common/attachment/'
-        - '^https?://sam[.]gov/content/home'
+        # SAM.gov is a required registration step, not a funding opportunity.
+        - '^https?://sam[.]gov/(?:SAM(?:/|[?#]|$)|content/home(?:/|[?#]|$))'
         - '^https?://(?:www[.])?cogr[.]edu/sites/default/files/'
         - '^https?://(?:www[.])?congress[.]gov/114/plaws/'
         - '^https?://nsf-gov-resources[.]nsf[.]gov/'
