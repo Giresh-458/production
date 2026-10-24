@@ -268,7 +268,8 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
     document_evidence = re.search(
         r"(?:\bproposal\b|\bapplication\b|\bguidelines?\b|\bcall\b|\bgrants?\b|"
         r"\bfunding\b|\beligibility\b|\btemplate\b|\bsolicitation\b|\bnofo\b|"
-        r"innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2})",
+        r"innovation(?:%20|[-_ ])projects?(?:%20|[-_ ])20\d{2}|"
+        r"skills(?:%20|[-_ ])based(?:%20|[-_ ])20\d{2})",
         f"{document_name} {anchor_lower}",
         flags=re.IGNORECASE,
     )
