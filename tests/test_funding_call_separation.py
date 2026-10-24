@@ -1334,3 +1334,27 @@ def test_named_funding_documents_remain_discoverable_without_generic_file_bonus(
     assert _classify_link_stage_a(
         "https://example.org/files/annual-report.pdf", "Download", "About our organization"
     ) < 0.4
+
+
+def test_eu_application_url_prefers_publisher_link_then_official_topic_landing_page():
+    from agents.funding_collector import _eu_application_url
+
+    topic_url = (
+        "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/"
+        "opportunities/topic-details/HORIZON-BRIDGING-2027-04-08"
+    )
+    assert _eu_application_url(
+        {"applicationUrl": "https://ec.europa.eu/submission-system/start/123"},
+        topic_url,
+    ) == (
+        "https://ec.europa.eu/submission-system/start/123",
+        "EU Search API application/submission URL metadata",
+    )
+    assert _eu_application_url({}, topic_url) == (
+        topic_url,
+        "Official EU Funding & Tenders topic-details submission landing page",
+    )
+    assert _eu_application_url({}, "https://example.org/funding/call-123") == (None, None)
+    assert _eu_application_url(
+        {}, "https://ec.europa.eu/info/funding-tenders/opportunities/other-page"
+    ) == (None, None)
