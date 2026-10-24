@@ -486,6 +486,10 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert not excluded("https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
     # Generic taxonomy, procurement archives, result pages and login routes are not call details.
     assert excluded("https://www.eit.europa.eu/tags/opportunity-0")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/erma-booster-call-2025")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/eit-health-drive-2022-apply-now")
+    assert excluded("https://www.eit.europa.eu/news-events/news/eit-food-selected-65-startups-2026")
+    assert excluded("https://apply.eithealth.eu/s_Login.jsp")
     assert excluded("https://eit.europa.eu/sites/default/files/2024-03/List%20of%20contracts%20awarded%20in%202023.pdf")
     assert excluded("https://opencalls.fund/open-call/results/ofelia")
     assert excluded("https://webgate.ec.europa.eu/funding-tenders-opportunities/display/IT/Duplicate+Profile+and+Account+Deletion")
