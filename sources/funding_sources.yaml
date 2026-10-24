@@ -321,6 +321,8 @@ sources:
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/join-us/(?:request-for-proposals|call-for-proposals)(?:/|[?#]|$)'
           - '^https?://assets[.]eitfood[.]eu/files/.*(?:Agreement|agreement|Contract|contract|Budget[_-]?template|budget[_-]?template|Calculator|calculator|Framework-Agreement|Framework-Agreement|LumpSum-Subgrant-Agreement|Letter-of-Intent-Template|Info-Session|Information-Session).*[.](?:pdf|docx?|xlsx?)(?:[?#].*)?$'
           - '^https?://[^/]*typeform[.]com/'
+          # WorkForms short links are application destinations, not call-detail pages to crawl.
+          - '^https?://wkf[.]ms/'
           - '^https?://(?:www[.])?tally[.]so/'
           - '^https?://(?:www[.])?forms[.]office[.]com/'
           - '^https?://[^/]*zoom[.]us/meeting/register/'
