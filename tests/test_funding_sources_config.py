@@ -556,3 +556,34 @@ def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_o
     # are separated as warnings, and the audit still fails when no valid records remain.
     assert 'if non_cap_errors:' in workflow
     assert 'if result.records_valid == 0:' in workflow
+
+def test_eit_urban_mobility_sample_form_and_info_session_are_not_call_records():
+    import re
+
+    climate = next(
+        entry for entry in _entries()
+        if entry["name"] == "Climate KIC Open Calls"
+    )
+    patterns = climate["collection"]["discovery"]["exclude_url_patterns"]
+    sample_form = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf"
+    )
+    info_session = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SME-Market-Expansion-Call-2027-Info-session-presentation.pdf"
+    )
+    canonical_call = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    call_manual = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "Call-Manual_SME-Market-Expansion-Call-2027_final_09102026.pdf"
+    )
+
+    assert any(re.search(pattern, sample_form, re.IGNORECASE) for pattern in patterns)
+    assert any(re.search(pattern, info_session, re.IGNORECASE) for pattern in patterns)
+    assert not any(re.search(pattern, canonical_call, re.IGNORECASE) for pattern in patterns)
+    assert not any(re.search(pattern, call_manual, re.IGNORECASE) for pattern in patterns)
+
