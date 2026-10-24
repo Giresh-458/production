@@ -186,6 +186,14 @@ def _normalize_url(url: str) -> str:
     return defragged
 
 
+def _robots_gap_reason(reason: str | None) -> str:
+    """Distinguish a confirmed robots denial from an unverifiable robots policy."""
+    normalized = str(reason or "").casefold()
+    if "robots.txt disallows this url" in normalized:
+        return "robots_policy_disallowed"
+    return "robots_policy_unverified"
+
+
 def _is_pdf_url(url: str) -> bool:
     """Recognize PDF URLs with either a .pdf path or an explicit NetSuite _xt=.pdf marker."""
     parsed = urlparse(url)
@@ -1085,8 +1093,8 @@ def crawl_funding_source(
                 result.coverage_gaps.append({
                     "url": current_url,
                     "parent_url": None,
-                    "reason": "robots_policy_restriction",
-                    "detail": robots_reason or "robots.txt does not permit this URL",
+                    "reason": _robots_gap_reason(robots_reason),
+                    "detail": robots_reason or "robots.txt policy could not be verified",
                 })
                 result.errors.append({
                     "url": current_url,
