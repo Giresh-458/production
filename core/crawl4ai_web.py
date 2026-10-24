@@ -255,6 +255,19 @@ def _classify_link_stage_a(url: str, anchor_text: str, surrounding_text: str) ->
             score += 0.5
             break
 
+    # Official opportunity attachments can have opaque/generated URLs and a
+    # filename such as PA-27-101-Revised-Full-Announcement.html. Treat only
+    # explicit solicitation/NOFO/full-announcement markers as strong evidence;
+    # do not make every generic attachment or PDF relevant.
+    official_notice_signal = re.search(
+        r"(?:full[-_ ]announcement|notice[-_ ]of[-_ ]funding[-_ ]opportunity|"
+        r"(?:^|[/_.-])solicitation(?:[/_.-]|$)|(?:^|[/_.-])nofo(?:[/_.-]|$))",
+        f"{path} {anchor_lower}",
+        flags=re.IGNORECASE,
+    )
+    if official_notice_signal:
+        score = max(score, 0.5)
+
     # Surrounding text is weak evidence: a page about funding can contain
     # navigation, policy, account, or vendor links that are not opportunities.
     # Do not let context alone cross the 0.4 crawl threshold; path or anchor
