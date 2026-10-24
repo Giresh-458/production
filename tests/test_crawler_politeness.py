@@ -82,7 +82,7 @@ def test_same_host_request_waits_for_minimum_delay(monkeypatch):
     assert crawl4ai_web._HOST_LAST_REQUEST["example.test"] == 100.8
 
 
-def test_robots_restriction_is_recorded_as_partial_coverage_not_budget_truncation(monkeypatch):
+def test_unverified_robots_policy_is_recorded_as_partial_coverage_not_budget_truncation(monkeypatch):
     _clear_caches()
     monkeypatch.setattr(
         "core.crawl4ai_web._get_robots_policy",
@@ -110,7 +110,7 @@ def test_robots_restriction_is_recorded_as_partial_coverage_not_budget_truncatio
     assert result.coverage_gaps == [{
         "url": "https://example.test/call",
         "parent_url": None,
-        "reason": "robots_policy_restriction",
+        "reason": "robots_policy_unverified",
         "detail": "could not verify robots.txt policy (403)",
     }]
     assert result.errors[0]["operation"] == "robots_txt_policy"
