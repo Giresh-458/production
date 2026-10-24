@@ -509,6 +509,7 @@ def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_progr
     assert excluded("https://github.com/filecoin-project/devgrants/issues/293")
     assert excluded("https://github.com/filecoin-project/devgrants/milestones")
     assert excluded("https://github.com/ipfs/devgrants/issues/293")
+    assert excluded("https://github.com/ipfs/devgrants/tree/main/open-grants")
     assert not excluded("https://github.com/filecoin-project/devgrants")
     assert excluded("https://ipfsgrants.io/")
 
