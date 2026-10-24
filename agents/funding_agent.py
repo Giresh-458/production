@@ -105,6 +105,7 @@ GENERIC_PAGE_TITLES = {
     "funding opportunities", "grants", "programs", "our programs", "topic",
     "topics", "calls for proposals", "program directory", "grant directory",
     "grants and funding", "development grants", "this listing", "yourself",
+    "simpler.grants.gov", "grants.gov",
     "open call", "call documents", "programme theme", "program theme",
     "grant details", "funding allocation", "funding and prizes", "details",
     "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
@@ -1150,6 +1151,23 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
     text = cleaned_text(re.sub(r"[*_`]", "", str(content or "")))
     month = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
     date_token = rf"(?:{month}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,)?\s+20\d{{2}}|\d{{1,2}}(?:st|nd|rd|th)?\s+{month}\s+20\d{{2}}|20\d{{2}}[-/]\d{{1,2}}[-/]\d{{1,2}}|\d{{1,2}}[-/]\d{{1,2}}[-/]20\d{{2}})"
+    # Grants.gov's overall opportunity closing/archive date is not necessarily
+    # the next applicant due date when the page links to a formal full-announcement
+    # attachment (common for NIH SBIR/STTR recurring schedules). Avoid promoting
+    # that metadata date into a false application deadline; the linked announcement
+    # is collected separately and supplies the actual schedule.
+    has_official_announcement_attachment = bool(re.search(
+        r"/attachments/[^)\s\]]*(?:full[-_ ]announcement|notice[-_ ]of[-_ ]funding[-_ ]opportunity|nofo)",
+        text,
+        flags=re.IGNORECASE,
+    ))
+    if has_official_announcement_attachment:
+        text = re.sub(
+            rf"\bclosing\s*[:\-]\s*[*_]*{date_token}",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
     patterns = {
         # Do not treat the word "Open" in a title like "Open Grant Proposal"
         # as a date cue. "Opens:", "opening date", "open date", and
@@ -2001,6 +2019,20 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # HTML/Markdown extraction can leave heading markers in the title. Keep the
     # structured title human-readable without changing its source wording.
     program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
+    # Some Grants.gov detail pages expose the site brand as their title while
+    # the source-provided title contains the actual solicitation name. Prefer
+    # that explicit source title rather than emitting the publisher brand.
+    if _is_generic_funding_title(program_name):
+        source_title = cleaned_text(document.title)
+        source_title = re.sub(
+            r"^(?:Opportunity Listing|Funding Opportunity Listing|Funding Opportunity)\s*[-:|]\s*",
+            "",
+            source_title,
+            flags=re.IGNORECASE,
+        )
+        source_title = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", source_title))
+        if source_title and not _is_generic_funding_title(source_title):
+            program_name = source_title
     # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
     # explicit STTR body text establish the distinct official opportunity.
     solicitation_match = re.search(
