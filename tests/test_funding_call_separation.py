@@ -1244,3 +1244,23 @@ def test_stage_a_context_alone_does_not_mark_generic_navigation_relevant():
     assert _classify_link_stage_a(
         "https://example.com/account/settings", "Apply for grant funding", "Read more"
     ) >= 0.4
+
+
+
+def test_pdf_file_type_alone_does_not_make_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/privacy-policy.pdf", "", ""
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/files/annual-report.pdf", "Download", "About our organization"
+    ) < 0.4
+
+
+def test_funding_evidence_can_still_make_pdf_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/open-call-guidelines.pdf", "Grant application guidelines", ""
+    ) >= 0.4
