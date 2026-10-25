@@ -181,9 +181,19 @@ except ImportError:
 
 
 def _normalize_url(url: str) -> str:
-    """Remove fragments without changing the requested path or trailing slash."""
+    """Remove fragments and normalize escaped query brackets emitted by link extractors."""
+    # Crawl4AI can surface the same form URL twice, once with literal brackets and
+    # once with backslash-escaped brackets. Canonicalize that extractor artifact so
+    # aliases deduplicate before the crawl budget is consumed.
+    url = url.replace(r"\\[", "[").replace(r"\\]", "]")
     defragged, _ = urldefrag(url)
     return defragged
+
+
+def _is_crawlable_http_url(url: str) -> bool:
+    """Only crawl actual HTTP(S) resources, never browser-extension pseudo-URLs."""
+    parsed = urlparse(url)
+    return parsed.scheme.lower() in {"http", "https"} and bool(parsed.netloc)
 
 
 def _robots_gap_reason(reason: str | None) -> str:
@@ -1394,6 +1404,12 @@ def crawl_funding_source(
             if follow_detail:
                 for link_info in res.get("links", []):
                     link_url = _normalize_url(link_info["url"])
+                    if not _is_crawlable_http_url(link_url):
+                        # Browser PDF viewers/extensions can leak pseudo-URLs into
+                        # extracted links. They are not publisher URLs and must not
+                        # become false external-domain coverage gaps.
+                        result.urls_skipped += 1
+                        continue
                     link_key = _url_dedupe_key(link_url)
                     if _matches_excluded_url(link_url, exclude_url_patterns):
                         result.urls_skipped += 1
@@ -1434,7 +1450,7 @@ def crawl_funding_source(
         if follow_detail and configured_max_depth > 0 and depth >= configured_max_depth:
             for link_info in res.get("links", []):
                 link_url = _normalize_url(link_info.get("url", ""))
-                if not link_url or _matches_excluded_url(link_url, exclude_url_patterns):
+                if not _is_crawlable_http_url(link_url) or _matches_excluded_url(link_url, exclude_url_patterns):
                     continue
                 link_key = _url_dedupe_key(link_url)
                 if link_key in visited:
