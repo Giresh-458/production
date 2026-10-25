@@ -400,6 +400,20 @@ sources:
           # remains in scope and is seeded explicitly.
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/(?:2024/11/EIT-UM-Eligibility-expenditure[.]pdf|2025/02/BP23-25_Call_Manual_Scaling-Startups-Programme-2025_FINAL[.]pdf|2024/12/BP23-25_Guidance-Application-Form_Scaleup-2025[.]pdf|2024/10/EITUM_Eligibility-of-expenditure_v2[.]4_with-AnnexI[.]pdf|2023/03/Financial-support-agreement-template[.]pdf)(?:[?#].*)?$'
           # Historical EIT-network calls with verified expired deadlines must not fan out to their old application portals.
+          # Older EIT-wide archive entries (2020–2022) link to expired programmes, forms,
+          # and partner pages. They are not current Batch 1 opportunities; exclude the
+          # historical parent pages so their obsolete external links do not create false
+          # current-call coverage gaps. Current calls remain discoverable from the live
+          # partner roots and the explicitly seeded 2026/2027 call pages.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-manufacturing-open-ris-call-evo-r(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-health-selecting-three-supervisory-board-members(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-community-joint-call-water-scarcity-southern-europe(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-food-ris-research-infrastructure-network-2021(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-manufacturing-gazelle-accelerator-call-2021(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-urban-mobility-scalethenglobal(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-urban-mobility-accelerator-programme-applications-open(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-digital-challenge-2021-applications-open(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/eit-digital-call-proposals-2022-activities(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:eit-manufacturing-boostup-2022-call-now-open|eit-health-drive-2022-apply-now|eit-hub-israel-disrupt-me-2021|eit-manufacturing-apply-expert|open-ris-call-women-innovators-manufacturing|erma-booster-call-2025|spin-rise-2025|eit-deep-tech-talent-initiative-call-training-proposals-2025)(?:/|[?#]|$)'
           # News/results pages and login screens are not active funding opportunities.
           - '^https?://(?:www[.])?eit[.]europa[.]eu/news-events/news/eit-food-selected-65-startups-2026(?:/|[?#]|$)'
