@@ -321,7 +321,7 @@ sources:
         max_pages: 600
         exclude_url_patterns:
           # Standalone budget templates are application support files, not call-detail pages.
-          - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?
+          - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?$'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/tags/opportunity-0(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/news-events/news/european-prize-women-innovators-2026-celebrates-visionary-women(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eit[.]europa[.]eu/opportunities/about-eu-public-procurement(?:/|[?#]|$)'
