@@ -13,6 +13,29 @@ def _clear_caches():
         crawl4ai_web._HOST_LAST_REQUEST.clear()
 
 
+@pytest.mark.parametrize("url", [
+    "https://example.test/call",
+    "http://example.test/apply",
+])
+def test_only_http_schemes_are_crawlable(url):
+    assert crawl4ai_web._is_crawlable_http_url(url) is True
+
+
+@pytest.mark.parametrize("url", [
+    "chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://ec.europa.eu/guidance.pdf",
+    "javascript:void(0)",
+    "mailto:team@example.test",
+    "https:///missing-host",
+])
+def test_non_http_pseudo_urls_are_not_crawlable(url):
+    assert crawl4ai_web._is_crawlable_http_url(url) is False
+
+
+def test_normalize_url_deduplicates_backslash_escaped_query_brackets():
+    raw = r"https://podio.com/webforms/1?fields\\[program\\]=call"
+    assert crawl4ai_web._normalize_url(raw) == "https://podio.com/webforms/1?fields[program]=call"
+
+
 def test_robots_disallow_is_respected_and_crawl_delay_is_read(monkeypatch):
     _clear_caches()
     response = MagicMock()
