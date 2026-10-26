@@ -1056,7 +1056,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 flags=re.IGNORECASE,
             ))
             rolling_review_with_cta = bool(re.search(
-                r"\bapplications? (?:are )?reviewed on a rolling basis\\b",
+                r"\bapplications? (?:are )?reviewed on a rolling basis\b",
                 lowered,
                 flags=re.IGNORECASE,
             )) and bool(_extract_application_url(content))
