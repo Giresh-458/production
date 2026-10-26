@@ -568,7 +568,7 @@ jobs:
                       if normalized_url_path(error.get("url")) == key
                   ]
                   is_not_found = any(
-                      re.search(r"\\b404\\b|not found", str(error.get("error") or ""), re.IGNORECASE)
+                      re.search(r"404|not found", str(error.get("error") or ""), re.IGNORECASE)
                       and error.get("operation") in {"pdf_fetch", "docx_fetch"}
                       for error in matching_errors
                   )
@@ -577,8 +577,23 @@ jobs:
                   parsed = urlsplit(str(failed_url or ""))
                   if parsed.netloc.casefold() not in {"climate-kic.org", "www.climate-kic.org"}:
                       return False
-                  if re.match(r"^/wp-content/uploads/(?:202[1-5])/", parsed.path, re.IGNORECASE):
-                      return True
+                  dated_upload = re.match(
+                      r"^/wp-content/uploads/(20\\d{2})/(0[1-9]|1[0-2])/",
+                      parsed.path,
+                      re.IGNORECASE,
+                  )
+                  if dated_upload:
+                      uploaded = datetime(
+                          int(dated_upload.group(1)),
+                          int(dated_upload.group(2)),
+                          1,
+                          tzinfo=timezone.utc,
+                      ).date()
+                      # A missing attachment older than 180 days is treated as a
+                      # stale archive reference, not evidence that the current call
+                      # page itself was missed. The failed URL remains in the audit.
+                      if (datetime.now(timezone.utc).date() - uploaded).days > 180:
+                          return True
                   return re.match(r"^/download/72240/?$", parsed.path, re.IGNORECASE) is not None
 
               stale_attachment_404s = [
