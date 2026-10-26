@@ -8,6 +8,7 @@ from agents.funding_agent import (
     _extract_funding_amount,
     _extract_general_themes,
     _extract_geography_from_prose,
+    _merge_related_eligibility_context,
     _resolve_application_url,
     analyze_document,
     extract_funding_problem_intelligence,
@@ -190,6 +191,53 @@ def test_application_portal_link_is_preferred_over_sample_form():
         "https://example.org/call-information",
         "OPEN_CALL",
     ) == "https://portal.example.org/apply"
+
+
+def test_related_official_context_merges_eligibility_with_provenance():
+    from types import SimpleNamespace
+
+    primary_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    context_url = "https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/"
+    primary = _document(
+        "This Call is a mono-beneficiary call addressed to SMEs supported by an end client.",
+        title="SME Market Expansion Open Call 2027",
+        source=primary_url,
+    )
+    context = _document(
+        "The call is aimed at established SMEs with at least three full-time equivalent "
+        "employees and a commercially mature urban mobility solution at TRL 7 or above. "
+        "Applicants should demonstrate previous customers, deployments, pilots or sales.",
+        title="Scaling proven solutions to new markets: SME Market Expansion Open Call 2027",
+        source=context_url,
+    )
+    primary_analysis = _analysis(primary)
+    primary_analysis.eligibility = (
+        "This Call is a mono-beneficiary call addressed to SMEs supported by an end client."
+    )
+    context_analysis = _analysis(context)
+    source = SimpleNamespace(collection={
+        "related_context_pages": [{
+            "primary_url": primary_url,
+            "context_url": context_url,
+            "fields": ["eligibility"],
+        }]
+    })
+
+    supplemental_urls, warnings = _merge_related_eligibility_context(
+        [(primary, primary_analysis), (context, context_analysis)],
+        [source],
+    )
+
+    assert "three full-time equivalent employees" in primary_analysis.eligibility
+    assert "TRL 7" in primary_analysis.eligibility
+    assert "end client" in primary_analysis.eligibility
+    assert primary_analysis.evidence["eligibility_supplemental_context_status"] == "verified"
+    assert primary_analysis.evidence["eligibility_supplemental_source_url"] == context_url
+    assert context_url.rstrip("/") in supplemental_urls
+    assert warnings == []
 
 
 def test_token_denominated_award_amount_and_currency_are_extracted():
