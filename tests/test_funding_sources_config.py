@@ -562,6 +562,27 @@ def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_o
     assert 'if non_cap_errors:' in workflow
     assert 'if result.records_valid == 0:' in workflow
 
+def test_eit_urban_mobility_companion_page_is_configured_for_eligibility_context():
+    climate = next(
+        entry for entry in _entries()
+        if entry["name"] == "Climate KIC Open Calls"
+    )
+    discovery = climate["collection"]["discovery"]
+    primary_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    context_url = "https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/"
+
+    assert context_url in discovery["start_urls"]
+    assert context_url in discovery["direct_page_urls"]
+    assert {
+        "primary_url": primary_url,
+        "context_url": context_url,
+        "fields": ["eligibility"],
+    } in climate["collection"]["related_context_pages"]
+
+
 def test_eit_urban_mobility_sample_form_and_info_session_are_not_call_records():
     import re
 
