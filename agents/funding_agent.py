@@ -1049,14 +1049,14 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             # but explicit rolling-application language plus a contextual CTA
             # is concrete status evidence even when the page title is generic.
             rolling_acceptance_evidence = bool(re.search(
-                r"\\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis)\\b",
                 lowered,
                 flags=re.IGNORECASE,
             ))
             rolling_review_with_cta = bool(re.search(
-                r"\\bapplications? (?:are )?reviewed on a rolling basis\\b",
+                r"\bapplications? (?:are )?reviewed on a rolling basis\\b",
                 lowered,
                 flags=re.IGNORECASE,
             )) and bool(_extract_application_url(content))
