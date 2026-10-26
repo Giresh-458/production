@@ -578,7 +578,7 @@ jobs:
                   if parsed.netloc.casefold() not in {"climate-kic.org", "www.climate-kic.org"}:
                       return False
                   dated_upload = re.match(
-                      r"^/wp-content/uploads/(20\\d{2})/(0[1-9]|1[0-2])/",
+                      r"^/wp-content/uploads/(20[0-9]{2})/(0[1-9]|1[0-2])/",
                       parsed.path,
                       re.IGNORECASE,
                   )
