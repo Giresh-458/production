@@ -346,7 +346,7 @@ def test_funding_agent_serializes_explicit_empty_state_confirmation(tmp_path):
 
     from pathlib import Path
 
-    source = load_sources(Path("sources/funding_sources.yaml"))
+    source = load_sources(Path("sources/funding_sources.yaml"))[0]
     result = CollectionResult(
         source_id=source.name,
         method="web",
