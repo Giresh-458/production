@@ -354,7 +354,7 @@ def test_eligibility_extractor_does_not_return_application_workflow_copy():
 def test_solana_current_program_uses_contextual_application_link_and_rolling_review():
     from agents.funding_agent import FundingDocument, analyze_document
 
-    application_url = "https://share.hsforms.com/example-solana-grant-application"
+    application_url = "https://share.hsforms.com/solana-grant-application"
     content = (
         "# Grants and Funding\n"
         "## Solana Foundation Funding\n"
