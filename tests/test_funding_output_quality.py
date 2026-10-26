@@ -142,6 +142,42 @@ def test_sample_application_form_is_not_mislabeled_as_submission_endpoint():
     assert _resolve_application_url(content, source_url, "OPEN_CALL") is None
 
 
+def test_eit_sme_market_expansion_call_extraction_is_date_independent():
+    source_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    content = (
+        "SME Market Expansion Open Call 2027. "
+        "The Call is designed to promote business growth and market expansion. "
+        "The Call will focus on five topics: Public and Shared Transport, Urban Logistics, "
+        "Electrification of transport and alternative fuels, Mobility data management, "
+        "Health and mobility. "
+        "Each awarded entity will receive a fixed lump sum grant of EUR 60,000. "
+        "Who can apply? This Call is a mono-beneficiary call addressed to small and "
+        "medium enterprises (SMEs) that are supported by an end client, a public or "
+        "private entity, committed to testing and demonstrating the solution. "
+        "Call opening: 9 October 2026. "
+        "Call closing (submission of completed application): 1 December 2026 at 17.00 CET. "
+        "[Sample application form](https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf). "
+        "Access the EIT UM Programmes Portal and submit your application form within the given deadline."
+    )
+    document = _document(content, title="SME Market Expansion Open Call 2027", source=source_url)
+    analysis = analyze_document(document)
+
+    assert analysis.program_name == "SME Market Expansion Open Call 2027"
+    assert analysis.status == "OPEN_CALL"
+    assert analysis.opening_date == "2026-10-09"
+    assert analysis.deadline == "2026-12-01"
+    assert analysis.funding_amount is not None and "60,000" in analysis.funding_amount
+    assert analysis.eligibility is not None
+    assert "SMEs" in analysis.eligibility
+    assert "end client" in analysis.eligibility
+    # A sample PDF and a call-information page do not prove the real submission endpoint.
+    assert analysis.application_url is None
+
+
 def test_token_denominated_award_amount_and_currency_are_extracted():
     text = "Builders receive a $200 USDG cheque for the winning project."
     amount = _extract_funding_amount(text)
