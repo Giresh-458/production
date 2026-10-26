@@ -313,9 +313,17 @@ sources:
         # historical news page in the previous crawl. Seed its canonical detail
         # page so depth reached from the old news page cannot hide the live call.
         - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
+        # Official companion announcement contains additional eligibility criteria
+        # (minimum three FTE and TRL 7+) omitted from the call-detail page.
+        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
+        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
+        related_context_pages:
+        - primary_url: https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
+          context_url: https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
+          fields: [eligibility]
         # One extra level fetches current-call attachments linked from official
         # partner detail pages; max_pages remains a hard cap against crawl fan-out.
         max_depth: 6
