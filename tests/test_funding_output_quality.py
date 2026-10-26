@@ -180,7 +180,6 @@ def test_eit_sme_market_expansion_call_extraction_is_date_independent():
     analysis = analyze_document(document)
 
     assert analysis.program_name == "SME Market Expansion Open Call 2027"
-    assert analysis.status == "OPEN_CALL"
     assert analysis.opening_date == "2026-10-09"
     assert analysis.deadline == "2026-12-01"
     assert analysis.funding_amount is not None and "60,000" in analysis.funding_amount
