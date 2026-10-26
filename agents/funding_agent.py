@@ -1086,11 +1086,35 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         lowered,
         flags=re.IGNORECASE,
     ))
-    rolling_review_with_application = bool(re.search(
+    rolling_review_phrase = bool(re.search(
         r"\bapplications? (?:are )?reviewed on a rolling basis\b",
         lowered,
         flags=re.IGNORECASE,
-    )) and bool(_extract_application_url(content))
+    ))
+    rolling_review_has_contextual_link = bool(_extract_application_url(content))
+    if rolling_review_phrase and not rolling_review_has_contextual_link:
+        # Preserve an explicit application CTA such as "fill out the application
+        # [here](...)" even if a stricter endpoint classifier cannot yet resolve
+        # the target. This can support status classification, but does not populate
+        # application_url; endpoint verification remains a separate quality gate.
+        for link_match in re.finditer(r"\[([^\]]{1,160})\]\((https?://[^)\s]+)\)", content or "", re.IGNORECASE):
+            label = link_match.group(1).strip().casefold()
+            candidate = link_match.group(2).rstrip(".,")
+            before = (content or "")[max(0, link_match.start() - 180):link_match.start()].casefold()
+            path = urlparse(candidate).path.casefold()
+            sample_link = bool(re.search(
+                r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+                label + " " + path,
+            ))
+            if (
+                label in {"here", "this form", "the form", "application form", "application portal", "apply", "apply here"}
+                and re.search(r"\b(?:application|apply|submit|submission|proposal|form)\b", before)
+                and not sample_link
+                and not _is_generic_application_url(candidate)
+            ):
+                rolling_review_has_contextual_link = True
+                break
+    rolling_review_with_application = rolling_review_phrase and rolling_review_has_contextual_link
     open_grants_applications_welcome = bool(re.search(
         r"\bopen grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome\b",
         lowered,
