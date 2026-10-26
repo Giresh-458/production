@@ -12,6 +12,8 @@ on:
       - "agents/funding_agent.py"
       - "core/crawl4ai_web.py"
       - "core/funding_selection.py"
+      - "core/problem_extraction.py"
+      - "tests/test_funding_output_quality.py"
       - "run_pipeline.py"
       - "run_full_pipeline.py"
       - "tests/test_funding_selection.py"
