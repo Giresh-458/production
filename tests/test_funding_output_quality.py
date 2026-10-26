@@ -92,6 +92,56 @@ def test_funding_problem_signal_stays_unresolved_for_boilerplate():
     assert intelligence["problem_evidence"] == []
 
 
+def test_funding_problem_signal_rejects_call_objectives_that_mention_risk():
+    content = (
+        "The call is designed to accelerate market uptake by reducing development "
+        "and deployment risk."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+
+
+def test_funding_problem_signal_rejects_required_scope_as_a_problem():
+    content = (
+        "The action should address specified aspects, including tracking climate-projection "
+        "data availability, gaps and risks."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+
+
+def test_eligibility_extraction_collects_multiple_explicit_criteria():
+    content = (
+        "This Call is a mono-beneficiary call addressed to SMEs supported by an end client. "
+        "Applicants must have at least three full-time equivalent employees. "
+        "The solution must be commercially mature at TRL 7."
+    )
+
+    eligibility = _extract_eligibility_from_prose(content)
+
+    assert eligibility is not None
+    assert "SMEs supported by an end client" in eligibility
+    assert "at least three full-time equivalent employees" in eligibility
+    assert "TRL 7" in eligibility
+
+
+def test_sample_application_form_is_not_mislabeled_as_submission_endpoint():
+    source_url = "https://example.org/calls/example-open-call"
+    content = (
+        "The call is open for applications. "
+        "[Sample application form](https://example.org/SAMPLE_Application_form.pdf). "
+        "Access the programme portal and submit your application before the deadline."
+    )
+
+    assert _resolve_application_url(content, source_url, "OPEN_CALL") is None
+
+
 def test_token_denominated_award_amount_and_currency_are_extracted():
     text = "Builders receive a $200 USDG cheque for the winning project."
     amount = _extract_funding_amount(text)
