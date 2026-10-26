@@ -1377,7 +1377,7 @@ def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_no
     assert "end client" in opportunity.eligibility
     assert has_substantive_eligibility_evidence(opportunity.eligibility)
     assert opportunity.focus_area == "ESG"
-    assert opportunity.application_url == source_url
+    assert opportunity.application_url is None
 
     # Exercise the same strict production selector used by the live audit.
     from dataclasses import asdict
