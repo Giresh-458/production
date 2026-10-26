@@ -1045,7 +1045,23 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # status text and must not become an actionable call by itself.
     if normalized_explicit == "OPEN_CALL":
         if _is_generic_funding_title(title):
-            return "UNKNOWN"
+            # Generic navigation titles cannot establish a call on their own,
+            # but explicit rolling-application language plus a contextual CTA
+            # is concrete status evidence even when the page title is generic.
+            rolling_acceptance_evidence = bool(re.search(
+                r"\\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+                r"(?:grant )?fellows are accepted on a rolling basis|"
+                r"proposals are accepted on a rolling basis)\\b",
+                lowered,
+                flags=re.IGNORECASE,
+            ))
+            rolling_review_with_cta = bool(re.search(
+                r"\\bapplications? (?:are )?reviewed on a rolling basis\\b",
+                lowered,
+                flags=re.IGNORECASE,
+            )) and bool(_extract_application_url(content))
+            if not (rolling_acceptance_evidence or rolling_review_with_cta):
+                return "UNKNOWN"
         return "OPEN_CALL"
 
     # Individual Superteam listings expose a structured badge such as
