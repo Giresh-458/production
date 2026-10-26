@@ -178,6 +178,20 @@ def test_eit_sme_market_expansion_call_extraction_is_date_independent():
     assert analysis.application_url is None
 
 
+def test_application_portal_link_is_preferred_over_sample_form():
+    content = (
+        "[Application form sample](https://example.org/SAMPLE_Application_form.pdf). "
+        "Access the [Programme Portal](https://portal.example.org/apply) and submit "
+        "your application there before the deadline."
+    )
+
+    assert _resolve_application_url(
+        content,
+        "https://example.org/call-information",
+        "OPEN_CALL",
+    ) == "https://portal.example.org/apply"
+
+
 def test_token_denominated_award_amount_and_currency_are_extracted():
     text = "Builders receive a $200 USDG cheque for the winning project."
     amount = _extract_funding_amount(text)
