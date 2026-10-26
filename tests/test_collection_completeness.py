@@ -344,7 +344,9 @@ def test_funding_agent_serializes_explicit_empty_state_confirmation(tmp_path):
     from unittest.mock import patch
     from agents.funding_agent import load_sources, run_agent
 
-    source = load_sources()[0]
+    from pathlib import Path
+
+    source = load_sources(Path("sources/funding_sources.yaml"))
     result = CollectionResult(
         source_id=source.name,
         method="web",
