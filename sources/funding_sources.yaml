@@ -305,6 +305,10 @@ sources:
       - sell.amazon.co.uk
       - www.eit-circulareconomy.eu
       - www.cleancities.network
+      related_context_pages:
+      - primary_url: https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
+        context_url: https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
+        fields: [eligibility]
       discovery:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
@@ -320,10 +324,6 @@ sources:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        related_context_pages:
-        - primary_url: https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
-          context_url: https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-          fields: [eligibility]
         # One extra level fetches current-call attachments linked from official
         # partner detail pages; max_pages remains a hard cap against crawl fan-out.
         max_depth: 6
