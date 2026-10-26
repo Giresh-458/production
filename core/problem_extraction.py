@@ -133,6 +133,29 @@ Output only the refined single-sentence problem statement, nothing else."""
         pass
     return None
 
+def _is_objective_or_task_statement(text: str) -> bool:
+    """Reject programme objectives and implementation instructions as problem evidence.
+
+    This is deliberately conservative and only applies to funding extraction. A call's
+    objective may mention risks or gaps without establishing that the sentence itself
+    describes an existing problem. Such text remains available in the source record but
+    is not promoted to a problem signal.
+    """
+    value = re.sub(r"\\s+", " ", str(text or "")).strip().lower()
+    patterns = (
+        r"^(?:the\\s+)?(?:call|programme|program|initiative|funding opportunity)\\s+"
+        r"(?:is designed to|aims? to|seeks? to|is intended to|has the objective of|focus(?:es)? on)\\b",
+        r"^(?:the\\s+)?(?:action|project|proposal|work programme|funded action)\\s+"
+        r"should\\s+(?:address|track|develop|deliver|implement|provide|support|assess|evaluate|"
+        r"analyse|analyze|identify|establish|investigate|improve|reduce)\\b",
+        r"^(?:the\\s+)?(?:action|project|proposal)\\s+is expected to\\b",
+        r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\\s*:",
+        r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\\s+"
+        r"(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\\b",
+    )
+    return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
+
+
 def _is_genuine_limitation(text: str) -> bool:
     """Recognize explicit problem/risk language without treating action verbs as problems."""
     t = text.strip().lower()
@@ -273,6 +296,15 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
         structured, structured_type = _is_structured_problem_signal(
             para, title=title, research_area=research_area, agent_name=agent_name
         )
+        # Objectives and required work can contain words such as "risk" or "gap"
+        # without identifying an existing problem. Only explicit problem/challenge
+        # framing is allowed to override this conservative exclusion.
+        if (
+            (agent_name or "").strip().lower() == "funding"
+            and _is_objective_or_task_statement(para)
+            and not structured
+        ):
+            continue
         # An imperative instruction is not a problem unless it is explicitly framed.
         if (agent_name or "").strip().lower() == "funding" and re.match(
             r"^(?:build|create|develop|implement|block|limit|track|submit|apply|provide|support)\b",
