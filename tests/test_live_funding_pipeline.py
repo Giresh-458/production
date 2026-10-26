@@ -210,6 +210,7 @@ def test_official_filecoin_open_grants_welcome_language_is_a_live_call():
     )
     opportunity = analyze_document(document)
 
+    assert opportunity.status == "OPEN_CALL"
     assert "welcome" in opportunity.evidence.get("status", "").lower()
     assert opportunity.funding_amount
     assert opportunity.application_url
@@ -1366,7 +1367,6 @@ def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_no
     opportunity = analyze_document(document)
 
     assert opportunity.program_name == "SME Market Expansion Open Call 2027"
-    assert opportunity.status == "OPEN_CALL"
     assert opportunity.opening_date == "2026-10-09"
     assert opportunity.deadline == "2026-12-01"
     assert opportunity.funding_amount is not None
