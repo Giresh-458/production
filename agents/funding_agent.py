@@ -1800,6 +1800,8 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         # Official call pages sometimes state applicant scope as "the call is
         # addressed to..." rather than using a dedicated Eligibility heading.
         r"\b(?:this\s+)?(?:call|programme|program)\s+(?:is|will be)\s+(?:a\s+)?(?:mono[- ]beneficiary\s+)?call\s+addressed\s+to\s+.{8,260}",
+        r"\b(?:call|programme|program)\s+(?:is aimed at|targets?|is open to|is intended for)\s+.{8,260}",
+        r"\b(?:applicants?|SMEs?|entities|companies)\b.{0,180}\b(?:not eligible|ineligible|cannot apply|may not apply)\b.{0,180}",
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
