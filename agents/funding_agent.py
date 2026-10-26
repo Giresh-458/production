@@ -2735,6 +2735,84 @@ def _funding_sources_fingerprint(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _funding_url_key(value: str | None) -> str:
+    """Normalize a source URL for matching explicitly configured companion pages."""
+    parsed = urlparse(str(value or ""))
+    return f"{parsed.scheme.casefold()}://{parsed.netloc.casefold()}{parsed.path.rstrip('/')}"
+
+
+def _merge_related_eligibility_context(
+    documents: list[tuple[FundingDocument, FundingOpportunity]],
+    sources: list[Any],
+) -> tuple[set[str], list[str]]:
+    """Merge explicitly configured official companion-page eligibility into a call.
+
+    Relationships are declared in source configuration rather than inferred from
+    title similarity. Supplemental evidence is retained with its source URL, and a
+    missing companion page is marked unresolved for the audit instead of guessed.
+    """
+    documents_by_url = {
+        _funding_url_key(document.source): (document, analysis)
+        for document, analysis in documents
+    }
+    supplemental_context_urls: set[str] = set()
+    warnings: list[str] = []
+
+    for source in sources:
+        collection = getattr(source, "collection", {}) or {}
+        relations = collection.get("related_context_pages", []) or []
+        for relation in relations:
+            fields = relation.get("fields", ["eligibility"]) or ["eligibility"]
+            if "eligibility" not in fields:
+                continue
+
+            primary_key = _funding_url_key(relation.get("primary_url"))
+            context_key = _funding_url_key(relation.get("context_url"))
+            primary_entry = documents_by_url.get(primary_key)
+            context_entry = documents_by_url.get(context_key)
+            if not primary_entry:
+                continue
+
+            primary_document, primary_analysis = primary_entry
+            primary_analysis.evidence = dict(primary_analysis.evidence or {})
+            if not context_entry:
+                primary_analysis.evidence["eligibility_supplemental_context_status"] = "missing"
+                warnings.append(
+                    "Official eligibility companion page was not fetched for "
+                    f"{primary_document.source}: {relation.get('context_url')}"
+                )
+                continue
+
+            context_document, _context_analysis = context_entry
+            supplemental_context_urls.add(context_key)
+            supplemental_eligibility = _extract_eligibility_from_prose(context_document.content)
+            if not supplemental_eligibility:
+                primary_analysis.evidence["eligibility_supplemental_context_status"] = "unresolved"
+                primary_analysis.evidence["eligibility_supplemental_source_url"] = context_document.source
+                warnings.append(
+                    "Official eligibility companion page was fetched but no explicit eligibility "
+                    f"criteria were extracted: {context_document.source}"
+                )
+                continue
+
+            eligibility_values = [
+                cleaned_text(value)
+                for value in (primary_analysis.eligibility, supplemental_eligibility)
+                if cleaned_text(value)
+            ]
+            merged_values: list[str] = []
+            for value in eligibility_values:
+                if value.casefold() not in {existing.casefold() for existing in merged_values}:
+                    merged_values.append(value)
+
+            primary_analysis.eligibility = " ".join(merged_values) or None
+            primary_analysis.evidence["eligibility_supplemental_context_status"] = "verified"
+            primary_analysis.evidence["eligibility_supplemental_source_url"] = context_document.source
+            primary_analysis.evidence["eligibility_supplemental_text"] = supplemental_eligibility
+
+    return supplemental_context_urls, warnings
+
+
 def run_agent(mode: str, area: str | None = None, input_data: dict | None = None, funding_context: FundingCallContext | None = None, funding_contexts: list[FundingCallContext] | None = None) -> dict:
     from datetime import UTC, datetime, date
     from core.agent_interface import (
@@ -2908,9 +2986,22 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             if analysis_mode == "analyze":
                 process_documents([(doc, analysis)], output_dir, db_path, run_id=run_id)
             
+        supplemental_context_urls: set[str] = set()
+        if mode == "configured_scan":
+            configured_sources = load_sources(Path(payload.get("sources_path", DEFAULT_SOURCES_PATH)))
+            supplemental_context_urls, context_warnings = _merge_related_eligibility_context(
+                documents,
+                configured_sources,
+            )
+            extra_warnings.extend(context_warnings)
+
         outputs = []
         docs_only = []
         for doc, analysis in documents:
+            # Companion pages are merged into their configured primary call above;
+            # do not emit them as duplicate independent opportunities.
+            if _funding_url_key(doc.source) in supplemental_context_urls:
+                continue
             # Do not emit navigation/portal chrome as a funding opportunity.
             # Keep the record out of structured output as well as downstream
             # qualification; generic labels such as "Topic | SBIR" are not calls.
