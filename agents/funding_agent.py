@@ -2986,6 +2986,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "failed_urls": res.failed_urls,
                     "evidence_verified": res.evidence_verified,
                     "currentness_verified": res.currentness_verified,
+                    "no_active_opportunities_confirmed": res.no_active_opportunities_confirmed,
                     "pagination_detected": res.pagination_detected,
                     "pagination_complete": res.pagination_complete,
                     "discovery_exhausted": res.discovery_exhausted,
