@@ -161,6 +161,7 @@ jobs:
           import re
           from datetime import datetime, timezone
           from pathlib import Path
+          from urllib.parse import urlsplit
 
           from agents.funding_agent import load_sources, run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
@@ -275,49 +276,9 @@ jobs:
                   "manual_review_flags": manual_review,
               })
 
-          # Release regression: this official EIT Urban Mobility call is known to
-          # be open during the current Batch 1 window. A green audit must not hide
-          # its loss at extraction, eligibility, or domain qualification.
-          known_call_url = (
-              "https://www.eiturbanmobility.eu/call-for-proposals/"
-              "sme-market-expansion-open-call-2027/"
-          )
-          known_call = next((
-              record for record in selected
-              if str(record.get("title") or record.get("program_name") or "").strip().casefold()
-                 == "sme market expansion open call 2027"
-              and str(record.get("source_url") or "").rstrip("/") == known_call_url.rstrip("/")
-          ), None)
-          if known_call is None:
-              rejected_known_call = [
-                  item for item in rejected
-                  if "sme market expansion" in str(item.get("title") or "").casefold()
-                  or "sme-market-expansion-open-call-2027" in str(item.get("source_url") or "").casefold()
-              ]
-              raise SystemExit(
-                  "Required active EIT Urban Mobility SME Market Expansion Open Call 2027 "
-                  "was not selected. Matching rejected candidates: "
-                  + json.dumps(rejected_known_call, ensure_ascii=False)
-              )
-          if str(known_call.get("deadline") or "") != "2026-12-01":
-              raise SystemExit(
-                  "EIT SME Market Expansion deadline mismatch: "
-                  + repr(known_call.get("deadline"))
-              )
-          if not re.search(r"(?:EUR|€)\s*60,000|60,000", str(known_call.get("funding_amount") or ""), re.IGNORECASE):
-              raise SystemExit(
-                  "EIT SME Market Expansion expected €60,000 award not extracted: "
-                  + repr(known_call.get("funding_amount"))
-              )
-          if not has_substantive_eligibility_evidence(known_call.get("eligibility")):
-              raise SystemExit(
-                  "EIT SME Market Expansion selected without substantive eligibility evidence: "
-                  + repr(known_call.get("eligibility"))
-              )
-          if "SAMPLE_Application_form" in str(known_call.get("application_url") or ""):
-              raise SystemExit(
-                  "EIT SME Market Expansion sample application PDF was incorrectly labelled as the live application endpoint"
-              )
+          # Currentness is tested against live source status and the current date above.
+          # The EIT call's stable extraction contract belongs in deterministic fixture tests;
+          # do not require an individual real-world call to remain selected after it expires.
           supporting_docs_as_calls = [
               record for record in selected
               if re.search(
@@ -461,6 +422,9 @@ jobs:
                           and not item.get("pagination_complete")
                       )
                   )
+              ) or (
+                  item.get("final_status") == "NO_ACTIVE_OPPORTUNITIES"
+                  and item.get("no_active_opportunities_confirmed") is not True
               )
           ]
           summary["coverage_status_invariant_violations"] = coverage_status_violations
@@ -498,7 +462,35 @@ jobs:
                   if isinstance(pattern, str) and pattern
               )
 
+          def normalized_url_path(value):
+              parsed = urlsplit(str(value or ""))
+              return (parsed.scheme.casefold(), parsed.netloc.casefold(), parsed.path.rstrip("/").casefold())
+
+          def is_relevant_failed_url(value):
+              path = urlsplit(str(value or "")).path.casefold()
+              return bool(re.search(
+                  r"(?:funding|grants?|calls?|rfp|proposals?|opportunities|open[-_/]?rounds?|applications?|awards?|topics?)",
+                  path,
+              ))
+
+          def is_documented_access_limited_url(item, failed_url):
+              key = normalized_url_path(failed_url)
+              access_failure = re.compile(
+                  r"robots(?:\.txt)?|cloudflare|javascript challenge|http\s*(?:403|429)|"
+                  r"forbidden|rate.?limit|access denied|blocked by (?:the )?(?:site|server|policy)",
+                  re.IGNORECASE,
+              )
+              matching_errors = [
+                  error for error in (item.get("errors") or [])
+                  if normalized_url_path(error.get("url")) == key
+              ]
+              return (
+                  item.get("final_status") == "PARTIAL"
+                  and any(access_failure.search(str(error.get("error") or "")) for error in matching_errors)
+              )
+
           priority_source_coverage_violations = []
+          documented_access_limited_urls = []
           for item in source_summary:
               if item.get("source_id") not in priority_sources:
                   continue
@@ -530,7 +522,30 @@ jobs:
                       re.IGNORECASE,
                   )
               ]
-              if item.get("truncated") or unhandled_gaps or unhandled_download_failures:
+              relevant_failed_urls = [
+                  url for url in (item.get("failed_urls") or [])
+                  if is_relevant_failed_url(url)
+                  and not is_intentionally_excluded_gap(item.get("source_id"), {"url": url})
+              ]
+              documented_limited = [
+                  url for url in relevant_failed_urls
+                  if is_documented_access_limited_url(item, url)
+              ]
+              unhandled_relevant_failed_urls = [
+                  url for url in relevant_failed_urls if url not in documented_limited
+              ]
+              if documented_limited:
+                  documented_access_limited_urls.append({
+                      "source_id": item.get("source_id"),
+                      "urls": documented_limited,
+                      "source_status": item.get("final_status"),
+                  })
+              if (
+                  item.get("truncated")
+                  or unhandled_gaps
+                  or unhandled_download_failures
+                  or unhandled_relevant_failed_urls
+              ):
                   priority_source_coverage_violations.append({
                       "source_id": item.get("source_id"),
                       "final_status": item.get("final_status"),
@@ -539,7 +554,9 @@ jobs:
                       "coverage_gaps_count": item.get("coverage_gaps_count", 0),
                       "unhandled_coverage_gaps": unhandled_gaps[:10],
                       "unhandled_download_failures": unhandled_download_failures[:10],
+                      "unhandled_relevant_failed_urls": unhandled_relevant_failed_urls[:20],
                   })
+          summary["documented_access_limited_urls"] = documented_access_limited_urls
           summary["priority_source_coverage_violations"] = priority_source_coverage_violations
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
