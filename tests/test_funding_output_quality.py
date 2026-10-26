@@ -105,6 +105,18 @@ def test_funding_problem_signal_rejects_call_objectives_that_mention_risk():
     assert intelligence["problem_type"] == "unresolved"
 
 
+def test_funding_problem_signal_rejects_call_focus_statement_about_risk():
+    content = (
+        "The Call focus is on accelerating the market uptake of impactful innovations "
+        "by reducing the risk of development and deployment."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+
+
 def test_funding_problem_signal_rejects_required_scope_as_a_problem():
     content = (
         "The action should address specified aspects, including tracking climate-projection "
