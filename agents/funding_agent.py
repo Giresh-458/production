@@ -1602,9 +1602,9 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     extracted = _extract_application_url(content)
 
     # A linked sample/template is supporting material, not a live submission
-    # endpoint. If the official call page itself gives submission instructions,
-    # retain that call-specific page as the application instructions destination
-    # rather than mislabelling a sample PDF as the endpoint.
+    # endpoint. Submission instructions on the information page do not prove that
+    # the information page itself accepts applications. Leave the destination
+    # unresolved so the acceptance audit can flag it for manual review.
     if (
         extracted
         and re.search(
@@ -1617,7 +1617,7 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         )
         and not parsed_source.path.casefold().endswith((".docx", ".pdf"))
     ):
-        return source_url
+        return None
 
     # A directly linked DOCX/PDF application form is itself an application
     # endpoint, even when it contains no HTML-style "Apply" hyperlink.
