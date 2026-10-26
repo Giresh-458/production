@@ -144,14 +144,16 @@ def _is_objective_or_task_statement(text: str) -> bool:
     value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
     patterns = (
         r"^(?:the\s+)?(?:call|programme|program|initiative|funding opportunity)\s+"
-        r"(?:is designed to|aims? to|seeks? to|is intended to|has the objective of|focus(?:es)? on)\b",
+        r"(?:is designed to|aims? to|seeks? to|is intended to|has the objective of|focus(?:es)? on|focus\s+is\s+on)\b",
         r"^(?:the\s+)?(?:action|project|proposal|work programme|funded action)\s+"
         r"should\s+(?:address|track|develop|deliver|implement|provide|support|assess|evaluate|"
         r"analyse|analyze|identify|establish|investigate|improve|reduce)\b",
         r"^(?:the\s+)?(?:action|project|proposal)\s+is expected to\b",
         r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\s*:",
         r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\s+"
-        r"(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
+        r"(?:the\s+)?(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
+        r"^(?:build|create|develop|implement|track|submit|apply|provide|support|assess|evaluate|"
+        r"identify|establish|investigate)\b",
     )
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
