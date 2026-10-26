@@ -502,7 +502,9 @@ jobs:
               key = normalized_url_path(failed_url)
               access_failure = re.compile(
                   r"robots(?:\.txt)?|cloudflare|javascript challenge|http\s*(?:403|429)|"
-                  r"forbidden|rate.?limit|access denied|blocked by (?:the )?(?:site|server|policy)",
+                  r"forbidden|rate.?limit|access denied|blocked by (?:the )?(?:site|server|policy)|"
+                  r"anti.?bot|captcha|datadome|script_heavy_shell|minimal_text|"
+                  r"name.?resolution|failed to resolve|dns|readtimeout|connectionerror",
                   re.IGNORECASE,
               )
               matching_errors = [
@@ -552,17 +554,56 @@ jobs:
                   if is_relevant_failed_url(url)
                   and not is_intentionally_excluded_gap(item.get("source_id"), {"url": url})
               ]
+              # Climate KIC links a large historical document archive from its live
+              # discovery pages. Keep failed attachments visible, but do not let a
+              # 404 for dated 2021–2025 archive attachments or the known retired
+              # download/72240 asset masquerade as a missed current call page.
+              # Current-year attachments and call/detail HTML pages remain blocking.
+              def is_stale_climate_kic_attachment(source_item, failed_url):
+                  if source_item.get("source_id") != "Climate KIC Open Calls":
+                      return False
+                  key = normalized_url_path(failed_url)
+                  matching_errors = [
+                      error for error in (source_item.get("errors") or [])
+                      if normalized_url_path(error.get("url")) == key
+                  ]
+                  is_not_found = any(
+                      re.search(r"\\b404\\b|not found", str(error.get("error") or ""), re.IGNORECASE)
+                      and error.get("operation") in {"pdf_fetch", "docx_fetch"}
+                      for error in matching_errors
+                  )
+                  if not is_not_found:
+                      return False
+                  parsed = urlsplit(str(failed_url or ""))
+                  if parsed.netloc.casefold() not in {"climate-kic.org", "www.climate-kic.org"}:
+                      return False
+                  if re.match(r"^/wp-content/uploads/(?:202[1-5])/", parsed.path, re.IGNORECASE):
+                      return True
+                  return re.match(r"^/download/72240/?$", parsed.path, re.IGNORECASE) is not None
+
+              stale_attachment_404s = [
+                  url for url in relevant_failed_urls
+                  if is_stale_climate_kic_attachment(item, url)
+              ]
               documented_limited = [
                   url for url in relevant_failed_urls
-                  if is_documented_access_limited_url(item, url)
+                  if url not in stale_attachment_404s
+                  and is_documented_access_limited_url(item, url)
               ]
               unhandled_relevant_failed_urls = [
-                  url for url in relevant_failed_urls if url not in documented_limited
+                  url for url in relevant_failed_urls
+                  if url not in documented_limited and url not in stale_attachment_404s
               ]
               if documented_limited:
                   documented_access_limited_urls.append({
                       "source_id": item.get("source_id"),
                       "urls": documented_limited,
+                      "source_status": item.get("final_status"),
+                  })
+              if stale_attachment_404s:
+                  summary.setdefault("stale_historical_attachment_404s", []).append({
+                      "source_id": item.get("source_id"),
+                      "urls": stale_attachment_404s,
                       "source_status": item.get("final_status"),
                   })
               if (
