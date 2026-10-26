@@ -1051,7 +1051,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             rolling_acceptance_evidence = bool(re.search(
                 r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
                 r"(?:grant )?fellows are accepted on a rolling basis|"
-                r"proposals are accepted on a rolling basis)\\b",
+                r"proposals are accepted on a rolling basis)\b",
                 lowered,
                 flags=re.IGNORECASE,
             ))
