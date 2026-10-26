@@ -1110,8 +1110,12 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 label in {"here", "this form", "the form", "application form", "application portal", "apply", "apply here"}
                 and re.search(r"\b(?:application|apply|submit|submission|proposal|form)\b", before)
                 and not sample_link
-                and not _is_generic_application_url(candidate)
             ):
+                # Status evidence and endpoint quality are different gates:
+                # a contextual CTA supports rolling acceptance even when the
+                # endpoint host cannot be independently trusted/resolved.
+                # The application URL extractor/selector still validates the
+                # endpoint separately and must not inherit this status shortcut.
                 rolling_review_has_contextual_link = True
                 break
     rolling_review_with_application = rolling_review_phrase and rolling_review_has_contextual_link
