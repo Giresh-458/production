@@ -1754,7 +1754,7 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
 
 
 def _extract_eligibility_from_prose(text: str) -> str | None:
-    """Extract explicit applicant restrictions stated in prose when no labelled section exists."""
+    """Collect distinct, explicit eligibility criteria without inferring missing rules."""
     chunks = [
         cleaned_text(part)
         for part in _split_funding_sentences(text)
@@ -1763,10 +1763,9 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
     patterns = (
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
         r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
-        r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
+        r"\b(?:eligible applicants?|applicants?|business concerns?|SMEs?|small and medium enterprises?)\s+(?:must|should|are required to|need to|have to)\s+.{8,260}",
         # Official call pages sometimes state applicant scope as "the call is
         # addressed to..." rather than using a dedicated Eligibility heading.
-        # Preserve that source wording; do not infer criteria absent from the page.
         r"\b(?:this\s+)?(?:call|programme|program)\s+(?:is|will be)\s+(?:a\s+)?(?:mono[- ]beneficiary\s+)?call\s+addressed\s+to\s+.{8,260}",
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
@@ -1774,22 +1773,30 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         # Explicit geographic eligibility clauses may be phrased as an
         # establishment rule without the words "applicants must".
         r"\b(?:legal entities|entities|organisations?|organizations?)\s+established\s+in\s+.{8,220}\b(?:eligible|may participate|can apply|may apply)\b.{0,160}",
-        # Explicit qualification statements in fellowship forms often name the
-        # student/applicant category rather than using an "Eligibility" heading.
+        # Explicit qualification statements often name the applicant category
+        # rather than using an "Eligibility" heading.
         r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
+        # Technology maturity is an eligibility criterion when the source explicitly
+        # ties the solution's TRL to a requirement.
+        r"\b(?:solution|technology|product)\b.{0,180}\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,120}",
+        r"\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,160}\b(?:required|must|commercially mature|eligib(?:le|ility))\b",
     )
+    matches: list[str] = []
     for chunk in chunks:
-        if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
-            # Some structured source records concatenate a generic eligibility
-            # label with the sentence's own subject, duplicating the prefix.
-            normalized = re.sub(
-                r"^(Eligible applicants must be)\s+Applicants must be\s+",
-                r"\1 ",
-                chunk[:900],
-                flags=re.IGNORECASE,
-            )
-            return cleaned_text(normalized)
-    return None
+        if not any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
+            continue
+        # Some structured source records concatenate a generic eligibility
+        # label with the sentence's own subject, duplicating the prefix.
+        normalized = re.sub(
+            r"^(Eligible applicants must be)\s+Applicants must be\s+",
+            r"\1 ",
+            chunk[:900],
+            flags=re.IGNORECASE,
+        )
+        normalized = cleaned_text(normalized)
+        if normalized and normalized.casefold() not in {value.casefold() for value in matches}:
+            matches.append(normalized)
+    return " ".join(matches) if matches else None
 
 
 def _extract_geography_from_prose(text: str) -> str | None:
