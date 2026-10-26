@@ -165,6 +165,7 @@ jobs:
 
           from agents.funding_agent import load_sources, run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
+          from core.problem_extraction import _is_objective_or_task_statement
           from core.schemas import normalize_area
           from run_pipeline import get_all_open_funding_calls
 
@@ -321,6 +322,17 @@ jobs:
                       "problem_preview": problem[:180],
                   })
 
+          problem_semantic_violations = []
+          for record in records:
+              problem = str(record.get("problem") or record.get("problem_signal") or "").strip()
+              if problem and _is_objective_or_task_statement(problem):
+                  problem_semantic_violations.append({
+                      "title": record.get("title") or record.get("program_name"),
+                      "source_url": record.get("source_url"),
+                      "issue": "objective_or_required_activity_misclassified_as_problem",
+                      "problem_preview": problem[:180],
+                  })
+
           blocking_review_flags = [
               {"title": item.get("title"), "source_url": item.get("source_url"),
                "flags": [flag for flag in item.get("flags", []) if flag in {
@@ -398,6 +410,8 @@ jobs:
               "blocking_manual_review_flags": blocking_review_flags,
               "problem_quality_violations_count": len(problem_quality_violations),
               "problem_quality_violations": problem_quality_violations[:20],
+              "problem_semantic_violations_count": len(problem_semantic_violations),
+              "problem_semantic_violations": problem_semantic_violations[:20],
               "rejected_candidates_count": len(rejected),
               "rejection_reason_counts": rejection_counts,
               "source_summary": source_summary,
@@ -579,6 +593,11 @@ jobs:
               raise SystemExit(
                   "Funding problem fields contain raw page boilerplate/links: "
                   + json.dumps(problem_quality_violations[:10], ensure_ascii=False)
+              )
+          if problem_semantic_violations:
+              raise SystemExit(
+                  "Funding problem fields contain objectives or required activities rather than problems: "
+                  + json.dumps(problem_semantic_violations[:10], ensure_ascii=False)
               )
           if blocking_review_flags:
               raise SystemExit(
