@@ -1394,5 +1394,5 @@ def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_no
     assert len(selected) == 1, rejected
     assert selected[0]["title"] == "SME Market Expansion Open Call 2027"
     assert selected[0]["deadline"] == "2026-12-01"
-    assert selected[0]["application_url"] == source_url
+    assert selected[0]["application_url"] is None
 
