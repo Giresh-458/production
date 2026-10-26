@@ -222,6 +222,11 @@ jobs:
               manual_review = []
               if not record.get("application_url"):
                   manual_review.append("direct_application_url_missing_manual_review")
+              source_url = str(record.get("source_url") or "").casefold()
+              if "sme-market-expansion-open-call-2027" in source_url:
+                  evidence = record.get("evidence") or {}
+                  if evidence.get("eligibility_supplemental_context_status") != "verified":
+                      manual_review.append("eligibility_completeness_unverified")
               research_context = record.get("research_context")
               if not isinstance(research_context, dict):
                   manual_review.append("research_context_missing")
@@ -319,10 +324,14 @@ jobs:
           blocking_review_flags = [
               {"title": item.get("title"), "source_url": item.get("source_url"),
                "flags": [flag for flag in item.get("flags", []) if flag in {
-                   "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"
+                   "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing",
+                   "eligibility_completeness_unverified", "direct_application_url_missing_manual_review"
                }]}
               for item in review_flags
-              if any(flag in {"research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing"} for flag in item.get("flags", []))
+              if any(flag in {
+                  "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing",
+                  "eligibility_completeness_unverified", "direct_application_url_missing_manual_review"
+              } for flag in item.get("flags", []))
           ]
 
           def summarize_audit_error(error):
