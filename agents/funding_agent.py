@@ -1525,14 +1525,27 @@ def _extract_duration(text: str) -> str | None:
 
 
 def _extract_application_url(text: str) -> str | None:
-    """Return an application endpoint only when adjacent source text/anchor identifies it."""
+    """Return a verified application endpoint, preferring portal CTAs over templates."""
     markdown_link = re.compile(r"\[([^\]]{1,160})\]\((https?://[^)\s]+)\)", re.IGNORECASE)
     for match in markdown_link.finditer(text):
-        label = match.group(1).lower()
+        label = match.group(1).strip().lower()
+        candidate_url = match.group(2).rstrip(".,")
+        candidate_path = urlparse(candidate_url).path.lower()
+        # Sample/template/example files are supporting documents, never submission
+        # endpoints. Continue searching because the real portal link may follow.
+        is_sample_template = bool(re.search(
+            r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            label + " " + candidate_path,
+            flags=re.IGNORECASE,
+        ))
+        if is_sample_template:
+            continue
+
         before = text[max(0, match.start() - 200):match.start()].lower()
-        is_application_label = re.search(
+        after = text[match.end():match.end() + 200].lower()
+        is_application_label = bool(re.search(
             r"\b(?:apply|application|submit|submission|proposal)\b", label
-        )
+        ))
         is_grant_issue_template = (
             "new issue" in label
             and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
@@ -1541,7 +1554,7 @@ def _extract_application_url(text: str) -> str | None:
         # application instructions. Do not classify an arbitrary repository link
         # as an application URL merely because the word "applications" appeared
         # earlier in the same paragraph.
-        short_application_label = label.strip().rstrip(".") in {
+        short_application_label = label.rstrip(".") in {
             "here", "this form", "the form", "application form", "application portal"
         }
         is_contextual_application_link = bool(
@@ -1552,11 +1565,24 @@ def _extract_application_url(text: str) -> str | None:
                 flags=re.IGNORECASE,
             )
         )
-        if is_application_label or is_grant_issue_template or is_contextual_application_link:
-            candidate_url = match.group(2).rstrip(".,")
+        is_contextual_portal_link = bool(
+            "portal" in label
+            and re.search(
+                r"\b(?:application|apply|submit|submission|proposal|form)\b",
+                before[-150:] + " " + after[:150],
+                flags=re.IGNORECASE,
+            )
+        )
+        if (
+            is_application_label
+            or is_grant_issue_template
+            or is_contextual_application_link
+            or is_contextual_portal_link
+        ):
             if _is_generic_application_url(candidate_url):
                 continue
             return candidate_url
+
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
         r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*("
@@ -1565,6 +1591,13 @@ def _extract_application_url(text: str) -> str | None:
     )
     for match in contextual.finditer(text):
         candidate_url = match.group(1).rstrip(".,")
+        candidate_path = urlparse(candidate_url).path.lower()
+        if re.search(
+            r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            candidate_path,
+            flags=re.IGNORECASE,
+        ):
+            continue
         if _is_generic_application_url(candidate_url):
             continue
         return candidate_url
