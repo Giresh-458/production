@@ -338,3 +338,42 @@ def test_repeated_coverage_gap_urls_are_deduplicated_before_status_reporting():
     assert _finalize_collection_status(result) == "PARTIAL"
     assert len(result.coverage_gaps) == 2
     assert result.relevant_urls_skipped == 2
+
+
+def test_funding_agent_serializes_explicit_empty_state_confirmation(tmp_path):
+    from unittest.mock import patch
+    from agents.funding_agent import load_sources, run_agent
+
+    source = load_sources()[0]
+    result = CollectionResult(
+        source_id=source.name,
+        method="web",
+        pages_fetched=1,
+        discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+    )
+    output_dir = tmp_path / "out"
+    db_path = tmp_path / "funding_memory.db"
+    checkpoint_path = tmp_path / "checkpoint.pkl"
+
+    with patch("agents.funding_collector.collect_auto_sources", return_value=iter([result])):
+        response = run_agent(
+            "configured_scan",
+            None,
+            {
+                "sources_path": "sources/funding_sources.yaml",
+                "posts_per_source": 1,
+                "output_dir": str(output_dir),
+                "db_path": str(db_path),
+                "checkpoint_path": str(checkpoint_path),
+                "analysis_mode": "collect_only",
+                "is_test_mode": True,
+                "force_refresh": True,
+                "run_id": "empty-state-serialization-test",
+            },
+        )
+
+    assert response["collection_results"][0]["final_status"] == "NO_ACTIVE_OPPORTUNITIES"
+    assert response["collection_results"][0]["no_active_opportunities_confirmed"] is True
+
