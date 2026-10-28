@@ -560,7 +560,7 @@ sources:
       discovery:
         start_urls:
         - https://www.sbir.gov/topics?status=Open
-        max_depth: 4
+        max_depth: 5
         max_pages: 120
         follow_detail_pages: true
         follow_pdfs: true
