@@ -6,6 +6,11 @@ def test_acceptance_requires_successful_scan_and_actionable_call():
         run_status="success",
         raw_records_count=10,
         selected_actionable_count=1,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
         source_summary=[{
             "source_id": "complete",
             "final_status": "VERIFIED",
@@ -299,3 +304,36 @@ def test_unknown_record_status_does_not_verify_source_currentness():
 
     assert result.evidence_verified is True
     assert result.currentness_verified is False
+
+
+def test_missing_record_accounting_blocks_batch_acceptance():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        source_summary=[{
+            "source_id": "complete",
+            "final_status": "VERIFIED",
+            "discovery_exhausted": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    assert any(item["code"] == "record_accounting_missing" for item in result["blockers"])
+
+
+def test_unreconciled_record_accounting_blocks_batch_acceptance():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        record_accounting={
+            "reconciled": False,
+            "unaccounted_source_to_documents_delta": 7,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+    )
+    assert result["status"] == "BLOCKED"
+    blocker = next(item for item in result["blockers"] if item["code"] == "record_accounting_unreconciled")
+    assert "source-to-documents delta=7" in blocker["message"]
