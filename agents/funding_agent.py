@@ -1071,7 +1071,16 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     normalized_explicit = None
     if explicit_status:
         normalized_explicit = str(explicit_status).strip().upper()
-        aliases = {"FUNDED": "FUNDED_PROJECT", "OPEN": "OPEN_CALL", "CLOSED": "CLOSED_CALL", "UPCOMING": "UPCOMING_CALL"}
+        aliases = {
+            "FUNDED": "FUNDED_PROJECT",
+            "OPEN": "OPEN_CALL",
+            "ACTIVE": "OPEN_CALL",
+            "ACCEPTING APPLICATIONS": "OPEN_CALL",
+            "ACCEPTING PROPOSALS": "OPEN_CALL",
+            "CLOSED": "CLOSED_CALL",
+            "PAUSED": "CLOSED_CALL",
+            "UPCOMING": "UPCOMING_CALL",
+        }
         normalized_explicit = aliases.get(normalized_explicit, normalized_explicit)
         if normalized_explicit not in {
             "FUNDED_PROJECT", "CLOSED_CALL", "UPCOMING_CALL", "OPEN_CALL",
@@ -2276,10 +2285,16 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         program_name = document.organization.strip()
     explicit_status_match = re.search(
-        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status)\s*[:：]\s*(open|closed|paused|upcoming|funded)\b",
+        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status|funding\s+status|status)\s*[:：-]\s*(open|active|closed|paused|upcoming|funded)\b",
+        document.content,
+    )
+    explicit_acceptance_match = re.search(
+        r"(?i)\b(?:currently\s+)?accepting\s+(?:new\s+)?(applications|proposals)\b",
         document.content,
     )
     explicit_status = explicit_status_match.group(1) if explicit_status_match else None
+    if not explicit_status and explicit_acceptance_match:
+        explicit_status = f"ACCEPTING {explicit_acceptance_match.group(1).upper()}"
     status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
     if _sbir_mirror_disclaims_currentness(document.source, document.content):
         # SBIR.gov explicitly says its topic copies may not be current. Preserve
@@ -2365,7 +2380,8 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         "status": _evidence_excerpt(document.content, [
             # These are source excerpts, not automatic acceptance decisions.
             # Cover explicit status fields, directory badges and application windows.
-            r"(?:call|application|solicitation|grant|opportunity)\s+status\s*[:：-]\s*(?:open|closed|paused|upcoming|funded)",
+            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active|closed|paused|upcoming|funded)",
+            r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals)",
             r"applications? (?:are|now) open",
             r"open for applications",
             r"open for proposals",
