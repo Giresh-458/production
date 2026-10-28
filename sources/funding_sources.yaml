@@ -95,14 +95,16 @@ sources:
           # Direct application forms are links to apply, not separate grant records.
           - '^https?://[^/]*typeform\.com/'
           # Token icon API responses are assets, not funding detail pages.
-          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?
+          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
           - '^https?://share\.hsforms\.com/'
           - '^https?://airtable\.com/'
           # Announcement articles are not individual funding calls.
           - '^https?://(?:www\.)?solana\.com/news/'
           - '^https?://share\.hsforms\.com/'
           - '^https?://airtable\.com/'
-          # Announcement articles are not individual funding calls.
+          - '^https?://(?:www\.)?solana\.com/news/'
+          - '^https?://share\.hsforms\.com/'
+          - '^https?://airtable\.com/'
           - '^https?://(?:www\.)?solana\.com/news/'
   tier_2:
   - name: NEAR Ecosystem Funding
