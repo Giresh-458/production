@@ -155,7 +155,9 @@ def _is_objective_or_task_statement(text: str) -> bool:
         r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\s+"
         r"(?:the\s+)?(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
         r"^(?:build|create|develop|implement|track|submit|apply|provide|support|assess|evaluate|"
-        r"identify|establish|investigate)\b",
+        r"identify|establish|investigate|coordinate|explore|strengthen|secure|maintain)\b",
+        r"^(?:steps?\s+to\s+(?:ensure|secure|improve|maintain)|take\s+steps\s+to\s+"
+        r"(?:ensure|secure|improve|maintain)|acting\s+on\s+this\s+offers\s+an\s+opportunity)\b",
     )
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
