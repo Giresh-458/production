@@ -43,9 +43,10 @@ def test_source_discovery_duplicate_preservation(
                 "funding_priorities": [],
                 "target_outcomes": [],
                 "investigation_questions": [],
-                "inferred_challenges": [],
-                "evidence_refs": [],
-                "inference_provenance": [],
+                "inferred_challenges": [f"Source-supported research challenge for {call_id}."],
+                "evidence_refs": [f"https://funding.example.org/calls/{call_id}"],
+                "inference_provenance": ["source_grounded_problem_extraction"],
+                "research_intent_evidence": ["The official call explicitly describes a research challenge."],
                 "confidence": "high"
             }
         },
