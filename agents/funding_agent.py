@@ -213,8 +213,13 @@ def _update_source_verification_flags(result: Any) -> Any:
     opportunities = list(getattr(result, "opportunities", None) or [])
     errors = list(getattr(result, "errors", None) or [])
     gaps = list(getattr(result, "coverage_gaps", None) or [])
+    has_acquired_evidence = any(
+        int(getattr(result, field, 0) or 0) > 0
+        for field in ("pages_fetched", "detail_pages_fetched", "documents_fetched", "api_pages_fetched")
+    )
     complete = (
-        str(getattr(result, "final_status", "") or "").upper()
+        has_acquired_evidence
+        and str(getattr(result, "final_status", "") or "").upper()
         in {"VERIFIED", "NO_ACTIVE_OPPORTUNITIES"}
         and bool(getattr(result, "discovery_exhausted", False))
         and not bool(getattr(result, "truncated", False))
