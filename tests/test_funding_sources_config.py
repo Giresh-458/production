@@ -233,7 +233,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         else:
             page_cap = 30
         assert 1 <= int(discovery["max_pages"]) <= page_cap
-        assert 0 <= int(discovery.get("max_depth", 0)) <= 6
+        assert 0 <= int(discovery.get("max_depth", 0)) <= 8
 
 def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers():
     import re
@@ -287,7 +287,12 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert climate_discovery["max_depth"] == 6 and climate_discovery["max_pages"] == 600
+    assert "https://www.eitfood.eu/innovation" in climate_discovery["start_urls"]
+    current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
+    assert current_eit_culture_call in climate_discovery["start_urls"]
+    assert current_eit_culture_call in climate_discovery["direct_page_urls"]
+    assert climate_discovery["max_depth"] == 8 and climate_discovery["max_pages"] == 600
+    assert climate_discovery["pagination"] is True
     assert climate_discovery["follow_documents"] is True
     assert climate.get("direct_page", False) is False
 
@@ -381,8 +386,8 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # The depth-6 crawl reaches official call attachments, while max_pages keeps discovery bounded.
-    assert climate_kic_discovery["max_depth"] == 6
+    # The depth-8 crawl follows bounded EIT pagination to official call details; max_pages remains the hard cap.
+    assert climate_kic_discovery["max_depth"] == 8
     assert climate_kic_discovery["max_pages"] == 600
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
@@ -485,14 +490,18 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 6
+    assert discovery["max_depth"] == 8
     assert discovery["max_pages"] == 600
+    assert discovery["pagination"] is True
     # The current 2027 SME Market Expansion call is seeded canonically, rather
     # than relying on a deep link from a historical investment-news page.
     current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
     assert current_eit_um_call in discovery["start_urls"]
     assert current_eit_um_call in discovery["direct_page_urls"]
     assert not excluded(current_eit_um_call)
+    assert excluded("https://eit-culture-creativity.eu/open-call-acceleration-and-post-acceleration-programmes/")
+    assert excluded("https://www.eitfood.eu/open-calls/fast-track-to-market")
+    assert excluded("https://www.eit.europa.eu/our-activities/opportunities/raw-materials-and-circular-societies-prize-call-2021")
     # Historical news/results, expired accelerator routes, generic portals, and
     # policy-only PDFs are excluded without excluding the current canonical call.
     assert excluded("https://www.eit.europa.eu/news-events/news/eit-climate-kics-accelerator-programme-secures-key-partners")
