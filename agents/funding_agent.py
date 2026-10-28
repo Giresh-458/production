@@ -1966,8 +1966,39 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
                 value,
             ):
                 continue
+            # Ignore placeholder values in generated page metadata so they do
+            # not mask the actual source section further down the document.
+            if value.casefold().strip(" .:-") in {"unknown", "none", "n/a", "not specified", "not available"}:
+                continue
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
+    if not hits:
+        # Real calls often put the label in a standalone Markdown heading
+        # ("## Who can apply?") and the criteria in the following paragraph.
+        # Read only within that labelled section and stop at the next heading.
+        normalized_labels = {re.sub(r"[^a-z0-9]+", " ", label.casefold()).strip() for label in labels}
+        lines = str(text or "").splitlines()
+        for index, line in enumerate(lines):
+            heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+            if not heading:
+                continue
+            heading_text = re.sub(r"[^a-z0-9]+", " ", cleaned_text(heading.group(1)).casefold()).strip()
+            if heading_text not in normalized_labels:
+                continue
+            section_parts: list[str] = []
+            for following in lines[index + 1:]:
+                if re.match(r"^\s{0,3}#{1,6}\s+", following):
+                    break
+                cleaned = cleaned_text(re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", following))
+                if not cleaned or cleaned.casefold().strip(" .:-") in {"unknown", "none", "n/a", "not specified", "not available"}:
+                    continue
+                section_parts.append(cleaned)
+                if sum(len(part) for part in section_parts) >= max_chars:
+                    break
+            section_value = cleaned_text(" ".join(section_parts))[:max_chars]
+            if section_value:
+                hits.append(section_value)
+                break
     if hits:
         eligibility_labels = {
             "eligibility", "who can apply", "eligible applicants", "eligible organizations"
