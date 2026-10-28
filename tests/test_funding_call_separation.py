@@ -1077,14 +1077,14 @@ def test_markdown_link_with_escaped_parentheses_keeps_the_complete_document_url(
     markdown = (
         r"[BIONetZero Funding Handbook]"
         r"(https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
-        r"BIONetZero%20SME%20Grant%20Package%20\(Funding%20Handbook%20for%20Applicants\))"
+        r"BIONetZero%20SME%20Grant%20Package%20\\(Funding%20Handbook%20for%20Applicants\\).pdf)"
     )
     links = _extract_markdown_links(markdown, "https://www.foodbiocluster.dk/open-call-for-bionetzero")
 
     assert len(links) == 1
     assert links[0]["url"] == (
         "https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
-        "BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29"
+        "BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf"
     )
 
 

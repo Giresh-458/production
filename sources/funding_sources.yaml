@@ -333,7 +333,7 @@ sources:
         # One extra level fetches current-call attachments linked from official
         # partner detail pages; max_pages remains a hard cap against crawl fan-out.
         # The prior audit reached page 2 of the EIT archive at the depth cap.
-        # Follow bounded pagination and one additional level for its detail records.
+        # Follow bounded pagination and extend traversal depth from 6 to 8 for detail records.
         max_depth: 8
         # Official partner call pages are opportunity details. Forms, webinars, and
         # unrelated policy documents remain link evidence, not funding records.
@@ -345,7 +345,13 @@ sources:
           # Retired partner URLs now return 404; their current official programme/call
           # landing pages are seeded above so the stale aliases do not masquerade as
           # missed live-call coverage.
-          - '^https?://eit-culture-creativity[.]eu/open-call-acceleration-and-post-acceleration-programmes/?(?:[?#].*)?          # Standalone budget templates are supporting documents, not call-detail pages.
+          - '^https?://eit-culture-creativity[.]eu/open-call-acceleration-and-post-acceleration-programmes/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?eitfood[.]eu/open-calls/fast-track-to-market/?(?:[?#].*)?$'
+          # These EIT-wide links are dated 2021 archive entries, not current opportunities.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:raw-materials-and-circular-societies-prize-call-2021|eit-food-government-executive-academy-2021|eit-food-ris-fellowships-2021|eit-hub-israel-calling2scale-bootcamp|call-applications-eit-ris-joint-innovation-incubator-programme|eit-urban-mobility-start-investment-2021|eit-health-innostars-awards-applications-open|eit-rawmaterials-start-accelerator-apply-now|eit-food-open-call-grow-workshops)(?:/|[?#]|$)'
+          # Application destination only, not a call-detail page.
+          - '^https?://ec[.]europa[.]eu/eusurvey/runner/EIC_WLP4_Application_Form(?:[?#].*)?$'
+          # Standalone budget templates are supporting documents, not call-detail pages.
           - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?$'
           - '^https?://neb[.]eitcommunity[.]eu/wp-content/uploads/2026/07/Co_create_Budget[.]xlsx(?:[?#].*)?$'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2021/07/Budget-template_branded[.]xlsx(?:[?#].*)?$'
