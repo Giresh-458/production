@@ -501,6 +501,11 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert not excluded(current_eit_um_call)
     assert excluded("https://eit-culture-creativity.eu/open-call-acceleration-and-post-acceleration-programmes/")
     assert excluded("https://www.eitfood.eu/open-calls/fast-track-to-market")
+    assert excluded("https://www.eitfood.eu/open-calls/fast-track-to-market-2024")
+    assert excluded("https://www.desirmed.eu/announcements/desirmed-launches-a-photo-contest-capture-climate-adaptation-a-photo-exhibition-on-mediterranean-transformation-to-address-climate-adaptation")
+    assert excluded("https://nbracer.eu/voices-of-the-youth-2/")
+    assert excluded("https://wptemplate.impacthub.net/impact-stories/")
+    assert excluded("https://assets.eitfood.eu/files/OPEN-CALLS/Declaration-on-AI-template_Attachment-to-Lower-Silesia-360%C2%B0-Integrated-Farm-Advisory-Implementation-Copy.docx")
     assert excluded("https://www.eit.europa.eu/our-activities/opportunities/raw-materials-and-circular-societies-prize-call-2021")
     # Historical news/results, expired accelerator routes, generic portals, and
     # policy-only PDFs are excluded without excluding the current canonical call.
