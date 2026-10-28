@@ -260,6 +260,9 @@ jobs:
                   issues.append("missing_source_or_application_url")
               if not has_substantive_eligibility_evidence(record.get("eligibility")):
                   issues.append("missing_substantive_applicant_eligibility")
+              eligibility_evidence = (record.get("evidence") or {}).get("eligibility")
+              if not has_substantive_eligibility_evidence(eligibility_evidence):
+                  issues.append("missing_source_grounded_eligibility_evidence")
               if not matched_domains:
                   issues.append("missing_proven_canonical_domain")
               if matched_domains and focus_area not in matched_domains:
