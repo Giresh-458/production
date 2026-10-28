@@ -25,6 +25,17 @@
 - Any query that still reaches a configured limit must continue to report incomplete pagination / `PARTIAL`; the limit increase does not make source verification optimistic.
 
 
+## Latest full configured scan result (2026-10-28, head `91639c174c68e45deeea41a196d6f61593147ba9`)
+
+- Workflow: [run 40660564214](https://github.com/Giresh-458/production/actions/runs/40660564214).
+- Artifact: `batch1-full-live-audit`, artifact ID `12804943159`.
+- Deterministic suite, EU query-budget regressions, focused regressions, and bounded live qualification audit all passed.
+- Full configured scan and strict selector still failed acceptance: **286 emitted records; 56 raw current-status candidates; 0 selected actionable calls; 12 blockers**.
+- The EU API pagination fix is confirmed in the live result: EU Funding & Tenders is `VERIFIED`, with 58 API pages fetched, 2,623 API records received, 774/774 detail pages fetched, 897 records discovered, pagination complete, discovery exhausted, zero skipped relevant URLs, and zero errors. It yielded 19 valid records after filtering out 878 for missing eligibility evidence, weak/off-domain evidence, or expired deadlines. This resolves the previous EU query-cap blocker without weakening the selector.
+- Remaining acceptance blockers are: no actionable calls selected; evidence/currentness verification gaps for Solana, Superteam, NEAR, Ripple UBRI, XRPL, Filecoin, Climate KIC, NSF SBIR Trusted Identity, NSF SBIR Climate Change Adaptation and Mitigation, Open SBIR Funding Topics, and I-DAPT.
+- Current source acquisition problems remain material: Climate KIC is `PARTIAL` with 5 coverage gaps, 5 relevant URLs skipped, 12 page failures, 55 document failures, incomplete pagination/discovery and 72 reported errors; Filecoin is `PARTIAL` with one relevant URL skipped and discovery not exhausted; I-DAPT is `PARTIAL` with one failed page and one reported error.
+- Acceptance remains **`BLOCKED`**. Do not merge or start Batch 2 until remaining source verification and zero-actionable-call causes are addressed with evidence. The new run did not show that EU pagination itself remains a blocker.
+
 ## Verification correction found during this cycle
 
 The first CI run after raising the configured budget stopped in the deterministic suite before the live scan because the helper-level budget test still passed the old literal inputs (`max_pages=100`, `max_documents=5000`) while asserting the new 20-page allocation. This was a stale test fixture, not a production-code failure. The fixture now passes 200 / 10,000, and the CI run on the new head must confirm the correction before live results can be assessed.
