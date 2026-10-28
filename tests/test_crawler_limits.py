@@ -287,3 +287,73 @@ def test_crawl4ai_browser_triggered_xlsx_download_uses_document_reader(monkeypat
     assert result.opportunities[0]["type"] == "xlsx"
     assert result.opportunities[0]["content"] == "Impact Framework | Budget"
 
+
+
+def test_docx_text_limit_allows_large_but_bounded_call_documents(monkeypatch):
+    import io
+    import zipfile
+    import core.crawl4ai_web as crawler
+
+    text = "eligibility evidence " * 4000  # >50,000 characters; below the 200,000 cap
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:r><w:t>' + text + '</w:t></w:r></w:p></w:body></w:document>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+
+    class BinaryResponse:
+        content = buffer.getvalue()
+
+    monkeypatch.setattr(crawler, "get_response", lambda *a, **k: BinaryResponse())
+    result = crawler._fetch_docx("https://assets.example.org/current-call.docx")
+
+    assert result["success"] is True
+    assert len(result["content"]) == len(text)
+    assert result["truncated"] is False
+
+
+def test_browser_download_truncation_records_the_exact_document_url(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    url = "https://assets.example.org/oversized-call.docx"
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False,
+            "error_message": "Page.goto: Download is starting",
+            "status_code": None,
+            "url": requested,
+            "markdown": "",
+            "html": "",
+            "links": [],
+            "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_docx",
+        lambda requested: {
+            "success": True, "url": requested, "content": "x" * 200000,
+            "title": "Oversized call", "paragraphs_extracted": 1,
+            "truncated": True, "error": None,
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "Test document source",
+        url,
+        {"start_urls": [url], "max_depth": 0, "max_pages": 5, "follow_documents": True},
+        allowed_domains=["assets.example.org"],
+    )
+
+    assert result.truncated is True
+    assert {
+        "url": url,
+        "reason": "document_text_character_limit",
+        "document_type": "docx",
+        "character_limit": 200000,
+    } in result.truncation_details
