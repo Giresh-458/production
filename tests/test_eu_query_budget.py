@@ -12,8 +12,8 @@ def test_eu_source_budget_gives_each_search_term_more_than_one_page():
             "maximal extractable value", "stablecoin payments",
         ],
         page_size=50,
-        max_pages=100,
-        max_documents=5000,
+        max_pages=200,
+        max_documents=10000,
     )
 
     assert budgets["pages_per_query"] == 20
