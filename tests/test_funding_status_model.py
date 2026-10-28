@@ -96,3 +96,10 @@ def test_navigation_titles_used_by_live_sources_are_generic():
         "How We Make Funding Decisions",
     ):
         assert _is_generic_funding_title(title)
+
+
+def test_airtable_directory_and_record_context_titles_are_not_individual_calls():
+    assert _is_generic_funding_title("Airtable - Solana Foundation Active RFPs")
+    assert _is_generic_funding_title("Solana Foundation Public RFP Database")
+    assert _is_generic_funding_title("RFP CONTEXT")
+    assert not _is_generic_funding_title("Build for Breakpoint: Agentic Grants")
