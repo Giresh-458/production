@@ -706,7 +706,9 @@ def test_eu_collector_uses_fair_page_budget_for_each_configured_query(monkeypatc
         source, CollectionResult(source_id=source.name, method="api"), warnings=[]
     )
 
-    assert limits_seen == [(query, 5, 500) for query in queries]
+    # This source sets page_size=50. The adapter bounds each query to the
+    # page budget times page size, and also honors the share of global documents.
+    assert limits_seen == [(query, 5, 250) for query in queries]
     assert result.pagination_complete is True
     assert result.truncated is False
 
