@@ -53,8 +53,20 @@ def test_sync_source_registry_writes_only_to_temporary_path(tmp_path: Path):
     initial_mtime = SOURCE_REGISTRY_PATH.stat().st_mtime_ns
     initial_bytes = SOURCE_REGISTRY_PATH.read_bytes()
 
+    # Keep this path-isolation test independent of the repository's live source
+    # inventory, whose entries legitimately evolve as funding sources are repaired.
+    temp_sources = tmp_path / "sources"
+    temp_sources.mkdir()
+    (temp_sources / "funding_sources.yaml").write_text(
+        "sources:\n"
+        "  - name: Test Funding Source\n"
+        "    url: https://example.org/funding\n"
+        "    focus: deterministic source registry isolation test\n",
+        encoding="utf-8",
+    )
+
     result = sync_source_registry(
-        sources_dir=SOURCES_DIR,
+        sources_dir=temp_sources,
         registry_path=temp_registry,
         agent_filter="funding",
     )
