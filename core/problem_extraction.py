@@ -160,6 +160,25 @@ def _is_objective_or_task_statement(text: str) -> bool:
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
 
+def _is_administrative_or_financial_rule(text: str) -> bool:
+    """Reject grant-administration rules that contain limitation vocabulary.
+
+    Budget caps, subcontracting proportionality, and eligible-cost rules are
+    conditions of the grant, not evidence of a research or technical problem.
+    """
+    value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    patterns = (
+        r"\bsubcontracting\b.{0,180}\b(?:proportionate|limited|limit|cap|must not exceed)\b",
+        r"\b(?:eligible costs?|funding rate|grant amount|maximum funding|total budget|budget ceiling|"
+        r"co[- ]funding|indirect costs?|overheads?)\b.{0,180}\b"
+        r"(?:limited|limit|cap|maximum|up to|per project|proportionate|must not exceed|eligible)\b",
+        r"\b(?:limited|limit|cap|maximum|must not exceed)\b.{0,140}\b"
+        r"(?:subcontracting|eligible costs?|funding rate|grant amount|budget|cost categories)\b",
+        r"^limited parts\b.{0,180}\bsubcontracting\b",
+    )
+    return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
+
+
 def _is_genuine_limitation(text: str) -> bool:
     """Recognize explicit problem/risk language without treating action verbs as problems."""
     t = text.strip().lower()
@@ -291,6 +310,11 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
         if (agent_name or "").strip().lower() == "funding":
             para = _clean_funding_candidate_text(para)
         if _is_boilerplate(para):
+            continue
+        if (
+            (agent_name or "").strip().lower() == "funding"
+            and _is_administrative_or_financial_rule(para)
+        ):
             continue
         scores = _score_candidate(para, research_area)
         if scores["boilerplate_score"] >= 0.6:
