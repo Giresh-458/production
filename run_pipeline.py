@@ -604,8 +604,7 @@ def main() -> int:
             "funding_result": funding_result,
             "rejected_calls": rejected,
             "rejected_non_research": rejected_non_research,
-        "rejected_unverified_research_context": rejected_unverified_research_context,
-            "rejected_unverified_research_context": rejected_unverified_research_context
+            "rejected_unverified_research_context": rejected_unverified_research_context,
         }
         (root / "workflow").mkdir(parents=True, exist_ok=True)
         (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -948,6 +947,8 @@ def main() -> int:
         "shared_crawl_stats": stats,
         "status": "completed_with_errors" if global_exit_code > 0 else "completed",
         "valid_calls_found": len(valid_calls),
+        "rejected_non_research": rejected_non_research,
+        "rejected_unverified_research_context": rejected_unverified_research_context,
         "total_proposals": total_proposals,
         "all_final_outputs": all_final_outputs,
         "reports": all_reports,
