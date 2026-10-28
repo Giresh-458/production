@@ -294,7 +294,7 @@ def test_docx_text_limit_allows_large_but_bounded_call_documents(monkeypatch):
     import zipfile
     import core.crawl4ai_web as crawler
 
-    text = "eligibility evidence " * 4000  # >50,000 characters; below the 200,000 cap
+    text = ("eligibility evidence " * 3999) + "evidence"  # >50,000 characters; below the 200,000 cap
     xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
