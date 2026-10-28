@@ -704,3 +704,14 @@ def test_solana_placeholder_database_and_application_form_are_excluded():
     ]
     for url in urls:
         assert any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
+
+def test_open_sbir_discovery_reaches_linked_official_nsf_topic_details():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
+
+    # The full audit found an official NSF opportunity linked one level beyond
+    # the previous boundary. Increase traversal depth without relaxing any
+    # record-level eligibility or currentness checks.
+    assert discovery["max_depth"] >= 5
+    assert "nsf.gov" in discovery["allowed_domains"]
+
