@@ -52,6 +52,8 @@ class CollectionResult:
     pagination_complete: bool = False
     discovery_exhausted: bool = False
     truncated: bool = False
+    # Exact URLs/reasons explain source truncation; a boolean alone is not actionable.
+    truncation_details: list[dict[str, Any]] = field(default_factory=list)
     evidence_verified: bool = False
     currentness_verified: bool = False
     # Empty status is valid only when the source explicitly confirms no active calls.
