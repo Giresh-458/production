@@ -1519,6 +1519,43 @@ def test_extensionless_support_download_uses_extracted_document_title():
     ) is False
 
 
+def test_browser_triggered_support_document_is_counted_but_not_emitted(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    url = "https://example.org/download/12345"
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: (_ for _ in ()).throw(RuntimeError("Download is starting")),
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_browser_download",
+        lambda requested, max_pdf_pages=None: (
+            "pdf",
+            {
+                "success": True,
+                "url": requested,
+                "content": "Sample application form for an existing call.",
+                "title": "Sample Application Form",
+                "total_pages": 2,
+                "pages_processed": 2,
+                "truncated": False,
+                "error": None,
+            },
+        ),
+    )
+
+    result = crawler.crawl_funding_source(
+        "Test extensionless support document",
+        url,
+        {"start_urls": [url], "max_depth": 0, "follow_pdfs": True, "follow_documents": True},
+        [],
+    )
+
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+
+
 def test_supporting_pdf_is_fetched_but_not_emitted_as_a_funding_call():
     from core.crawl4ai_web import crawl_funding_source
 
