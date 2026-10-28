@@ -484,13 +484,35 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
 
 
 def _is_supporting_funding_document(url: str) -> bool:
-    """Recognize a known I-DAPT proposal template as supporting material, not a call."""
+    """Identify unambiguous application/support artifacts, not funding calls.
+
+    Keep substantive call guidelines and call manuals crawlable: some sources
+    publish the actual opportunity only as a PDF. This predicate is therefore
+    limited to explicit templates, sample forms, evaluator guidance, FAQs, and
+    event collateral rather than generic words such as "guidelines" or "form".
+    """
     parsed = urlparse(url)
-    return (
-        (parsed.hostname or "").casefold() in {"idapthub.org", "www.idapthub.org"}
-        and parsed.path.rstrip("/").casefold()
-        == "/frontend/docs/project_proposal_document_new.docx"
+    host = (parsed.hostname or "").casefold()
+    path = parsed.path.rstrip("/").casefold()
+    if (
+        host in {"idapthub.org", "www.idapthub.org"}
+        and path == "/frontend/docs/project_proposal_document_new.docx"
+    ):
+        return True
+
+    filename = path.rsplit("/", 1)[-1]
+    # These artifacts support an application process but are not opportunities
+    # in their own right. Match filenames rather than page body text so a real
+    # call that mentions forms, FAQs, or presentations is never discarded.
+    patterns = (
+        r"(?:^|[-_ ])sample[-_ ]application[-_ ]form(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])application[-_ ]form[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:application|proposal|project[-_ ]proposal|budget)[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])guidelines[-_ ]for[-_ ]evaluators(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
+        r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
+        r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
     )
+    return any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns)
 
 
 def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
@@ -1296,6 +1318,10 @@ def crawl_funding_source(
                         "pages_processed": pdf_result.get("pages_processed"),
                         "total_pages": pdf_result.get("total_pages"),
                     })
+                # A fetched supporting template/FAQ is useful crawl evidence,
+                # but it must not become a standalone funding-call record.
+                if _is_supporting_funding_document(current_url):
+                    continue
                 result.opportunities.append({
                     "type": "pdf",
                     "url": current_url,
@@ -1412,6 +1438,8 @@ def crawl_funding_source(
                         for key in ("total_pages", "pages_processed", "paragraphs_extracted", "sheets_extracted")
                         if key in document_result
                     })
+                    if _is_supporting_funding_document(current_url):
+                        continue
                     result.opportunities.append(opportunity)
                 else:
                     result.documents_failed += 1
