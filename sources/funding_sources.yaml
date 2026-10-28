@@ -645,6 +645,8 @@ sources:
       allowed_domains:
       - idapthub.org
       - www.idapthub.org
+      status_verification_urls:
+      - https://www.idapthub.org/applications/call_for_proposals
       discovery:
         start_urls:
         - https://www.idapthub.org/applications/call_for_proposals
