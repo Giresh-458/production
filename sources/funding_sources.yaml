@@ -96,12 +96,12 @@ sources:
           - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
           # Google Docs, forms, and database views are application/support routes,
           # not separate funding-call detail pages.
-          - '^https?://docs\\.google\\.com/document/'
-          - '^https?://[^/]*typeform\\.com/'
-          - '^https?://share\\.hsforms\\.com/'
-          - '^https?://airtable\\.com/'
+          - '^https?://docs\.google\.com/document/'
+          - '^https?://[^/]*typeform\.com/'
+          - '^https?://share\.hsforms\.com/'
+          - '^https?://airtable\.com/'
           # Announcement articles are not individual funding calls.
-          - '^https?://(?:www\\.)?solana\\.com/news/'
+          - '^https?://(?:www\.)?solana\.com/news/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
