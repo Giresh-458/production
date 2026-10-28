@@ -1477,3 +1477,82 @@ def test_idapt_proposal_template_is_fetched_but_not_emitted_as_opportunity(monke
     assert result.documents_discovered == 1
     assert result.documents_fetched == 1
     assert result.opportunities == []
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.org/forms/Sample_Application_Form_2027.pdf",
+        "https://example.org/docs/application-form-template.docx",
+        "https://example.org/docs/Guidelines-for-evaluators.pdf",
+        "https://example.org/events/Info-session-presentation.pdf",
+    ],
+)
+def test_supporting_funding_documents_are_not_classified_as_calls(url):
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(url) is True
+
+
+def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(
+        "https://example.org/calls/Enhance_NEB_with-cover.pdf"
+    ) is False
+
+
+def test_supporting_pdf_is_fetched_but_not_emitted_as_a_funding_call():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://example.org/forms/Sample_Application_Form_2027.pdf"
+    with patch(
+        "core.crawl4ai_web._fetch_pdf",
+        return_value={
+            "success": True,
+            "url": url,
+            "content": "Sample application form for an existing funding call.",
+            "total_pages": 2,
+            "pages_processed": 2,
+            "truncated": False,
+            "error": None,
+        },
+    ):
+        result = crawl_funding_source(
+            "Test supporting document",
+            url,
+            {"start_urls": [url], "max_depth": 0, "follow_pdfs": True},
+            [],
+        )
+
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+
+
+def test_substantive_call_manual_pdf_remains_discoverable():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://example.org/calls/Enhance_NEB_with-cover.pdf"
+    with patch(
+        "core.crawl4ai_web._fetch_pdf",
+        return_value={
+            "success": True,
+            "url": url,
+            "content": "Call for proposals. Eligibility and deadline are stated in this call manual.",
+            "total_pages": 8,
+            "pages_processed": 8,
+            "truncated": False,
+            "error": None,
+        },
+    ):
+        result = crawl_funding_source(
+            "Test call manual",
+            url,
+            {"start_urls": [url], "max_depth": 0, "follow_pdfs": True},
+            [],
+        )
+
+    assert result.documents_fetched == 1
+    assert len(result.opportunities) == 1
+    assert result.records_discovered == 1
+
