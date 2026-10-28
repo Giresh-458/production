@@ -3147,15 +3147,19 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
         outputs = []
         docs_only = []
+        companion_context_skipped_count = 0
+        generic_title_skipped_count = 0
         for doc, analysis in documents:
             # Companion pages are merged into their configured primary call above;
             # do not emit them as duplicate independent opportunities.
             if _funding_url_key(doc.source) in supplemental_context_urls:
+                companion_context_skipped_count += 1
                 continue
             # Do not emit navigation/portal chrome as a funding opportunity.
             # Keep the record out of structured output as well as downstream
             # qualification; generic labels such as "Topic | SBIR" are not calls.
             if _is_generic_funding_title(analysis.program_name or doc.title):
+                generic_title_skipped_count += 1
                 extra_warnings.append(
                     f"Skipped generic funding-page title: {analysis.program_name or doc.title!r} ({doc.source})"
                 )
@@ -3243,6 +3247,38 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             for source_result in collection_results:
                 _normalize_collection_coverage_status(source_result)
                 _update_source_verification_flags(source_result)
+
+            source_records_discovered_total = sum(int(getattr(item, "records_discovered", 0) or 0) for item in collection_results)
+            source_records_valid_total = sum(int(getattr(item, "records_valid", 0) or 0) for item in collection_results)
+            source_records_failed_total = sum(int(getattr(item, "records_failed", 0) or 0) for item in collection_results)
+            source_records_filtered_total = sum(int(getattr(item, "records_filtered", 0) or 0) for item in collection_results)
+            source_duplicates_removed_total = sum(int(getattr(item, "duplicates_removed", 0) or 0) for item in collection_results)
+            source_documents_processed = len(documents)
+            records_emitted = len(outputs)
+            unaccounted_source_to_documents_delta = source_records_valid_total - source_documents_processed
+            unaccounted_documents_to_outputs_delta = (
+                source_documents_processed
+                - companion_context_skipped_count
+                - generic_title_skipped_count
+                - records_emitted
+            )
+            response["record_accounting"] = {
+                "source_records_discovered_total": source_records_discovered_total,
+                "source_records_valid_total": source_records_valid_total,
+                "source_records_failed_total": source_records_failed_total,
+                "source_records_filtered_total": source_records_filtered_total,
+                "source_duplicates_removed_total": source_duplicates_removed_total,
+                "agent_documents_processed": source_documents_processed,
+                "companion_context_documents_merged": companion_context_skipped_count,
+                "generic_title_records_skipped": generic_title_skipped_count,
+                "raw_records_emitted": records_emitted,
+                "unaccounted_source_to_documents_delta": unaccounted_source_to_documents_delta,
+                "unaccounted_documents_to_outputs_delta": unaccounted_documents_to_outputs_delta,
+                "reconciled": (
+                    unaccounted_source_to_documents_delta == 0
+                    and unaccounted_documents_to_outputs_delta == 0
+                ),
+            }
             response["collection_results"] = [
                 {
                     "source_id": res.source_id,
