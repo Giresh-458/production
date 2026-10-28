@@ -941,6 +941,91 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
         }
 
 
+def _fetch_xlsx(url: str, max_chars: int = 50000) -> dict:
+    """Download an XLSX and extract visible cell values without browser navigation."""
+    try:
+        response = get_response(url, timeout=(8.0, 30.0), retries=2)
+        with zipfile.ZipFile(BytesIO(response.content)) as archive:
+            main_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+                shared_strings = [
+                    "".join(node.text or "" for node in item.iter(f"{main_ns}t"))
+                    for item in root.findall(f"{main_ns}si")
+                ]
+            sheet_paths = sorted(
+                (
+                    name for name in archive.namelist()
+                    if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)
+                ),
+                key=lambda name: int(re.search(r"sheet(\d+)\.xml$", name).group(1)),
+            )
+            rows: list[str] = []
+            for sheet_path in sheet_paths:
+                root = ET.fromstring(archive.read(sheet_path))
+                for row in root.iter(f"{main_ns}row"):
+                    values: list[str] = []
+                    for cell in row.findall(f"{main_ns}c"):
+                        cell_type = cell.attrib.get("t")
+                        if cell_type == "inlineStr":
+                            value = "".join(node.text or "" for node in cell.iter(f"{main_ns}t"))
+                        else:
+                            value_node = cell.find(f"{main_ns}v")
+                            value = value_node.text if value_node is not None else ""
+                            if cell_type == "s" and value:
+                                try:
+                                    value = shared_strings[int(value)]
+                                except (ValueError, IndexError):
+                                    value = ""
+                        value = str(value or "").strip()
+                        if value:
+                            values.append(value)
+                    if values:
+                        rows.append(" | ".join(values))
+        content = "\n".join(rows).strip()
+        if not content:
+            raise ValueError("XLSX downloaded successfully but contained no extractable cell text")
+        truncated = len(content) > max_chars
+        if truncated:
+            content = content[:max_chars]
+        return {
+            "success": True,
+            "url": url,
+            "title": urlparse(url).path.rsplit("/", 1)[-1],
+            "content": content,
+            "truncated": truncated,
+            "sheets_extracted": len(sheet_paths),
+            "error": None,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "url": url,
+            "content": "",
+            "truncated": False,
+            "error": str(exc),
+        }
+
+
+def _fetch_browser_download(url: str, max_pdf_pages: int | None = None) -> tuple[str, dict]:
+    """Dispatch browser-triggered downloads to the matching direct document reader."""
+    path = urlparse(url).path.casefold()
+    if _is_pdf_url(url) or _is_climate_kic_download_url(url):
+        return "pdf", _fetch_pdf(url, max_pdf_pages=max_pdf_pages)
+    if path.endswith(".docx"):
+        return "docx", _fetch_docx(url)
+    if path.endswith((".xlsx", ".xlsm")):
+        return "xlsx", _fetch_xlsx(url)
+    return "unsupported", {
+        "success": False,
+        "url": url,
+        "content": "",
+        "truncated": False,
+        "error": f"Browser signaled a download for unsupported document type: {path.rsplit('.', 1)[-1] if '.' in path else 'unknown'}",
+    }
+
+
 def _finalize_collection_status(result: CollectionResult, *, test_limits: bool = False) -> str:
     """Set a conservative source status from observed coverage, not record count alone.
 
@@ -1268,32 +1353,36 @@ def crawl_funding_source(
             )
             if is_browser_download:
                 result.pages_discovered = max(0, result.pages_discovered - 1)
+                kind, document_result = _fetch_browser_download(current_url, max_pdf_pages=max_pdf_pages)
                 result.documents_discovered += 1
-                pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
-                if pdf_result["success"]:
+                if document_result.get("success"):
                     result.documents_fetched += 1
                     if ctx:
                         ctx.add_document()
                         ctx.add_page()
-                    if pdf_result["truncated"]:
+                    if document_result.get("truncated"):
                         result.truncated = True
                     download_path = urlparse(current_url).path.rstrip("/")
-                    result.opportunities.append({
-                        "type": "pdf",
+                    opportunity = {
+                        "type": kind,
                         "url": current_url,
-                        "content": pdf_result["content"],
-                        "title": download_path.split("/")[-1] or "downloaded PDF",
-                        "total_pages": pdf_result["total_pages"],
-                        "pages_processed": pdf_result["pages_processed"],
+                        "content": document_result.get("content", ""),
+                        "title": document_result.get("title") or download_path.split("/")[-1] or "downloaded document",
                         "retrieved_at": datetime.now(UTC).isoformat(),
+                    }
+                    opportunity.update({
+                        key: document_result[key]
+                        for key in ("total_pages", "pages_processed", "paragraphs_extracted", "sheets_extracted")
+                        if key in document_result
                     })
+                    result.opportunities.append(opportunity)
                 else:
                     result.documents_failed += 1
                     result.failed_urls.append(current_url)
                     result.errors.append({
                         "url": current_url,
-                        "operation": "pdf_fetch_after_browser_download",
-                        "error": pdf_result.get("error") or error_text,
+                        "operation": f"{kind}_fetch_after_browser_download",
+                        "error": document_result.get("error") or error_text,
                         "timestamp": datetime.now(UTC).isoformat(),
                     })
                 continue
@@ -1350,12 +1439,54 @@ def crawl_funding_source(
                 status_error = f"HTTP {numeric_status}"
 
         if not res["success"] or status_error:
+            error_text = str(res.get("error_message") or status_error or "fetch failed")
+            normalized_error = re.sub(r"\s+", " ", error_text).strip().casefold()
+            is_browser_download = (
+                "download is starting" in normalized_error
+                or "download started" in normalized_error
+                or "download is being handled" in normalized_error
+            )
+            if is_browser_download:
+                result.pages_discovered = max(0, result.pages_discovered - 1)
+                kind, document_result = _fetch_browser_download(current_url, max_pdf_pages=max_pdf_pages)
+                result.documents_discovered += 1
+                if document_result.get("success"):
+                    result.documents_fetched += 1
+                    if ctx:
+                        ctx.add_document()
+                        ctx.add_page()
+                    if document_result.get("truncated"):
+                        result.truncated = True
+                    download_path = urlparse(current_url).path.rstrip("/")
+                    opportunity = {
+                        "type": kind,
+                        "url": current_url,
+                        "content": document_result.get("content", ""),
+                        "title": document_result.get("title") or download_path.split("/")[-1] or "downloaded document",
+                        "retrieved_at": datetime.now(UTC).isoformat(),
+                    }
+                    opportunity.update({
+                        key: document_result[key]
+                        for key in ("total_pages", "pages_processed", "paragraphs_extracted", "sheets_extracted")
+                        if key in document_result
+                    })
+                    result.opportunities.append(opportunity)
+                else:
+                    result.documents_failed += 1
+                    result.failed_urls.append(current_url)
+                    result.errors.append({
+                        "url": current_url,
+                        "operation": f"{kind}_fetch_after_browser_download",
+                        "error": document_result.get("error") or error_text,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    })
+                continue
             result.pages_failed += 1
             result.failed_urls.append(current_url)
             result.errors.append({
                 "url": current_url,
                 "operation": "page_fetch",
-                "error": res.get("error_message") or status_error or "fetch failed",
+                "error": error_text,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
             continue
