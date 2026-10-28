@@ -433,6 +433,17 @@ sources:
           # remains in scope and is seeded explicitly.
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/(?:2024/11/EIT-UM-Eligibility-expenditure[.]pdf|2025/02/BP23-25_Call_Manual_Scaling-Startups-Programme-2025_FINAL[.]pdf|2024/12/BP23-25_Guidance-Application-Form_Scaleup-2025[.]pdf|2024/10/EITUM_Eligibility-of-expenditure_v2[.]4_with-AnnexI[.]pdf|2023/03/Financial-support-agreement-template[.]pdf)(?:[?#].*)?$'
           # Historical EIT-network calls with verified expired deadlines must not fan out to their old application portals.
+          # Evidence-checked expired EIT archive calls from the 2021–2025 catalogue.
+          # These official EIT notices state deadlines in the past (2025 or earlier);
+          # don't follow their obsolete partner/application links as current-call coverage.
+          # Keep the central EIT hub itself and the explicitly seeded current 2026/2027
+          # programme pages crawlable. EIT listings state Teaching Factories 2025 closed
+          # 26 February 2025; Manufacturing CFP 2025 closed 8 July 2024; RawMaterials
+          # SLO/MBA/RACE calls closed 24 January 2025; Santander X closed 8 September 2022;
+          # Urban Mobility BP 2022-2024 calls closed 18 May 2021.
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/teaching-factories-competition-2025-call-companies-challenges(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eit[.]europa[.]eu/our-activities/opportunities/(?:call-proposals-establish-social-license-operate-slo-hub|global-mba-materials-management|call-proposals-develop-raw-and-circular-economy-expedition-race|eit-digital-entrepreneurial-academy-2025|eit-manufacturing-call-proposals-2025|call-santander-x-global-challenge-countdown-2-zero|eit-rawmaterials-call-projects-2022|eit-manufacturing-call-proposals-2022|eit-manufacturing-doctoral-school-special-call-proposals)(?:/|[?#]|$)'
+          - '^https?://(?:www[.])?eiturbanmobility[.]eu/(?:business-creation-call-for-proposals-2022|academy-call-for-proposals-2022|call-for-proposals-bp-2022-2024-just-launched|eit-urban-mobility-opens-call-for-proposals-2021|launch-of-call-for-proposals-for-factory-challengemycity)(?:/|[?#]|$)'
           # Older EIT-wide archive entries (2020–2022) link to expired programmes, forms,
           # and partner pages. They are not current Batch 1 opportunities; exclude the
           # historical parent pages so their obsolete external links do not create false
