@@ -68,3 +68,31 @@ def test_status_parser_does_not_promote_generic_directory_status_to_open():
     assert determine_status(
         "ACTIVE", None, None, "Status: Active.", "Funding Opportunities"
     ) == "UNKNOWN"
+
+
+def test_status_parser_recognizes_explicit_closed_application_language():
+    assert determine_status(
+        None, None, None, "The applications are closed. Sign up for future updates.",
+        "XRPL Program by Brinc",
+    ) == "CLOSED_CALL"
+
+
+def test_multiline_structured_grant_badge_is_preserved_as_status_evidence():
+    from agents.funding_agent import _status_evidence_excerpt
+
+    text = "Startup Accelerator Grant\nGrant\n|\nOpen\n|\nGlobal\nApply Now"
+    evidence = _status_evidence_excerpt(text, [
+        r"\b(?:grant|fellowship|bounty)\s*\|\s*(?:open|closed|paused|upcoming)\s*\|",
+    ])
+    assert evidence
+    assert "Grant" in evidence and "Open" in evidence
+
+
+def test_navigation_titles_used_by_live_sources_are_generic():
+    for title in (
+        "Active funding opportunity",
+        "Archived funding opportunity",
+        "Program contacts",
+        "How We Make Funding Decisions",
+    ):
+        assert _is_generic_funding_title(title)
