@@ -150,6 +150,8 @@ def _is_objective_or_task_statement(text: str) -> bool:
         r"analyse|analyze|identify|establish|investigate|improve|reduce)\b",
         r"^(?:the\s+)?(?:action|project|proposal)\s+is expected to\b",
         r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\s*:",
+        r"^(?:potential\s+)?(?:application|use|target)\s+(?:fields?|areas?|domains?|sectors?)\s+include\b",
+        r"^(?:potential\s+)?(?:application fields|application areas|use cases)\s+include\b",
         r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\s+"
         r"(?:the\s+)?(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
         r"^(?:build|create|develop|implement|track|submit|apply|provide|support|assess|evaluate|"
