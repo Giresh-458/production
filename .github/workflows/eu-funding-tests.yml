@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - "agents/funding_collector.py"
+      - "tests/test_eu_query_budget.py"
       - "agents/funding_agent.py"
       - "core/crawl4ai_web.py"
       - "core/funding_selection.py"
