@@ -380,7 +380,7 @@ def _normalize_raw_to_doc(
         title=title,
         source=url,
         source_type=source_type,
-        content=content[:50000],  # protect against extremely large pages
+        content=content[:200000],  # bounded, consistent with document readers
         year=current_year(),
     )
 
@@ -1411,7 +1411,7 @@ def _collect_web_source(
                 doc.content.rstrip()
                 + "\n\n## Official Status Verification\n"
                 + verification_context
-            )[:50000]
+            )[:200000]
         try:
             analysis = analyze_document(doc)
             result.opportunities.append((doc, analysis))
