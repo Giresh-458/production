@@ -388,6 +388,22 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
         flags=re.IGNORECASE,
     ):
         return True
+
+    # Solana's public Airtable RFP view deliberately displays a non-call
+    # "RFP CONTEXT" placeholder when no active RFPs exist. Treat it as an
+    # explicit empty state only on that exact shared-view route and only when
+    # the publisher's "DO NOT APPLY" / no-other-active-RFP warning is present.
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() in {"airtable.com", "www.airtable.com"}
+        and parsed.path.casefold().startswith(
+            "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7"
+        )
+        and "rfp context" in combined
+        and "do not apply for this" in combined
+        and re.search(r"no other active rfps? at this time", combined, re.IGNORECASE)
+    ):
+        return True
     return False
 
 
@@ -410,6 +426,18 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     if origin == "https://esp.ethereum.foundation" and path in {
         "/applicants", "/applicants/rfp", "/applicants/open-rounds", "/applicants/wishlist",
     }:
+        return True
+
+    # Solana's Airtable RFP context row is a placeholder, not a standalone call.
+    # The exact table can still be crawled for its explicit empty-state message.
+    if origin == "https://airtable.com" and path.startswith(
+        "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7"
+    ):
+        return True
+    # The related Airtable application form is a submission endpoint, not a call.
+    if origin == "https://airtable.com" and path.startswith(
+        "/apppdmk2pin9wx8jv/shrolvvhfsrwvq3ra"
+    ):
         return True
 
     # XRPL's home page is a multi-program directory. Its current-looking
@@ -1579,7 +1607,10 @@ def crawl_funding_source(
 
         page_content = res["markdown"] or res["html"] or ""
         page_title = res.get("title", "")
-        if depth == 0 and _reports_no_active_funding(page_url, page_title, page_content):
+        # The empty-state detector is tightly scoped to known listing routes,
+        # including the nested Solana Airtable view. It is safe to apply at any
+        # depth because it cannot match arbitrary detail pages on the same host.
+        if _reports_no_active_funding(page_url, page_title, page_content):
             result.no_active_opportunities_confirmed = True
 
         # Stage B: classify this page
