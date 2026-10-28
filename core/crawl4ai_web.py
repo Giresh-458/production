@@ -483,17 +483,18 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in directory_markers)
 
 
-def _is_supporting_funding_document(url: str) -> bool:
+def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
     """Identify unambiguous application/support artifacts, not funding calls.
 
     Keep substantive call guidelines and call manuals crawlable: some sources
     publish the actual opportunity only as a PDF. This predicate is therefore
     limited to explicit templates, sample forms, evaluator guidance, FAQs, and
     event collateral rather than generic words such as "guidelines" or "form".
+    The optional title handles extensionless browser-triggered downloads.
     """
     parsed = urlparse(url)
     host = (parsed.hostname or "").casefold()
-    path = parsed.path.rstrip("/").casefold()
+    path = parsed.path.rstrip("/").casefold().replace("%20", " ")
     if (
         host in {"idapthub.org", "www.idapthub.org"}
         and path == "/frontend/docs/project_proposal_document_new.docx"
@@ -502,8 +503,8 @@ def _is_supporting_funding_document(url: str) -> bool:
 
     filename = path.rsplit("/", 1)[-1]
     # These artifacts support an application process but are not opportunities
-    # in their own right. Match filenames rather than page body text so a real
-    # call that mentions forms, FAQs, or presentations is never discarded.
+    # in their own right. Match filenames rather than arbitrary body text so a
+    # real call that mentions forms, FAQs, or presentations is never discarded.
     patterns = (
         r"(?:^|[-_ ])sample[-_ ]application[-_ ]form(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])application[-_ ]form[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
@@ -512,7 +513,19 @@ def _is_supporting_funding_document(url: str) -> bool:
         r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
     )
-    return any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns)
+    if any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns):
+        return True
+
+    normalized_title = re.sub(r"[_-]+", " ", str(title or "")).casefold()
+    title_patterns = (
+        r"\bsample application form\b",
+        r"\bapplication form template\b",
+        r"\b(?:application|budget) template\b",
+        r"\bguidelines for evaluators\b",
+        r"\b(?:faqs?|frequently asked questions)\b",
+        r"\b(?:info session|info days?|webinar)\b",
+    )
+    return any(re.search(pattern, normalized_title) for pattern in title_patterns)
 
 
 def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
@@ -1320,7 +1333,7 @@ def crawl_funding_source(
                     })
                 # A fetched supporting template/FAQ is useful crawl evidence,
                 # but it must not become a standalone funding-call record.
-                if _is_supporting_funding_document(current_url):
+                if _is_supporting_funding_document(current_url, urlparse(current_url).path.split("/")[-1].replace("-", " ").replace("_", " ")):
                     continue
                 result.opportunities.append({
                     "type": "pdf",
@@ -1368,7 +1381,7 @@ def crawl_funding_source(
                     })
                 # Fetch and count this template, but do not emit it as a separate
                 # opportunity; the parent I-DAPT call carries its application link.
-                if _is_supporting_funding_document(current_url):
+                if _is_supporting_funding_document(current_url, docx_result.get("title")):
                     continue
                 result.opportunities.append({
                     "type": "docx",
@@ -1438,7 +1451,7 @@ def crawl_funding_source(
                         for key in ("total_pages", "pages_processed", "paragraphs_extracted", "sheets_extracted")
                         if key in document_result
                     })
-                    if _is_supporting_funding_document(current_url):
+                    if _is_supporting_funding_document(current_url, document_result.get("title")):
                         continue
                     result.opportunities.append(opportunity)
                 else:
