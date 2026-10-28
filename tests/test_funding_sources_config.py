@@ -677,3 +677,8 @@ def test_climate_kic_excludes_only_verified_expired_eit_archive_routes():
     ]
     for url in current:
         assert not excluded(url), f"Current explicit source route was excluded: {url}"
+
+    # Direct Podio forms are application endpoints, not independent calls. The
+    # parent call page retains the link as application evidence.
+    assert excluded("https://podio.com/webforms/30468642/2572395?fields[id]=3255970275")
+
