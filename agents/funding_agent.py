@@ -106,6 +106,8 @@ GENERIC_PAGE_TITLES = {
     "topics", "calls for proposals", "program directory", "grant directory",
     "grants and funding", "development grants", "this listing", "yourself",
     "simpler.grants.gov", "grants.gov",
+    "program contacts", "active funding opportunity", "archived funding opportunity",
+    "how we make funding decisions", "eligibility and funding information",
     "open call", "call documents", "programme theme", "program theme",
     "grant details", "funding allocation", "funding and prizes", "details",
     "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
@@ -246,9 +248,26 @@ def _update_source_verification_flags(result: Any) -> Any:
         result.currentness_verified = confirmed_empty
         return result
 
+    qualified_opportunities = []
+    for item in opportunities:
+        if isinstance(item, (tuple, list)) and len(item) >= 2:
+            document, analysis = item[0], item[1]
+            title = getattr(analysis, "program_name", None) or getattr(document, "title", None)
+            if _is_generic_funding_title(str(title or "")):
+                continue
+        qualified_opportunities.append(item)
+
+    # A crawl containing only generic navigation pages is not evidence that a
+    # funding source is verified or empty. Require either a real call record or
+    # the explicit empty-state path handled above.
+    if not qualified_opportunities:
+        result.evidence_verified = False
+        result.currentness_verified = False
+        return result
+
     record_evidence_verified = True
     record_currentness_verified = True
-    for item in opportunities:
+    for item in qualified_opportunities:
         if not isinstance(item, (tuple, list)) or len(item) < 2:
             record_evidence_verified = False
             record_currentness_verified = False
@@ -1123,6 +1142,13 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         lowered,
         flags=re.IGNORECASE,
     ))
+    hard_closed = hard_closed or bool(re.search(
+        r"\bapplications?\s+(?:(?:are|have been|remain|were)\s+)?closed\b|"
+        r"\bapplication period (?:is )?closed\b|"
+        r"\b(?:the )?program(?:me)? is closed for applications\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
     if hard_closed or normalized_explicit == "CLOSED_CALL":
         return "CLOSED_CALL"
 
@@ -1862,6 +1888,16 @@ def _evidence_excerpt(text: str, patterns: list[str], window: int = 240) -> str 
                 return chunk[:window]
     return None
 
+def _status_evidence_excerpt(text: str, patterns: list[str], window: int = 240) -> str | None:
+    """Extract status evidence across line-wrapped badges without joining unrelated fields."""
+    flattened = cleaned_text(str(text or ""))
+    for pattern in patterns:
+        match = re.search(pattern, flattened, flags=re.IGNORECASE)
+        if match:
+            return cleaned_text(match.group(0))[:window]
+    return _evidence_excerpt(text, patterns, window=window)
+
+
 def _field_evidence_is_specific(field: str, value: str | None, evidence: str | None) -> bool:
     """Require field evidence to contain the extracted value or a field-specific cue."""
     if not value or not evidence:
@@ -2377,7 +2413,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     eligible_costs = _extract_section_value(document.content, ("eligible costs", "allowable costs", "eligible expenses"))
 
     evidence = {
-        "status": _evidence_excerpt(document.content, [
+        "status": _status_evidence_excerpt(document.content, [
             # These are source excerpts, not automatic acceptance decisions.
             # Cover explicit status fields, directory badges and application windows.
             r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active|closed|paused|upcoming|funded)",
