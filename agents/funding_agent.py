@@ -1416,6 +1416,13 @@ def detect_research_intent(text: str, *, focus_area: str = "General", themes: li
         r"\b(?:grant|funding|support|award)\b.*\b(?:research|r&d|scientific|investigat|study)\b",
         r"\b(?:research project|scientific research|research study|research proposal|principal investigator|research objectives|research questions)\b",
         r"\b(?:hypothesis|methodology|experimental evaluation)\b",
+        # Some official research calls state the scientific need in the scope
+        # and expected outcomes rather than saying "research grant" verbatim.
+        # Require domain-specific scientific artefacts; generic mentions of
+        # research in boilerplate or eligibility text are not enough.
+        r"\b(?:climate projections?|climate science|scientific data|research infrastructure)\b",
+        r"\b(?:research|scientific) community\b.{0,160}\b(?:data|science|climate|observations?|projections?|infrastructure)\b",
+        r"\b(?:research and innovation action|research and innovation actions)\b",
     )
     negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't)\s+(?:offer|request|provide|require)\s+(?:funding|research|grant|deliverables?)\b"
     evidence: list[str] = []
