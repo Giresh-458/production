@@ -215,7 +215,7 @@ def _update_source_verification_flags(result: Any) -> Any:
     gaps = list(getattr(result, "coverage_gaps", None) or [])
     has_acquired_evidence = any(
         int(getattr(result, field, 0) or 0) > 0
-        for field in ("pages_fetched", "detail_pages_fetched", "documents_fetched", "api_pages_fetched")
+        for field in ("pages_fetched", "detail_pages_fetched", "documents_fetched", "api_pages_fetched", "records_discovered")
     )
     complete = (
         has_acquired_evidence
