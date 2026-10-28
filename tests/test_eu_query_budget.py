@@ -38,6 +38,7 @@ def test_eu_query_budget_records_remainder_without_dropping_queries():
 def test_eu_source_configured_budget_is_bounded_but_not_the_old_three_page_cap():
     from pathlib import Path
     import yaml
+    from agents.funding_collector import _eu_query_budget
 
     config = yaml.safe_load(Path("sources/funding_sources.yaml").read_text(encoding="utf-8"))
     source = next(
