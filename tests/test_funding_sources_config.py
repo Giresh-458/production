@@ -682,3 +682,25 @@ def test_climate_kic_excludes_only_verified_expired_eit_archive_routes():
     # parent call page retains the link as application evidence.
     assert excluded("https://podio.com/webforms/30468642/2572395?fields[id]=3255970275")
 
+
+
+def test_superteam_token_icon_endpoint_is_not_crawled_as_a_funding_page():
+    import re
+
+    source = next(entry for entry in _entries() if entry["name"] == "Superteam Development Grants")
+    patterns = source["collection"]["discovery"]["exclude_url_patterns"]
+    url = "https://superteam.fun/api/token-icon?url=https%3A%2F%2Fassets.coingecko.com%2Fcoins%2Fimages%2F51281.png"
+    assert any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
+
+
+def test_solana_placeholder_database_and_application_form_are_excluded():
+    import re
+
+    source = next(entry for entry in _entries() if entry["name"] == "Solana Grants and Funding")
+    patterns = source["collection"]["discovery"]["exclude_url_patterns"]
+    urls = [
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrDbfJ1wktQ7pB6f/tbli2ERM3sdhyHJYB",
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrolVvhFsrwvq3rA?prefill_Related+RFP=recFe5gmTrKteofrx",
+    ]
+    for url in urls:
+        assert any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
