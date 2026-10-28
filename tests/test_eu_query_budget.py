@@ -16,8 +16,8 @@ def test_eu_source_budget_gives_each_search_term_more_than_one_page():
         max_documents=5000,
     )
 
-    assert budgets["pages_per_query"] == 10
-    assert budgets["documents_per_query"] == 500
+    assert budgets["pages_per_query"] == 20
+    assert budgets["documents_per_query"] == 1000
     assert budgets["unallocated_pages"] == 0
 
 
@@ -56,6 +56,6 @@ def test_eu_source_configured_budget_is_bounded_but_not_the_old_three_page_cap()
         max_documents=limits["max_documents"],
     )
 
-    assert budgets["pages_per_query"] >= 10
-    assert budgets["documents_per_query"] >= 500
+    assert budgets["pages_per_query"] >= 20
+    assert budgets["documents_per_query"] >= 1000
     assert budgets["query_count"] == len(api["search_texts"])
