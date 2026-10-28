@@ -1386,3 +1386,94 @@ def test_eu_application_url_prefers_publisher_link_then_official_topic_landing_p
     assert _eu_application_url(
         {}, "https://ec.europa.eu/info/funding-tenders/opportunities/other-page"
     ) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "specific_title",
+    [
+        "CHANAKYA UG Fellowship – I",
+        "CHANAKYA UG Fellowship – II",
+        "CHANAKYA PG Fellowship (Startup/Product Development)",
+        "CHANAKYA PG Top-up Fellowship",
+        "CHANAKYA Doctoral Top-up Fellowship",
+        "CHANAKYA Post-Doctoral Top-up Fellowship",
+        "CHANAKYA Post Doctoral Fellowship",
+    ],
+)
+def test_docx_title_skips_generic_chanakya_form_banner(specific_title):
+    from core.crawl4ai_web import _extract_docx_title
+
+    assert _extract_docx_title(
+        [
+            "CHANAKYA FELLOWSHIP – APPLICATION FORM",
+            specific_title,
+            "The fellowship is for motivated students.",
+        ],
+        "https://idapthub.org/frontend/docs/chanakya/fellowship.docx",
+    ) == specific_title
+
+
+def test_idapt_proposal_template_is_not_a_second_funding_call():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_supporting_funding_document
+
+    template_url = "https://idapthub.org/frontend/docs/project_proposal_document_new.docx"
+    assert _is_supporting_funding_document(template_url) is True
+    assert _is_supporting_funding_document(
+        "https://idapthub.org/frontend/docs/chanakya/1_chanakya_ug_fellowship_I.docx"
+    ) is False
+    assert _classify_page_stage_b(
+        template_url,
+        "different categories and the duration of project proposals",
+        (
+            "Call for Innovative and Entrepreneurial Project Proposals. "
+            "Funding amount up to Rs. 15 Lakh. Eligibility and proposal submission."
+        ),
+    ) is False
+
+
+def test_idapt_parent_call_page_remains_a_funding_call_candidate():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    assert _classify_page_stage_b(
+        "https://idapthub.org/applications/call_for_proposals",
+        "Call for Proposals",
+        (
+            "Call for Innovative and Entrepreneurial Research Projects. "
+            "This research grant provides funding for eligible projects. "
+            "Eligibility requirements and funding amount are described below. "
+            "How to apply: applications can be submitted at any time. "
+            "Currently not accepting any fresh applications for Research Projects."
+        ),
+    ) is True
+
+
+def test_idapt_proposal_template_is_fetched_but_not_emitted_as_opportunity(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    template_url = "https://www.idapthub.org/frontend/docs/project_proposal_document_new.docx"
+    monkeypatch.setattr(
+        crawler, "_fetch_docx",
+        lambda requested: {
+            "success": True, "url": requested, "content": "proposal template content",
+            "title": "different categories and the duration of project proposals",
+            "paragraphs_extracted": 4, "truncated": False, "error": None,
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "I-DAPT Hub Cyber-Physical Systems Calls",
+        template_url,
+        {
+            "start_urls": [template_url],
+            "max_depth": 0,
+            "max_pages": 5,
+            "follow_documents": True,
+        },
+        allowed_domains=["idapthub.org", "www.idapthub.org"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
