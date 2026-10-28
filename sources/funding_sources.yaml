@@ -637,12 +637,13 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        # 100 pages total gives each of the ten targeted queries a 10-page
-        # ceiling (up to 500 results/query at page_size 50). The 5,000-record
-        # cap is bounded, but any query exceeding these limits remains explicitly
-        # PARTIAL; the scanner must never call a capped query complete.
-        max_pages: 100
-        max_documents: 5000
+        # 200 pages total gives each of the ten targeted queries a 20-page
+        # ceiling (up to 1,000 results/query at page_size 50). This covers the
+        # observed 577- and 807-result queries without dropping search terms.
+        # The budget remains bounded; any query exceeding either limit remains
+        # explicitly PARTIAL and must never be reported as exhaustive.
+        max_pages: 200
+        max_documents: 10000
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
