@@ -397,7 +397,7 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     assert climate_kic_discovery["max_pages"] == 600
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
-    assert sbir_discovery["max_depth"] == 4 and sbir_discovery["max_pages"] == 120
+    assert sbir_discovery["max_depth"] == 5 and sbir_discovery["max_pages"] == 120
 
 
 def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations():
@@ -707,11 +707,12 @@ def test_solana_placeholder_database_and_application_form_are_excluded():
 
 def test_open_sbir_discovery_reaches_linked_official_nsf_topic_details():
     by_name = {entry["name"]: entry for entry in _entries()}
-    discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
+    entry = by_name["Open SBIR Funding Topics"]
+    discovery = entry["collection"]["discovery"]
 
     # The full audit found an official NSF opportunity linked one level beyond
     # the previous boundary. Increase traversal depth without relaxing any
     # record-level eligibility or currentness checks.
     assert discovery["max_depth"] >= 5
-    assert "nsf.gov" in discovery["allowed_domains"]
+    assert "nsf.gov" in entry["collection"]["allowed_domains"]
 
