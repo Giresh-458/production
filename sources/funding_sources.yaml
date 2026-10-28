@@ -381,6 +381,8 @@ sources:
           - '^https?://wkf[.]ms/'
           - '^https?://(?:www[.])?tally[.]so/'
           - '^https?://(?:www[.])?forms[.]office[.]com/'
+          # Podio webforms are application destinations, not independent call records.
+          - '^https?://(?:www[.])?podio[.]com/webforms/'
           # The CMS dev host is used for official call attachments; do not crawl its non-file routes.
           - '^https?://eitcc-dev[.]wmstudio[.]space/(?!sites/default/files/)'
           # Application forms are terminal destinations, not independent call-detail pages.
