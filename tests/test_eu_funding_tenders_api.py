@@ -665,3 +665,86 @@ def test_eu_collector_fans_out_domain_searches_and_deduplicates_across_queries(m
     assert result.records_discovered == 1
     assert result.duplicates_removed == 1
     assert result.records_valid == 1
+
+
+
+def test_eu_collector_uses_fair_page_budget_for_each_configured_query(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    limits_seen = []
+    queries = ["one", "two", "three", "four"]
+
+    def fake_search(**kwargs):
+        limits_seen.append((
+            kwargs["search_text"],
+            kwargs["source_limits"]["max_pages"],
+            kwargs["source_limits"]["max_documents"],
+        ))
+        return {
+            "results": [],
+            "pages_fetched": 1,
+            "total_expected": 0,
+            "pagination_complete": True,
+            "errors": [],
+        }
+
+    monkeypatch.setattr(funding_collector, "eu_funding_tenders_paginated_search", fake_search)
+    source = FundingSource(
+        name="EU test",
+        url="https://example.org/eu",
+        tier="tier_3",
+        collection={
+            "api": {"types": ["1"], "statuses": ["31094502"], "search_texts": queries, "page_size": 50},
+            "limits": {"max_pages": 20, "max_documents": 2000},
+        },
+        research_domains=["ESG"],
+    )
+
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert limits_seen == [(query, 5, 500) for query in queries]
+    assert result.pagination_complete is True
+    assert result.truncated is False
+
+
+def test_eu_collector_keeps_source_partial_when_any_query_hits_its_cap(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+
+    calls = []
+    def fake_search(**kwargs):
+        calls.append(kwargs["search_text"])
+        complete = kwargs["search_text"] != "query-with-cap"
+        return {
+            "results": [],
+            "pages_fetched": kwargs["source_limits"]["max_pages"] if complete else kwargs["source_limits"]["max_pages"],
+            "total_expected": 0 if complete else 999,
+            "pagination_complete": complete,
+            "errors": [] if complete else ["SOURCE_LIMIT_REACHED: Max pages reached"],
+        }
+
+    monkeypatch.setattr(funding_collector, "eu_funding_tenders_paginated_search", fake_search)
+    source = FundingSource(
+        name="EU test",
+        url="https://example.org/eu",
+        tier="tier_3",
+        collection={
+            "api": {"types": ["1"], "statuses": ["31094502"], "search_texts": ["a", "query-with-cap", "c"], "page_size": 50},
+            "limits": {"max_pages": 9, "max_documents": 1500},
+        },
+        research_domains=["ESG"],
+    )
+    result = funding_collector._collect_eu_funding_tenders(
+        source, CollectionResult(source_id=source.name, method="api"), warnings=[]
+    )
+
+    assert calls == ["a", "query-with-cap", "c"]
+    assert result.final_status == "PARTIAL"
+    assert result.pagination_complete is False
+    assert result.discovery_exhausted is False
+    assert any("query='query-with-cap'" in error["error"] and "SOURCE_LIMIT_REACHED" in error["error"] for error in result.errors)
