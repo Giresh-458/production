@@ -3190,6 +3190,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "pagination_complete": res.pagination_complete,
                     "discovery_exhausted": res.discovery_exhausted,
                     "truncated": res.truncated,
+                    "truncation_details": res.truncation_details,
                     "max_depth": res.max_depth,
                     "max_depth_reached": res.max_depth_reached,
                     "errors": res.errors,
