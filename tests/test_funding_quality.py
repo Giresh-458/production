@@ -85,7 +85,7 @@ def test_partial_source_and_fetch_failures_are_explicit_blockers():
     assert any(
         item.get("source_id") == "partial-source"
         and "relevant URL(s) skipped" in item["message"]
-        and "fetch failures" in item["message"]
+        and "fetch/processing failures" in item["message"]
         for item in result["blockers"]
     )
 
