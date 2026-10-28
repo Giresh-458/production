@@ -507,7 +507,7 @@ def _is_supporting_funding_document(url: str) -> bool:
     patterns = (
         r"(?:^|[-_ ])sample[-_ ]application[-_ ]form(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])application[-_ ]form[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
-        r"(?:^|[-_ ])(?:application|proposal|project[-_ ]proposal|budget)[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:application|budget)[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])guidelines[-_ ]for[-_ ]evaluators(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
