@@ -94,6 +94,12 @@ sources:
           - '^https?://docs\.google\.com/document/'
           # Direct application forms are links to apply, not separate grant records.
           - '^https?://[^/]*typeform\.com/'
+          # Token icon API responses are assets, not funding detail pages.
+          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?
+          - '^https?://share\.hsforms\.com/'
+          - '^https?://airtable\.com/'
+          # Announcement articles are not individual funding calls.
+          - '^https?://(?:www\.)?solana\.com/news/'
           - '^https?://share\.hsforms\.com/'
           - '^https?://airtable\.com/'
           # Announcement articles are not individual funding calls.
@@ -380,8 +386,6 @@ sources:
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/join-us/(?:request-for-proposals|call-for-proposals)(?:/|[?#]|$)'
           - '^https?://assets[.]eitfood[.]eu/files/.*(?:Agreement|agreement|Contract|contract|Budget[_-]?template|budget[_-]?template|Calculator|calculator|Framework-Agreement|Framework-Agreement|LumpSum-Subgrant-Agreement|Letter-of-Intent-Template|Info-Session|Information-Session).*[.](?:pdf|docx?|xlsx?)(?:[?#].*)?$'
           - '^https?://[^/]*typeform[.]com/'
-          # Token icon API responses are assets, not funding detail pages.
-          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?
           # WorkForms short links are application destinations, not call-detail pages to crawl.
           - '^https?://wkf[.]ms/'
           - '^https?://(?:www[.])?tally[.]so/'
