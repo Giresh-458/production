@@ -1499,6 +1499,11 @@ def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
     assert _is_supporting_funding_document(
         "https://example.org/calls/Enhance_NEB_with-cover.pdf"
     ) is False
+    # A generic proposal-template filename is not enough to suppress a DOCX:
+    # its contents may itself be the only substantive call document.
+    assert _is_supporting_funding_document(
+        "https://example.org/docs/proposal-template.docx"
+    ) is False
 
 
 def test_supporting_pdf_is_fetched_but_not_emitted_as_a_funding_call():
