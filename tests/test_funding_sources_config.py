@@ -633,3 +633,47 @@ def test_eit_urban_mobility_sample_form_and_info_session_are_not_call_records():
     assert not any(re.search(pattern, canonical_call, re.IGNORECASE) for pattern in patterns)
     assert not any(re.search(pattern, call_manual, re.IGNORECASE) for pattern in patterns)
 
+
+
+
+def test_climate_kic_excludes_only_verified_expired_eit_archive_routes():
+    """Archived EIT links must not create false active-coverage blockers, while current roots stay in scope."""
+    import re
+
+    climate = next(
+        entry for entry in _entries()
+        if entry["name"] == "Climate KIC Open Calls"
+    )
+    discovery = climate["collection"]["discovery"]
+    patterns = discovery["exclude_url_patterns"]
+
+    def excluded(url):
+        return any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
+
+    expired = [
+        "https://www.eit.europa.eu/our-activities/opportunities/teaching-factories-competition-2025-call-companies-challenges",
+        "https://www.eit.europa.eu/our-activities/opportunities/call-proposals-establish-social-license-operate-slo-hub",
+        "https://www.eit.europa.eu/our-activities/opportunities/global-mba-materials-management",
+        "https://www.eit.europa.eu/our-activities/opportunities/call-proposals-develop-raw-and-circular-economy-expedition-race",
+        "https://www.eit.europa.eu/our-activities/opportunities/eit-digital-entrepreneurial-academy-2025",
+        "https://www.eit.europa.eu/our-activities/opportunities/eit-manufacturing-call-proposals-2025",
+        "https://www.eit.europa.eu/our-activities/opportunities/call-santander-x-global-challenge-countdown-2-zero",
+        "https://www.eiturbanmobility.eu/business-creation-call-for-proposals-2022/",
+        "https://www.eiturbanmobility.eu/academy-call-for-proposals-2022/",
+        "https://www.eiturbanmobility.eu/call-for-proposals-bp-2022-2024-just-launched/",
+        "https://www.eiturbanmobility.eu/launch-of-call-for-proposals-for-factory-challengemycity/",
+    ]
+    for url in expired:
+        assert excluded(url), f"Known expired route still fans out: {url}"
+
+    # The source must continue to inspect the live root and explicitly seeded
+    # current call pages. Exclusions are exact routes, not blanket domain bans.
+    current = [
+        "https://www.climate-kic.org/get-involved/open-calls/",
+        "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/",
+        "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/",
+        "https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/",
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale",
+    ]
+    for url in current:
+        assert not excluded(url), f"Current explicit source route was excluded: {url}"
