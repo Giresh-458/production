@@ -103,3 +103,35 @@ def test_airtable_directory_and_record_context_titles_are_not_individual_calls()
     assert _is_generic_funding_title("Solana Foundation Public RFP Database")
     assert _is_generic_funding_title("RFP CONTEXT")
     assert not _is_generic_funding_title("Build for Breakpoint: Agentic Grants")
+
+
+def test_section_value_reads_eligibility_paragraph_after_markdown_heading():
+    from agents.funding_agent import _extract_section_value
+
+    content = """# Call details
+## Who can apply?
+This call is addressed to small and medium enterprises (SMEs) established in eligible countries.
+Applicants must have at least three full-time employees.
+## Funding
+The maximum grant is EUR 50,000.
+"""
+    value = _extract_section_value(content, ("eligibility", "who can apply", "eligible applicants"))
+    assert value
+    assert "small and medium enterprises" in value
+    assert "three full-time employees" in value
+    assert "maximum grant" not in value
+
+
+def test_section_value_skips_unknown_placeholder_and_extracts_real_section():
+    from agents.funding_agent import _extract_section_value
+
+    content = """Eligibility: Unknown
+## Eligibility
+Applicants must be a U.S. small business with fewer than 500 employees.
+## Funding
+Up to $300,000.
+"""
+    value = _extract_section_value(content, ("eligibility", "who can apply"))
+    assert value
+    assert "U.S. small business" in value
+    assert "Unknown" not in value
