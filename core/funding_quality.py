@@ -104,6 +104,7 @@ def assess_batch_acceptance(
         failed_pages = int(source.get("pages_failed") or 0)
         failed_details = int(source.get("detail_pages_failed") or 0)
         failed_documents = int(source.get("documents_failed") or 0)
+        failed_records = int(source.get("records_failed") or 0)
         truncated = bool(source.get("truncated"))
         pagination_detected = bool(source.get("pagination_detected"))
         pagination_complete = bool(source.get("pagination_complete"))
@@ -125,9 +126,10 @@ def assess_batch_acceptance(
             incomplete_reasons.append(f"{gaps} coverage gap(s)")
         if skipped:
             incomplete_reasons.append(f"{skipped} relevant URL(s) skipped")
-        if failed_pages or failed_details or failed_documents:
+        if failed_pages or failed_details or failed_documents or failed_records:
             incomplete_reasons.append(
-                f"fetch failures: pages={failed_pages}, details={failed_details}, documents={failed_documents}"
+                f"fetch/processing failures: pages={failed_pages}, details={failed_details}, "
+                f"documents={failed_documents}, records={failed_records}"
             )
         if truncated:
             incomplete_reasons.append("truncated")
