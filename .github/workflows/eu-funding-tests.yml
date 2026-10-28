@@ -667,6 +667,7 @@ jobs:
               for source in entries
               if isinstance(source, dict) and source.get("name")
           ]
+          summary["record_accounting"] = response.get("record_accounting")
           summary["batch_acceptance"] = assess_batch_acceptance(
               run_status=response.get("status"),
               raw_records_count=len(records),
@@ -675,6 +676,7 @@ jobs:
               selected_manual_review_flags=review_flags,
               source_summary=source_summary,
               expected_source_ids=expected_source_ids,
+              record_accounting=summary["record_accounting"],
           )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
