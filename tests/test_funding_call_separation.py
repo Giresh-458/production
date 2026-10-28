@@ -413,7 +413,21 @@ def test_solana_airtable_empty_state_is_verified_without_emitting_placeholder_ro
         },
     }
 
-    with patch("core.crawl4ai_web._fetch_sync", lambda url: pages[url]):
+    def fake_fetch(requested_url):
+        key = requested_url.split("?", 1)[0].rstrip("/")
+        if key == root:
+            return pages[root]
+        if key == table.split("?", 1)[0].rstrip("/"):
+            return pages[table]
+        if key == form.split("?", 1)[0].rstrip("/"):
+            return pages[form]
+        raise AssertionError(f"Unexpected fetch in bounded Solana fixture: {requested_url}")
+
+    with (
+        patch("core.crawl4ai_web._fetch_sync", fake_fetch),
+        patch("core.crawl4ai_web._get_robots_policy", return_value=(True, 1.0, None)),
+        patch("core.crawl4ai_web._wait_for_host_slot", return_value=True),
+    ):
         result = crawl_funding_source(
             "Solana Grants and Funding",
             root,
