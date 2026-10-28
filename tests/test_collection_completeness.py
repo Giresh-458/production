@@ -379,3 +379,28 @@ def test_funding_agent_serializes_explicit_empty_state_confirmation(tmp_path):
     assert response["collection_results"][0]["final_status"] == "NO_ACTIVE_OPPORTUNITIES"
     assert response["collection_results"][0]["no_active_opportunities_confirmed"] is True
 
+
+
+def test_status_verification_extracts_explicit_i_dapt_closure(monkeypatch):
+    from types import SimpleNamespace
+    from agents.funding_collector import _fetch_status_verification_context
+    import core.http_client as http_client
+
+    status_url = "https://www.idapthub.org/applications/call_for_proposals"
+    monkeypatch.setattr(
+        http_client,
+        "fetch_text",
+        lambda url, **kwargs: (
+            "Currently not accepting any fresh applications for Research Projects.",
+            status_url,
+        ),
+    )
+    source = SimpleNamespace(
+        name="I-DAPT Hub Cyber-Physical Systems Calls",
+        collection={"status_verification_urls": [status_url]},
+    )
+
+    evidence = _fetch_status_verification_context(source)
+
+    assert "not accepting any fresh applications" in evidence.casefold()
+    assert status_url in evidence
