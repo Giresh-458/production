@@ -609,21 +609,30 @@ sources:
         types: ["1", "2", "8"]
         statuses: ["31094501", "31094502"]
         page_size: 50
+        # Distinct discovery queries cover all seven RIF domains; these terms
+        # are discovery hints, never proof of eligibility or domain relevance.
         search_texts:
+        - tokenized real-world assets
         - carbon credit
         - MRV emissions
         - sustainability data
+        - zero-knowledge
+        - internet of vehicles
         - decentralized identity
         - physical infrastructure
+        - maximal extractable value
+        - stablecoin payments
         detail_fetch_missing_metadata: true
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        # Five targeted queries get up to fourteen 50-result pages each.
-        # A live scan retrieved 556 of 567 expected records because a short page
-        # arrived before the reported total; allow bounded continuation pages.
-        max_pages: 70
-        max_documents: 3500
+        # Ten targeted queries cover the seven RIF domains (ESG uses several
+        # complementary queries, and ZK-IoV needs both cryptography and vehicle
+        # terminology). A 30-page budget permits three pages per query, while the
+        # global 1,500-document cap limits each query to 150 records. Any
+        # unexhausted query remains explicitly PARTIAL.
+        max_pages: 30
+        max_documents: 1500
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
