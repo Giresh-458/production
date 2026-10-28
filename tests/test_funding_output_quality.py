@@ -6,6 +6,9 @@ from agents.funding_agent import (
     _extract_currency,
     _extract_eligibility_from_prose,
     _extract_funding_amount,
+    _extract_funding_body,
+    _extract_program_name,
+    extract_call_dates,
     _extract_general_themes,
     _extract_geography_from_prose,
     _merge_related_eligibility_context,
@@ -62,6 +65,42 @@ def _analysis(document: FundingDocument) -> FundingOpportunity:
         last_verified_at="2026-10-23T00:00:00+00:00",
         evidence={},
     )
+
+
+def test_bioeconomy_giants_pdf_metadata_uses_call_factsheet_not_project_metadata():
+    content = """
+    Project Name FosterinG collaboratIon among primAry producers and beyond
+    Start Date June 1st 2025
+    Call Title Call for Scaling Up and Piloting
+    Granting Authority Circular Bio-based Europe Joint Undertaking
+    Opening Date 1st November 2026
+    Closing Date 31st December 2026 at 17:00 CET
+    Total Budget € 280,000
+    Max Funding per Project € 70,000 (Max. 60,000€ per granted organization/legal entity)
+    """
+    opening, deadline = extract_call_dates(content)
+    assert opening == "2026-11-01"
+    assert deadline == "2026-12-31"
+    assert _extract_program_name(
+        content,
+        "BIOECONOMY GIANTS Open Call for Scaling Up Piloting OC2.pdf",
+    ) == "Call for Scaling Up and Piloting"
+    assert _extract_funding_body(content, "Climate KIC Open Calls") == "Circular Bio-based Europe Joint Undertaking"
+    assert _extract_funding_amount(content) == "€ 70,000"
+
+
+def test_funding_problem_signal_rejects_potential_application_scope_as_problem():
+    content = (
+        "Potential application fields include, but are not limited to, sustainable "
+        "bio-based packaging, bio-based materials, bio-based chemical intermediates, "
+        "bio-based food or feed ingredients, bio-based specialty chemicals, "
+        "biofertilizers, organic amendments, or similar high added-value bio-based products."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+    assert intelligence["problem_evidence"] == []
 
 
 def test_funding_problem_signal_is_concise_and_evidence_backed():
