@@ -483,10 +483,25 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in directory_markers)
 
 
+def _is_supporting_funding_document(url: str) -> bool:
+    """Recognize a known I-DAPT proposal template as supporting material, not a call."""
+    parsed = urlparse(url)
+    return (
+        (parsed.hostname or "").casefold() in {"idapthub.org", "www.idapthub.org"}
+        and parsed.path.rstrip("/").casefold()
+        == "/frontend/docs/project_proposal_document_new.docx"
+    )
+
+
 def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
     """Stage B: high-precision funding classification on actual page content."""
     url_lower = url.lower()
     combined = f"{title}\n{content}".lower()
+
+    # The I-DAPT proposal template is supporting application material. The parent
+    # call page remains discoverable and retains its application-document link.
+    if _is_supporting_funding_document(url):
+        return False
 
     # Explicitly empty listings and ecosystem directories are traversal roots,
     # not individual applications. Their links are still explored below.
@@ -1325,6 +1340,10 @@ def crawl_funding_source(
                         "url": current_url, "reason": "document_text_character_limit",
                         "document_type": "docx", "character_limit": 200000,
                     })
+                # Fetch and count this template, but do not emit it as a separate
+                # opportunity; the parent I-DAPT call carries its application link.
+                if _is_supporting_funding_document(current_url):
+                    continue
                 result.opportunities.append({
                     "type": "docx",
                     "url": current_url,
