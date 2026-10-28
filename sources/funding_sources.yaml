@@ -100,8 +100,6 @@ sources:
           - '^https?://airtable\.com/'
           # Announcement articles are not individual funding calls.
           - '^https?://(?:www\.)?solana\.com/news/'
-          - '^https?://airtable\.com/'
-          - '^https?://airtable\.com/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
