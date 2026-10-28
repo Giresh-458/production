@@ -199,6 +199,83 @@ def _normalize_collection_coverage_status(result: Any) -> Any:
         result.discovery_exhausted = False
         result.pagination_complete = False
     return result
+
+
+def _update_source_verification_flags(result: Any) -> Any:
+    """Set source-level verification flags only when the corresponding checks ran.
+
+    Evidence verification means every emitted record has a source URL, source
+    content, and at least one extracted source-grounded evidence field. Currentness
+    verification additionally requires complete source acquisition and explicit
+    status/date evidence for every emitted record. A confirmed, fully exhausted
+    empty-state page can verify that no active opportunities were found.
+    """
+    opportunities = list(getattr(result, "opportunities", None) or [])
+    errors = list(getattr(result, "errors", None) or [])
+    gaps = list(getattr(result, "coverage_gaps", None) or [])
+    complete = (
+        str(getattr(result, "final_status", "") or "").upper()
+        in {"VERIFIED", "NO_ACTIVE_OPPORTUNITIES"}
+        and bool(getattr(result, "discovery_exhausted", False))
+        and not bool(getattr(result, "truncated", False))
+        and not gaps
+        and int(getattr(result, "relevant_urls_skipped", 0) or 0) == 0
+        and int(getattr(result, "pages_failed", 0) or 0) == 0
+        and int(getattr(result, "detail_pages_failed", 0) or 0) == 0
+        and int(getattr(result, "documents_failed", 0) or 0) == 0
+        and int(getattr(result, "records_failed", 0) or 0) == 0
+        and not errors
+        and (
+            not bool(getattr(result, "pagination_detected", False))
+            or bool(getattr(result, "pagination_complete", False))
+        )
+    )
+
+    if not opportunities:
+        confirmed_empty = (
+            complete
+            and bool(getattr(result, "no_active_opportunities_confirmed", False))
+            and str(getattr(result, "final_status", "") or "").upper() == "NO_ACTIVE_OPPORTUNITIES"
+        )
+        result.evidence_verified = confirmed_empty
+        result.currentness_verified = confirmed_empty
+        return result
+
+    record_evidence_verified = True
+    record_currentness_verified = True
+    for item in opportunities:
+        if not isinstance(item, (tuple, list)) or len(item) < 2:
+            record_evidence_verified = False
+            record_currentness_verified = False
+            continue
+        document, analysis = item[0], item[1]
+        source_url = str(getattr(document, "source", "") or getattr(analysis, "source_url", "") or "")
+        source_content = str(getattr(document, "content", "") or "").strip()
+        evidence = getattr(analysis, "evidence", None)
+        if not isinstance(evidence, dict):
+            evidence = {}
+        has_field_evidence = any(
+            isinstance(value, str) and value.strip()
+            for value in evidence.values()
+        )
+        if not (source_url.startswith(("https://", "http://")) and source_content and has_field_evidence):
+            record_evidence_verified = False
+
+        status = str(getattr(analysis, "status", "") or "").upper()
+        status_evidence = evidence.get("status")
+        date_evidence = evidence.get("opening_date") or evidence.get("deadline")
+        if status not in {"OPEN_CALL", "UPCOMING_CALL", "CLOSED_CALL", "FUNDED_PROJECT"}:
+            record_currentness_verified = False
+        if not (isinstance(status_evidence, str) and status_evidence.strip()) and not (
+            isinstance(date_evidence, str) and date_evidence.strip()
+        ):
+            record_currentness_verified = False
+
+    result.evidence_verified = record_evidence_verified and int(getattr(result, "records_failed", 0) or 0) == 0
+    result.currentness_verified = bool(complete and result.evidence_verified and record_currentness_verified)
+    return result
+
+
 RECURSIVE_DIRECT_PAGE_CONFIG = RecursiveCollectionConfig(
     # Funding/RFP pages often link from a landing page to the actual call,
     # eligibility, FAQ and application portal. Give the crawler enough budget
@@ -2291,6 +2368,12 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
             r"request for proposals",
             r"call for proposals",
+            r"(?:call|application|solicitation)\s+status\s*[:：]\s*(?:open|closed|paused|upcoming|funded)",
+            r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
+            r"no longer accepting (?:applications|submissions)",
+            r"applications? (?:are )?(?:closed|paused|suspended)",
+            r"deadline[^.\n]{0,160}20\d{2}",
+            r"(?:was|has been|have been) awarded[^.\n]{0,160}",
         ]),
         "opening_date": _evidence_excerpt(document.content, [r"opens?[^.\n]{0,120}20\d{2}", r"applications? open[^.\n]{0,120}20\d{2}"]),
         "deadline": _evidence_excerpt(document.content, [r"closes?[^.\n]{0,160}20\d{2}", r"deadline[^.\n]{0,160}20\d{2}", r"applications? close[^.\n]{0,160}20\d{2}"]),
@@ -3009,6 +3092,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Process and save progressively to avoid data loss on crash
                 for res in collection_iterator:
                     _normalize_collection_coverage_status(res)
+                    _update_source_verification_flags(res)
                     collection_results.append(res)
                     source_docs = []
                     for doc, analysis in res.opportunities:
