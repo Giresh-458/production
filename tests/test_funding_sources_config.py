@@ -99,11 +99,14 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
 
 def test_eu_funding_api_has_bounded_budget_for_all_targeted_queries():
     by_name = {entry["name"]: entry for entry in _entries()}
-    limits = by_name["EU Open and Forthcoming Funding Calls"]["collection"]["limits"]
+    source = by_name["EU Open and Forthcoming Funding Calls"]
+    limits = source["collection"]["limits"]
+    queries = source["collection"]["api"]["search_texts"]
 
-    # Ten configured searches cover all seven RIF domains. The global page/document
-    # budgets are bounded; any query not exhausted must remain explicitly partial.
-    assert limits["max_pages"] >= 25
+    # Production allocates a meaningful per-query budget; the total remains finite
+    # and the API adapter must report PARTIAL when any individual query is capped.
+    assert len(queries) == 10
+    assert limits["max_pages"] >= len(queries) * 10
     assert limits["max_documents"] >= limits["max_pages"] * 50
 
 
