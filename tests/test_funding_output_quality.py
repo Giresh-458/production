@@ -494,3 +494,45 @@ def test_funding_problem_signal_rejects_subcontracting_proportionality_rule():
     assert intelligence["selected_problem"] is None
     assert intelligence["problem_type"] == "unresolved"
     assert intelligence["problem_evidence"] == []
+
+def test_official_scientific_scope_is_classified_as_research_intent():
+    from agents.funding_agent import detect_research_intent
+
+    content = (
+        "Expected Outcome: access to essential observation and modelling data for the "
+        "European research community. The resilience of climate projections and related "
+        "data records is important for European and global climate science and policy. "
+        "Scope: changes in science funding priorities and data access policies represent "
+        "a major threat to evidence-based decision making."
+    )
+
+    intent, evidence = detect_research_intent(content, focus_area="ESG")
+
+    assert intent == "research"
+    assert evidence
+    assert any(
+        "climate projections" in item.lower()
+        or "climate science" in item.lower()
+        or "research community" in item.lower()
+        for item in evidence
+    )
+
+
+def test_funding_problem_extractor_prefers_scientific_limitation_over_scope_tasks():
+    content = (
+        "Scope: The evolution of the geopolitical situation, with associated changes in "
+        "science funding priorities and data access policies represent a major threat to "
+        "evidence-based decision making. The continuity of production, maintenance and "
+        "open access to climate data, including observations and projections, is fundamental "
+        "for European and global climate science and policy action. The action should "
+        "address the following aspects: Track the availability of climate change projections "
+        "and related data records, and coordinate Europe-wide solutions to mitigate risks."
+    )
+    document = _document(content, title="Climate projections and scientific data resilience")
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is not None
+    assert "major threat to evidence-based decision making" in intelligence["selected_problem"].lower()
+    assert intelligence["selected_problem"] in intelligence["problem_evidence"][0]
+    assert "coordinate europe-wide solutions" not in intelligence["selected_problem"].lower()
+
