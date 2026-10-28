@@ -1506,6 +1506,19 @@ def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
     ) is False
 
 
+def test_extensionless_support_download_uses_extracted_document_title():
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(
+        "https://example.org/download/12345",
+        "Sample Application Form",
+    ) is True
+    assert _is_supporting_funding_document(
+        "https://example.org/download/12346",
+        "Cyber-physical systems research call",
+    ) is False
+
+
 def test_supporting_pdf_is_fetched_but_not_emitted_as_a_funding_call():
     from core.crawl4ai_web import crawl_funding_source
 
