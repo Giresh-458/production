@@ -887,7 +887,7 @@ def _extract_docx_title(paragraphs: list[str], url: str) -> str:
     return re.sub(r"[-_]+", " ", filename).strip() or "Untitled application document"
 
 
-def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
+def _fetch_docx(url: str, max_chars: int = 200000) -> dict:
     """Download a DOCX directly and extract paragraph text without browser navigation."""
     try:
         response = get_response(url, timeout=(8.0, 30.0), retries=2)
@@ -941,7 +941,7 @@ def _fetch_docx(url: str, max_chars: int = 50000) -> dict:
         }
 
 
-def _fetch_xlsx(url: str, max_chars: int = 50000) -> dict:
+def _fetch_xlsx(url: str, max_chars: int = 200000) -> dict:
     """Download an XLSX and extract visible cell values without browser navigation."""
     try:
         response = get_response(url, timeout=(8.0, 30.0), retries=2)
@@ -1189,6 +1189,7 @@ def crawl_funding_source(
 
         if is_limit:
             result.truncated = True
+            result.truncation_details.append({"url": current_url, "reason": "configured_or_global_crawl_limit"})
             result.pagination_complete = False
             LOGGER.info("Source %s: reached configured limits, marking PARTIAL", source_id)
             break
@@ -1196,6 +1197,7 @@ def crawl_funding_source(
         # Check configured page ceiling (fallback if context isn't used)
         if configured_max_pages is not None and pages_attempted_count >= configured_max_pages:
             result.truncated = True
+            result.truncation_details.append({"url": current_url, "reason": "configured_max_pages"})
             result.pagination_complete = False
             LOGGER.info("Source %s: reached configured max_pages=%d, marking PARTIAL",
                         source_id, configured_max_pages)
@@ -1235,6 +1237,7 @@ def crawl_funding_source(
 
         if not _wait_for_host_slot(current_url, delay_seconds):
             result.truncated = True
+            result.truncation_details.append({"url": current_url, "reason": "host_politeness_delay_exceeded_deadline"})
             result.pagination_complete = False
             result.errors.append({
                 "url": current_url,
@@ -1262,6 +1265,7 @@ def crawl_funding_source(
                 # Do not claim a complete/empty source when its content was skipped.
                 result.urls_skipped += 1
                 result.truncated = True
+                result.truncation_details.append({"url": current_url, "reason": "pdf_following_disabled"})
                 result.pagination_complete = False
                 continue
             pdf_result = _fetch_pdf(current_url, max_pdf_pages=max_pdf_pages)
@@ -1272,6 +1276,11 @@ def crawl_funding_source(
                     ctx.add_page()
                 if pdf_result["truncated"]:
                     result.truncated = True
+                    result.truncation_details.append({
+                        "url": current_url, "reason": "pdf_page_limit",
+                        "pages_processed": pdf_result.get("pages_processed"),
+                        "total_pages": pdf_result.get("total_pages"),
+                    })
                 result.opportunities.append({
                     "type": "pdf",
                     "url": current_url,
@@ -1300,6 +1309,7 @@ def crawl_funding_source(
             if not follow_documents:
                 result.urls_skipped += 1
                 result.truncated = True
+                result.truncation_details.append({"url": current_url, "reason": "document_following_disabled"})
                 result.pagination_complete = False
                 continue
 
@@ -1311,6 +1321,10 @@ def crawl_funding_source(
                     ctx.add_page()
                 if docx_result["truncated"]:
                     result.truncated = True
+                    result.truncation_details.append({
+                        "url": current_url, "reason": "document_text_character_limit",
+                        "document_type": "docx", "character_limit": 200000,
+                    })
                 result.opportunities.append({
                     "type": "docx",
                     "url": current_url,
@@ -1362,6 +1376,10 @@ def crawl_funding_source(
                         ctx.add_page()
                     if document_result.get("truncated"):
                         result.truncated = True
+                        result.truncation_details.append({
+                            "url": current_url, "reason": "document_text_character_limit",
+                            "document_type": kind, "character_limit": 200000,
+                        })
                     download_path = urlparse(current_url).path.rstrip("/")
                     opportunity = {
                         "type": kind,
@@ -1457,6 +1475,10 @@ def crawl_funding_source(
                         ctx.add_page()
                     if document_result.get("truncated"):
                         result.truncated = True
+                        result.truncation_details.append({
+                            "url": current_url, "reason": "document_text_character_limit",
+                            "document_type": kind, "character_limit": 200000,
+                        })
                     download_path = urlparse(current_url).path.rstrip("/")
                     opportunity = {
                         "type": kind,
