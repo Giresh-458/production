@@ -24,6 +24,11 @@
 - Updated the query-budget and source-configuration regression assertions to verify the new limits.
 - Any query that still reaches a configured limit must continue to report incomplete pagination / `PARTIAL`; the limit increase does not make source verification optimistic.
 
+
+## Verification correction found during this cycle
+
+The first CI run after raising the configured budget stopped in the deterministic suite before the live scan because the helper-level budget test still passed the old literal inputs (`max_pages=100`, `max_documents=5000`) while asserting the new 20-page allocation. This was a stale test fixture, not a production-code failure. The fixture now passes 200 / 10,000, and the CI run on the new head must confirm the correction before live results can be assessed.
+
 ## Acceptance decision
 
 **`BLOCKED` pending a new full configured scan and resolution of the remaining blockers.** This log does not claim that the budget change fixed the live audit. The next run must be inspected at its exact commit, including `summary.json`, `records.json`, `selected.json`, source summaries, and failure logs. Do not merge or start Batch 2 based on deterministic tests alone.
