@@ -368,6 +368,65 @@ def test_crawl_external_domain_skipped():
     assert result.pages_fetched == 1  # only the start page
 
 
+def test_solana_airtable_empty_state_is_verified_without_emitting_placeholder_rows():
+    from core.crawl4ai_web import crawl_funding_source
+
+    root = "https://solana.org/grants-funding"
+    table = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/"
+        "tbli2ERM3sdhyHJYB/viwiTNQRvG2G2rxDL/recFe5gmTrKteofrx"
+    )
+    form = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrolVvhFsrwvq3rA"
+        "?prefill_Related+RFP=recFe5gmTrKteofrx"
+    )
+    table_text = (
+        "Solana Foundation Active RFPs. RFP CONTEXT. RFP Status: Open for Submissions. "
+        "If this the only RFP that is visible, it means that there are no other active "
+        "RFPs at this time. DO NOT APPLY FOR THIS."
+    )
+    pages = {
+        root: {
+            "html": "<html><body>Solana grants funding</body></html>",
+            "markdown": "Solana grants and funding.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": root, "title": "Grants and Funding",
+            "links": [
+                {"url": table, "anchor_text": "Solana Foundation Active RFPs", "surrounding_text": "RFP", "rel": ""},
+                {"url": form, "anchor_text": "RFP Application Form", "surrounding_text": "Apply", "rel": ""},
+            ],
+            "pagination_links": [],
+        },
+        table: {
+            "html": "<html><body>RFP CONTEXT</body></html>",
+            "markdown": table_text,
+            "success": True, "error_message": None, "status_code": 200,
+            "url": table, "title": "Airtable - Solana Foundation Active RFPs",
+            "links": [], "pagination_links": [],
+        },
+        form: {
+            "html": "<html><body>Solana Foundation RFP Application Form</body></html>",
+            "markdown": "Please use this form to submit a proposal for one of our RFPs.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": form, "title": "Solana Foundation RFP Application Form",
+            "links": [], "pagination_links": [],
+        },
+    }
+
+    with patch("core.crawl4ai_web._fetch_sync", lambda url: pages[url]):
+        result = crawl_funding_source(
+            "Solana Grants and Funding",
+            root,
+            {"start_urls": [root], "max_depth": 1, "max_pages": 4},
+            ["solana.org", "airtable.com"],
+        )
+
+    assert result.no_active_opportunities_confirmed is True
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+
 def test_empty_ethereum_rfp_page_is_not_normalized_as_a_grant():
     """Explicit no-active language must not become a generic funding record."""
     from core.crawl4ai_web import crawl_funding_source
