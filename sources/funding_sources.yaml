@@ -93,24 +93,15 @@ sources:
         exclude_url_patterns:
           # Token thumbnails are decorative API assets, not call pages. Do not let
           # anti-bot responses for icons mark otherwise complete discovery PARTIAL.
-          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?          - '^https?://docs\.google\.com/document/'
-          # Direct application forms are links to apply, not separate grant records.
-          - '^https?://[^/]*typeform\.com/'
-          # Token icon API responses are assets, not funding detail pages.
           - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
-          - '^https?://share\.hsforms\.com/'
-          - '^https?://airtable\.com/'
+          # Google Docs, forms, and database views are application/support routes,
+          # not separate funding-call detail pages.
+          - '^https?://docs\\.google\\.com/document/'
+          - '^https?://[^/]*typeform\\.com/'
+          - '^https?://share\\.hsforms\\.com/'
+          - '^https?://airtable\\.com/'
           # Announcement articles are not individual funding calls.
-          - '^https?://(?:www\.)?solana\.com/news/'
-          - '^https?://docs\.google\.com/document/'
-          # Direct application forms are links to apply, not separate grant records.
-          - '^https?://[^/]*typeform\.com/'
-          # Token icon API responses are assets, not funding detail pages.
-          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
-          - '^https?://share\.hsforms\.com/'
-          - '^https?://airtable\.com/'
-          # Announcement articles are not individual funding calls.
-          - '^https?://(?:www\.)?solana\.com/news/'
+          - '^https?://(?:www\\.)?solana\\.com/news/'
   tier_2:
   - name: NEAR Ecosystem Funding
     research_domains: [RWA, DID, DePIN, MEV, Stablecoins]
