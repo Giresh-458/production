@@ -37,6 +37,8 @@ on:
       - "tests/test_funding_sources_config.py"
       - "tests/test_collection_completeness.py"
       - "tests/test_crawler_limits.py"
+      - "tests/test_funding_quality.py"
+      - "core/funding_quality.py"
       - ".github/workflows/eu-funding-tests.yml"
 
 permissions:
@@ -165,8 +167,10 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
           from urllib.parse import urlsplit
+          import yaml
 
           from agents.funding_agent import _is_generic_funding_title, load_sources, run_agent
+          from core.funding_quality import assess_batch_acceptance
           from core.funding_selection import has_substantive_eligibility_evidence
           from core.problem_extraction import _is_objective_or_task_statement
           from core.schemas import normalize_area
@@ -648,9 +652,34 @@ jobs:
                   })
           summary["documented_access_limited_urls"] = documented_access_limited_urls
           summary["priority_source_coverage_violations"] = priority_source_coverage_violations
+
+          # Keep process success distinct from data acceptance. The configured
+          # inventory is read independently so a missing collector summary cannot
+          # disappear from the denominator.
+          source_config = yaml.safe_load(
+              Path("sources/funding_sources.yaml").read_text(encoding="utf-8")
+          ) or {}
+          source_sections = source_config.get("sources", {})
+          expected_source_ids = [
+              str(source["name"]).strip()
+              for entries in source_sections.values()
+              if isinstance(entries, list)
+              for source in entries
+              if isinstance(source, dict) and source.get("name")
+          ]
+          summary["batch_acceptance"] = assess_batch_acceptance(
+              run_status=response.get("status"),
+              raw_records_count=len(records),
+              selected_actionable_count=len(selected),
+              selected_quality_flags=quality_flags,
+              selected_manual_review_flags=review_flags,
+              source_summary=source_summary,
+              expected_source_ids=expected_source_ids,
+          )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
+          print("BATCH ACCEPTANCE: " + json.dumps(summary["batch_acceptance"], ensure_ascii=False))
           if priority_source_coverage_violations:
               raise SystemExit(
                   "Priority Batch 1 sources still have truncation or unhandled relevant links: "
@@ -679,6 +708,11 @@ jobs:
               raise SystemExit("Strict production selector found no eligible, current, domain-matched funding call")
           if quality_flags:
               raise SystemExit("Strict production selector emitted invalid actionable calls")
+          if summary["batch_acceptance"]["status"] != "ACCEPTED":
+              raise SystemExit(
+                  "Batch 1 acceptance blocked: "
+                  + json.dumps(summary["batch_acceptance"]["blockers"], ensure_ascii=False)
+              )
           PY
 
       - name: Upload full Batch 1 audit artifacts
