@@ -762,6 +762,40 @@ def _eu_effective_status(
     return status, None
 
 
+def _eu_query_budget(
+    *,
+    search_texts: list[str],
+    page_size: int,
+    max_pages: int,
+    max_documents: int,
+) -> dict[str, int]:
+    """Allocate bounded EU API budgets fairly across all configured search terms.
+
+    Every configured query receives the same floor allocation. Remainders are
+    reported (rather than used to drop query terms), and callers must keep a
+    source PARTIAL when any query's API results are not exhausted.
+    """
+    query_count = len(search_texts)
+    if query_count <= 0:
+        raise ValueError("At least one EU Funding & Tenders search term is required")
+    safe_page_size = max(1, min(int(page_size), 100))
+    safe_max_pages = max(query_count, int(max_pages))
+    safe_max_documents = max(query_count, int(max_documents))
+    pages_per_query = safe_max_pages // query_count
+    documents_per_query = min(
+        safe_page_size * pages_per_query,
+        safe_max_documents // query_count,
+    )
+    return {
+        "query_count": query_count,
+        "pages_per_query": pages_per_query,
+        "documents_per_query": max(1, documents_per_query),
+        "unallocated_pages": safe_max_pages - pages_per_query * query_count,
+        "unallocated_documents": safe_max_documents
+        - max(1, documents_per_query) * query_count,
+    }
+
+
 def _collect_eu_funding_tenders(
     source: FundingSource,
     result: CollectionResult,
@@ -773,7 +807,7 @@ def _collect_eu_funding_tenders(
     api_config = source.collection.get("api", {}) or {}
     configured_limits = source.collection.get("limits", {}) or {}
     query_values = api_config.get("search_texts") or ["*"]
-    search_texts = list(dict.fromkeys(
+    configured_search_texts = list(dict.fromkeys(
         str(value).strip() for value in query_values if str(value).strip()
     )) or ["*"]
 
@@ -787,26 +821,30 @@ def _collect_eu_funding_tenders(
 
     max_pages_budget = _effective_limit("max_pages", 5)
     max_documents_budget = _effective_limit("max_documents", 250)
-    if max_pages_budget < len(search_texts):
-        omitted = search_texts[max_pages_budget:]
-        search_texts = search_texts[:max_pages_budget]
-        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
+
+    # Test budgets may intentionally be smaller than the number of production
+    # terms. Only truncate the query list in explicitly bounded test mode;
+    # production must attempt every configured search term.
+    if test_limits and max_pages_budget < len(configured_search_texts):
+        search_texts = configured_search_texts[:max_pages_budget]
+        omitted = configured_search_texts[max_pages_budget:]
         warnings_text = (
-            f"{limit_marker}: Search-query budget is {max_pages_budget}; "
+            f"TEST_TRUNCATED: Test query budget is {max_pages_budget}; "
             f"skipped {len(omitted)} configured EU domain query/queries"
         )
     else:
+        search_texts = configured_search_texts
         warnings_text = None
 
-    # Spend the global page/document budget across targeted searches. One page
-    # per query is intentional: it increases RIF-domain recall while the client
-    # still filters expired, ineligible, and weakly matched records.
-    pages_per_query = max(1, max_pages_budget // max(1, len(search_texts)))
-    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
-    documents_per_query = max(
-        1,
-        min(page_size * pages_per_query, (max_documents_budget + len(search_texts) - 1) // len(search_texts)),
+    query_budget = _eu_query_budget(
+        search_texts=search_texts,
+        page_size=page_size,
+        max_pages=max_pages_budget,
+        max_documents=max_documents_budget,
     )
+    pages_per_query = query_budget["pages_per_query"]
+    documents_per_query = query_budget["documents_per_query"]
 
     aggregated_records: list[dict] = []
     aggregated_errors: list[str] = []
