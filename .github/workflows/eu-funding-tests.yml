@@ -165,7 +165,7 @@ jobs:
           from pathlib import Path
           from urllib.parse import urlsplit
 
-          from agents.funding_agent import load_sources, run_agent
+          from agents.funding_agent import _is_generic_funding_title, load_sources, run_agent
           from core.funding_selection import has_substantive_eligibility_evidence
           from core.problem_extraction import _is_objective_or_task_statement
           from core.schemas import normalize_area
@@ -247,8 +247,11 @@ jobs:
                       "source_url": record.get("source_url"),
                       "flags": manual_review,
                   })
-              if not title or generic_title.fullmatch(title):
+              if not title or generic_title.fullmatch(title) or _is_generic_funding_title(title):
                   issues.append("missing_or_generic_title")
+              opening_date = as_date(record.get("opening_date"))
+              if opening_date and opening_date > today:
+                  issues.append("not_yet_open")
               if status != "OPEN_CALL":
                   issues.append("not_currently_open")
               if deadline and deadline < today:
