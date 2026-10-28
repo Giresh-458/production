@@ -331,8 +331,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert eu["collection"]["provider"] == "eu_funding_tenders"
     assert eu["collection"]["api"]["types"] == ["1", "2", "8"]
     assert eu["collection"]["api"]["statuses"] == ["31094501", "31094502"]
-    assert eu["collection"]["limits"]["max_pages"] == 30
-    assert eu["collection"]["limits"]["max_documents"] == 1500
+    assert eu["collection"]["limits"]["max_pages"] == 100
+    assert eu["collection"]["limits"]["max_documents"] == 5000
     assert len(eu["collection"]["api"]["search_texts"]) == 10
 
 
