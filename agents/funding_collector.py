@@ -1407,6 +1407,25 @@ def _fetch_status_verification_context(
     return "\n".join(dict.fromkeys(evidence))
 
 
+def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: str) -> bool:
+    """Identify a known explicit empty-state record, not a genuine funding call."""
+    content = cleaned_text(str(document.content or "")).casefold()
+    title = cleaned_text(str(document.title or "")).casefold()
+    source_url = str(document.source or "").casefold()
+    if (
+        "if this is the only rfp that is visible" in content
+        and "do not apply for this" in content
+    ):
+        return True
+    # Solana's public Airtable table uses a single synthetic 'RFP CONTEXT' row
+    # when there are no live records. The row is a directory placeholder.
+    return (
+        source_name == "Solana Grants and Funding"
+        and title == "rfp context"
+        and "airtable.com/apppdmk2pin9wx8jv/" in source_url
+    )
+
+
 def _collect_web_source(
     source: FundingSource,
     area: Optional[str],
@@ -1437,6 +1456,7 @@ def _collect_web_source(
 
     verification_context = _fetch_status_verification_context(source, warnings)
     seen_urls: set[str] = set()
+    explicit_empty_state_seen = False
     for raw in raw_opps:
         raw_url = raw.get("url", "")
         if raw_url in seen_urls:
@@ -1445,6 +1465,13 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        if _is_explicit_no_active_placeholder(doc, source.name):
+            explicit_empty_state_seen = True
+            result.records_filtered += 1
+            reason = "explicit_no_active_rfp_placeholder"
+            result.records_filtered_by_reason[reason] = result.records_filtered_by_reason.get(reason, 0) + 1
+            continue
+
         if verification_context:
             doc.content = (
                 doc.content.rstrip()
@@ -1466,6 +1493,13 @@ def _collect_web_source(
             if warnings is not None:
                 warnings.append(f"Web analysis failed for {raw_url}: {e}")
 
+    # An explicit empty-state marker is meaningful only if no actual call records
+    # survived filtering. A placeholder must never override a genuine call.
+    if explicit_empty_state_seen and result.records_valid == 0:
+        result.no_active_opportunities_confirmed = True
+    elif result.records_valid > 0:
+        result.no_active_opportunities_confirmed = False
+
     # Keep source status conservative after normalization. The crawl may have
     # collected some evidence while another page or record failed; that is
     # partial coverage, not a verified or empty source.
@@ -1478,6 +1512,18 @@ def _collect_web_source(
                 result.final_status = "PARTIAL"
         elif result.final_status not in {"PARTIAL", "TEST_TRUNCATED"}:
             result.final_status = "FAIL"
+    elif result.records_valid == 0 and result.records_filtered > 0 and result.no_active_opportunities_confirmed:
+        if (
+            result.pages_fetched > 0
+            and not result.truncated
+            and result.discovery_exhausted
+            and not result.coverage_gaps
+            and result.relevant_urls_skipped == 0
+            and (not result.pagination_detected or result.pagination_complete)
+        ):
+            result.final_status = "NO_ACTIVE_OPPORTUNITIES"
+        elif result.pages_fetched > 0 and not result.truncated:
+            result.final_status = "PARTIAL"
     elif result.records_valid == 0 and result.records_discovered == 0:
         if (
             result.pages_fetched > 0
