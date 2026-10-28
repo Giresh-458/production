@@ -52,3 +52,19 @@ def test_status_evidence_patterns_cover_call_level_status_badges_and_due_dates()
     ])
     assert due
     assert "Proposal deadline" in due
+
+
+def test_explicit_active_and_accepting_status_labels_are_normalized_for_specific_calls():
+    assert determine_status(
+        "ACTIVE", None, None, "Application status: Active.", "Specific Stablecoin Research Grant"
+    ) == "OPEN_CALL"
+    assert determine_status(
+        "ACCEPTING APPLICATIONS", None, None, "Currently accepting applications.",
+        "Specific Decentralized Identity Grant"
+    ) == "OPEN_CALL"
+
+
+def test_status_parser_does_not_promote_generic_directory_status_to_open():
+    assert determine_status(
+        "ACTIVE", None, None, "Status: Active.", "Funding Opportunities"
+    ) == "UNKNOWN"
