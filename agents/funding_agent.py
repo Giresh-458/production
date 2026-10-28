@@ -119,6 +119,8 @@ def _is_generic_funding_title(value: str | None) -> bool:
     # escapes this guard.
     if re.fullmatch(r"documents\s*\|\s*page\s*\d+", normalized):
         return True
+    if re.fullmatch(r"(?:technologies|solutions)\s+to\s+be\s+improved\s+for\s+projects", normalized):
+        return True
     normalized = re.split(r"\s+[|·—–]\s+|\s+-\s+", normalized, maxsplit=1)[0].strip(" .:-")
     return normalized in GENERIC_PAGE_TITLES or normalized in {"getting started", "funding at nsf"}
 
@@ -1216,7 +1218,7 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
         # Do not treat the word "Open" in a title like "Open Grant Proposal"
         # as a date cue. "Opens:", "opening date", "open date", and
         # "applications open" remain valid date cues.
-        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
+        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bcall\s+launch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
         "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date(?:\s+to\s+apply)?\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bapply\s+by\b|\bsubmit\s+by\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_]*({date_token})",
     }
 
@@ -1350,6 +1352,15 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
     }
 
 def _extract_funding_body(text: str, fallback: str) -> str:
+    # Prefer the formal grant authority over the configured crawl-directory label.
+    authority = re.search(
+        r"(?im)^\s*(?:granting authority|grant authority|funding body)\s*[:\-]?\s*(.{3,180}?)\s*$",
+        str(text or ""),
+    )
+    if authority:
+        value = cleaned_text(authority.group(1))
+        if value and not _is_generic_funding_title(value):
+            return value
     patterns = [
         r"Greetings from\s+(.+?)(?:\.|\n)",
         r"an initiative of\s+(.+?)(?:\s+focused on|\.|\n)",
@@ -1395,6 +1406,8 @@ def _extract_program_name(text: str, fallback: str) -> str:
     # field even when the browser/H1 title is generic (e.g. "Topic | SBIR").
     # Prefer that source-provided title over the generic browser title.
     labelled_title_patterns = (
+        # Some official PDF fact sheets use "Call Title <value>" without punctuation.
+        r"(?im)^[ \t]*call[ \t]+title[ \t]*(?:[:\-][ \t]*|[ \t]+)(.{8,180}?)[ \t]*$",
         r"(?im)^\s*(?:topic title|topic name|solicitation title|funding opportunity title|opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
         r"(?im)^\s*(?:NOFO title|notice of funding opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
     )
@@ -1480,6 +1493,15 @@ def _extract_funding_amount(text: str) -> str | None:
         rf"(?:{currency}\s*{number}(?:\s*{unit})?(?:\s*{token_currency})?(?:\s*[–-]\s*(?:{currency}\s*)?{number}(?:\s*{unit})?(?:\s*{token_currency})?)?|{number}\s*(?:{unit}|{token_currency})(?:\s*[–-]\s*{number}\s*(?:{unit}|{token_currency}))?)",
         re.IGNORECASE,
     )
+    # Prefer the per-project ceiling over a programme-wide total budget.
+    per_project = re.search(
+        rf"\b(?:max(?:imum)?\s+)?(?:grant|funding|award)\s+(?:amount\s+)?per\s+project\b\s*[:\-]?\s*({currency}\s*{number}(?:\s*{unit})?(?:\s*{token_currency})?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if per_project:
+        return cleaned_text(per_project.group(1))
+
     labelled: list[str] = []
     for sentence in _split_funding_sentences(text):
         matches = list(amount_re.finditer(sentence))
