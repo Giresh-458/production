@@ -384,7 +384,7 @@ jobs:
                       "records_filtered_by_reason", "duplicates_removed", "truncated",
                       "pagination_detected", "pagination_complete", "discovery_exhausted",
                       "max_depth", "max_depth_reached", "urls_skipped",
-                      "relevant_urls_skipped", "coverage_gaps", "failed_urls",
+                      "relevant_urls_skipped", "coverage_gaps", "failed_urls", "truncation_details",
                       "evidence_verified", "currentness_verified",
                       "no_active_opportunities_confirmed",
                   )
@@ -640,6 +640,7 @@ jobs:
                       "truncated": item.get("truncated"),
                       "relevant_urls_skipped": item.get("relevant_urls_skipped"),
                       "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+                      "truncation_details": (item.get("truncation_details") or [])[:20],
                       "unhandled_coverage_gaps": unhandled_gaps[:10],
                       "unhandled_download_failures": unhandled_download_failures[:10],
                       "unhandled_relevant_failed_urls": unhandled_relevant_failed_urls[:20],
