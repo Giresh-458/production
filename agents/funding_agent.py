@@ -116,6 +116,17 @@ GENERIC_PAGE_TITLES = {
 def _is_generic_funding_title(value: str | None) -> bool:
     """Recognize generic browser titles even when the site appends its brand."""
     normalized = re.sub(r"\s+", " ", str(value or "").casefold()).strip()
+    # Airtable-backed source directories can expose a generic table title or
+    # record-context label as if it were an individual call. Keep the table
+    # crawlable for discovery, but never emit these labels as call identities.
+    if normalized in {
+        "rfp context",
+        "airtable - solana foundation active rfps",
+        "solana foundation active rfps",
+        "airtable - solana foundation public rfp database",
+        "solana foundation public rfp database",
+    }:
+        return True
     # Check browser-generated pagination labels before stripping the suffix
     # after a pipe; otherwise "Documents | Page 10" becomes "documents" and
     # escapes this guard.
