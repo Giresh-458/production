@@ -337,3 +337,30 @@ def test_unreconciled_record_accounting_blocks_batch_acceptance():
     assert result["status"] == "BLOCKED"
     blocker = next(item for item in result["blockers"] if item["code"] == "record_accounting_unreconciled")
     assert "source-to-documents delta=7" in blocker["message"]
+
+
+def test_record_level_processing_failures_block_source_acceptance():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=1,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+        source_summary=[{
+            "source_id": "record-failures",
+            "final_status": "VERIFIED",
+            "records_failed": 2,
+            "discovery_exhausted": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    blocker = next(
+        item for item in result["blockers"]
+        if item.get("source_id") == "record-failures"
+    )
+    assert "records=2" in blocker["message"]
