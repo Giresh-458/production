@@ -3238,6 +3238,11 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             }
         }
         if mode == "configured_scan":
+            # Recompute flags for resumed checkpoint entries as well as sources
+            # collected in this invocation; defaults are never audit evidence.
+            for source_result in collection_results:
+                _normalize_collection_coverage_status(source_result)
+                _update_source_verification_flags(source_result)
             response["collection_results"] = [
                 {
                     "source_id": res.source_id,
