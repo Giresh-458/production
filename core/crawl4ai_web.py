@@ -646,7 +646,7 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
 
     links: list[dict] = []
     seen: set[str] = set()
-    excluded_assets = (".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf")
+    excluded_assets = (".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
     excluded_paths = ("/terms", "/privacy", "/cookies", "/login", "/signup", "/auth", "/signin")
 
     for match in pattern.finditer(markdown):

@@ -649,7 +649,7 @@ sources:
           # Historical portfolio of already-selected fellows, not an application call.
           - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
 
-          - '^https?://(?:www[.])?eitfood[.]eu/open-calls/fast-track-to-market/?(?:[?#].*)?          # Standalone budget templates are supporting documents, not call-detail pages.
+          # Standalone budget templates are supporting documents, not call-detail pages.
           - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?$'
           - '^https?://neb[.]eitcommunity[.]eu/wp-content/uploads/2026/07/Co_create_Budget[.]xlsx(?:[?#].*)?$'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2021/07/Budget-template_branded[.]xlsx(?:[?#].*)?$'
