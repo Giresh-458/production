@@ -481,3 +481,16 @@ def test_sbir_mirror_disclaimer_prevents_unverified_open_status_and_deadline():
     assert analysis.status == "UNKNOWN"
     assert analysis.opening_date is None
     assert analysis.deadline is None
+
+
+def test_funding_problem_signal_rejects_subcontracting_proportionality_rule():
+    content = (
+        "Limited parts mean subcontracting remains proportionate to the needs "
+        "of each funded action."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+    assert intelligence["problem_evidence"] == []
