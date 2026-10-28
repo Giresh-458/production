@@ -896,31 +896,6 @@ sources:
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/(?:sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960/nsf24-579|sbirsttr-phase-ii-nsf-small-business-innovation-research-small-business/505989/nsf24-580|sbir-sttr-fast-track-nsf-small-business-innovation-research-small-business/506271/nsf24-582)/solicitation(?:[?#].*)?$'
         # This is the general SBIR programme overview, not a distinct individual call.
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/small-business-innovation-research-small-business-technology/?(?:[?#].*)?$'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/.*/nsf23-(?:515|516)/solicitation(?:[?#].*)?$'
-        - '^https?://(?:www[.])?nsf[.]gov/(?:funding/build-america-buy-america|funding/proposal-compliance-checking|policies/SOR_PA_NSF-51_Reviewer_Proposal_File[.]pdf|publications/pub_summ[.]jsp)'
-        - '^https?://(?:www[.])?nsf[.]gov/awardsearch/'
-        - '^https?://tableau[.]external[.]nsf[.]gov/views/ProgramAwards/'
-        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/Guide_for_completing_commercialization_Report_SBIR_Gov_09_15_20[.]pdf'
-        - '^https?://(?:www[.])?nsfgrfp[.]org/'
-        - '^https?://iperf[.]asee[.]org/'
-        - '^https?://resources[.]research[.]gov/common/attachment/'
-        # SAM.gov is a required registration step, not a funding opportunity.
-        - '^https?://sam[.]gov/(?:SAM(?:/|[?#]|$)|content/home(?:/|[?#]|$))'
-        - '^https?://(?:www[.])?cogr[.]edu/sites/default/files/'
-        - '^https?://(?:www[.])?congress[.]gov/114/plaws/'
-        - '^https?://nsf-gov-resources[.]nsf[.]gov/'
-        # Generic non-SBIR NSF opportunities reached by cross-links are outside this source's scope.
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/(?:ags-atmospheric-geospace-sciences-program|career-faculty-early-career-development-program|cdse-computational-data-enabled-science-engineering|dcl-veterans-research-supplement-vrs-program|mps-astro-mps-astronomical-sciences-research-programs|mri-major-research-instrumentation-program|ret-research-experiences-teachers-supplement-opportunity|reu-research-experiences-undergraduates|rui-roa-pui-facilitating-research-predominantly-undergraduate|astro-innovations-astronomical-sciences-innovations|astro-core-astronomical-sciences-core-research|ati-astronomical-sciences-technology-instrumentation)(?:/|[?#]|$)'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/dcl-technical-business-assistance-taba-supplement-active/nsf20-070(?:[/?#].*)?$'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/grfp-nsf-graduate-research-fellowship-program(?:/|[?#]|$)'
-        - '^https?://(?:www[.])?nsf[.]gov/events/nsf-grfp-(?:applicant-office-hours|applicant-webinar|reviewer-information-session-webinar)(?:/|[?#]|$)'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/information/faq-additional-faq-nsf-graduate-research-fellowship-program(?:[/?#].*)?$'
-        - '^https?://(?:www[.])?nsf[.]gov/notices/important/important-information-updates-graduate-research-fellowship(?:[/?#].*)?$'
-        - '^https?://www[.]research[.]gov/grfp/AwardeeList[.]do(?:[?#].*)?$'
-        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/SBA_SBIR_STTR_POLICY_DIRECTIVE_OCT_2020_v2[.]pdf(?:[?#].*)?$'
-        - '^https?://www[.]whitehouse[.]gov/wp-content/uploads/(?:2021/06/M-21-26|2021/12/M-22-08|2022/04/M-22-11)[.]pdf(?:[?#].*)?$'
-        - '^https?://www[.]congress[.]gov/117/plaws/publ58/PLAW-117publ58[.]pdf(?:[?#].*)?$'
-        - '^https?://www[.][.]nsf[.]gov/'
   - name: EU Open and Forthcoming Funding Calls
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502
