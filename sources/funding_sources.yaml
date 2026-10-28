@@ -82,8 +82,6 @@ sources:
       - airtable.com
       - share.hsforms.com
       - typeform.com
-          # Token icon API responses are assets, not funding detail pages.
-          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
       discovery:
         start_urls:
         - https://superteam.fun/earn/opportunities/development-grants/
@@ -96,6 +94,8 @@ sources:
           - '^https?://docs\.google\.com/document/'
           # Direct application forms are links to apply, not separate grant records.
           - '^https?://[^/]*typeform\.com/'
+          # Token icon API responses are assets, not funding detail pages.
+          - '^https?://superteam[.]fun/api/token-icon(?:[/?#].*)?'
           - '^https?://share\.hsforms\.com/'
           - '^https?://airtable\.com/'
           # Announcement articles are not individual funding calls.
