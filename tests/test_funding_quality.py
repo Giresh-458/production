@@ -187,3 +187,115 @@ def test_unknown_source_status_blocks_even_when_verification_flags_are_true():
         if item.get("source_id") == "unknown-source"
     )
     assert "source status unknown" in blocker["message"]
+
+
+def test_source_verification_flags_require_explicit_evidence_and_complete_acquisition():
+    from types import SimpleNamespace
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    document = SimpleNamespace(
+        source="https://example.org/current-call",
+        content="Applications are open. Deadline: 31 December 2027.",
+    )
+    analysis = SimpleNamespace(
+        status="OPEN_CALL",
+        evidence={
+            "status": "Applications are open.",
+            "deadline": "Deadline: 31 December 2027.",
+            "eligibility": "Eligible research organisations may apply.",
+        },
+    )
+    result = CollectionResult(
+        source_id="complete-source",
+        method="web",
+        final_status="VERIFIED",
+        pages_fetched=1,
+        records_valid=1,
+        discovery_exhausted=True,
+        opportunities=[(document, analysis)],
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is True
+    assert result.currentness_verified is True
+
+
+def test_partial_source_can_have_record_evidence_but_not_verified_currentness():
+    from types import SimpleNamespace
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    document = SimpleNamespace(
+        source="https://example.org/current-call",
+        content="Applications are open. Deadline: 31 December 2027.",
+    )
+    analysis = SimpleNamespace(
+        status="OPEN_CALL",
+        evidence={"status": "Applications are open.", "deadline": "Deadline: 31 December 2027."},
+    )
+    result = CollectionResult(
+        source_id="partial-source",
+        method="web",
+        final_status="PARTIAL",
+        pages_fetched=1,
+        records_valid=1,
+        discovery_exhausted=False,
+        relevant_urls_skipped=1,
+        coverage_gaps=[{"url": "https://partner.example/apply", "reason": "robots_policy_unverified"}],
+        opportunities=[(document, analysis)],
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is True
+    assert result.currentness_verified is False
+
+
+def test_empty_source_is_verified_only_with_explicit_empty_state_and_exhausted_discovery():
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    result = CollectionResult(
+        source_id="explicitly-empty",
+        method="web",
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+        pages_fetched=1,
+        discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is True
+    assert result.currentness_verified is True
+
+
+def test_unknown_record_status_does_not_verify_source_currentness():
+    from types import SimpleNamespace
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    document = SimpleNamespace(
+        source="https://example.org/call",
+        content="Research eligibility details are published.",
+    )
+    analysis = SimpleNamespace(
+        status="UNKNOWN",
+        evidence={"eligibility": "Research organisations may apply."},
+    )
+    result = CollectionResult(
+        source_id="unknown-status",
+        method="web",
+        final_status="VERIFIED",
+        pages_fetched=1,
+        records_valid=1,
+        discovery_exhausted=True,
+        opportunities=[(document, analysis)],
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is True
+    assert result.currentness_verified is False
