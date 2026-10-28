@@ -191,9 +191,27 @@ def _normalize_url(url: str) -> str:
 
 
 def _is_crawlable_http_url(url: str) -> bool:
-    """Only crawl actual HTTP(S) resources, never browser-extension pseudo-URLs."""
-    parsed = urlparse(url)
-    return parsed.scheme.lower() in {"http", "https"} and bool(parsed.netloc)
+    """Only crawl syntactically valid HTTP(S) URLs, never wrapped pseudo-URLs."""
+    raw = str(url or "").strip()
+    if not raw or any(character.isspace() or ord(character) < 0x20 for character in raw):
+        return False
+    parsed = urlparse(raw)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return False
+    # Some rendered Markdown turns a browser extension link into a misleading
+    # http://chrome-extension://... URL. Reject malformed authorities instead
+    # of recording them as relevant external coverage gaps.
+    if "://" in parsed.netloc or parsed.netloc.endswith(":"):
+        return False
+    if (parsed.hostname or "").casefold() in {
+        "chrome-extension", "moz-extension", "safari-extension",
+    }:
+        return False
+    try:
+        parsed.port  # Validate malformed ports without requiring a specific port.
+    except ValueError:
+        return False
+    return True
 
 
 def _robots_gap_reason(reason: str | None) -> str:
@@ -620,7 +638,9 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
         return []
 
     pattern = re.compile(
-        r'(?<!!)\[([^\n]{1,300}?)\]\(\s*(?:<([^>]+)>|([^\s)]+))'
+        # Markdown permits escaped parentheses inside a link destination. Treat
+        # \\( and \\) as URL characters so the final unescaped ')' closes the link.
+        r'(?<!!)\[([^\n]{1,300}?)\]\(\s*(?:<([^>]+)>|((?:\\[()]|[^\s)])+))'
         r'(?:\s+"[^"]*")?\s*\)'
     )
 
@@ -634,6 +654,9 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
         target = (match.group(2) or match.group(3) or "").strip()
         if not target or target.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
+        # Keep literal parentheses in document names URL-safe. This also avoids
+        # confusing a filename's closing parenthesis with Markdown link syntax.
+        target = target.replace("\\(", "%28").replace("\\)", "%29")
         resolved = _normalize_url(urljoin(page_url, target))
         if not resolved.startswith(("http://", "https://")):
             continue

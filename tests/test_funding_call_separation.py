@@ -1060,6 +1060,34 @@ def test_near_listing_roots_are_hubs_and_child_urls_are_discoverable():
     assert _classify_link_stage_a("https://app.potlock.org/campaign/91", "", "") >= 0.4
 
 
+def test_crawler_rejects_browser_extension_pseudo_urls():
+    from core.crawl4ai_web import _is_crawlable_http_url
+
+    assert not _is_crawlable_http_url(
+        "http://chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/"
+        "https://ec.europa.eu/info/funding-tenders/opportunities/docs/example.pdf"
+    )
+    assert not _is_crawlable_http_url("chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/")
+    assert _is_crawlable_http_url("https://ec.europa.eu/info/funding-tenders/example.pdf")
+
+
+def test_markdown_link_with_escaped_parentheses_keeps_the_complete_document_url():
+    from core.crawl4ai_web import _extract_markdown_links
+
+    markdown = (
+        r"[BIONetZero Funding Handbook]"
+        r"(https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
+        r"BIONetZero%20SME%20Grant%20Package%20\(Funding%20Handbook%20for%20Applicants\))"
+    )
+    links = _extract_markdown_links(markdown, "https://www.foodbiocluster.dk/open-call-for-bionetzero")
+
+    assert len(links) == 1
+    assert links[0]["url"] == (
+        "https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
+        "BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29"
+    )
+
+
 def test_markdown_links_are_extracted_when_js_cards_have_no_html_anchors():
     from core.crawl4ai_web import _extract_markdown_links
 
