@@ -626,13 +626,12 @@ sources:
         require_eligibility_evidence: true
         require_domain_match: true
       limits:
-        # Ten targeted queries cover the seven RIF domains (ESG uses several
-        # complementary queries, and ZK-IoV needs both cryptography and vehicle
-        # terminology). A 30-page budget permits three pages per query, while the
-        # global 1,500-document cap limits each query to 150 records. Any
-        # unexhausted query remains explicitly PARTIAL.
-        max_pages: 30
-        max_documents: 1500
+        # 100 pages total gives each of the ten targeted queries a 10-page
+        # ceiling (up to 500 results/query at page_size 50). The 5,000-record
+        # cap is bounded, but any query exceeding these limits remains explicitly
+        # PARTIAL; the scanner must never call a capped query complete.
+        max_pages: 100
+        max_documents: 5000
   cps_funding:
   - name: I-DAPT Hub Cyber-Physical Systems Calls
     research_domains: [ESG, ZK-IoV]
