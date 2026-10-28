@@ -222,3 +222,68 @@ def test_15_regression_fsb_tcfd_infinite_crawl():
         rc.extract_ranked_links = original_extract
     finally:
         current_crawl_context.reset(token)
+
+def test_crawl4ai_browser_triggered_xlsx_download_uses_document_reader(monkeypatch):
+    import io
+    import zipfile
+    import core.crawl4ai_web as crawler
+
+    buffer = io.BytesIO()
+    main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "xl/sharedStrings.xml",
+            f'<sst xmlns="{main_ns}"><si><t>Impact Framework</t></si><si><t>Budget</t></si></sst>',
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            f'<worksheet xmlns="{main_ns}"><sheetData><row r="1">'
+            '<c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>'
+            '</row></sheetData></worksheet>',
+        )
+
+    class BinaryResponse:
+        content = buffer.getvalue()
+
+    url = "https://assets.example.org/Impact-Funding-Framework.xlsx"
+    monkeypatch.setattr(crawler, "get_response", lambda *a, **k: BinaryResponse())
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False,
+            "error_message": "Page.goto: Download is starting",
+            "status_code": None,
+            "url": requested,
+            "markdown": "",
+            "html": "",
+            "links": [],
+            "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "Test spreadsheet source",
+        url,
+        {
+            "start_urls": [url],
+            "max_depth": 0,
+            "max_pages": 5,
+            "follow_detail_pages": True,
+        },
+        allowed_domains=["assets.example.org"],
+    )
+
+    assert result.pages_failed == 0
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert not any(
+        error.get("operation") == "page_fetch"
+        and "Download is starting" in str(error.get("error"))
+        for error in result.errors
+    )
+    assert result.opportunities[0]["type"] == "xlsx"
+    assert result.opportunities[0]["content"] == "Impact Framework | Budget"
+
