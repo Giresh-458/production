@@ -36,6 +36,7 @@ on:
       - "tests/test_source_registry_isolation.py"
       - "tests/test_funding_sources_config.py"
       - "tests/test_collection_completeness.py"
+      - "tests/test_crawler_limits.py"
       - ".github/workflows/eu-funding-tests.yml"
 
 permissions:
