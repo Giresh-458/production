@@ -364,3 +364,21 @@ def test_record_level_processing_failures_block_source_acceptance():
         if item.get("source_id") == "record-failures"
     )
     assert "records=2" in blocker["message"]
+
+
+def test_empty_source_without_a_successful_fetch_is_not_verified():
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    result = CollectionResult(
+        source_id="empty-without-fetch",
+        method="web",
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+        discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is False
+    assert result.currentness_verified is False
