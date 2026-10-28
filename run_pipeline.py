@@ -171,9 +171,10 @@ def _supported_rif_funding_domains(
 
 
 def get_all_open_funding_calls(
-    funding_result: dict[str, Any], *, require_domain_match: bool = True
+    funding_result: dict[str, Any], *, require_domain_match: bool = True,
+    require_research_context: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Select actionable open calls; optionally require strong canonical-domain evidence."""
+    """Select actionable calls; optionally require verified domain and research context."""
     now = datetime.now(UTC)
     candidates: list[tuple[float, dict[str, Any]]] = []
     rejected: list[dict[str, Any]] = []
@@ -339,6 +340,37 @@ def get_all_open_funding_calls(
                 })
                 continue
 
+        if require_research_context:
+            research_context = record.get("research_context")
+            context_reasons: list[str] = []
+            if not isinstance(research_context, dict):
+                context_reasons.append("missing structured research context")
+            else:
+                research_intent = str(research_context.get("research_intent") or "").strip().casefold()
+                if research_intent != "research":
+                    context_reasons.append(
+                        f"research intent is not verified as research (research_intent={research_intent or 'unknown'})"
+                    )
+                confidence = str(research_context.get("confidence") or "").strip().casefold()
+                if confidence in {"", "unknown", "none", "n/a", "unverified"}:
+                    context_reasons.append("research-context confidence is unknown")
+                for field, label in (
+                    ("inferred_challenges", "source-grounded research problem signal"),
+                    ("evidence_refs", "research-context evidence references"),
+                    ("inference_provenance", "research-context inference provenance"),
+                    ("research_intent_evidence", "research-intent evidence"),
+                ):
+                    if not research_context.get(field):
+                        context_reasons.append(f"missing {label}")
+            if context_reasons:
+                rejected.append({
+                    "title": record.get("title"),
+                    "status": status,
+                    "reasons": context_reasons,
+                    "source_url": record.get("source_url"),
+                })
+                continue
+
         # Deduplication check
         call_id = record.get("call_id")
         if not call_id:
@@ -499,7 +531,9 @@ def main() -> int:
         print("❌ No funding opportunities were discovered.")
         return 2
 
-    valid_calls, rejected = get_all_open_funding_calls(funding_result, require_domain_match=True)
+    valid_calls, rejected = get_all_open_funding_calls(
+        funding_result, require_domain_match=True, require_research_context=True
+    )
 
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}

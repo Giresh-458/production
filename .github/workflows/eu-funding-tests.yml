@@ -194,6 +194,7 @@ jobs:
           selected, rejected = get_all_open_funding_calls(
               {"outputs": records},
               require_domain_match=True,
+              require_research_context=True,
           )
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(

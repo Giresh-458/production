@@ -32,6 +32,67 @@ def _candidate(*, domain="DePIN", term="depin", terms=None, source_domains=None,
     return {"outputs": [record]}
 
 
+def _verified_research_context():
+    return {
+        "research_intent": "research",
+        "research_intent_evidence": ["The call funds a defined research study."],
+        "confidence": "Medium",
+        "inferred_challenges": ["The source identifies a concrete research gap."],
+        "evidence_refs": ["https://funding.example.org/calls/innovation"],
+        "inference_provenance": ["source_grounded_problem_extraction"],
+    }
+
+
+def test_research_context_gate_accepts_only_source_grounded_research_calls():
+    record = _candidate(source_domains=["DePIN"])["outputs"][0]
+    record["research_context"] = _verified_research_context()
+
+    selected, rejected = get_all_open_funding_calls(
+        {"outputs": [record]},
+        require_domain_match=True,
+        require_research_context=True,
+    )
+
+    assert len(selected) == 1
+    assert rejected == []
+
+
+def test_research_context_gate_rejects_commercial_call_without_research_intent():
+    record = _candidate(source_domains=["DePIN"])["outputs"][0]
+    record["research_context"] = {
+        "research_intent": "non_research",
+        "research_intent_evidence": [],
+        "confidence": "Unknown",
+        "inferred_challenges": [],
+        "evidence_refs": [],
+        "inference_provenance": [],
+    }
+
+    selected, rejected = get_all_open_funding_calls(
+        {"outputs": [record]},
+        require_domain_match=True,
+        require_research_context=True,
+    )
+
+    assert selected == []
+    assert any("research intent is not verified" in reason for reason in rejected[0]["reasons"])
+
+
+def test_research_context_gate_rejects_missing_evidence_references():
+    record = _candidate(source_domains=["DePIN"])["outputs"][0]
+    record["research_context"] = _verified_research_context()
+    record["research_context"]["evidence_refs"] = []
+
+    selected, rejected = get_all_open_funding_calls(
+        {"outputs": [record]},
+        require_domain_match=True,
+        require_research_context=True,
+    )
+
+    assert selected == []
+    assert any("evidence references" in reason for reason in rejected[0]["reasons"])
+
+
 def test_strict_funding_gate_accepts_strong_call_domain_matching_its_source():
     selected, rejected = get_all_open_funding_calls(
         _candidate(source_domains=["DePIN"]), require_domain_match=True
