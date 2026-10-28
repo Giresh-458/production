@@ -33,3 +33,22 @@ def test_determine_status_explicit_open():
     content = "Applications are open for this request for proposals."
     status = determine_status(explicit_status=None, opening=None, deadline=None, content=content, title=title)
     assert status == "OPEN_CALL"
+
+
+def test_status_evidence_patterns_cover_call_level_status_badges_and_due_dates():
+    from agents.funding_agent import _evidence_excerpt
+
+    status_text = "Development Grant | Open | UK. Applications are accepted on a rolling basis."
+    status = _evidence_excerpt(status_text, [
+        r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
+        r"applications? (?:are )?accepted on a rolling basis",
+    ])
+    assert status
+    assert "Open" in status or "rolling basis" in status
+
+    due_text = "Proposal deadline: 30 November 2026. Submit by this date."
+    due = _evidence_excerpt(due_text, [
+        r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
+    ])
+    assert due
+    assert "Proposal deadline" in due
