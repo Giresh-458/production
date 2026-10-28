@@ -17,6 +17,7 @@ def assess_batch_acceptance(
     selected_manual_review_flags: Iterable[dict[str, Any]] = (),
     source_summary: Iterable[dict[str, Any]] = (),
     expected_source_ids: Iterable[str] | None = None,
+    record_accounting: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return ACCEPTED/BLOCKED plus explicit, deterministic blockers.
 
@@ -40,6 +41,19 @@ def assess_batch_acceptance(
         add("no_records_discovered", "The scan emitted no raw funding records.")
     if selected_actionable_count <= 0:
         add("no_actionable_calls", "The strict selector emitted no actionable funding calls.")
+
+    if not isinstance(record_accounting, dict):
+        add(
+            "record_accounting_missing",
+            "The audit did not provide source-to-output record accounting.",
+        )
+    elif not record_accounting.get("reconciled"):
+        add(
+            "record_accounting_unreconciled",
+            "Source-stage records do not reconcile with processed/emitted records: "
+            f"source-to-documents delta={record_accounting.get('unaccounted_source_to_documents_delta')!r}, "
+            f"documents-to-output delta={record_accounting.get('unaccounted_documents_to_outputs_delta')!r}.",
+        )
 
     for entry in selected_quality_flags or ():
         title = str(entry.get("title") or "(untitled selected record)")
