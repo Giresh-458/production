@@ -170,6 +170,28 @@ def _supported_rif_funding_domains(
     )
 
 
+def _research_context_quality_reasons(research_context: Any) -> list[str]:
+    """Return mandatory evidence gaps before a funding context can reach downstream agents."""
+    def field(name: str) -> Any:
+        if isinstance(research_context, dict):
+            return research_context.get(name)
+        return getattr(research_context, name, None)
+
+    reasons: list[str] = []
+    confidence = str(field("confidence") or "").strip().casefold()
+    if confidence in {"", "unknown", "none", "n/a", "unverified"}:
+        reasons.append("research-context confidence is unknown")
+    for name, label in (
+        ("inferred_challenges", "source-grounded research problem signal"),
+        ("evidence_refs", "research-context evidence references"),
+        ("inference_provenance", "research-context inference provenance"),
+        ("research_intent_evidence", "research-intent evidence"),
+    ):
+        if not field(name):
+            reasons.append(f"missing {label}")
+    return reasons
+
+
 def get_all_open_funding_calls(
     funding_result: dict[str, Any], *, require_domain_match: bool = True,
     require_research_context: bool = False,
@@ -532,7 +554,7 @@ def main() -> int:
         return 2
 
     valid_calls, rejected = get_all_open_funding_calls(
-        funding_result, require_domain_match=True, require_research_context=True
+        funding_result, require_domain_match=True
     )
 
     if not valid_calls:
@@ -545,6 +567,7 @@ def main() -> int:
     research_calls = []
     research_contexts = []
     rejected_non_research = []
+    rejected_unverified_research_context = []
 
     for call in valid_calls:
         ctx = build__selected_call_context(call)
@@ -556,9 +579,19 @@ def main() -> int:
                 "reason": "non_research" if intent == "non_research" else "unrecognized_intent",
                 "evidence": getattr(ctx.research_context, "research_intent_evidence", "") if ctx.research_context else ""
             })
-        else:
-            research_calls.append(call)
-            research_contexts.append(ctx)
+            continue
+
+        context_issues = _research_context_quality_reasons(ctx.research_context)
+        if context_issues:
+            rejected_unverified_research_context.append({
+                "call": call,
+                "reason": "research_context_unverified",
+                "reasons": context_issues,
+            })
+            continue
+
+        research_calls.append(call)
+        research_contexts.append(ctx)
 
     if args.max_open_calls is not None and args.max_open_calls > 0:
         research_calls = research_calls[:args.max_open_calls]
@@ -570,7 +603,9 @@ def main() -> int:
             "status": "no_research_opportunity",
             "funding_result": funding_result,
             "rejected_calls": rejected,
-            "rejected_non_research": rejected_non_research
+            "rejected_non_research": rejected_non_research,
+        "rejected_unverified_research_context": rejected_unverified_research_context,
+            "rejected_unverified_research_context": rejected_unverified_research_context
         }
         (root / "workflow").mkdir(parents=True, exist_ok=True)
         (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
