@@ -34,3 +34,27 @@ def test_eu_query_budget_records_remainder_without_dropping_queries():
     assert budgets["pages_per_query"] == 3
     assert budgets["unallocated_pages"] == 1
     assert budgets["query_count"] == 3
+
+def test_eu_source_configured_budget_is_bounded_but_not_the_old_three_page_cap():
+    from pathlib import Path
+    import yaml
+
+    config = yaml.safe_load(Path("sources/funding_sources.yaml").read_text(encoding="utf-8"))
+    source = next(
+        entry
+        for group in config["sources"].values()
+        for entry in group
+        if entry["name"] == "EU Open and Forthcoming Funding Calls"
+    )
+    api = source["collection"]["api"]
+    limits = source["collection"]["limits"]
+    budgets = _eu_query_budget(
+        search_texts=api["search_texts"],
+        page_size=api["page_size"],
+        max_pages=limits["max_pages"],
+        max_documents=limits["max_documents"],
+    )
+
+    assert budgets["pages_per_query"] >= 10
+    assert budgets["documents_per_query"] >= 500
+    assert budgets["query_count"] == len(api["search_texts"])
