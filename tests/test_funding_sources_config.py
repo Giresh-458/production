@@ -101,16 +101,18 @@ def test_eu_funding_api_has_bounded_budget_for_all_targeted_queries():
     by_name = {entry["name"]: entry for entry in _entries()}
     limits = by_name["EU Open and Forthcoming Funding Calls"]["collection"]["limits"]
 
-    # Five configured searches need enough page budget to inspect beyond the
-    # first 100 results per search while preserving an explicit upper bound.
+    # Ten configured searches cover all seven RIF domains. The global page/document
+    # budgets are bounded; any query not exhausted must remain explicitly partial.
     assert limits["max_pages"] >= 25
     assert limits["max_documents"] >= limits["max_pages"] * 50
 
 
 def test_idapt_config_enables_bounded_docx_document_collection():
     by_name = {entry["name"]: entry for entry in _entries()}
-    discovery = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]["collection"]["discovery"]
+    entry = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]
+    discovery = entry["collection"]["discovery"]
 
+    assert entry["collection"]["status_verification_urls"] == [entry["url"]]
     assert discovery["follow_documents"] is True
     # Recent live diagnostics discovered 12 URLs on this source. Keep a finite
     # budget but allow the discovered frontier to be inspected after fixing DOCX.
