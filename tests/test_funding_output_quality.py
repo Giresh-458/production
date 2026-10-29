@@ -536,6 +536,41 @@ def test_sbir_mirror_disclaimer_prevents_unverified_open_status_and_deadline():
     assert analysis.deadline is None
 
 
+def test_solana_public_rfp_empty_state_requires_publisher_warning_on_known_views():
+    from core.crawl4ai_web import _reports_no_active_funding, _classify_page_stage_b
+
+    message = (
+        "Solana Foundation Public RFP Database\\n"
+        "RFP CONTEXT\\n"
+        "DO NOT APPLY FOR THIS. There are no other active RFPs at this time."
+    )
+    observed_view = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/"
+        "shrDbfJ1wktQ7pB6f/tbli2ERM3sdhyHJYB"
+    )
+    seeded_view = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/"
+        "shrR0uMKu4N57TGW7/tbli2ERM3sdhyHJYB"
+    )
+
+    assert _reports_no_active_funding(observed_view, "Airtable - Solana Foundation Public RFP Database", message)
+    assert _reports_no_active_funding(seeded_view, "Airtable - Solana Foundation Public RFP Database", message)
+    assert not _reports_no_active_funding(
+        observed_view, "Airtable - Solana Foundation Public RFP Database",
+        "RFP CONTEXT. Open for Submissions. Application Deadline: unknown."
+    )
+    # Empty-state rows must be accounted as empty-listing evidence, not emitted as a call.
+    assert not _classify_page_stage_b(
+        observed_view, "Airtable - Solana Foundation Public RFP Database", message
+    )
+    # A real call title remains eligible for normal classification on an otherwise similar route.
+    assert _classify_page_stage_b(
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/real-call",
+        "Open call for distributed identity",
+        "Applications are open. Eligible applicants may apply by the deadline. RFP."
+    )
+
+
 def test_funding_problem_signal_rejects_subcontracting_proportionality_rule():
     content = (
         "Limited parts mean subcontracting remains proportionate to the needs "
