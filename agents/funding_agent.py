@@ -276,6 +276,27 @@ def _update_source_verification_flags(result: Any) -> Any:
         result.currentness_verified = False
         return result
 
+    # Current source results must exclude non-opportunity attachments (for example
+    # call manuals titled "the") from per-opportunity verification. Retain the
+    # attachment in acquisition telemetry and call evidence, but verify the real
+    # parent call, not the supporting PDF as if it were a separate call.
+    qualified_opportunities = [
+        item for item in qualified_opportunities
+        if not (
+            isinstance(item, (tuple, list))
+            and len(item) >= 2
+            and _is_generic_funding_title(str(
+                getattr(item[1], "program_name", None)
+                or getattr(item[0], "title", None)
+                or ""
+            ))
+        )
+    ]
+    if not qualified_opportunities:
+        result.evidence_verified = False
+        result.currentness_verified = False
+        return result
+
     record_evidence_verified = True
     record_currentness_verified = True
     for item in qualified_opportunities:
