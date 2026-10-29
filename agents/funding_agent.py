@@ -2379,6 +2379,26 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # HTML/Markdown extraction can leave heading markers in the title. Keep the
     # structured title human-readable without changing its source wording.
     program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
+    # Ripple's current UBRI page promotes the distinct UDAX 2027 application.
+    # Do not mislabel that application as the parent university research programme.
+    ripple_source = urlparse(document.source or "")
+    ripple_udax_cta = (
+        (ripple_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
+        and ripple_source.path.rstrip("/") == "/impact/ubri"
+        and re.search(
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+            document.content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+    if ripple_udax_cta:
+        program_name = "UBRI Digital Asset Xcelerator (UDAX) 2027"
+        identity_material = "|".join([
+            document.organization.strip().lower(),
+            program_name.strip().lower(),
+            canonicalize_url(document.source),
+        ])
+        mission_ctx["funding_call_id"] = "CALL-" + hashlib.sha256(identity_material.encode("utf-8")).hexdigest()[:12].upper()
     # Some Grants.gov detail pages expose the site brand as their title while
     # the source-provided title contains the actual solicitation name. Prefer
     # that explicit source title rather than emitting the publisher brand.
