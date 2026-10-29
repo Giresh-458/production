@@ -611,16 +611,17 @@ def test_solana_public_rfp_empty_state_requires_explicit_warning():
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
+    non_empty_text = "RFP CONTEXT. Open for Submissions. Application Deadline: unknown."
     assert not _reports_no_active_funding(
-        observed_view, "Airtable - Solana Foundation Public RFP Database",
-        "RFP CONTEXT. Open for Submissions. Application Deadline: unknown."
+        observed_view, "Airtable - Solana Foundation Public RFP Database", non_empty_text
     )
+    # The known listing route is a directory even if its row text resembles a call.
     assert not _classify_page_stage_b(
-        observed_view, "Airtable - Solana Foundation Public RFP Database", message
+        observed_view, "Airtable - Solana Foundation Public RFP Database", non_empty_text
     )
-    # A real call title remains eligible for normal classification.
+    # A call in a different detail route remains eligible for normal classification.
     assert _classify_page_stage_b(
-        "https://airtable.com/apppDmK2Pin9WX8jV/real-call",
+        "https://airtable.com/appDifferentBase/real-call",
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
