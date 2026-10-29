@@ -1183,7 +1183,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply to horizon|"
+                r"apply for protocol rewards|apply for next cohort|apply to horizon|"
                 r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
                 lowered,
                 flags=re.IGNORECASE,
@@ -1233,7 +1233,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply to horizon|"
+                r"apply for protocol rewards|apply for next cohort|apply to horizon|"
                 r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
         lowered,
         flags=re.IGNORECASE,
@@ -1920,7 +1920,7 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     # inventing an application form URL.
     is_near_protocol_rewards_cta = (
         (parsed_source.hostname or "").casefold() in {"nearprotocolrewards.com", "www.nearprotocolrewards.com"}
-        and bool(re.search(r"apply for protocol rewards", content or "", flags=re.IGNORECASE))
+        and bool(re.search(r"apply for (?:protocol rewards|next cohort)", content or "", flags=re.IGNORECASE))
     )
     is_near_horizon_cta = (
         (parsed_source.hostname or "").casefold() in {"hzn.xyz", "www.hzn.xyz"}
@@ -2531,6 +2531,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
             r"applying is as simple as creating a github issue",
             r"apply for protocol rewards",
+            r"apply for next cohort",
             r"apply to horizon",
             r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
             r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
