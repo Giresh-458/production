@@ -260,10 +260,25 @@ def _funding_candidate_segments(paragraph: str) -> list[str]:
             candidate = _clean_funding_candidate_text(part)
             if len(candidate.split()) < 6:
                 continue
-            # Do not truncate a source statement into a potentially misleading
-            # fragment. Overlong candidates are skipped; shorter source clauses
-            # can still be selected independently.
+            # Do not truncate a source statement arbitrarily. Some official calls
+            # place a genuine risk/challenge and an eligibility restriction in one
+            # long sentence; retain only complete comma-delimited clauses that
+            # independently express a limitation, and continue to reject applicant
+            # rules and administrative constraints below.
             if len(candidate) > 320:
+                clauses = [
+                    _clean_funding_candidate_text(clause)
+                    for clause in re.split(r",\s+", candidate)
+                ]
+                for clause in clauses:
+                    if (
+                        6 <= len(clause.split())
+                        and len(clause) <= 320
+                        and _is_genuine_limitation(clause)
+                        and not _is_administrative_or_financial_rule(clause)
+                        and not _is_objective_or_task_statement(clause)
+                    ):
+                        candidates.append(clause)
                 continue
             candidates.append(candidate)
     return candidates
