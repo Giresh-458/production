@@ -1377,3 +1377,50 @@ def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_no
     assert has_substantive_eligibility_evidence(opportunity.eligibility)
     assert opportunity.focus_area == "ESG"
     assert opportunity.application_url is None
+
+
+
+def test_sbir_mirror_currentness_is_verified_against_matching_official_solicitation(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_text = "\n".join([
+        "Topic",
+        "Trusted Identity and Identity Management",
+        "Funding Agency: NSF",
+        "Solicitation Number: NSF 26-510",
+        "Solicitation Status: Open",
+        "NOTE: The Solicitations and topics listed on this site are copies from various agency solicitations and are not necessarily the latest and most up-to-date.",
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation)",
+        "Open Date: May 22, 2026",
+        "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
+        "Close Date: July 7, 2027",
+    ])
+    official_text = "\n".join([
+        "Active funding opportunity",
+        "This document is the current version.",
+        "Program Solicitation NSF 26-510",
+        "Full Proposal Deadline(s): November 04, 2026; March 04, 2027; July 07, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url.endswith("/nsf26-510/solicitation")
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="Trusted Identity and Identity Management",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, cache={})
+    assert "CURRENT VERSION CONFIRMED" in context
+    document.content += context
+
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2026-11-04"
