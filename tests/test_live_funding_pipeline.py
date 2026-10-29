@@ -1523,3 +1523,49 @@ def test_near_hzn_incubation_program_application_is_current():
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == application_url
+
+
+def test_sbir_nih_recurring_due_dates_use_next_future_window(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_url = "https://www.sbir.gov/topics/12563"
+    official_url = "https://simpler.grants.gov/opportunity/d1ba49e5-3684-4420-849a-ab2330ec493e"
+    source_text = "\n".join([
+        "NIH, CDC and FDA Small Business Innovation Research Grant (Parent SBIR [R43/R44] Clinical Trial Optional)",
+        "Funding Agency: HHS",
+        "Solicitation Number: PA-27-100",
+        "Solicitation Status: Open",
+        "NOTE: the topics listed on this site are not necessarily the latest and most up-to-date.",
+        f"[View Official Solicitation]({official_url})",
+        "Open Date: August 05, 2026",
+        "Due Date(s): September 05, 2026; January 05, 2027; April 05, 2027",
+        "Close Date: April 06, 2027",
+    ])
+    official_text = "\n".join([
+        "Open Open opportunity Last Updated: Jun 1, 2026",
+        "Funding opportunity number: PA-27-100",
+        "Closing: April 5, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url == official_url
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="NIH, CDC and FDA Small Business Innovation Research Grant (Parent SBIR [R43/R44] Clinical Trial Optional)",
+        source=source_url,
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, cache={})
+    assert "CURRENT VERSION CONFIRMED" in context
+    document.content += context
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2027-01-05"
+    assert opportunity.application_url == source_url
