@@ -1808,6 +1808,14 @@ def _extract_application_url(text: str) -> str | None:
 
 def _sbir_mirror_disclaims_currentness(source_url: str, content: str) -> bool:
     """Detect SBIR.gov topic mirrors that explicitly warn their status may be stale."""
+    # A matching, current official agency solicitation is stronger evidence
+    # than the mirror disclaimer. Without this marker, fail closed as before.
+    if re.search(
+        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
+        content or "",
+        flags=re.IGNORECASE,
+    ):
+        return False
     parsed = urlparse(source_url or "")
     return bool(
         (parsed.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
