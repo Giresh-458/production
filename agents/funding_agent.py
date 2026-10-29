@@ -1479,8 +1479,11 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "confidence": "Unknown", "research_intent": research_intent,
             "research_intent_evidence": list(research_intent_evidence or []),
         }
-    themes_str = ", ".join(themes) if themes else "relevant technologies"
-    mission = f"Investigate barriers affecting the transition of {themes_str} from research/proof-of-concept toward validation, deployment, adoption and commercialization."
+    themes_str = ", ".join(themes) if themes else "the call's stated research topic"
+    # Do not assume that every research call is about technology deployment,
+    # commercialization, or adoption. Keep the mission neutral and bounded by
+    # the actual themes extracted from the source.
+    mission = f"Investigate the challenges, evidence needs, and remaining gaps related to {themes_str}, using the funding call's stated scope as the boundary."
     
     if any(t.lower() in ("cyber-physical systems", "cps", "digital healthcare") for t in themes):
         questions = [
@@ -1494,10 +1497,12 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "Which existing solutions already address these issues?"
         ]
     else:
+        # Ask source-bounded questions rather than injecting a default business
+        # frame (deployment/adoption) or unrelated themes from another domain.
         questions = [
-            f"What technical barriers limit the deployment of {themes_str}?",
-            f"What validation and evaluation gaps limit adoption of {themes_str}?",
-            f"Which existing solutions already address these problems, and what gaps remain?"
+            f"What challenges or constraints does the call identify for {themes_str}?",
+            f"What evidence, evaluation, or coordination gaps are described for {themes_str}?",
+            "Which existing initiatives or approaches does the call name, and what gaps does it say remain?",
         ]
         
     identity_material = "|".join([str(domain or "General").strip().lower(), str(title).strip().lower()])
