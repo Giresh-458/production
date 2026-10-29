@@ -1472,6 +1472,15 @@ def _fetch_currentness_verification_context(
     return "\n".join(dict.fromkeys(verified))
 
 
+def _is_generic_sbir_topic_title(value: str | None) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", cleaned_text(str(value or "")).casefold()).strip()
+    return normalized in {
+        "", "topic", "topic sbir", "topic funding opportunities", "funding opportunities",
+        "back to funding opportunities search", "home", "menu", "official solicitation",
+        "program solicitation", "solicitation", "nsf sbir", "open sbir funding topics",
+    }
+
+
 def _fetch_linked_official_sbir_context(
     document: FundingDocument,
     warnings: Optional[List[str]] = None,
@@ -1568,7 +1577,32 @@ def _fetch_linked_official_sbir_context(
             flags=re.IGNORECASE,
         )
     )
-    if not matched_ids or not official_current:
+
+    # A current umbrella solicitation is not proof that a mirror's individual
+    # topic is current. Require the official agency text to identify the same
+    # topic as well as the solicitation number and current status.
+    topic_title = cleaned_text(str(document.title or ""))
+    if _is_generic_sbir_topic_title(topic_title):
+        headings = re.findall(r"(?im)^\s*#{1,6}\s+([^\n]+?)\s*$", source_text)
+        for heading in headings:
+            candidate_title = cleaned_text(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading))
+            if _is_generic_sbir_topic_title(candidate_title):
+                continue
+            topic_title = candidate_title
+            break
+    normalized_topic = re.sub(r"[^a-z0-9]+", " ", topic_title.casefold()).strip()
+    normalized_official_identity = re.sub(r"[^a-z0-9]+", " ", normalized_official).strip()
+    topic_confirmed = bool(
+        normalized_topic
+        and not _is_generic_sbir_topic_title(topic_title)
+        and normalized_topic in normalized_official_identity
+    )
+    if not matched_ids or not official_current or not topic_confirmed:
+        if warnings is not None and matched_ids and official_current and not topic_confirmed:
+            warnings.append(
+                f"NSF solicitation {matched_ids[0]} is current, but official evidence does not "
+                f"confirm mirror topic '{topic_title or document.source}'; keeping topic status unknown."
+            )
         cache[candidate_url] = ""
         return ""
 
