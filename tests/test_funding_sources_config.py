@@ -691,10 +691,11 @@ def test_climate_kic_excludes_only_verified_expired_eit_archive_routes():
         "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/",
         "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/",
         "https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/",
-        "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale",
     ]
     for url in current:
         assert not excluded(url), f"Current explicit source route was excluded: {url}"
+    # Creative-sector calls are outside this source's climate/ESG scope.
+    assert excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale")
 
     # Direct Podio forms are application endpoints, not independent calls. The
     # parent call page retains the link as application evidence.
