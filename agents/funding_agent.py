@@ -1766,10 +1766,17 @@ def _extract_application_url(text: str) -> str | None:
         }
         is_contextual_application_link = bool(
             short_application_label
-            and re.search(
-                r"\b(?:application|apply|submit|submission|proposal|form)\b",
-                before[-150:],
-                flags=re.IGNORECASE,
+            and (
+                re.search(
+                    r"\b(?:application|apply|submit|submission|proposal|form)\b",
+                    before[-150:],
+                    flags=re.IGNORECASE,
+                )
+                or re.search(
+                    r"\bapplying is as simple as creating a github issue\b",
+                    before[-150:],
+                    flags=re.IGNORECASE,
+                )
             )
         )
         is_contextual_portal_link = bool(
