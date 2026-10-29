@@ -1500,3 +1500,25 @@ def test_near_protocol_rewards_cta_is_a_current_rolling_application():
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == source_url
+
+
+def test_near_hzn_incubation_program_application_is_current():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    application_url = "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form"
+    document = FundingDocument(
+        organization="NEAR Ecosystem Funding",
+        title="AI + HZN | NEAR AI Incubation Program",
+        source="https://www.hzn.xyz/",
+        source_type="html",
+        content=(
+            "Join our AI Incubation Program to pioneer decentralized AI applications. "
+            "Gain support, compute credits, mentorship, and strategic partnerships. "
+            f"[Apply for the Program]({application_url})"
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == application_url
