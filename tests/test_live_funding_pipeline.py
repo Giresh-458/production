@@ -1482,28 +1482,6 @@ def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url()
     assert opportunity.application_url == source_url
 
 
-def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url():
-    from agents.funding_agent import FundingDocument, analyze_document
-
-    source_url = "https://ripple.com/impact/ubri/"
-    document = FundingDocument(
-        organization="Ripple UBRI",
-        title="University Blockchain Research Initiative",
-        source=source_url,
-        source_type="html",
-        content=(
-            "University Blockchain Research Initiative supports blockchain research.\n"
-            "Apply to UBRI Digital Asset Xcelerator (UDAX) 2027."
-        ),
-        year=2026,
-    )
-    opportunity = analyze_document(document)
-    assert opportunity.status == "OPEN_CALL"
-    assert opportunity.program_name == "UBRI Digital Asset Xcelerator (UDAX) 2027"
-    assert opportunity.evidence.get("status")
-    assert opportunity.application_url == source_url
-
-
 def test_near_protocol_rewards_cta_is_a_current_rolling_application():
     from agents.funding_agent import FundingDocument, analyze_document
 
@@ -1521,7 +1499,7 @@ def test_near_protocol_rewards_cta_is_a_current_rolling_application():
     )
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
-    assert opportunity.program_name == "Digital Asset Xcelerator (UDAX) 2027"
+    assert opportunity.program_name == "NEAR Protocol Rewards"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == source_url
 
