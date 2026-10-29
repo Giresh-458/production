@@ -551,12 +551,11 @@ sources:
     collection:
       mode: web
       engine: crawl4ai
+      # Crawl SBIR.gov topic listings only. Official agency solicitations
+      # are verified separately from each topic's explicit official link.
       allowed_domains:
       - sbir.gov
       - www.sbir.gov
-      - simpler.grants.gov
-      - grants.gov
-      - nsf.gov
       discovery:
         start_urls:
         - https://www.sbir.gov/topics?status=Open
