@@ -34,8 +34,6 @@ def test_funding_registry_uses_exact_curated_batch_one_sources():
         "Filecoin Grants and Funding": "https://fil.org/grants",
         "Flashbots MEV Research Grants": "https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md",
         "Climate KIC Open Calls": "https://www.climate-kic.org/get-involved/open-calls/",
-        "NSF SBIR Trusted Identity": "https://www.sbir.gov/topics/1012406",
-        "NSF SBIR Climate Change Adaptation and Mitigation": "https://www.sbir.gov/topics/1012419",
         "Open SBIR Funding Topics": "https://www.sbir.gov/topics?status=Open",
         "EU Open and Forthcoming Funding Calls": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502",
         "I-DAPT Hub Cyber-Physical Systems Calls": "https://www.idapthub.org/applications/call_for_proposals",
