@@ -177,6 +177,12 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
         r"\b(?:limited|limit|cap|maximum|must not exceed)\b.{0,140}\b"
         r"(?:subcontracting|eligible costs?|funding rate|grant amount|budget|cost categories)\b",
         r"^limited parts\b.{0,180}\bsubcontracting\b",
+        # Eligibility and geographic restrictions often contain words such as
+        # "limited" or "risk", but they describe who may apply, not a research
+        # or technical problem.
+        r"\b(?:participation|eligibility|applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:limited|restricted|confined)\s+to\b",
+        r"\b(?:applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:must be|established in|registered in|incorporated in|located in|based in)\b",
+        r"\bto qualify\b.{0,180}\b(?:institution|applicant|beneficiary|legal entit|must be|established in|registered in)\b",
     )
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
