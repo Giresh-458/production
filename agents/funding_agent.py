@@ -1516,6 +1516,15 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
+    # Ripple's UBRI landing page is a programme overview, but its explicit current
+    # UDAX 2027 application CTA identifies the actionable call within that page.
+    if re.search(
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ):
+        return "Digital Asset Xcelerator (UDAX) 2027"
+
     # Search H1-H6 headings in document order. Browser/page titles such as
     # "Topic" may be generic while the actual solicitation appears in an H2.
     # SBIR topic pages are a known layout: the browser title and H1 say "Topic",
