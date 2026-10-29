@@ -951,7 +951,7 @@ def test_generic_sbir_apply_page_is_not_used_as_call_application_url():
     assert _extract_application_url(content) is None
 
 
-def test_specific_open_sbir_topic_uses_its_topic_page_not_generic_apply_guidance():
+def test_sbir_topic_page_is_not_mistaken_for_a_direct_application_route():
     from agents.funding_agent import _resolve_application_url
 
     source_url = "https://www.sbir.gov/topics/1012406"
@@ -961,7 +961,7 @@ def test_specific_open_sbir_topic_uses_its_topic_page_not_generic_apply_guidance
         "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/"
         "small-business-innovation-research-small-business-technology/nsf26-510/solicitation)"
     )
-    assert _resolve_application_url(content, source_url, "OPEN_CALL") == source_url
+    assert _resolve_application_url(content, source_url, "OPEN_CALL") is None
 
 
 def test_eligibility_heading_is_not_misread_as_a_requirement_value():
@@ -1380,12 +1380,12 @@ def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_no
 
 
 
-def test_sbir_mirror_currentness_is_verified_against_matching_official_solicitation(monkeypatch):
+def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monkeypatch):
     from agents.funding_agent import FundingDocument, analyze_document
     from agents.funding_collector import _fetch_linked_official_sbir_context
     import core.http_client
 
-    source_text = "\n".join([
+    source_text = "\\n".join([
         "Topic",
         "Trusted Identity and Identity Management",
         "Funding Agency: NSF",
@@ -1397,9 +1397,57 @@ def test_sbir_mirror_currentness_is_verified_against_matching_official_solicitat
         "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
         "Close Date: July 7, 2027",
     ])
-    official_text = "\n".join([
+    official_text = "\\n".join([
         "Active funding opportunity",
         "This document is the current version.",
+        "Program Solicitation NSF 26-510",
+        "Full Proposal Deadline(s): November 04, 2026; March 04, 2027; July 07, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url.endswith("/nsf26-510/solicitation")
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="Trusted Identity and Identity Management",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, warnings=[], cache={})
+    assert context == ""
+
+    opportunity = analyze_document(document)
+    assert opportunity.status == "UNKNOWN"
+    assert opportunity.opening_date is None
+    assert opportunity.deadline is None
+    assert opportunity.application_url is None
+
+
+def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_text = "\\n".join([
+        "Topic",
+        "Trusted Identity and Identity Management",
+        "Funding Agency: NSF",
+        "Solicitation Number: NSF 26-510",
+        "Solicitation Status: Open",
+        "NOTE: The Solicitations and topics listed on this site are copies from various agency solicitations and are not necessarily the latest and most up-to-date.",
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation)",
+        "Open Date: May 22, 2026",
+        "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
+        "Close Date: July 7, 2027",
+    ])
+    official_text = "\\n".join([
+        "Active funding opportunity",
+        "This document is the current version.",
+        "Trusted Identity and Identity Management",
         "Program Solicitation NSF 26-510",
         "Full Proposal Deadline(s): November 04, 2026; March 04, 2027; July 07, 2027",
     ])
@@ -1424,7 +1472,7 @@ def test_sbir_mirror_currentness_is_verified_against_matching_official_solicitat
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.deadline == "2026-11-04"
-
+    assert opportunity.application_url is None
 
 
 def test_filecoin_builder_next_step_explicit_issue_application_is_rolling_open():
