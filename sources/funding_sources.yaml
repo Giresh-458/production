@@ -394,6 +394,8 @@ sources:
           - '^https?://eitcc-dev[.]wmstudio[.]space/sites/default/files/2026-(?:07|08|10)/.*(?:EITCC|CPD|Eligibility).*[.](?:pdf|docx?)(?:[?#].*)?$'
           # A confirmed 404 supporting attachment is not a live call or coverage root.
           - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026/10/Financial%20support%20to%20Startups%20and%20Scaleups_7[.]10[.]2026[.]pdf(?:[?#].*)?$'
+          # This NetSuite PDF is an eligibility appendix, not a separate opportunity record.
+          - '^https?://6740820[.]app[.]netsuite[.]com/core/media/media[.]nl[?]id=711659(?:&|$)'
           # Retired partner URLs now return 404; current official programme/call
           # pages are seeded above so stale aliases do not masquerade as missed coverage.
           - '^https?://eit-culture-creativity[.]eu/open-call-acceleration-and-post-acceleration-programmes/?(?:[?#].*)?$'
