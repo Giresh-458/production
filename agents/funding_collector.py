@@ -1724,7 +1724,7 @@ def _collect_web_source(
         parsed_doc_url = urlparse(str(doc.source or ""))
         is_sbir_topic_mirror = (
             (parsed_doc_url.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
-            and re.fullmatch(r"/topics/\\d+/?", parsed_doc_url.path) is not None
+            and re.fullmatch(r"/topics/\d+/?", parsed_doc_url.path) is not None
             and re.search(
                 r"not necessarily the latest and most up-to-date",
                 str(doc.content or ""),
