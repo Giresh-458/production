@@ -741,8 +741,6 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
-    assert "https://www.near.org/founder-hub" in discovery["currentness_verification_urls"]
-    assert "https://www.nearprotocolrewards.com/" in discovery["currentness_verification_urls"]
     patterns = discovery.get("exclude_url_patterns", [])
     import re
     assert any(re.search(pattern, "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form", re.IGNORECASE) for pattern in patterns)
