@@ -1183,7 +1183,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply to horizon)\b",
+                r"apply for protocol rewards|apply to horizon|"
+                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
                 lowered,
                 flags=re.IGNORECASE,
             ))
@@ -1232,7 +1233,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply to horizon)\b",
+                r"apply for protocol rewards|apply to horizon|"
+                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
         lowered,
         flags=re.IGNORECASE,
     ))
@@ -2491,6 +2493,10 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"(?:grant )?fellows are accepted on a rolling basis",
             r"proposals are accepted on a rolling basis",
             r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
+            r"applying is as simple as creating a github issue",
+            r"apply for protocol rewards",
+            r"apply to horizon",
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
             r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
             r"request for proposals",
             r"call for proposals",
