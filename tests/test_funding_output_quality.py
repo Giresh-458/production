@@ -567,7 +567,7 @@ def test_solana_public_rfp_empty_state_requires_publisher_warning_on_known_views
     )
     # A real call title remains eligible for normal classification on an otherwise similar route.
     assert _classify_page_stage_b(
-        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/real-call",
+        "https://airtable.com/apppDmK2Pin9WX8jV/real-call",
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
@@ -607,7 +607,7 @@ def test_solana_public_rfp_empty_state_requires_explicit_warning():
         seeded_view, "Airtable - Solana Foundation Public RFP Database", message
     )
     assert not _is_generic_funding_hub(
-        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/real-call",
+        "https://airtable.com/apppDmK2Pin9WX8jV/real-call",
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
@@ -620,7 +620,7 @@ def test_solana_public_rfp_empty_state_requires_explicit_warning():
     )
     # A real call title remains eligible for normal classification.
     assert _classify_page_stage_b(
-        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/real-call",
+        "https://airtable.com/apppDmK2Pin9WX8jV/real-call",
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
