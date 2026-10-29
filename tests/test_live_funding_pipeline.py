@@ -1386,8 +1386,8 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
     import core.http_client
 
     source_text = "\\n".join([
-        "Topic",
-        "Trusted Identity and Identity Management",
+        "# Topic Funding Opportunities",
+        "## Trusted Identity and Identity Management",
         "Funding Agency: NSF",
         "Solicitation Number: NSF 26-510",
         "Solicitation Status: Open",
@@ -1411,7 +1411,7 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
     monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
     document = FundingDocument(
         organization="NSF SBIR Trusted Identity",
-        title="Trusted Identity and Identity Management",
+        title="Topic | SBIR",
         source="https://www.sbir.gov/topics/1012406",
         source_type="html",
         content=source_text,
@@ -1433,8 +1433,8 @@ def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
     import core.http_client
 
     source_text = "\\n".join([
-        "Topic",
-        "Trusted Identity and Identity Management",
+        "# Topic Funding Opportunities",
+        "## Trusted Identity and Identity Management",
         "Funding Agency: NSF",
         "Solicitation Number: NSF 26-510",
         "Solicitation Status: Open",
@@ -1459,7 +1459,7 @@ def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
     monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
     document = FundingDocument(
         organization="NSF SBIR Trusted Identity",
-        title="Trusted Identity and Identity Management",
+        title="Topic | SBIR",
         source="https://www.sbir.gov/topics/1012406",
         source_type="html",
         content=source_text,
