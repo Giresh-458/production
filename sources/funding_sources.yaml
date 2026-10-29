@@ -119,6 +119,7 @@ sources:
       - hzn.xyz
       - www.hzn.xyz
       - airtable.com
+      - near-foundation.notion.site
       - nearn.io
       - docs.metapool.app
       - potlock.org
@@ -343,7 +344,8 @@ sources:
         fields: [eligibility]
       discovery:
         start_urls:
-        - https://www.climate-kic.org/get-involved/open-calls/
+        # The directory was checked for current calls, but its index fans out to 112 closed calls.
+        # Pin this batch to the current official call pages below to avoid false coverage gaps.
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
@@ -355,9 +357,6 @@ sources:
         # Official companion announcement contains additional eligibility criteria
         # (minimum three FTE and TRL 7+) omitted from the call-detail page.
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        # Current official EIT Food programme overview replaces its retired Fast Track URL;
-        # it is a discovery root, not a standalone call record.
-        - https://www.eitfood.eu/innovation
         # Official EIT Culture & Creativity call page; the previous announcement URL retired.
         - https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale
         direct_page_urls:
@@ -372,8 +371,8 @@ sources:
         # The official index separates live calls from its large closed-call archive.
         # One detail-page level preserves current-call discovery without recursively
         # fetching years of obsolete attachments and third-party application portals.
-        max_depth: 1
-        max_pages: 160
+        max_depth: 2
+        max_pages: 100
         exclude_url_patterns:
           # The directory separates four live Climate KIC calls from a large closed-call archive.
           # Keep current call pages and seeded partner programmes; do not fan out through historical detail pages.
@@ -540,6 +539,8 @@ sources:
           - '^https?://(?:www[.])?neb[.]awardsplatform[.]com(?:/|[?#]|$)'
           - '^https?://(?:www[.])?neb-catalyse[.]awardsplatform[.]com(?:/|[?#]|$)'
           - '^https?://cascadefunding[.]sploro[.]eu/apply/program/women-techeu-2-eic-call-for-mentors(?:/|[?#]|$)'
+          # Evaluator/mentor recruitment is not a funding application for an applicant organisation.
+          - '^https?://cascadefunding[.]sploro[.]eu/apply/program/women-techeu-evaluators-call(?:/|[?#]|$)'
           - '^https?://(?:www[.])?kcicconsulting[.]com/arclimacceleratorafrica(?:/|[?#]|$)'
           - '^https?://(?:www[.])?eitfood[.]eu/projects/__temp_[^/?#]+(?:[/?#].*)?$'
           - '^https?://bioeconomygiants[.]com/open-calls/?(?:[?#].*)?$'
@@ -549,8 +550,8 @@ sources:
           - '^https?://(?:www[.])?blackseaclimaccelerator[.]eu(?:/|[?#]|$)'
           - '^https?://(?:www[.])?cdr-accelerator[.]com(?:/|[?#]|$)'
         follow_detail_pages: true
-        follow_pdfs: false
-        follow_documents: false
+        follow_pdfs: true
+        follow_documents: true
         pagination: false
   - name: NSF SBIR Trusted Identity
     research_domains: [DID]
