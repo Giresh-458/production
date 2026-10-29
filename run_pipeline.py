@@ -170,10 +170,33 @@ def _supported_rif_funding_domains(
     )
 
 
+def _research_context_quality_reasons(research_context: Any) -> list[str]:
+    """Return mandatory evidence gaps before a funding context can reach downstream agents."""
+    def field(name: str) -> Any:
+        if isinstance(research_context, dict):
+            return research_context.get(name)
+        return getattr(research_context, name, None)
+
+    reasons: list[str] = []
+    confidence = str(field("confidence") or "").strip().casefold()
+    if confidence in {"", "unknown", "none", "n/a", "unverified"}:
+        reasons.append("research-context confidence is unknown")
+    for name, label in (
+        ("inferred_challenges", "source-grounded research problem signal"),
+        ("evidence_refs", "research-context evidence references"),
+        ("inference_provenance", "research-context inference provenance"),
+        ("research_intent_evidence", "research-intent evidence"),
+    ):
+        if not field(name):
+            reasons.append(f"missing {label}")
+    return reasons
+
+
 def get_all_open_funding_calls(
-    funding_result: dict[str, Any], *, require_domain_match: bool = True
+    funding_result: dict[str, Any], *, require_domain_match: bool = True,
+    require_research_context: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Select actionable open calls; optionally require strong canonical-domain evidence."""
+    """Select actionable calls; optionally require verified domain and research context."""
     now = datetime.now(UTC)
     candidates: list[tuple[float, dict[str, Any]]] = []
     rejected: list[dict[str, Any]] = []
@@ -339,6 +362,37 @@ def get_all_open_funding_calls(
                 })
                 continue
 
+        if require_research_context:
+            research_context = record.get("research_context")
+            context_reasons: list[str] = []
+            if not isinstance(research_context, dict):
+                context_reasons.append("missing structured research context")
+            else:
+                research_intent = str(research_context.get("research_intent") or "").strip().casefold()
+                if research_intent != "research":
+                    context_reasons.append(
+                        f"research intent is not verified as research (research_intent={research_intent or 'unknown'})"
+                    )
+                confidence = str(research_context.get("confidence") or "").strip().casefold()
+                if confidence in {"", "unknown", "none", "n/a", "unverified"}:
+                    context_reasons.append("research-context confidence is unknown")
+                for field, label in (
+                    ("inferred_challenges", "source-grounded research problem signal"),
+                    ("evidence_refs", "research-context evidence references"),
+                    ("inference_provenance", "research-context inference provenance"),
+                    ("research_intent_evidence", "research-intent evidence"),
+                ):
+                    if not research_context.get(field):
+                        context_reasons.append(f"missing {label}")
+            if context_reasons:
+                rejected.append({
+                    "title": record.get("title"),
+                    "status": status,
+                    "reasons": context_reasons,
+                    "source_url": record.get("source_url"),
+                })
+                continue
+
         # Deduplication check
         call_id = record.get("call_id")
         if not call_id:
@@ -499,7 +553,9 @@ def main() -> int:
         print("❌ No funding opportunities were discovered.")
         return 2
 
-    valid_calls, rejected = get_all_open_funding_calls(funding_result, require_domain_match=True)
+    valid_calls, rejected = get_all_open_funding_calls(
+        funding_result, require_domain_match=True
+    )
 
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}
@@ -511,6 +567,7 @@ def main() -> int:
     research_calls = []
     research_contexts = []
     rejected_non_research = []
+    rejected_unverified_research_context = []
 
     for call in valid_calls:
         ctx = build__selected_call_context(call)
@@ -522,9 +579,19 @@ def main() -> int:
                 "reason": "non_research" if intent == "non_research" else "unrecognized_intent",
                 "evidence": getattr(ctx.research_context, "research_intent_evidence", "") if ctx.research_context else ""
             })
-        else:
-            research_calls.append(call)
-            research_contexts.append(ctx)
+            continue
+
+        context_issues = _research_context_quality_reasons(ctx.research_context)
+        if context_issues:
+            rejected_unverified_research_context.append({
+                "call": call,
+                "reason": "research_context_unverified",
+                "reasons": context_issues,
+            })
+            continue
+
+        research_calls.append(call)
+        research_contexts.append(ctx)
 
     if args.max_open_calls is not None and args.max_open_calls > 0:
         research_calls = research_calls[:args.max_open_calls]
@@ -536,7 +603,8 @@ def main() -> int:
             "status": "no_research_opportunity",
             "funding_result": funding_result,
             "rejected_calls": rejected,
-            "rejected_non_research": rejected_non_research
+            "rejected_non_research": rejected_non_research,
+            "rejected_unverified_research_context": rejected_unverified_research_context,
         }
         (root / "workflow").mkdir(parents=True, exist_ok=True)
         (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -879,6 +947,8 @@ def main() -> int:
         "shared_crawl_stats": stats,
         "status": "completed_with_errors" if global_exit_code > 0 else "completed",
         "valid_calls_found": len(valid_calls),
+        "rejected_non_research": rejected_non_research,
+        "rejected_unverified_research_context": rejected_unverified_research_context,
         "total_proposals": total_proposals,
         "all_final_outputs": all_final_outputs,
         "reports": all_reports,

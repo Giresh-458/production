@@ -8,9 +8,21 @@ def test_zero_results_are_negative_only_after_exhausted_unpaginated_discovery():
         method="web",
         pages_fetched=1,
         discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
     )
 
     assert _finalize_collection_status(result) == "NO_ACTIVE_OPPORTUNITIES"
+
+
+def test_exhausted_zero_result_without_explicit_empty_state_is_not_claimed_inactive():
+    result = CollectionResult(
+        source_id="no-positive-empty-state",
+        method="web",
+        pages_fetched=1,
+        discovery_exhausted=True,
+    )
+
+    assert _finalize_collection_status(result) == "PARTIAL"
 
 
 def test_zero_results_with_relevant_skipped_route_are_partial_not_negative():
@@ -139,6 +151,7 @@ def test_web_collector_can_report_empty_only_after_exhausted_gap_free_crawl():
         pages_fetched=1,
         records_discovered=0,
         discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
     )
     source = SimpleNamespace(
         name="empty-source",
@@ -265,3 +278,129 @@ def test_external_pagination_is_recorded_as_coverage_gap(monkeypatch):
         for gap in result.coverage_gaps
     )
 
+
+
+
+def test_funding_problem_extracts_concise_source_grounded_threat_sentence():
+    from core.problem_extraction import extract_problem_intelligence
+
+    content = (
+        "## Scope\n"
+        "The evolution of science funding priorities and data access policies represents "
+        "a major threat to evidence-based decision making. The programme aims to improve "
+        "long-term data access and interoperability.\n"
+        "[Apply here](https://example.org/apply)"
+    )
+    result = extract_problem_intelligence(
+        content, "Climate data call", {}, allow_llm_refinement=False,
+        research_area="ESG", agent_name="funding",
+    )
+
+    problem = result["selected_problem"]
+    assert problem is not None
+    assert "major threat to evidence-based decision making" in problem
+    assert len(problem) < 300
+    assert "https://" not in problem
+    assert "[Apply here]" not in problem
+    assert problem in result["problem_evidence"][0]
+
+
+def test_funding_problem_does_not_promote_imperative_instruction():
+    from core.problem_extraction import extract_problem_intelligence
+
+    content = (
+        "Example implementation: Block, limit and/or track unwanted addresses "
+        "from entering an application. Submit a proposal with milestones and deliverables."
+    )
+    result = extract_problem_intelligence(
+        content, "Development grant", {}, allow_llm_refinement=False,
+        research_area="DID", agent_name="funding",
+    )
+
+    assert result["selected_problem"] is None
+    assert result["problem_type"] == "unresolved"
+    assert result["problem_evidence"] == []
+
+
+def test_repeated_coverage_gap_urls_are_deduplicated_before_status_reporting():
+    result = CollectionResult(
+        source_id="repeated-frontier",
+        method="web",
+        pages_fetched=1,
+        relevant_urls_skipped=3,
+        coverage_gaps=[
+            {"url": "https://example.org/call/1?utm_source=a", "parent_url": "https://example.org/", "reason": "depth_limit_reached"},
+            {"url": "https://example.org/call/1?utm_source=b", "parent_url": "https://example.org/list", "reason": "depth_limit_reached"},
+            {"url": "https://example.org/call/2", "parent_url": "https://example.org/", "reason": "depth_limit_reached"},
+        ],
+    )
+
+    assert _finalize_collection_status(result) == "PARTIAL"
+    assert len(result.coverage_gaps) == 2
+    assert result.relevant_urls_skipped == 2
+
+
+def test_funding_agent_serializes_explicit_empty_state_confirmation(tmp_path):
+    from unittest.mock import patch
+    from agents.funding_agent import load_sources, run_agent
+
+    from pathlib import Path
+
+    source = load_sources(Path("sources/funding_sources.yaml"))[0]
+    result = CollectionResult(
+        source_id=source.name,
+        method="web",
+        pages_fetched=1,
+        discovery_exhausted=True,
+        no_active_opportunities_confirmed=True,
+        final_status="NO_ACTIVE_OPPORTUNITIES",
+    )
+    output_dir = tmp_path / "out"
+    db_path = tmp_path / "funding_memory.db"
+    checkpoint_path = tmp_path / "checkpoint.pkl"
+
+    with patch("agents.funding_collector.collect_auto_sources", return_value=iter([result])):
+        response = run_agent(
+            "configured_scan",
+            None,
+            {
+                "sources_path": "sources/funding_sources.yaml",
+                "posts_per_source": 1,
+                "output_dir": str(output_dir),
+                "db_path": str(db_path),
+                "checkpoint_path": str(checkpoint_path),
+                "analysis_mode": "collect_only",
+                "is_test_mode": True,
+                "force_refresh": True,
+                "run_id": "empty-state-serialization-test",
+            },
+        )
+
+    assert response["collection_results"][0]["final_status"] == "NO_ACTIVE_OPPORTUNITIES"
+    assert response["collection_results"][0]["no_active_opportunities_confirmed"] is True
+
+
+
+def test_status_verification_extracts_explicit_i_dapt_closure(monkeypatch):
+    from types import SimpleNamespace
+    from agents.funding_collector import _fetch_status_verification_context
+    import core.http_client as http_client
+
+    status_url = "https://www.idapthub.org/applications/call_for_proposals"
+    monkeypatch.setattr(
+        http_client,
+        "fetch_text",
+        lambda url, **kwargs: (
+            "Currently not accepting any fresh applications for Research Projects.",
+            status_url,
+        ),
+    )
+    source = SimpleNamespace(
+        name="I-DAPT Hub Cyber-Physical Systems Calls",
+        collection={"status_verification_urls": [status_url]},
+    )
+
+    evidence = _fetch_status_verification_context(source)
+
+    assert "not accepting any fresh applications" in evidence.casefold()
+    assert status_url in evidence

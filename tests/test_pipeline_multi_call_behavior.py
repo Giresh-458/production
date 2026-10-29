@@ -19,9 +19,9 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                 "funding_priorities": (),
                 "target_outcomes": (),
                 "investigation_questions": (),
-                "inferred_challenges": (),
-                "evidence_refs": (),
-                "inference_provenance": (),
+                "inferred_challenges": ("The source identifies a concrete research gap.",),
+                "evidence_refs": ("https://v1.org",),
+                "inference_provenance": ("source_grounded_problem_extraction",),
                 "confidence": "Medium",
                 "research_intent": "research",
                 "research_intent_evidence": ["Research funding supports technology validation."]

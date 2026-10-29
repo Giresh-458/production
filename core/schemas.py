@@ -52,8 +52,12 @@ class CollectionResult:
     pagination_complete: bool = False
     discovery_exhausted: bool = False
     truncated: bool = False
+    # Exact URLs/reasons explain source truncation; a boolean alone is not actionable.
+    truncation_details: list[dict[str, Any]] = field(default_factory=list)
     evidence_verified: bool = False
     currentness_verified: bool = False
+    # Empty status is valid only when the source explicitly confirms no active calls.
+    no_active_opportunities_confirmed: bool = False
     # --- error tracking ---
     failed_urls: list[str] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
@@ -96,6 +100,19 @@ AREA_KEYWORDS = {
         "sustainability",
         "emissions",
         "registry",
+        "climate change adaptation",
+        "climate change mitigation",
+        "climate adaptation",
+        "climate mitigation",
+        "climate resilience",
+        "climate finance",
+        "electrification of transport",
+        "alternative fuels",
+        "urban mobility",
+        "sustainable mobility",
+        "mobility data management",
+        "transport decarbonization",
+        "transport decarbonisation",
         "climate",
     ],
     "ZK-IoV": [
@@ -194,8 +211,22 @@ def _keyword_occurrences(text: str, keyword: str) -> int:
     return len(re.findall(pattern, normalized_text))
 
 
-# DOMAIN_REQUIRED_ANCHOR_GROUPS keeps compound domains from being inferred from one unrelated half.
+# Required anchors prevent broad adjacent topics from masquerading as a RIF domain.
+# In particular, climate science and the acronym ESGF (Earth System Grid Federation)
+# are not, by themselves, evidence of ESG investing, carbon accounting, or MRV work.
 DOMAIN_REQUIRED_ANCHOR_GROUPS = {
+    "ESG": (
+        frozenset({
+            "esg", "carbon", "carbon credit", "mrv", "emissions",
+            "sustainability reporting", "sustainability-linked",
+            "environmental social governance", "climate finance",
+            "climate change adaptation", "climate change mitigation",
+            "climate adaptation", "climate mitigation", "climate resilience",
+            "transport decarbonization", "transport decarbonisation",
+            "electrification of transport", "alternative fuels", "urban mobility",
+            "sustainable mobility", "mobility data management",
+        }),
+    ),
     "ZK-IoV": (
         frozenset({
             "zero-knowledge", "zkvm", "zk proof", "zk proofs", "zkp",
@@ -253,6 +284,11 @@ DOMAIN_TERM_WEIGHTS = {
         "climate adaptation": 2.5, "climate mitigation": 2.5, "climate resilience": 2.5,
         "carbon credit": 3.0, "carbon": 1.5, "mrv": 2.5, "sustainability": 2.0,
         "emissions": 2.0, "climate": 1.5, "esg": 2.5,
+        # Direct transport-decarbonisation terms are ESG evidence in mobility calls;
+        # generic "mobility" alone remains insufficient to classify a call as ESG.
+        "electrification of transport": 2.5, "alternative fuels": 2.0,
+        "low-emission transport": 2.5, "zero-emission": 2.5,
+        "transport decarbonization": 3.0, "transport decarbonisation": 3.0,
     },
     "ZK-IoV": {
         "zero-knowledge": 3.0, "zkvm": 3.0, "zk proof": 3.0, "zk proofs": 3.0,

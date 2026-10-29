@@ -221,8 +221,6 @@ def collect_auto_sources(
         test_source_names = [
             "Filecoin Grants and Funding",
             "Climate KIC Open Calls",
-            "NSF SBIR Trusted Identity",
-            "NSF SBIR Climate Change Adaptation and Mitigation",
             "Ethereum ESP RFPs",
         ]
         sources = [s for s in sources if s.name in test_source_names]
@@ -380,7 +378,7 @@ def _normalize_raw_to_doc(
         title=title,
         source=url,
         source_type=source_type,
-        content=content[:50000],  # protect against extremely large pages
+        content=content[:200000],  # bounded, consistent with document readers
         year=current_year(),
     )
 
@@ -602,6 +600,47 @@ def _eu_metadata_value(metadata: dict, *keys: str) -> str | None:
     return None
 
 
+def _eu_application_url(metadata: dict, detail_url: str) -> tuple[str | None, str | None]:
+    """Resolve an EU call's application entry point without inventing external URLs.
+
+    Prefer an explicit publisher-supplied submission URL. When the Commission API
+    omits one, its own topic-details page is the official landing page from which
+    applicants can open the submission system.
+    """
+    explicit = _eu_metadata_value(
+        metadata,
+        "applicationUrl",
+        "applicationURL",
+        "submissionUrl",
+        "submissionURL",
+        "applyUrl",
+        "applicationLink",
+        "submissionLink",
+        "applicationPortalUrl",
+    )
+    if explicit:
+        parsed_explicit = urlparse(explicit)
+        if parsed_explicit.scheme.lower() == "https" and parsed_explicit.netloc:
+            return explicit, "EU Search API application/submission URL metadata"
+
+    parsed = urlparse(detail_url)
+    if (
+        parsed.scheme.lower() == "https"
+        and parsed.netloc.lower() in {"ec.europa.eu", "www.ec.europa.eu"}
+        and parsed.path.startswith(
+            "/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/"
+        )
+    ):
+        landing_page = parsed._replace(
+            scheme="https",
+            netloc=parsed.netloc.lower(),
+            fragment="",
+        ).geturl()
+        return landing_page, "Official EU Funding & Tenders topic-details submission landing page"
+
+    return None, None
+
+
 def _extract_eu_eligibility_from_html(value: Any) -> str | None:
     """Extract explicit applicant criteria from the portal's rich HTML fields.
 
@@ -721,6 +760,40 @@ def _eu_effective_status(
     return status, None
 
 
+def _eu_query_budget(
+    *,
+    search_texts: list[str],
+    page_size: int,
+    max_pages: int,
+    max_documents: int,
+) -> dict[str, int]:
+    """Allocate bounded EU API budgets fairly across all configured search terms.
+
+    Every configured query receives the same floor allocation. Remainders are
+    reported (rather than used to drop query terms), and callers must keep a
+    source PARTIAL when any query's API results are not exhausted.
+    """
+    query_count = len(search_texts)
+    if query_count <= 0:
+        raise ValueError("At least one EU Funding & Tenders search term is required")
+    safe_page_size = max(1, min(int(page_size), 100))
+    safe_max_pages = max(query_count, int(max_pages))
+    safe_max_documents = max(query_count, int(max_documents))
+    pages_per_query = safe_max_pages // query_count
+    documents_per_query = min(
+        safe_page_size * pages_per_query,
+        safe_max_documents // query_count,
+    )
+    return {
+        "query_count": query_count,
+        "pages_per_query": pages_per_query,
+        "documents_per_query": max(1, documents_per_query),
+        "unallocated_pages": safe_max_pages - pages_per_query * query_count,
+        "unallocated_documents": safe_max_documents
+        - max(1, documents_per_query) * query_count,
+    }
+
+
 def _collect_eu_funding_tenders(
     source: FundingSource,
     result: CollectionResult,
@@ -732,7 +805,7 @@ def _collect_eu_funding_tenders(
     api_config = source.collection.get("api", {}) or {}
     configured_limits = source.collection.get("limits", {}) or {}
     query_values = api_config.get("search_texts") or ["*"]
-    search_texts = list(dict.fromkeys(
+    configured_search_texts = list(dict.fromkeys(
         str(value).strip() for value in query_values if str(value).strip()
     )) or ["*"]
 
@@ -746,35 +819,39 @@ def _collect_eu_funding_tenders(
 
     max_pages_budget = _effective_limit("max_pages", 5)
     max_documents_budget = _effective_limit("max_documents", 250)
-    if max_pages_budget < len(search_texts):
-        omitted = search_texts[max_pages_budget:]
-        search_texts = search_texts[:max_pages_budget]
-        limit_marker = "TEST_TRUNCATED" if test_limits else "SOURCE_LIMIT_REACHED"
+    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
+
+    # Test budgets may intentionally be smaller than the number of production
+    # terms. Only truncate the query list in explicitly bounded test mode;
+    # production must attempt every configured search term.
+    if test_limits and max_pages_budget < len(configured_search_texts):
+        search_texts = configured_search_texts[:max_pages_budget]
+        omitted = configured_search_texts[max_pages_budget:]
         warnings_text = (
-            f"{limit_marker}: Search-query budget is {max_pages_budget}; "
+            f"TEST_TRUNCATED: Test query budget is {max_pages_budget}; "
             f"skipped {len(omitted)} configured EU domain query/queries"
         )
     else:
+        search_texts = configured_search_texts
         warnings_text = None
 
-    # Spend the global page/document budget across targeted searches. One page
-    # per query is intentional: it increases RIF-domain recall while the client
-    # still filters expired, ineligible, and weakly matched records.
-    pages_per_query = max(1, max_pages_budget // max(1, len(search_texts)))
-    page_size = max(1, min(int(api_config.get("page_size", 50)), 100))
-    documents_per_query = max(
-        1,
-        min(page_size * pages_per_query, (max_documents_budget + len(search_texts) - 1) // len(search_texts)),
+    query_budget = _eu_query_budget(
+        search_texts=search_texts,
+        page_size=page_size,
+        max_pages=max_pages_budget,
+        max_documents=max_documents_budget,
     )
+    pages_per_query = query_budget["pages_per_query"]
+    documents_per_query = query_budget["documents_per_query"]
 
     aggregated_records: list[dict] = []
     aggregated_errors: list[str] = []
     query_totals: list[int] = []
     pages_fetched = 0
+    raw_records_received = 0
     all_queries_complete = warnings_text is None
     seen_search_refs: set[str] = set()
     seen_search_urls: set[str] = set()
-    search_duplicates = 0
 
     for search_text in search_texts:
         remaining_budget = max_documents_budget - len(aggregated_records)
@@ -801,6 +878,9 @@ def _collect_eu_funding_tenders(
             source_limits=None if test_limits else query_limits,
         )
         pages_fetched += int(query_result.get("pages_fetched", 0) or 0)
+        raw_records_received += int(
+            query_result.get("raw_records_received", len(query_result.get("results", []))) or 0
+        )
         if query_result.get("total_expected") is not None:
             try:
                 query_totals.append(int(query_result["total_expected"]))
@@ -834,7 +914,6 @@ def _collect_eu_funding_tenders(
             if (reference and reference in seen_search_refs) or (
                 canonical_url and canonical_url in seen_search_urls
             ):
-                search_duplicates += 1
                 continue
             if reference:
                 seen_search_refs.add(reference)
@@ -853,6 +932,9 @@ def _collect_eu_funding_tenders(
     api_result = {
         "results": aggregated_records,
         "pages_fetched": pages_fetched,
+        # Raw counts may include duplicates across query texts; records_discovered
+        # remains the unique retained opportunity count.
+        "raw_records_received": raw_records_received,
         # Totals across different text searches overlap, so do not present their
         # sum as a count of unique opportunities.
         "total_expected": query_totals[0] if len(search_texts) == 1 and query_totals else None,
@@ -864,12 +946,13 @@ def _collect_eu_funding_tenders(
     result.pages_fetched = int(api_result.get("pages_fetched", 0) or 0)
     result.api_pages_fetched = result.pages_fetched
     result.api_expected_records = api_result.get("total_expected")
-    result.api_records_received = len(records)
+    result.api_records_received = int(api_result.get("raw_records_received", len(records)) or 0)
     result.pagination_detected = True
     result.pagination_complete = bool(api_result.get("pagination_complete"))
     result.discovery_exhausted = bool(api_result.get("pagination_complete"))
     result.records_discovered = len(records)
-    result.duplicates_removed += search_duplicates
+    # Count duplicates removed both within a query's pages and across query terms.
+    result.duplicates_removed += max(0, raw_records_received - len(records))
 
     for error in api_result.get("errors", []):
         result.errors.append({
@@ -1072,6 +1155,14 @@ def _collect_eu_funding_tenders(
                 continue
             analysis.program_name = title
             analysis.source_title = title
+            application_url, application_url_provenance = _eu_application_url(
+                metadata, canonical_detail_url
+            )
+            if application_url:
+                analysis.application_url = application_url
+                analysis.evidence["application_url"] = (
+                    f"{application_url_provenance}: {application_url}"
+                )
             if identifier:
                 analysis.call_id = identifier
             if internal_status:
@@ -1292,7 +1383,8 @@ def _fetch_status_verification_context(
     evidence: list[str] = []
     closure_pattern = re.compile(
         r"[^.!?\n]{0,180}\b(?:paused|suspended|closed for applications|no longer accepting|"
-        r"not accepting new submissions|not accepting applications|submissions? will not be processed)\b[^.!?\n]{0,180}[.!?]?",
+        r"not accepting (?:any fresh |new )?applications|not accepting new submissions|"
+        r"submissions? will not be processed)\b[^.!?\n]{0,180}[.!?]?",
         flags=re.IGNORECASE,
     )
     for url in urls:
@@ -1311,6 +1403,265 @@ def _fetch_status_verification_context(
         for match in matches[:5]:
             evidence.append(f"Official status page ({final_url or url}): {match}")
     return "\n".join(dict.fromkeys(evidence))
+
+
+def _fetch_currentness_verification_context(
+    source: FundingSource,
+    document: FundingDocument,
+    warnings: Optional[List[str]] = None,
+) -> str:
+    """Verify explicitly configured publisher-owned application/currentness evidence."""
+    discovery = source.collection.get("discovery", {}) or {}
+    urls = source.collection.get(
+        "currentness_verification_urls",
+        discovery.get("currentness_verification_urls", []),
+    )
+    if not isinstance(urls, list) or not urls:
+        return ""
+    document_url = urlparse(str(document.source or ""))
+    configured_urls = []
+    for candidate in urls:
+        if not isinstance(candidate, str) or not candidate.startswith("https://"):
+            continue
+        parsed = urlparse(candidate)
+        if (
+            (parsed.hostname or "").casefold() == (document_url.hostname or "").casefold()
+            and parsed.path.rstrip("/") == document_url.path.rstrip("/")
+        ):
+            configured_urls.append(candidate)
+    # Do not leak a source-level status cue into unrelated opportunity documents.
+    if not configured_urls:
+        return ""
+
+    from core.http_client import fetch_text
+
+    patterns = (
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"apply for protocol rewards",
+        r"apply to horizon",
+        r"applying is as simple as creating a github issue",
+        r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
+        r"proposals are accepted on a rolling basis",
+    )
+    verified = []
+    for url in configured_urls:
+        expected = urlparse(url)
+        try:
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+        except Exception as exc:
+            if warnings is not None:
+                warnings.append(f"{source.name}: currentness verification could not be fetched from {url}: {exc}")
+            LOGGER.warning("Currentness verification fetch failed for %s (%s): %s", source.name, url, exc)
+            continue
+        final_url = str(final_url or url)
+        final = urlparse(final_url)
+        if final.scheme.casefold() != "https" or (final.hostname or "").casefold() != (expected.hostname or "").casefold():
+            continue
+        body = str(body or "")
+        for pattern in patterns:
+            match = re.search(pattern, body, flags=re.IGNORECASE)
+            if match:
+                excerpt = cleaned_text(body[max(0, match.start() - 180):min(len(body), match.end() + 240)])
+                verified.append(
+                    f"Official currentness verification: CURRENT APPLICATION EVIDENCE CONFIRMED\n"
+                    f"Official currentness URL: {final_url}\n{excerpt[:700]}"
+                )
+                break
+    return "\n".join(dict.fromkeys(verified))
+
+
+def _is_generic_sbir_topic_title(value: str | None) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", cleaned_text(str(value or "")).casefold()).strip()
+    return normalized in {
+        "", "topic", "topic sbir", "topic funding opportunities", "funding opportunities",
+        "back to funding opportunities search", "home", "menu", "official solicitation",
+        "program solicitation", "solicitation", "nsf sbir", "open sbir funding topics",
+    }
+
+
+def _fetch_linked_official_sbir_context(
+    document: FundingDocument,
+    warnings: Optional[List[str]] = None,
+    cache: Optional[dict[str, str]] = None,
+) -> str:
+    """Verify an SBIR mirror record against the official solicitation it links to.
+
+    SBIR.gov warns that topic pages may lag the issuing agency. For topic pages,
+    follow only the page's explicitly labelled official-solicitation link, require
+    an HTTPS .gov destination, and verify that the solicitation identifier matches
+    before trusting its current/open status. A mirror's own disclaimer is never
+    treated as proof that a call is stale or current.
+    """
+    parsed_source = urlparse(str(document.source or ""))
+    if (
+        (parsed_source.hostname or "").casefold() not in {"sbir.gov", "www.sbir.gov"}
+        or not re.fullmatch(r"/topics/\d+/?", parsed_source.path)
+        or not re.search(
+            r"not necessarily the latest and most up-to-date",
+            str(document.content or ""),
+            flags=re.IGNORECASE,
+        )
+    ):
+        return ""
+
+    link = re.search(
+        r"\[\s*View Official Solicitation\s*\]\((https://[^)\s]+)\)",
+        str(document.content or ""),
+        flags=re.IGNORECASE,
+    )
+    if not link:
+        return ""
+    candidate_url = link.group(1).strip()
+    candidate = urlparse(candidate_url)
+    if (
+        candidate.scheme.casefold() != "https"
+        or not candidate.hostname
+        or not candidate.hostname.casefold().endswith(".gov")
+        or candidate.port not in (None, 443)
+        or candidate.username
+        or candidate.password
+    ):
+        return ""
+
+    cache = cache if cache is not None else {}
+    if candidate_url in cache:
+        return cache[candidate_url]
+
+    from core.http_client import fetch_text
+
+    try:
+        official_text, final_url = fetch_text(candidate_url, timeout=(8.0, 20.0), retries=1)
+    except Exception as exc:
+        if warnings is not None:
+            warnings.append(
+                f"SBIR official solicitation verification failed for {candidate_url}: {exc}"
+            )
+        cache[candidate_url] = ""
+        return ""
+
+    final_url = str(final_url or candidate_url)
+    final = urlparse(final_url)
+    if (
+        final.scheme.casefold() != "https"
+        or not final.hostname
+        or not final.hostname.casefold().endswith(".gov")
+    ):
+        cache[candidate_url] = ""
+        return ""
+
+    source_text = str(document.content or "")
+    official_text = str(official_text or "")
+    identifier_pattern = re.compile(
+        r"\b(?:[A-Z]{2,6}\s+\d{2}-\d{3}|[A-Z]{2,6}-\d{2}-\d{2,3})\b",
+        flags=re.IGNORECASE,
+    )
+    source_ids = {
+        re.sub(r"\s+", "", match.group(0)).upper()
+        for match in identifier_pattern.finditer(source_text)
+    }
+    official_ids = {
+        re.sub(r"\s+", "", match.group(0)).upper()
+        for match in identifier_pattern.finditer(official_text)
+    }
+    matched_ids = sorted(source_ids & official_ids)
+    normalized_official = re.sub(r"\s+", " ", official_text).casefold()
+    official_current = bool(
+        re.search(
+            r"\bactive funding opportunity\b|"
+            r"\bthis document is the current version\b|"
+            r"\b(?:solicitation status|opportunity status)\s*:?\s*open\b|"
+            r"\bopen opportunity\b",
+            normalized_official,
+            flags=re.IGNORECASE,
+        )
+    )
+
+    # A current umbrella solicitation is not proof that a mirror's individual
+    # topic is current. Require the official agency text to identify the same
+    # topic as well as the solicitation number and current status.
+    topic_title = cleaned_text(str(document.title or ""))
+    if _is_generic_sbir_topic_title(topic_title):
+        headings = re.findall(r"(?im)^\s*#{1,6}\s+([^\n]+?)\s*$", source_text)
+        for heading in headings:
+            candidate_title = cleaned_text(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading))
+            if _is_generic_sbir_topic_title(candidate_title):
+                continue
+            topic_title = candidate_title
+            break
+    normalized_topic = re.sub(r"[^a-z0-9]+", " ", topic_title.casefold()).strip()
+    normalized_official_identity = re.sub(r"[^a-z0-9]+", " ", normalized_official).strip()
+    topic_confirmed = bool(
+        normalized_topic
+        and not _is_generic_sbir_topic_title(topic_title)
+        and normalized_topic in normalized_official_identity
+    )
+    # NSF 26-510/26-511 are umbrella solicitations covering many topic areas;
+    # matching that number alone cannot verify an individual SBIR.gov topic.
+    # A unique opportunity identifier such as PA-27-100 can verify the record
+    # when the official opportunity page repeats that identifier and open status.
+    generic_umbrella_ids = {"NSF26-510", "NSF26-511"}
+    requires_topic_identity = any(identifier in generic_umbrella_ids for identifier in matched_ids)
+    if not matched_ids or not official_current or (requires_topic_identity and not topic_confirmed):
+        if warnings is not None and matched_ids and official_current and requires_topic_identity and not topic_confirmed:
+            warnings.append(
+                f"NSF umbrella solicitation {matched_ids[0]} is current, but official evidence does not "
+                f"confirm mirror topic '{topic_title or document.source}'; keeping topic status unknown."
+            )
+        cache[candidate_url] = ""
+        return ""
+
+    relevant_lines = [
+        cleaned_text(line)
+        for line in official_text.splitlines()
+        if re.search(
+            r"active funding opportunity|current version|program solicitation|"
+            r"solicitation number|opportunity status|solicitation status|"
+            r"full proposal deadline|due date|close date|application deadline|open date",
+            line,
+            flags=re.IGNORECASE,
+        )
+    ]
+    excerpt = "\n".join(dict.fromkeys(line for line in relevant_lines if line))[:5000]
+    context = (
+        "\n\n## Official Solicitation Verification\n"
+        "Official solicitation verification: CURRENT VERSION CONFIRMED\n"
+        f"Official solicitation URL: {final_url}\n"
+        f"Matched solicitation identifier: {matched_ids[0]}\n"
+        f"{excerpt}"
+    )
+    cache[candidate_url] = context
+    return context
+
+
+def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: str) -> bool:
+    """Identify explicit publisher empty-state rows without mistaking open RFPs for placeholders."""
+    content = re.sub(r"\s+", " ", cleaned_text(str(document.content or "")).casefold())
+    title = cleaned_text(str(document.title or "")).casefold()
+    source_url = str(document.source or "").casefold()
+    if (
+        "if this is the only rfp that is visible" in content
+        and "do not apply for this" in content
+    ):
+        return True
+
+    parsed = urlparse(source_url)
+    known_solana_rfp_view = (
+        source_name == "Solana Grants and Funding"
+        and (parsed.hostname or "").casefold() in {"airtable.com", "www.airtable.com"}
+        and parsed.path.casefold().startswith((
+            "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7",
+            "/apppdmk2pin9wx8jv/shrdbfj1wktq7pb6f",
+        ))
+    )
+    return bool(
+        known_solana_rfp_view
+        and re.search(r"\brfp context\b", content)
+        and re.search(r"\bdo not apply for this\b", content)
+        and re.search(
+            r"no other active rfp(?:s)?(?: are available| at this time| available)?",
+            content,
+        )
+    )
 
 
 def _collect_web_source(
@@ -1342,7 +1693,11 @@ def _collect_web_source(
     result.records_discovered = len(raw_opps)
 
     verification_context = _fetch_status_verification_context(source, warnings)
+    # Cache linked agency solicitations within this source run so a shared
+    # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
+    official_verification_cache: dict[str, str] = {}
     seen_urls: set[str] = set()
+    explicit_empty_state_seen = False
     for raw in raw_opps:
         raw_url = raw.get("url", "")
         if raw_url in seen_urls:
@@ -1351,12 +1706,63 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
+        linked_official_context = _fetch_linked_official_sbir_context(
+            doc, warnings, official_verification_cache
+        )
+        if linked_official_context:
+            doc.content = (doc.content.rstrip() + linked_official_context)[:200000]
+
+        # A topic page whose own publisher explicitly warns that its copied
+        # solicitation may be stale is not a valid funding-call record unless
+        # the linked official source independently confirms that topic identity
+        # and currentness. Preserve the fetched record in acquisition/filter
+        # telemetry, but do not normalize it into an opportunity or allow it
+        # to poison source-level currentness for other independently verified calls.
+        parsed_doc_url = urlparse(str(doc.source or ""))
+        is_sbir_topic_mirror = (
+            (parsed_doc_url.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+            and re.fullmatch(r"/topics/\d+/?", parsed_doc_url.path) is not None
+            and re.search(
+                r"not necessarily the latest and most up-to-date",
+                str(doc.content or ""),
+                flags=re.IGNORECASE,
+            ) is not None
+        )
+        if is_sbir_topic_mirror and not linked_official_context:
+            result.records_filtered += 1
+            reason = "unverified_sbir_mirror_topic"
+            result.records_filtered_by_reason[reason] = (
+                result.records_filtered_by_reason.get(reason, 0) + 1
+            )
+            if warnings is not None:
+                warnings.append(
+                    f"Skipped unverified SBIR mirror topic as a funding-call record: {doc.title!r} "
+                    f"({doc.source}); linked official source did not confirm this topic's currentness."
+                )
+            continue
+
+        if _is_explicit_no_active_placeholder(doc, source.name):
+            explicit_empty_state_seen = True
+            result.records_filtered += 1
+            reason = "explicit_no_active_rfp_placeholder"
+            result.records_filtered_by_reason[reason] = result.records_filtered_by_reason.get(reason, 0) + 1
+            continue
+
         if verification_context:
             doc.content = (
                 doc.content.rstrip()
                 + "\n\n## Official Status Verification\n"
                 + verification_context
-            )[:50000]
+            )[:200000]
+
+        if currentness_context:
+            doc.content = (
+                doc.content.rstrip()
+                + "\n\n## Official Currentness Verification\n"
+                + currentness_context
+            )[:200000]
+
         try:
             analysis = analyze_document(doc)
             result.opportunities.append((doc, analysis))
@@ -1372,6 +1778,13 @@ def _collect_web_source(
             if warnings is not None:
                 warnings.append(f"Web analysis failed for {raw_url}: {e}")
 
+    # An explicit empty-state marker is meaningful only if no actual call records
+    # survived filtering. A placeholder must never override a genuine call.
+    if explicit_empty_state_seen and result.records_valid == 0:
+        result.no_active_opportunities_confirmed = True
+    elif result.records_valid > 0:
+        result.no_active_opportunities_confirmed = False
+
     # Keep source status conservative after normalization. The crawl may have
     # collected some evidence while another page or record failed; that is
     # partial coverage, not a verified or empty source.
@@ -1384,11 +1797,24 @@ def _collect_web_source(
                 result.final_status = "PARTIAL"
         elif result.final_status not in {"PARTIAL", "TEST_TRUNCATED"}:
             result.final_status = "FAIL"
+    elif result.records_valid == 0 and result.records_filtered > 0 and result.no_active_opportunities_confirmed:
+        if (
+            result.pages_fetched > 0
+            and not result.truncated
+            and result.discovery_exhausted
+            and not result.coverage_gaps
+            and result.relevant_urls_skipped == 0
+            and (not result.pagination_detected or result.pagination_complete)
+        ):
+            result.final_status = "NO_ACTIVE_OPPORTUNITIES"
+        elif result.pages_fetched > 0 and not result.truncated:
+            result.final_status = "PARTIAL"
     elif result.records_valid == 0 and result.records_discovered == 0:
         if (
             result.pages_fetched > 0
             and not result.truncated
             and result.discovery_exhausted
+            and result.no_active_opportunities_confirmed
             and not result.coverage_gaps
             and result.relevant_urls_skipped == 0
             and (not result.pagination_detected or result.pagination_complete)

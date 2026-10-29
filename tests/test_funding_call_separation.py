@@ -368,6 +368,79 @@ def test_crawl_external_domain_skipped():
     assert result.pages_fetched == 1  # only the start page
 
 
+def test_solana_airtable_empty_state_is_verified_without_emitting_placeholder_rows():
+    from core.crawl4ai_web import crawl_funding_source
+
+    root = "https://solana.org/grants-funding"
+    table = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/"
+        "tbli2ERM3sdhyHJYB/viwiTNQRvG2G2rxDL/recFe5gmTrKteofrx"
+    )
+    form = (
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrolVvhFsrwvq3rA"
+        "?prefill_Related+RFP=recFe5gmTrKteofrx"
+    )
+    table_text = (
+        "Solana Foundation Active RFPs. RFP CONTEXT. RFP Status: Open for Submissions. "
+        "If this the only RFP that is visible, it means that there are no other active "
+        "RFPs at this time. DO NOT APPLY FOR THIS."
+    )
+    pages = {
+        root: {
+            "html": "<html><body>Solana grants funding</body></html>",
+            "markdown": "Solana grants and funding.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": root, "title": "Grants and Funding",
+            "links": [
+                {"url": table, "anchor_text": "Solana Foundation Active RFPs", "surrounding_text": "RFP", "rel": ""},
+                {"url": form, "anchor_text": "RFP Application Form", "surrounding_text": "Apply", "rel": ""},
+            ],
+            "pagination_links": [],
+        },
+        table: {
+            "html": "<html><body>RFP CONTEXT</body></html>",
+            "markdown": table_text,
+            "success": True, "error_message": None, "status_code": 200,
+            "url": table, "title": "Airtable - Solana Foundation Active RFPs",
+            "links": [], "pagination_links": [],
+        },
+        form: {
+            "html": "<html><body>Solana Foundation RFP Application Form</body></html>",
+            "markdown": "Please use this form to submit a proposal for one of our RFPs.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": form, "title": "Solana Foundation RFP Application Form",
+            "links": [], "pagination_links": [],
+        },
+    }
+
+    def fake_fetch(requested_url):
+        key = requested_url.split("?", 1)[0].rstrip("/")
+        if key == root:
+            return pages[root]
+        if key == table.split("?", 1)[0].rstrip("/"):
+            return pages[table]
+        if key == form.split("?", 1)[0].rstrip("/"):
+            return pages[form]
+        raise AssertionError(f"Unexpected fetch in bounded Solana fixture: {requested_url}")
+
+    with (
+        patch("core.crawl4ai_web._fetch_sync", fake_fetch),
+        patch("core.crawl4ai_web._get_robots_policy", return_value=(True, 1.0, None)),
+        patch("core.crawl4ai_web._wait_for_host_slot", return_value=True),
+    ):
+        result = crawl_funding_source(
+            "Solana Grants and Funding",
+            root,
+            {"start_urls": [root], "max_depth": 1, "max_pages": 4},
+            ["solana.org", "airtable.com"],
+        )
+
+    assert result.no_active_opportunities_confirmed is True
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+
 def test_empty_ethereum_rfp_page_is_not_normalized_as_a_grant():
     """Explicit no-active language must not become a generic funding record."""
     from core.crawl4ai_web import crawl_funding_source
@@ -1060,6 +1133,34 @@ def test_near_listing_roots_are_hubs_and_child_urls_are_discoverable():
     assert _classify_link_stage_a("https://app.potlock.org/campaign/91", "", "") >= 0.4
 
 
+def test_crawler_rejects_browser_extension_pseudo_urls():
+    from core.crawl4ai_web import _is_crawlable_http_url
+
+    assert not _is_crawlable_http_url(
+        "http://chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/"
+        "https://ec.europa.eu/info/funding-tenders/opportunities/docs/example.pdf"
+    )
+    assert not _is_crawlable_http_url("chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/")
+    assert _is_crawlable_http_url("https://ec.europa.eu/info/funding-tenders/example.pdf")
+
+
+def test_markdown_link_with_escaped_parentheses_keeps_the_complete_document_url():
+    from core.crawl4ai_web import _extract_markdown_links
+
+    markdown = (
+        r"[BIONetZero Funding Handbook]"
+        r"(https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
+        r"BIONetZero%20SME%20Grant%20Package%20\(Funding%20Handbook%20for%20Applicants\).pdf)"
+    )
+    links = _extract_markdown_links(markdown, "https://www.foodbiocluster.dk/open-call-for-bionetzero")
+
+    assert len(links) == 1
+    assert links[0]["url"] == (
+        "https://www.foodbiocluster.dk/Files/Files/BIONetZero/"
+        "BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf"
+    )
+
+
 def test_markdown_links_are_extracted_when_js_cards_have_no_html_anchors():
     from core.crawl4ai_web import _extract_markdown_links
 
@@ -1224,3 +1325,362 @@ def test_docx_title_uses_call_heading_instead_of_filename_slug():
 
     assert result["success"] is True
     assert result["title"] == "Call for Innovative and Entrepreneurial Project Proposals"
+
+
+
+def test_stage_a_context_alone_does_not_mark_generic_navigation_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # A page's surrounding funding copy is not enough to turn a generic link
+    # into a coverage gap; otherwise unrelated footer/navigation links explode
+    # the live audit's skipped-link count.
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Account", "Funding opportunities are available"
+    ) < 0.4
+
+    # Explicit route or anchor evidence must still be followed.
+    assert _classify_link_stage_a(
+        "https://example.com/open-calls/current", "Details", "Read more"
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.com/account/settings", "Apply for grant funding", "Read more"
+    ) >= 0.4
+
+
+
+def test_pdf_file_type_alone_does_not_make_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/privacy-policy.pdf", "", ""
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/files/annual-report.pdf", "Download", "About our organization"
+    ) < 0.4
+
+
+def test_funding_evidence_can_still_make_pdf_link_relevant():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/files/open-call-guidelines.pdf", "Grant application guidelines", ""
+    ) >= 0.4
+
+
+def test_official_full_announcement_attachment_is_relevant_without_generic_anchor_text():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://files.simpler.grants.gov/opportunities/example/attachments/PA-27-101-Revised-Full-Announcement.html",
+        "PA-27-101-Revised-Full-Announcement.html",
+        "Documents Download all",
+    ) >= 0.5
+    assert _classify_link_stage_a(
+        "https://example.org/attachments/general-guidance.html",
+        "Download document",
+        "Documents Download all",
+    ) < 0.4
+
+
+def test_generic_opportunity_navigation_is_not_a_call_detail_candidate():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    # Broad directory paths should not block coverage by themselves.
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities",
+        "Your opportunities",
+        "Find funding and opportunities for your project",
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding",
+        "Browse all",
+        "Explore our opportunities",
+    ) < 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects",
+        "Innovation projects",
+        "Explore our opportunities",
+    ) >= 0.4
+
+
+def test_specific_funding_detail_routes_remain_discoverable():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/grants/agentic-engineering", "", ""
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/calls-for-proposals/climate-innovation", "", ""
+    ) >= 0.4
+
+
+def test_named_funding_documents_remain_discoverable_without_generic_file_bonus():
+    from core.crawl4ai_web import _classify_link_stage_a
+
+    assert _classify_link_stage_a(
+        "https://example.org/docs/proposal-template.docx",
+        "Download proposal document",
+        "Grant funding application proposal",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/sites/default/files/2026-10/EITCC_Innovation%20projects%202026_v1.pdf",
+        "EITCC_Innovation projects 2026_v1.pdf",
+        "Call for proposals",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://eit-culture-creativity.eu/sites/default/files/2026-10/EITCC_2026%20CPD%20Skills-based_Call%20Guidelines.pdf",
+        "EITCC 2026 CPD Skills-based Call Guidelines",
+        "",
+    ) >= 0.4
+    assert _classify_link_stage_a(
+        "https://example.org/files/annual-report.pdf", "Download", "About our organization"
+    ) < 0.4
+
+
+def test_eu_application_url_prefers_publisher_link_then_official_topic_landing_page():
+    from agents.funding_collector import _eu_application_url
+
+    topic_url = (
+        "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/"
+        "opportunities/topic-details/HORIZON-BRIDGING-2027-04-08"
+    )
+    assert _eu_application_url(
+        {"applicationUrl": "https://ec.europa.eu/submission-system/start/123"},
+        topic_url,
+    ) == (
+        "https://ec.europa.eu/submission-system/start/123",
+        "EU Search API application/submission URL metadata",
+    )
+    assert _eu_application_url({}, topic_url) == (
+        topic_url,
+        "Official EU Funding & Tenders topic-details submission landing page",
+    )
+    assert _eu_application_url({}, "https://example.org/funding/call-123") == (None, None)
+    assert _eu_application_url(
+        {}, "https://ec.europa.eu/info/funding-tenders/opportunities/other-page"
+    ) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "specific_title",
+    [
+        "CHANAKYA UG Fellowship – I",
+        "CHANAKYA UG Fellowship – II",
+        "CHANAKYA PG Fellowship (Startup/Product Development)",
+        "CHANAKYA PG Top-up Fellowship",
+        "CHANAKYA Doctoral Top-up Fellowship",
+        "CHANAKYA Post-Doctoral Top-up Fellowship",
+        "CHANAKYA Post Doctoral Fellowship",
+    ],
+)
+def test_docx_title_skips_generic_chanakya_form_banner(specific_title):
+    from core.crawl4ai_web import _extract_docx_title
+
+    assert _extract_docx_title(
+        [
+            "CHANAKYA FELLOWSHIP – APPLICATION FORM",
+            specific_title,
+            "The fellowship is for motivated students.",
+        ],
+        "https://idapthub.org/frontend/docs/chanakya/fellowship.docx",
+    ) == specific_title
+
+
+def test_idapt_proposal_template_is_not_a_second_funding_call():
+    from core.crawl4ai_web import _classify_page_stage_b, _is_supporting_funding_document
+
+    template_url = "https://idapthub.org/frontend/docs/project_proposal_document_new.docx"
+    assert _is_supporting_funding_document(template_url) is True
+    assert _is_supporting_funding_document(
+        "https://idapthub.org/frontend/docs/chanakya/1_chanakya_ug_fellowship_I.docx"
+    ) is False
+    assert _classify_page_stage_b(
+        template_url,
+        "different categories and the duration of project proposals",
+        (
+            "Call for Innovative and Entrepreneurial Project Proposals. "
+            "Funding amount up to Rs. 15 Lakh. Eligibility and proposal submission."
+        ),
+    ) is False
+
+
+def test_idapt_parent_call_page_remains_a_funding_call_candidate():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    assert _classify_page_stage_b(
+        "https://idapthub.org/applications/call_for_proposals",
+        "Call for Proposals",
+        (
+            "Call for Innovative and Entrepreneurial Research Projects. "
+            "This research grant provides funding for eligible projects. "
+            "Eligibility requirements and funding amount are described below. "
+            "How to apply: applications can be submitted at any time. "
+            "Currently not accepting any fresh applications for Research Projects."
+        ),
+    ) is True
+
+
+def test_idapt_proposal_template_is_fetched_but_not_emitted_as_opportunity(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    template_url = "https://www.idapthub.org/frontend/docs/project_proposal_document_new.docx"
+    monkeypatch.setattr(
+        crawler, "_fetch_docx",
+        lambda requested: {
+            "success": True, "url": requested, "content": "proposal template content",
+            "title": "different categories and the duration of project proposals",
+            "paragraphs_extracted": 4, "truncated": False, "error": None,
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "I-DAPT Hub Cyber-Physical Systems Calls",
+        template_url,
+        {
+            "start_urls": [template_url],
+            "max_depth": 0,
+            "max_pages": 5,
+            "follow_documents": True,
+        },
+        allowed_domains=["idapthub.org", "www.idapthub.org"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.org/forms/Sample_Application_Form_2027.pdf",
+        "https://example.org/docs/application-form-template.docx",
+        "https://example.org/docs/Guidelines-for-evaluators.pdf",
+        "https://example.org/events/Info-session-presentation.pdf",
+    ],
+)
+def test_supporting_funding_documents_are_not_classified_as_calls(url):
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(url) is True
+
+
+def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(
+        "https://example.org/calls/Enhance_NEB_with-cover.pdf"
+    ) is False
+    # A generic proposal-template filename is not enough to suppress a DOCX:
+    # its contents may itself be the only substantive call document.
+    assert _is_supporting_funding_document(
+        "https://example.org/docs/proposal-template.docx"
+    ) is False
+
+
+def test_extensionless_support_download_uses_extracted_document_title():
+    from core.crawl4ai_web import _is_supporting_funding_document
+
+    assert _is_supporting_funding_document(
+        "https://example.org/download/12345",
+        "Sample Application Form",
+    ) is True
+    assert _is_supporting_funding_document(
+        "https://example.org/download/12346",
+        "Cyber-physical systems research call",
+    ) is False
+
+
+def test_browser_triggered_support_document_is_counted_but_not_emitted(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    url = "https://example.org/download/12345"
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: (_ for _ in ()).throw(RuntimeError("Download is starting")),
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_browser_download",
+        lambda requested, max_pdf_pages=None: (
+            "pdf",
+            {
+                "success": True,
+                "url": requested,
+                "content": "Sample application form for an existing call.",
+                "title": "Sample Application Form",
+                "total_pages": 2,
+                "pages_processed": 2,
+                "truncated": False,
+                "error": None,
+            },
+        ),
+    )
+
+    result = crawler.crawl_funding_source(
+        "Test extensionless support document",
+        url,
+        {"start_urls": [url], "max_depth": 0, "follow_pdfs": True, "follow_documents": True},
+        [],
+    )
+
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+
+
+def test_supporting_pdf_is_fetched_but_not_emitted_as_a_funding_call():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://example.org/forms/Sample_Application_Form_2027.pdf"
+    with patch(
+        "core.crawl4ai_web._fetch_pdf",
+        return_value={
+            "success": True,
+            "url": url,
+            "content": "Sample application form for an existing funding call.",
+            "total_pages": 2,
+            "pages_processed": 2,
+            "truncated": False,
+            "error": None,
+        },
+    ):
+        result = crawl_funding_source(
+            "Test supporting document",
+            url,
+            {"start_urls": [url], "max_depth": 0, "follow_pdfs": True},
+            [],
+        )
+
+    assert result.documents_fetched == 1
+    assert result.opportunities == []
+    assert result.records_discovered == 0
+
+
+def test_substantive_call_manual_pdf_remains_discoverable():
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://example.org/calls/Enhance_NEB_with-cover.pdf"
+    with patch(
+        "core.crawl4ai_web._fetch_pdf",
+        return_value={
+            "success": True,
+            "url": url,
+            "content": "Call for proposals. Eligibility and deadline are stated in this call manual.",
+            "total_pages": 8,
+            "pages_processed": 8,
+            "truncated": False,
+            "error": None,
+        },
+    ):
+        result = crawl_funding_source(
+            "Test call manual",
+            url,
+            {"start_urls": [url], "max_depth": 0, "follow_pdfs": True},
+            [],
+        )
+
+    assert result.documents_fetched == 1
+    assert len(result.opportunities) == 1
+    assert result.records_discovered == 1
+

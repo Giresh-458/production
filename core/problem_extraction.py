@@ -49,7 +49,7 @@ def _score_candidate(text: str, research_area: Optional[str] = None) -> Dict[str
     words = text.split()
     specificity_score = min(len(words) / 30.0, 1.0)
     
-    limitation_terms = ("cannot", "fail", "limit", "latency", "bottleneck", "issue", "difficult", "impractical", "friction", "lack", "unable", "prevent", "require", "unreliable", "unresolved")
+    limitation_terms = ("cannot", "fail", "limit", "latency", "bottleneck", "issue", "difficult", "impractical", "friction", "lack", "unable", "prevent", "require", "unreliable", "unresolved", "risk", "threat", "vulnerabilit", "shortage", "fragmented")
     researchability_score = sum(0.2 for term in PROBLEM_SIGNAL_TERMS if term in lowered)
     researchability_score += sum(0.3 for term in limitation_terms if term in lowered)
     researchability_score = min(researchability_score, 1.0)
@@ -133,22 +133,155 @@ Output only the refined single-sentence problem statement, nothing else."""
         pass
     return None
 
+def _is_objective_or_task_statement(text: str) -> bool:
+    """Reject programme objectives and implementation instructions as problem evidence.
+
+    This is deliberately conservative and only applies to funding extraction. A call's
+    objective may mention risks or gaps without establishing that the sentence itself
+    describes an existing problem. Such text remains available in the source record but
+    is not promoted to a problem signal.
+    """
+    value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    patterns = (
+        r"^(?:the\s+)?(?:call|programme|program|initiative|funding opportunity)\s+"
+        r"(?:is designed to|aims? to|seeks? to|is intended to|has the objective of|focus(?:es)? on|focus\s+is\s+on)\b",
+        r"^(?:the\s+)?(?:action|project|proposal|work programme|funded action)\s+"
+        r"should\s+(?:address|track|develop|deliver|implement|provide|support|assess|evaluate|"
+        r"analyse|analyze|identify|establish|investigate|improve|reduce)\b",
+        r"^(?:the\s+)?(?:action|project|proposal)\s+is expected to\b",
+        r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\s*:",
+        r"^(?:potential\s+)?(?:application|use|target)\s+(?:fields?|areas?|domains?|sectors?)\s+include\b",
+        r"^(?:potential\s+)?(?:application fields|application areas|use cases)\s+include\b",
+        # Applicant guidance, topic lists, capability descriptions and desired
+        # outcomes are not evidence that a technical problem currently exists.
+        r"^(?:you can choose what you would like to cover|the focus should be on|focus should be on)\b",
+        r"^(?:policy makers?|decision makers?|stakeholders?)\s+(?:are|become|will be)\s+more\s+(?:aware|informed|capable|able)\b",
+        r"^(?:reduced vulnerability|increased resilience|improved resilience|lowering flood risks|increasing resilience)\b",
+        r"^(?:it returns|the platform returns|the system returns|the tool returns|our product|the platform provides|the system provides)\b",
+        r"^(?:grant size|approved so far|applications paused|skills needed|live grants|contact|you are welcome to|welcome to join)\b",
+        r"^(?:deep tech for|developing and commercially scaling)\b",
+        r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\s+"
+        r"(?:the\s+)?(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
+        r"^(?:build|create|develop|implement|track|submit|apply|provide|support|assess|evaluate|"
+        r"identify|establish|investigate|coordinate|explore|strengthen|secure|maintain)\b",
+        r"^(?:steps?\s+to\s+(?:ensure|secure|improve|maintain)|take\s+steps\s+to\s+"
+        r"(?:ensure|secure|improve|maintain)|acting\s+on\s+this\s+offers\s+an\s+opportunity)\b",
+    )
+    return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def _is_administrative_or_financial_rule(text: str) -> bool:
+    """Reject grant-administration rules that contain limitation vocabulary.
+
+    Budget caps, subcontracting proportionality, and eligible-cost rules are
+    conditions of the grant, not evidence of a research or technical problem.
+    """
+    value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    patterns = (
+        r"\bsubcontracting\b.{0,180}\b(?:proportionate|limited|limit|cap|must not exceed)\b",
+        r"\b(?:eligible costs?|funding rate|grant amount|maximum funding|total budget|budget ceiling|"
+        r"co[- ]funding|indirect costs?|overheads?)\b.{0,180}\b"
+        r"(?:limited|limit|cap|maximum|up to|per project|proportionate|must not exceed|eligible)\b",
+        r"\b(?:limited|limit|cap|maximum|must not exceed)\b.{0,140}\b"
+        r"(?:subcontracting|eligible costs?|funding rate|grant amount|budget|cost categories)\b",
+        r"^limited parts\b.{0,180}\bsubcontracting\b",
+        # Eligibility and geographic restrictions often contain words such as
+        # "limited" or "risk", but they describe who may apply, not a research
+        # or technical problem.
+        r"\b(?:participation|eligibility|applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:limited|restricted|confined)\s+to\b",
+        r"\b(?:applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:must be|established in|registered in|incorporated in|located in|based in)\b",
+        r"\bto qualify\b.{0,180}\b(?:institution|applicant|beneficiary|legal entit|must be|established in|registered in)\b",
+        # Scope lists and programme rules can use "limited" without describing
+        # a limitation in the research or technology.
+        r"\b(?:including but not limited to|not limited to)\b",
+        r"\b(?:research(?:\s+or\s+analytical)?|analytical)\s+(?:effort|work)\b.{0,180}\b(?:research partners?|consultants?|subcontractors?|third parties)\b",
+    )
+    return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
+
+
 def _is_genuine_limitation(text: str) -> bool:
+    """Recognize explicit problem/risk language without treating action verbs as problems."""
     t = text.strip().lower()
     strong = (
         r"\b(?:cannot|can't|fails?|failed|unable|lacks?|lacking|insufficient|limited|limitation|bottleneck|barrier|"
         r"unresolved|unknown|unclear|inadequate|impractical|fragile|unreliable|poor performance|"
-        r"not (?:yet )?(?:possible|well understood|addressed|supported|solved)|remains a challenge|limits?|friction)\b"
+        r"risk|risks|threat|threats|vulnerabilities|shortage|scarcity|fragmented|degraded|"
+        r"not (?:yet )?(?:possible|well understood|addressed|supported|solved)|remains a challenge|friction)\b|"
+        r"\blimits?\s+(?:the\s+)?(?:ability|access|availability|capacity|performance|adoption|reliability|resilience)\b"
     )
     if not re.search(strong, t):
         return False
-    # Background/method boilerplate is rejected unless it contains an explicit
-    # limitation signal. This preserves genuine sentences beginning with "The".
     if len(t.split()) < 6:
         return False
     if re.match(r"^(greetings|welcome|copyright|all rights reserved|please contact|we are thrilled)\b", t):
         return False
     return True
+
+
+def _clean_funding_candidate_text(text: str) -> str:
+    """Strip page chrome/Markdown from a candidate while preserving source wording."""
+    from html import unescape
+
+    value = unescape(str(text or ""))
+    value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1 ", value)
+    value = re.sub(r"\[([^\]]{1,300})\]\((?:https?://|/)[^)]*\)", r"\1", value)
+    value = re.sub(r"<https?://[^>]+>", " ", value)
+    value = re.sub(r"https?://\S+", " ", value)
+    value = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", value)
+    value = re.sub(r"[*_~]{1,3}", "", value)
+    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    value = re.sub(r"\s+", " ", value).strip(" \t\r\n-•:")
+    value = re.sub(
+        r"^(?:expected outcomes?|scope|description|background|rationale|overview|problem preview)\s*:\s*",
+        "", value, flags=re.IGNORECASE,
+    ).strip()
+    return value
+
+
+def _funding_candidate_segments(paragraph: str) -> list[str]:
+    """Split funding copy into source-grounded, concise candidates without hard truncation."""
+    raw = str(paragraph or "").strip()
+    if not raw:
+        return []
+
+    # Split Markdown list items before whitespace cleanup; otherwise independent
+    # grant-purpose bullets can be concatenated into one misleading long signal.
+    chunks = re.split(r"\n\s*(?=(?:[-*•]|\d+[.)])\s+)", raw)
+    candidates = []
+    for chunk in chunks:
+        # Semicolon-separated clauses often encode distinct research needs or
+        # populations in EU call text. Keep the source wording, but evaluate each
+        # clause independently rather than cutting a sentence at an arbitrary index.
+        cleaned = _clean_funding_candidate_text(chunk)
+        if not cleaned:
+            continue
+        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])|;\s+", cleaned)
+        for part in parts:
+            candidate = _clean_funding_candidate_text(part)
+            if len(candidate.split()) < 6:
+                continue
+            # Do not truncate a source statement arbitrarily. Some official calls
+            # place a genuine risk/challenge and an eligibility restriction in one
+            # long sentence; retain only complete comma-delimited clauses that
+            # independently express a limitation, and continue to reject applicant
+            # rules and administrative constraints below.
+            if len(candidate) > 320:
+                clauses = [
+                    _clean_funding_candidate_text(clause)
+                    for clause in re.split(r",\s+", candidate)
+                ]
+                for clause in clauses:
+                    if (
+                        6 <= len(clause.split())
+                        and len(clause) <= 320
+                        and _is_genuine_limitation(clause)
+                        and not _is_administrative_or_financial_rule(clause)
+                        and not _is_objective_or_task_statement(clause)
+                    ):
+                        candidates.append(clause)
+                continue
+            candidates.append(candidate)
+    return candidates
 
 def _is_structured_problem_signal(text: str, *, title: str = "", research_area: Optional[str] = None, agent_name: Optional[str] = None) -> tuple[bool, str]:
     """Return whether a source-framed sentence is itself a problem/challenge signal.
@@ -195,25 +328,56 @@ def _is_structured_problem_signal(text: str, *, title: str = "", research_area: 
 
 def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict, *, allow_llm_refinement: bool = True, research_area: Optional[str] = None, agent_name: Optional[str] = None) -> dict:
     paragraphs = _paragraphs(content)
-    
+    if (agent_name or "").strip().lower() == "funding":
+        heading_only = re.compile(
+            r"(?im)^\s{0,3}#{1,6}\s+(?:scope|expected outcomes?|description|background|rationale|overview|"
+            r"problem preview|research mission|focus area|source details|funding details|requirements|"
+            r"deadlines|timeline|call documents|programme theme)\s*$"
+        )
+        cleaned_content = heading_only.sub("", content or "")
+        paragraphs = []
+        for raw_paragraph in _paragraphs(cleaned_content):
+            paragraphs.extend(_funding_candidate_segments(raw_paragraph))
+
     candidates = []
-    
+
     for para in paragraphs:
+        if (agent_name or "").strip().lower() == "funding":
+            para = _clean_funding_candidate_text(para)
         if _is_boilerplate(para):
             continue
-            
+        if (
+            (agent_name or "").strip().lower() == "funding"
+            and _is_administrative_or_financial_rule(para)
+        ):
+            continue
         scores = _score_candidate(para, research_area)
         if scores["boilerplate_score"] >= 0.6:
             continue
-            
+
         limitation = _is_genuine_limitation(para)
         structured, structured_type = _is_structured_problem_signal(
             para, title=title, research_area=research_area, agent_name=agent_name
         )
+        # Objectives and required work can contain words such as "risk" or "gap"
+        # without identifying an existing problem. Only explicit problem/challenge
+        # framing is allowed to override this conservative exclusion.
+        if (
+            (agent_name or "").strip().lower() == "funding"
+            and _is_objective_or_task_statement(para)
+            and not structured
+        ):
+            continue
+        # An imperative instruction is not a problem unless it is explicitly framed.
+        if (agent_name or "").strip().lower() == "funding" and re.match(
+            r"^(?:build|create|develop|implement|block|limit|track|submit|apply|provide|support)\b",
+            para, flags=re.IGNORECASE,
+        ) and not structured:
+            limitation = False
         if limitation or structured:
             problem_type = "identified_limitation" if limitation else structured_type
             candidates.append({
-                "problem": para[:300].strip(),
+                "problem": para.strip(),
                 "problem_type": problem_type,
                 "evidence": [para],
                 "evidence_refs": [],
@@ -224,7 +388,10 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
                 "area_signal_count": scores["area_signal_count"],
                 "confidence": (
                     "High" if structured and scores["specificity_score"] >= 0.4
-                    else "Medium" if structured or scores["researchability_score"] >= 0.4
+                    else "Medium" if structured or scores["researchability_score"] >= 0.4 or (
+                        (agent_name or "").strip().lower() == "funding"
+                        and limitation and scores["specificity_score"] >= 0.4
+                    )
                     else "Low"
                 )
             })

@@ -222,3 +222,234 @@ def test_15_regression_fsb_tcfd_infinite_crawl():
         rc.extract_ranked_links = original_extract
     finally:
         current_crawl_context.reset(token)
+
+def test_crawl4ai_browser_triggered_xlsx_download_uses_document_reader(monkeypatch):
+    import io
+    import zipfile
+    import core.crawl4ai_web as crawler
+
+    buffer = io.BytesIO()
+    main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "xl/sharedStrings.xml",
+            f'<sst xmlns="{main_ns}"><si><t>Impact Framework</t></si><si><t>Budget</t></si></sst>',
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            f'<worksheet xmlns="{main_ns}"><sheetData><row r="1">'
+            '<c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>'
+            '</row></sheetData></worksheet>',
+        )
+
+    class BinaryResponse:
+        content = buffer.getvalue()
+
+    url = "https://assets.example.org/Impact-Funding-Framework.xlsx"
+    monkeypatch.setattr(crawler, "get_response", lambda *a, **k: BinaryResponse())
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False,
+            "error_message": "Page.goto: Download is starting",
+            "status_code": None,
+            "url": requested,
+            "markdown": "",
+            "html": "",
+            "links": [],
+            "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "Test spreadsheet source",
+        url,
+        {
+            "start_urls": [url],
+            "max_depth": 0,
+            "max_pages": 5,
+            "follow_detail_pages": True,
+        },
+        allowed_domains=["assets.example.org"],
+    )
+
+    assert result.pages_failed == 0
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert not any(
+        error.get("operation") == "page_fetch"
+        and "Download is starting" in str(error.get("error"))
+        for error in result.errors
+    )
+    assert result.opportunities[0]["type"] == "xlsx"
+    assert result.opportunities[0]["content"] == "Impact Framework | Budget"
+
+
+
+def test_docx_text_limit_allows_large_but_bounded_call_documents(monkeypatch):
+    import io
+    import zipfile
+    import core.crawl4ai_web as crawler
+
+    text = ("eligibility evidence " * 3999) + "evidence"  # >50,000 characters; below the 200,000 cap
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:r><w:t>' + text + '</w:t></w:r></w:p></w:body></w:document>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+
+    class BinaryResponse:
+        content = buffer.getvalue()
+
+    monkeypatch.setattr(crawler, "get_response", lambda *a, **k: BinaryResponse())
+    result = crawler._fetch_docx("https://assets.example.org/current-call.docx")
+
+    assert result["success"] is True
+    assert len(result["content"]) == len(text)
+    assert result["truncated"] is False
+
+
+def test_browser_download_truncation_records_the_exact_document_url(monkeypatch):
+    import core.crawl4ai_web as crawler
+
+    url = "https://assets.example.org/oversized-call.docx"
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False,
+            "error_message": "Page.goto: Download is starting",
+            "status_code": None,
+            "url": requested,
+            "markdown": "",
+            "html": "",
+            "links": [],
+            "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_docx",
+        lambda requested: {
+            "success": True, "url": requested, "content": "x" * 200000,
+            "title": "Oversized call", "paragraphs_extracted": 1,
+            "truncated": True, "error": None,
+        },
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+
+    result = crawler.crawl_funding_source(
+        "Test document source",
+        url,
+        {"start_urls": [url], "max_depth": 0, "max_pages": 5, "follow_documents": True},
+        allowed_domains=["assets.example.org"],
+    )
+
+    assert result.truncated is True
+    assert {
+        "url": url,
+        "reason": "document_text_character_limit",
+        "document_type": "docx",
+        "character_limit": 200000,
+    } in result.truncation_details
+
+
+
+def test_crawl4ai_excludes_known_climate_timeline_as_call_record_but_keeps_pdf_fetch(monkeypatch):
+    """The timeline is a fetched source document, not an independently actionable call."""
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://neb.eitcommunity.eu/wp-content/uploads/2026/07/"
+        "2026-Open-call-timeline-EIT-Community-NEB.pdf"
+    )
+    monkeypatch.setattr(
+        crawler, "_get_robots_policy",
+        lambda *a, **k: (True, 1.0, None),
+    )
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr(
+        crawler, "_fetch_pdf",
+        lambda requested, max_pdf_pages=None: {
+            "success": True, "url": requested,
+            "content": "Enhance NEB call timeline. Dates are indicative and subject to change.",
+            "total_pages": 2, "pages_processed": 2,
+            "truncated": False, "error": None,
+        },
+    )
+
+    result = crawler.crawl_funding_source(
+        "Climate KIC Open Calls", url,
+        {
+            "start_urls": [url], "max_depth": 0, "max_pages": 3,
+            "follow_pdfs": True, "follow_detail_pages": False,
+        },
+        allowed_domains=["neb.eitcommunity.eu"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert result.records_discovered == 0
+    assert result.opportunities == []
+
+
+def test_crawl4ai_browser_triggered_pdf_applies_support_document_guard(monkeypatch):
+    """A Playwright download result must not bypass support-document filtering."""
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://neb.eitcommunity.eu/wp-content/uploads/2026/07/"
+        "2026-Open-call-timeline-EIT-Community-NEB.pdf"
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False, "error_message": "Page.goto: Download is starting",
+            "status_code": None, "url": requested, "markdown": "", "html": "",
+            "links": [], "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_pdf",
+        lambda requested, max_pdf_pages=None: {
+            "success": True, "url": requested,
+            "content": "Enhance NEB call timeline. Dates are indicative and subject to change.",
+            "total_pages": 2, "pages_processed": 2,
+            "truncated": False, "error": None,
+        },
+    )
+
+    result = crawler.crawl_funding_source(
+        "Climate KIC Open Calls", url,
+        {
+            "start_urls": [url], "max_depth": 0, "max_pages": 3,
+            "follow_pdfs": True, "follow_detail_pages": False,
+        },
+        allowed_domains=["neb.eitcommunity.eu"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert result.records_discovered == 0
+    assert result.opportunities == []
+
+
+def test_genuine_climate_call_manual_is_support_evidence_not_standalone_call():
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
+    )
+    title = "Call Manual SME Market Expansion Call 2027 final v1.2 271026"
+    assert crawler._is_supporting_document_record(url, title) is True
+    assert crawler._is_climate_kic_noncall_timeline(url) is False

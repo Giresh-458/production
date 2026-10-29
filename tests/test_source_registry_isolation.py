@@ -53,8 +53,20 @@ def test_sync_source_registry_writes_only_to_temporary_path(tmp_path: Path):
     initial_mtime = SOURCE_REGISTRY_PATH.stat().st_mtime_ns
     initial_bytes = SOURCE_REGISTRY_PATH.read_bytes()
 
+    # Keep this path-isolation test independent of the repository's live source
+    # inventory, whose entries legitimately evolve as funding sources are repaired.
+    temp_sources = tmp_path / "sources"
+    temp_sources.mkdir()
+    (temp_sources / "funding_sources.yaml").write_text(
+        "sources:\n"
+        "  - name: Test Funding Source\n"
+        "    url: https://example.org/funding\n"
+        "    focus: deterministic source registry isolation test\n",
+        encoding="utf-8",
+    )
+
     result = sync_source_registry(
-        sources_dir=SOURCES_DIR,
+        sources_dir=temp_sources,
         registry_path=temp_registry,
         agent_filter="funding",
     )
@@ -149,12 +161,12 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
                 "funding_priorities": [],
                 "target_outcomes": [],
                 "investigation_questions": [],
-                "inferred_challenges": [],
-                "evidence_refs": [],
-                "inference_provenance": "mock",
-                "confidence": 1.0,
+                "inferred_challenges": ["The official call identifies a source-supported research challenge."],
+                "evidence_refs": ["https://example.com/call"],
+                "inference_provenance": ["source_grounded_problem_extraction"],
+                "confidence": "Medium",
                 "research_intent": "research",
-                "research_intent_evidence": [],
+                "research_intent_evidence": ["The call explicitly supports research and technical validation."],
             },
         }],
     }

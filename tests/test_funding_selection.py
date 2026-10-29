@@ -9,7 +9,8 @@ from core.funding_selection import (
     _extract_trl,
     validate_call,
     rank_calls,
-    execute_selection
+    execute_selection,
+    has_substantive_eligibility_evidence,
 )
 
 def test_extract_trl():
@@ -296,3 +297,11 @@ def test_funding_discovery_configured_scan_does_not_require_existing_context(mon
 
     assert validate_run_input("funding", "configured_scan", {}) == []
     assert "MISSING_FUNDING_CONTEXT" in validate_run_input("literature", "configured_scan", {})
+
+
+def test_substantive_eligibility_accepts_explicit_legal_entity_geographic_limit():
+    text = (
+        "For this reason, participation is limited to legal entities established "
+        "in Member States, Iceland and Norway and associated countries."
+    )
+    assert has_substantive_eligibility_evidence(text) is True
