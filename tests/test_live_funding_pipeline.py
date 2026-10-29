@@ -1436,3 +1436,46 @@ def test_filecoin_builder_next_step_explicit_issue_application_is_rolling_open()
         "How to apply: Applying is as simple as creating a GitHub Issue here: https://github.com/filecoin-project/devgrants/issues/new/choose",
     ])
     assert determine_status(None, None, None, content, "FIL Builder Next Step Grants") == "OPEN_CALL"
+
+
+def test_filecoin_rolling_issue_application_is_currentness_evidence():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Filecoin Grants and Funding",
+        title="FIL Builder Next Step Grants",
+        source="https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md",
+        source_type="markdown",
+        content=(
+            "# FIL Builder Next Step Grants\n"
+            "Filecoin Foundation is working with FIL-B to provide $5k to $10k support.\n"
+            "Applying is as simple as creating a Github Issue here: "
+            "https://github.com/filecoin-project/devgrants/issues/new/choose"
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == "https://github.com/filecoin-project/devgrants/issues/new/choose"
+
+
+def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    source_url = "https://ripple.com/impact/ubri/"
+    document = FundingDocument(
+        organization="Ripple UBRI",
+        title="University Blockchain Research Initiative",
+        source=source_url,
+        source_type="html",
+        content=(
+            "University Blockchain Research Initiative supports blockchain research.\n"
+            "Apply to UBRI Digital Asset Xcelerator (UDAX) 2027."
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == source_url
