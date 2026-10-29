@@ -1714,6 +1714,36 @@ def _collect_web_source(
         )
         if linked_official_context:
             doc.content = (doc.content.rstrip() + linked_official_context)[:200000]
+
+        # A topic page whose own publisher explicitly warns that its copied
+        # solicitation may be stale is not a valid funding-call record unless
+        # the linked official source independently confirms that topic identity
+        # and currentness. Preserve the fetched record in acquisition/filter
+        # telemetry, but do not normalize it into an opportunity or allow it
+        # to poison source-level currentness for other independently verified calls.
+        parsed_doc_url = urlparse(str(doc.source or ""))
+        is_sbir_topic_mirror = (
+            (parsed_doc_url.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+            and re.fullmatch(r"/topics/\\d+/?", parsed_doc_url.path) is not None
+            and re.search(
+                r"not necessarily the latest and most up-to-date",
+                str(doc.content or ""),
+                flags=re.IGNORECASE,
+            ) is not None
+        )
+        if is_sbir_topic_mirror and not linked_official_context:
+            result.records_filtered += 1
+            reason = "unverified_sbir_mirror_topic"
+            result.records_filtered_by_reason[reason] = (
+                result.records_filtered_by_reason.get(reason, 0) + 1
+            )
+            if warnings is not None:
+                warnings.append(
+                    f"Skipped unverified SBIR mirror topic as a funding-call record: {doc.title!r} "
+                    f"({doc.source}); linked official source did not confirm this topic's currentness."
+                )
+            continue
+
         if _is_explicit_no_active_placeholder(doc, source.name):
             explicit_empty_state_seen = True
             result.records_filtered += 1
