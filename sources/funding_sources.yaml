@@ -387,9 +387,9 @@ sources:
           - '^https?://(?:www[.])?eit-hei[.]eu/funding-support/funding-opportunities/open-calls/call-for-proposals-2026/?(?:[?#].*)?$'
           # EIT Culture & Creativity opportunities are creative-sector calls, not the
           # climate/ESG scope of this source; do not let their collateral contaminate it.
-          - '^https?://eit-culture-creativity[.]eu/your-opportunities/calls-funding/(?:financial-support-startups-and-scaleups-shape-acceleration-scale|new-ventures-creative-tech-spark-incubation|innovation-projects|skills-based-cpd-courses)(?:/|[?#]|$)'
-          - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026-(?:06|09|10)/.*(?:EITCC|Open%20Call|Application|CPD|Innovation|Eligibility|Financial%20support).*[.](?:pdf|docx?)(?:[?#].*)?$'
-          - '^https?://eitcc-dev[.]wmstudio[.]space/sites/default/files/2026-(?:07|08|10)/.*(?:EITCC|CPD|Eligibility).*[.](?:pdf|docx?)(?:[?#].*)?$'
+          - '^https?://eit-culture-creativity[.]eu/your-opportunities/calls-funding/(?:financial-support-startups-and-scaleups-shape-acceleration-scale|new-ventures-creative-tech-spark-incubation|skills-based-cpd-courses)(?:/|[?#]|$)'
+          - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026-(?:06|09|10)/.*(?:Application|CPD|Eligibility|Financial%20support).*[.](?:pdf|docx?)(?:[?#].*)?$'
+          - '^https?://eitcc-dev[.]wmstudio[.]space/sites/default/files/2026-(?:07|08|10)/.*(?:CPD|Eligibility|Expenditures).*[.](?:pdf|docx?)(?:[?#].*)?$'
           # A confirmed 404 supporting attachment is not a live call or coverage root.
           - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026/10/Financial%20support%20to%20Startups%20and%20Scaleups_7[.]10[.]2026[.]pdf(?:[?#].*)?$'
           # This NetSuite PDF is an eligibility appendix, not a separate opportunity record.
