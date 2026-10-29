@@ -570,44 +570,10 @@ sources:
         follow_pdfs: true
         follow_documents: true
         pagination: false
-  - name: NSF SBIR Trusted Identity
-    research_domains: [DID]
-    url: https://www.sbir.gov/topics/1012406
-    direct_page: true
-    focus: Official SBIR.gov NSF 26-510 Trusted Identity and Identity Management topic. The listing contains multiple due dates; use the next not-yet-passed date and verify qualifying U.S. small-business eligibility against the linked solicitation.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - sbir.gov
-      - www.sbir.gov
-      discovery:
-        start_urls:
-        - https://www.sbir.gov/topics/1012406
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
-        pagination: false
-  - name: NSF SBIR Climate Change Adaptation and Mitigation
-    research_domains: [ESG]
-    url: https://www.sbir.gov/topics/1012419
-    direct_page: true
-    focus: Official SBIR.gov topic page for NSF 26-510 Climate Change Adaptation, Mitigation and Reversal. Page states open status and rolling proposal deadlines; confirm eligibility and current rules against the linked NSF solicitation. Eligibility is limited to qualifying U.S. small-business concerns.
-    collection:
-      mode: web
-      engine: crawl4ai
-      allowed_domains:
-      - sbir.gov
-      - www.sbir.gov
-      discovery:
-        start_urls:
-        - https://www.sbir.gov/topics/1012419
-        max_depth: 0
-        max_pages: 1
-        follow_detail_pages: false
-        follow_pdfs: false
-        pagination: false
+  # Individual SBIR.gov mirror topic URLs are intentionally not configured as
+  # independent sources: their own stale-copy disclaimer means they cannot
+  # establish official topic currentness. Discover through Open SBIR Funding Topics
+  # and require topic-specific official agency/Grants.gov evidence instead.
   - name: Open SBIR Funding Topics
     research_domains: [RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins]
     url: https://www.sbir.gov/topics?status=Open
