@@ -14,6 +14,7 @@ from agents.funding_agent import (
     _merge_related_eligibility_context,
     _resolve_application_url,
     analyze_document,
+    detect_research_intent,
     extract_funding_problem_intelligence,
     generate_research_mission,
 )
@@ -588,3 +589,32 @@ def test_funding_problem_extractor_prefers_scientific_limitation_over_scope_task
     assert intelligence["selected_problem"] in intelligence["problem_evidence"][0]
     assert "coordinate europe-wide solutions" not in intelligence["selected_problem"].lower()
 
+
+ 
+def test_detect_research_intent_recognizes_applied_research_results_in_call_scope():
+    scope = (
+        "Successfully integrate applied research results in real-world pilot programmes "
+        "involving energy operators, technology providers, public authorities, and end users."
+    )
+    intent, evidence = detect_research_intent(scope, focus_area="ESG")
+    assert intent == "research"
+    assert evidence
+    assert any("applied research results" in item.lower() for item in evidence)
+
+
+def test_funding_problem_extraction_uses_risk_clause_not_eligibility_restriction():
+    content = (
+        "In order to achieve the expected outcomes, and safeguard the Union's strategic "
+        "assets, interests, autonomy, or security, it is important to avoid a situation of "
+        "technological dependency on a non-EU source, in a global context that requires the "
+        "EU to take action to build on its strengths, and to carefully assess and address any "
+        "strategic weaknesses, vulnerabilities and high-risk dependencies which put at risk "
+        "the attainment of its ambitions. For this reason, participation is limited to legal "
+        "entities established in Member States, Iceland and Norway and associated countries."
+    )
+    document = _document(content, title="Large-Scale AI Energy Pilot")
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+    assert intelligence["selected_problem"] is not None
+    assert "vulnerabilities" in intelligence["selected_problem"].lower()
+    assert "participation is limited to" not in intelligence["selected_problem"].lower()
+    assert all("participation is limited to" not in item.lower() for item in intelligence["problem_evidence"])
