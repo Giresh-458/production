@@ -617,6 +617,9 @@ sources:
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
+        # Keep only the verified current NSF 26-510 solicitation among NSF outbound links.
+        # Other NSF navigation pages are outside this SBIR discovery frontier.
+        - '^https?://(?:www[.])?nsf[.]gov/(?!funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation(?:[?#]|$))'
         - '^https?://(?:www[.])?sbir[.]gov/javascript[.]void'
         - '^https?://(?:www[.])?sbir[.]gov/awards(?:/|[?#]|$)'
         - '^https?://(?:www[.])?sbir[.]gov/apply(?:/|[?#]|$)'
