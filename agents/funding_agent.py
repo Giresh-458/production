@@ -261,11 +261,15 @@ def _update_source_verification_flags(result: Any) -> Any:
 
     qualified_opportunities = []
     for item in opportunities:
-        if isinstance(item, (tuple, list)) and len(item) >= 2:
-            document, analysis = item[0], item[1]
-            title = getattr(analysis, "program_name", None) or getattr(document, "title", None)
-            if _is_generic_funding_title(str(title or "")):
-                continue
+        # Only complete document+analysis pairs can contribute source-level
+        # opportunity verification. Keep generic attachment records out of the
+        # call population; crawl telemetry still records that the attachment was read.
+        if not isinstance(item, (tuple, list)) or len(item) < 2:
+            continue
+        document, analysis = item[0], item[1]
+        title = getattr(analysis, "program_name", None) or getattr(document, "title", None)
+        if _is_generic_funding_title(str(title or "")):
+            continue
         qualified_opportunities.append(item)
 
     # A crawl containing only generic navigation pages is not evidence that a

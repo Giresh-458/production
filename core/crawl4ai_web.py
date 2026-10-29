@@ -538,7 +538,7 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"(?:^|[-_ ])application[-_ ]form[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:application|budget)[-_ ]template(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx|xlsx)$",
         # Call manuals provide evidence for parent calls, not separate opportunities.
-        r"(?:^|[-_ ])call[-_ ]manual(?:[-_ ][a-z0-9.%()]+)*\\.(?:pdf|docx)$",
+        r"(?:^|[-_ ])call[-_ ]manual(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])guidelines[-_ ]for[-_ ]evaluators(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
