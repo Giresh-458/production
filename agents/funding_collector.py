@@ -1657,6 +1657,14 @@ def _collect_web_source(
                 + "\n\n## Official Status Verification\n"
                 + verification_context
             )[:200000]
+
+        if currentness_context:
+            doc.content = (
+                doc.content.rstrip()
+                + "\n\n## Official Currentness Verification\n"
+                + currentness_context
+            )[:200000]
+
         try:
             analysis = analyze_document(doc)
             result.opportunities.append((doc, analysis))
@@ -1671,13 +1679,6 @@ def _collect_web_source(
             })
             if warnings is not None:
                 warnings.append(f"Web analysis failed for {raw_url}: {e}")
-
-        if currentness_context:
-            doc.content = (
-                doc.content.rstrip()
-                + "\n\n## Official Currentness Verification\n"
-                + currentness_context
-            )[:200000]
 
     # An explicit empty-state marker is meaningful only if no actual call records
     # survived filtering. A placeholder must never override a genuine call.
