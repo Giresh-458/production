@@ -1092,7 +1092,8 @@ sources:
           # Historical portfolio of already-selected fellows, not an application call.
           - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
           # This is an application form destination, not a separate opportunity detail page.
-          - '^https?://airtable[.]com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form(?:[/?#].*)?  - name: Ripple UBRI
+          - '^https?://airtable[.]com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form(?:[/?#].*)?$'
+  - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
     direct_page: true
