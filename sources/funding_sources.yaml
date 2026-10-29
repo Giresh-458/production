@@ -49,21 +49,20 @@ sources:
       - solana.org
       - solana.com
       - airtable.com
-      # Crawl the public RFP table and official pages; exclude forms and Superteam's
-      # directory below because Superteam is separately configured.
+      # Seed the official public RFP database explicitly: page-level link
+      # extraction did not reliably queue it in the previous full audit.
       discovery:
         start_urls:
         - https://solana.org/grants-funding
+        - https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/tbli2ERM3sdhyHJYB
         max_depth: 3
         max_pages: 30
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
-          - '^https?://(?:www\.)?share\.hsforms\.com/'
           - '^https?://earn\.superteam\.fun/grants(?:/|\?|$)'
           - '^https?://solana\.com/news/'
-          # The public RFP database and active-RFP table are official discovery routes linked from Solana.
   - name: Superteam Development Grants
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://superteam.fun/earn/opportunities/development-grants/

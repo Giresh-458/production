@@ -720,20 +720,19 @@ def test_superteam_token_icon_endpoint_is_not_crawled_as_a_funding_page():
     assert any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
 
 
-def test_solana_public_rfp_tables_are_in_scope_but_application_form_is_excluded():
+def test_solana_public_rfp_routes_are_explicitly_seeded_and_not_excluded():
     import re
 
     source = next(entry for entry in _entries() if entry["name"] == "Solana Grants and Funding")
-    patterns = source["collection"]["discovery"]["exclude_url_patterns"]
-    public_rfp_urls = [
-        "https://airtable.com/apppDmK2Pin9WX8jV/shrDbfJ1wktQ7pB6f/tbli2ERM3sdhyHJYB",
-        "https://airtable.com/apppDmK2Pin9WX8jV/shrolVvhFsrwvq3rA?prefill_Related+RFP=recFe5gmTrKteofrx",
-    ]
-    for url in public_rfp_urls:
-        assert not any(re.search(pattern, url, re.IGNORECASE) for pattern in patterns)
+    discovery = source["collection"]["discovery"]
+    patterns = discovery["exclude_url_patterns"]
+    public_rfp_url = "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/tbli2ERM3sdhyHJYB"
+    assert public_rfp_url in discovery["start_urls"]
+    assert not any(re.search(pattern, public_rfp_url, re.IGNORECASE) for pattern in patterns)
 
+    # The application form remains a submission destination, not a standalone call.
     application_form = "https://share.hsforms.com/1GE1hYdApQGaDiCgaiWMXHA5lohw"
-    assert any(re.search(pattern, application_form, re.IGNORECASE) for pattern in patterns)
+    assert not any(re.search(pattern, application_form, re.IGNORECASE) for pattern in patterns)
 
 
 def test_open_sbir_discovery_reaches_linked_official_nsf_topic_details():
