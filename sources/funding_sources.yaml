@@ -132,6 +132,10 @@ sources:
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
+        currentness_verification_urls:
+        - https://www.near.org/founder-hub
+        - https://www.nearprotocolrewards.com/
+        - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
         # Leave room for current opportunities while excluding non-call social/docs links.
@@ -176,6 +180,8 @@ sources:
       - ripple.com
       discovery:
         start_urls:
+        - https://ripple.com/impact/ubri/
+        currentness_verification_urls:
         - https://ripple.com/impact/ubri/
         max_depth: 2
         max_pages: 8
@@ -237,6 +243,9 @@ sources:
         # Official Filecoin Foundation grants page links to this separate builder programme.
         # Seed its authoritative programme description because fil.org/grants is rate-limited
         # at robots.txt in some runs; this does not bypass that site's access policy.
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
+        currentness_verification_urls:
+        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         max_depth: 3
         max_pages: 30
@@ -367,8 +376,8 @@ sources:
         # The official index separates live calls from its large closed-call archive.
         # One detail-page level preserves current-call discovery without recursively
         # fetching years of obsolete attachments and third-party application portals.
-        max_depth: 2
-        max_pages: 100
+        max_depth: 1
+        max_pages: 160
         exclude_url_patterns:
           # The directory separates four live Climate KIC calls from a large closed-call archive.
           # Keep current call pages and seeded partner programmes; do not fan out through historical detail pages.
@@ -544,8 +553,8 @@ sources:
           - '^https?://(?:www[.])?blackseaclimaccelerator[.]eu(?:/|[?#]|$)'
           - '^https?://(?:www[.])?cdr-accelerator[.]com(?:/|[?#]|$)'
         follow_detail_pages: true
-        follow_pdfs: true
-        follow_documents: true
+        follow_pdfs: false
+        follow_documents: false
         pagination: false
   - name: NSF SBIR Trusted Identity
     research_domains: [DID]
