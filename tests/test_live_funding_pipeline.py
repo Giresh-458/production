@@ -1385,7 +1385,7 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
     from agents.funding_collector import _fetch_linked_official_sbir_context
     import core.http_client
 
-    source_text = "\\n".join([
+    source_text = "\n".join([
         "# Topic Funding Opportunities",
         "## Trusted Identity and Identity Management",
         "Funding Agency: NSF",
@@ -1397,7 +1397,7 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
         "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
         "Close Date: July 7, 2027",
     ])
-    official_text = "\\n".join([
+    official_text = "\n".join([
         "Active funding opportunity",
         "This document is the current version.",
         "Program Solicitation NSF 26-510",
@@ -1432,7 +1432,7 @@ def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
     from agents.funding_collector import _fetch_linked_official_sbir_context
     import core.http_client
 
-    source_text = "\\n".join([
+    source_text = "\n".join([
         "# Topic Funding Opportunities",
         "## Trusted Identity and Identity Management",
         "Funding Agency: NSF",
@@ -1444,7 +1444,7 @@ def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
         "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
         "Close Date: July 7, 2027",
     ])
-    official_text = "\\n".join([
+    official_text = "\n".join([
         "Active funding opportunity",
         "This document is the current version.",
         "Trusted Identity and Identity Management",
