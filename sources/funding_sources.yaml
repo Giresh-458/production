@@ -162,6 +162,8 @@ sources:
           - '^https?://app\.potlock\.org/campaign/?(?:\?.*)?$'
           # This is an application form destination, not a separate opportunity detail page.
           - '^https?://airtable[.]com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form(?:[/?#].*)?$'
+          # The current Protocol Rewards CTA links to this Airtable submission form.
+          - '^https?://airtable[.]com/appFoIqAoY0ikoVIb/shr4u30KcGeNJwhKu(?:[/?#].*)?$'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
