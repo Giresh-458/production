@@ -1497,7 +1497,8 @@ def _fetch_linked_official_sbir_context(
         re.search(
             r"\bactive funding opportunity\b|"
             r"\bthis document is the current version\b|"
-            r"\b(?:solicitation status|opportunity status)\s*:?\s*open\b",
+            r"\b(?:solicitation status|opportunity status)\s*:?\s*open\b|"
+            r"\bopen opportunity\b",
             normalized_official,
             flags=re.IGNORECASE,
         )
