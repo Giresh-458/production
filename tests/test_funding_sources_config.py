@@ -734,13 +734,14 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     source = by_name["NEAR Ecosystem Funding"]
     discovery = source["collection"]["discovery"]
     domains = set(source["collection"]["allowed_domains"])
-    assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com", "near-foundation.notion.site"}.issubset(domains)
+    assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
     patterns = discovery.get("exclude_url_patterns", [])
     import re
     assert any(re.search(pattern, "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form", re.IGNORECASE) for pattern in patterns)
     assert any(re.search(pattern, "https://airtable.com/appFoIqAoY0ikoVIb/shr4u30KcGeNJwhKu", re.IGNORECASE) for pattern in patterns)
+    assert any(re.search(pattern, "https://near-foundation.notion.site/1d0da22d7b6480e6a423cd2681fd8a00", re.IGNORECASE) for pattern in patterns)
 
 
 def test_ripple_ubri_direct_page_is_current_udax_2027_entrypoint():
