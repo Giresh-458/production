@@ -358,16 +358,16 @@ def test_unknown_record_status_does_not_verify_source_currentness():
     assert result.currentness_verified is False
 
 
-def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified():
-    from types import SimpleNamespace
+def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified(monkeypatch):
     from agents.funding_collector import _collect_web_source
-    from agents.funding_agent import FundingSource
+    from agents.funding_agent import FundingSource, _update_source_verification_flags
     from core.schemas import CollectionResult
     import agents.funding_collector as collector
 
     source = FundingSource(
         name="NSF SBIR Trusted Identity",
         url="https://www.sbir.gov/topics/1012406",
+        focus="NSF SBIR Trusted Identity",
         research_domains=["DID"],
         collection={
             "mode": "web",
@@ -395,14 +395,11 @@ def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified():
             ),
         }],
     )
-    monkeypatch = __import__("pytest").MonkeyPatch()
     monkeypatch.setattr(collector, "crawl_funding_source", lambda *args, **kwargs: result)
     monkeypatch.setattr(collector, "_fetch_linked_official_sbir_context", lambda *args, **kwargs: "")
     monkeypatch.setattr(collector, "_fetch_currentness_verification_context", lambda *args, **kwargs: "")
-    try:
-        normalized = collector._collect_web_source(source, None, warnings=[])
-    finally:
-        monkeypatch.undo()
+
+    normalized = collector._collect_web_source(source, None, warnings=[])
 
     assert normalized.records_discovered == 1
     assert normalized.records_valid == 0
@@ -411,11 +408,9 @@ def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified():
     assert normalized.opportunities == []
     # With no independently verified topic and no publisher-confirmed empty state,
     # source-level currentness remains unverified and production acceptance stays blocked.
-    from agents.funding_agent import _update_source_verification_flags
     _update_source_verification_flags(normalized)
     assert normalized.currentness_verified is False
     assert normalized.evidence_verified is False
-
 
 def test_missing_record_accounting_blocks_batch_acceptance():
     result = assess_batch_acceptance(
