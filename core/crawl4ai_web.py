@@ -397,11 +397,14 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     if (
         (parsed.hostname or "").casefold() in {"airtable.com", "www.airtable.com"}
         and parsed.path.casefold().startswith(
-            "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7"
+            (
+                "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7",
+                "/apppdmk2pin9wx8jv/shrdbfj1wktq7pb6f",
+            )
         )
-        and "rfp context" in combined
-        and "do not apply for this" in combined
-        and re.search(r"no other active rfps? at this time", combined, re.IGNORECASE)
+        and re.search(r"\\brfp context\\b", combined, re.IGNORECASE)
+        and re.search(r"\\bdo not apply for this\\b", combined, re.IGNORECASE)
+        and re.search(r"no other active rfp(?:s)?(?: are available| at this time| available)?", combined, re.IGNORECASE)
     ):
         return True
     return False
