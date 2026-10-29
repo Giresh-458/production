@@ -1799,7 +1799,9 @@ def _extract_application_url(text: str) -> str | None:
 
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
-        r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*("
+        r"(?:application|apply|submit|submission|proposal|"
+        r"applying is as simple as creating a github issue)\s*"
+        r"(?:link|url|portal|here)?\s*[:\-]?\s*("
         + url_pattern + r")",
         re.IGNORECASE,
     )
