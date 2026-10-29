@@ -190,7 +190,7 @@ jobs:
           from core.funding_selection import has_substantive_eligibility_evidence
           from core.problem_extraction import _is_objective_or_task_statement
           from core.schemas import normalize_area
-          from run_pipeline import get_all_open_funding_calls
+          from run_pipeline import get_all_open_funding_calls, build__selected_call_context, _research_context_quality_reasons
 
           output_dir = Path("outputs/ci_batch1_full_live")
           output_dir.mkdir(parents=True, exist_ok=True)
@@ -217,6 +217,49 @@ jobs:
               require_domain_match=True,
               require_research_context=True,
           )
+          handoff_contexts = []
+          handoff_context_issues = []
+          for record in selected:
+              context = build__selected_call_context(record)
+              issues = []
+              if not context.call_title:
+                  issues.append("missing_call_title")
+              if context.status != "OPEN_CALL":
+                  issues.append("call_not_currently_open")
+              if not context.source_url:
+                  issues.append("missing_source_url")
+              if not context.application_url:
+                  issues.append("missing_application_url")
+              if not has_substantive_eligibility_evidence(context.eligibility):
+                  issues.append("missing_substantive_eligibility")
+              if not record.get("matched_rif_domains"):
+                  issues.append("missing_verified_rif_domain")
+              research_context = context.research_context
+              if research_context is None:
+                  issues.append("missing_research_context")
+              else:
+                  if str(research_context.research_intent or "").casefold() != "research":
+                      issues.append("research_intent_not_verified")
+                  issues.extend(_research_context_quality_reasons(research_context))
+              handoff_contexts.append({
+                  "funding_call_id": context.funding_call_id,
+                  "title": context.call_title,
+                  "status": context.status,
+                  "source_url": context.source_url,
+                  "application_url": context.application_url,
+                  "research_area": context.research_area,
+                  "research_intent": (
+                      research_context.research_intent if research_context else None
+                  ),
+                  "ready": not issues,
+                  "issues": list(dict.fromkeys(issues)),
+              })
+              if issues:
+                  handoff_context_issues.append({
+                      "title": context.call_title,
+                      "source_url": context.source_url,
+                      "issues": list(dict.fromkeys(issues)),
+                  })
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(
               r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
@@ -433,6 +476,13 @@ jobs:
               ),
               "selected_actionable_count": len(selected),
               "selected_actionable_calls": selected_summary,
+              "funding_context_handoff": {
+                  "ready": bool(selected) and not handoff_context_issues,
+                  "selected_context_count": len(handoff_contexts),
+                  "ready_context_count": sum(1 for item in handoff_contexts if item["ready"]),
+                  "contexts": handoff_contexts,
+                  "issues": handoff_context_issues,
+              },
               "selected_quality_flags_count": len(quality_flags),
               "selected_quality_flags": quality_flags,
               "selected_manual_review_flags_count": len(review_flags),
@@ -703,6 +753,17 @@ jobs:
               expected_source_ids=expected_source_ids,
               record_accounting=summary["record_accounting"],
           )
+          if handoff_context_issues:
+              acceptance = summary["batch_acceptance"]
+              blockers = acceptance.setdefault("blockers", [])
+              blockers.append({
+                  "code": "funding_context_handoff_not_ready",
+                  "message": "Selected funding context failed downstream handoff validation.",
+                  "details": handoff_context_issues,
+              })
+              acceptance["status"] = "BLOCKED"
+              acceptance["accepted"] = False
+              acceptance["blocker_count"] = len(blockers)
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
