@@ -1499,6 +1499,7 @@ def test_near_protocol_rewards_cta_is_a_current_rolling_application():
     )
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
+    assert opportunity.program_name == "Digital Asset Xcelerator (UDAX) 2027"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == source_url
 
