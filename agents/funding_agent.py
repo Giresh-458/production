@@ -40,6 +40,7 @@ from core.source_registry import apply_refresh_policy
 from core.structured_sources import collect_structured_source
 from core.web_collection import collect_source
 from core.http_client import canonicalize_url
+from core.crawl4ai_web import _is_supporting_funding_document
 DEFAULT_OUTPUT_DIR = Path("outputs/funding")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "funding_memory.db"
 DEFAULT_SOURCES_PATH = Path("sources/funding_sources.yaml")
@@ -262,13 +263,13 @@ def _update_source_verification_flags(result: Any) -> Any:
     qualified_opportunities = []
     for item in opportunities:
         # Only complete document+analysis pairs can contribute source-level
-        # opportunity verification. Keep generic attachment records out of the
-        # call population; crawl telemetry still records that the attachment was read.
+        # opportunity verification. Supporting files and generic labels are not calls.
         if not isinstance(item, (tuple, list)) or len(item) < 2:
             continue
         document, analysis = item[0], item[1]
         title = getattr(analysis, "program_name", None) or getattr(document, "title", None)
-        if _is_generic_funding_title(str(title or "")):
+        source_url = str(getattr(document, "source", "") or getattr(analysis, "source_url", "") or "")
+        if _is_generic_funding_title(str(title or "")) or _is_supporting_funding_document(source_url, str(title or "")):
             continue
         qualified_opportunities.append(item)
 

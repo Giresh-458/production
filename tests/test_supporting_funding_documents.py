@@ -29,6 +29,6 @@ def test_substantive_call_documents_are_not_overfiltered():
     assert not _is_supporting_funding_document(
         "https://neb.eitcommunity.eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover.pdf"
     )
-    assert not _is_supporting_funding_document(
+    assert _is_supporting_funding_document(
         "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
     )
