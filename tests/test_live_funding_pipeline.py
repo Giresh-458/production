@@ -1424,3 +1424,15 @@ def test_sbir_mirror_currentness_is_verified_against_matching_official_solicitat
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.deadline == "2026-11-04"
+
+
+
+def test_filecoin_builder_next_step_explicit_issue_application_is_rolling_open():
+    from agents.funding_agent import determine_status
+
+    content = "\n".join([
+        "FIL Builder Next Step Grants",
+        "Filecoin Foundation is working with FIL-B to provide $5,000 to $10,000 support for builders taking their Filecoin projects to the next level.",
+        "How to apply: Applying is as simple as creating a GitHub Issue here: https://github.com/filecoin-project/devgrants/issues/new/choose",
+    ])
+    assert determine_status(None, None, None, content, "FIL Builder Next Step Grants") == "OPEN_CALL"
