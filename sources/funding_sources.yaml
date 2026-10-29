@@ -132,10 +132,6 @@ sources:
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
-        currentness_verification_urls:
-        - https://www.near.org/founder-hub
-        - https://www.nearprotocolrewards.com/
-        - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
         # Leave room for current opportunities while excluding non-call social/docs links.
