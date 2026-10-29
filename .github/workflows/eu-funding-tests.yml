@@ -444,6 +444,15 @@ jobs:
               "problem_semantic_violations": problem_semantic_violations[:20],
               "rejected_candidates_count": len(rejected),
               "rejection_reason_counts": rejection_counts,
+              "rejected_candidate_details": [
+                  {
+                      "title": candidate.get("title"),
+                      "status": candidate.get("status"),
+                      "source_url": candidate.get("source_url"),
+                      "reasons": list(candidate.get("reasons") or []),
+                  }
+                  for candidate in rejected
+              ],
               "source_summary": source_summary,
               "warnings": response.get("warnings", []),
           }
