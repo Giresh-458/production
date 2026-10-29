@@ -631,7 +631,7 @@ sources:
         # as a second generic "Program Solicitation" opportunity from this discovery crawl.
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation(?:[?#].*)?$'
         # Other NSF navigation and procedure pages are not individual funding calls.
-        - '^https?://(?:www[.])?nsf[.]gov/(?:funding/(?:preparing-proposal|submitting-proposal|merit-review|opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation)|policies/|awards(?:/|$))'
+        - '^https?://(?:www[.])?nsf[.]gov/(?:funding/(?:preparing-proposal|submitting-proposal|merit-review)|policies/|awards(?:/|$))'
         - '^https?://seedfund[.]nsf[.]gov/solicitation-(?:merit-review|post-award|eligibility|proposal|project-description|budget|documents)(?:/|[?#]|$)'
         # Historical TABA supplement and generic SBIR eligibility guidance are not open calls.
         - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/dcl-technical-business-assistance-taba-supplement-active-small/nsf22-063(?:/|[?#]|$)'
