@@ -303,8 +303,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert current_eit_culture_call in climate_discovery["direct_page_urls"]
     assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 100
     assert climate_discovery["pagination"] is False
-    assert climate_discovery["follow_documents"] is False
-    assert climate_discovery["follow_pdfs"] is False
+    assert climate_discovery["follow_documents"] is True
+    assert climate_discovery["follow_pdfs"] is True
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -433,6 +433,9 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
     # Individual current NSF SBIR solicitations remain traversable.
     assert not excluded(
         "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
+    )
+    assert not excluded(
+        "https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation"
     )
 
 
@@ -734,6 +737,9 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com", "near-foundation.notion.site"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
+    patterns = discovery.get("exclude_url_patterns", [])
+    import re
+    assert any(re.search(pattern, "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form", re.IGNORECASE) for pattern in patterns)
 
 
 def test_ripple_ubri_direct_page_is_current_udax_2027_entrypoint():
