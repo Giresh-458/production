@@ -623,6 +623,15 @@ def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_o
     assert 'Run full configured Batch 1 scan and strict production selector' in workflow
     assert 'preflight_eu_qualification.json' in workflow
 
+def test_full_live_batch1_audit_validates_funding_context_handoff():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
+    assert "build__selected_call_context" in workflow
+    assert "_research_context_quality_reasons" in workflow
+    assert '"funding_context_handoff"' in workflow
+    assert '"funding_context_handoff_not_ready"' in workflow
+    assert "Run full configured Batch 1 scan and strict production selector" in workflow
+
+
 def test_eit_urban_mobility_companion_page_is_configured_for_eligibility_context():
     climate = next(
         entry for entry in _entries()
