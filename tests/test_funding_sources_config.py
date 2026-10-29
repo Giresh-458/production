@@ -45,7 +45,7 @@ def test_funding_source_catalogue_has_unique_names_and_urls():
 
     # Keep the catalogue intentionally curated; additions require an explicit
     # domain mapping and a corresponding review of scope.
-    assert len(entries) == 15
+    assert len(entries) == 13
     assert all(names)
     assert all(urls)
     assert len(names) == len(set(names))
@@ -82,8 +82,6 @@ def test_curated_sources_are_scoped_to_the_seven_target_areas():
         "Filecoin Grants and Funding": ("https://fil.org/grants", {"DePIN"}),
         "Flashbots MEV Research Grants": ("https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md", {"MEV"}),
         "Climate KIC Open Calls": ("https://www.climate-kic.org/get-involved/open-calls/", {"ESG"}),
-        "NSF SBIR Trusted Identity": ("https://www.sbir.gov/topics/1012406", {"DID"}),
-        "NSF SBIR Climate Change Adaptation and Mitigation": ("https://www.sbir.gov/topics/1012419", {"ESG"}),
         "Open SBIR Funding Topics": ("https://www.sbir.gov/topics?status=Open", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
         "EU Open and Forthcoming Funding Calls": ("https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?isExactMatch=false&order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501%2C31094502", {"RWA", "ESG", "ZK-IoV", "DID", "DePIN", "MEV", "Stablecoins"}),
         "I-DAPT Hub Cyber-Physical Systems Calls": ("https://www.idapthub.org/applications/call_for_proposals", {"ESG", "ZK-IoV"}),
@@ -327,17 +325,10 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     )
     assert climate.get("direct_page", False) is False
 
-    nsf_identity = by_name["NSF SBIR Trusted Identity"]
-    assert nsf_identity["url"] == "https://www.sbir.gov/topics/1012406"
-    assert nsf_identity["research_domains"] == ["DID"]
-    assert nsf_identity.get("direct_page") is True
-    assert nsf_identity["collection"]["discovery"]["max_pages"] == 1
-
-    nsf_climate = by_name["NSF SBIR Climate Change Adaptation and Mitigation"]
-    assert nsf_climate["url"] == "https://www.sbir.gov/topics/1012419"
-    assert nsf_climate["research_domains"] == ["ESG"]
-    assert nsf_climate.get("direct_page") is True
-    assert nsf_climate["collection"]["discovery"]["max_pages"] == 1
+    # These mirror-only topic URLs are deliberately not separate configured
+    # sources: their stale-copy disclaimer cannot verify topic currentness.
+    assert "NSF SBIR Trusted Identity" not in by_name
+    assert "NSF SBIR Climate Change Adaptation and Mitigation" not in by_name
 
     sbir = by_name["Open SBIR Funding Topics"]
     assert sbir["url"] == "https://www.sbir.gov/topics?status=Open"
