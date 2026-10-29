@@ -502,9 +502,9 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 8
-    assert discovery["max_pages"] == 600
-    assert discovery["pagination"] is True
+    assert discovery["max_depth"] == 1
+    assert discovery["max_pages"] == 160
+    assert discovery["pagination"] is False
     # The current 2027 SME Market Expansion call is seeded canonically, rather
     # than relying on a deep link from a historical investment-news page.
     current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
