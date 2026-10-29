@@ -301,10 +301,10 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
     assert current_eit_culture_call in climate_discovery["start_urls"]
     assert current_eit_culture_call in climate_discovery["direct_page_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 100
+    assert climate_discovery["max_depth"] == 1 and climate_discovery["max_pages"] == 160
     assert climate_discovery["pagination"] is False
-    assert climate_discovery["follow_documents"] is True
-    assert climate_discovery["follow_pdfs"] is True
+    assert climate_discovery["follow_documents"] is False
+    assert climate_discovery["follow_pdfs"] is False
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -398,9 +398,11 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # The depth-8 crawl follows bounded EIT pagination to official call details; max_pages remains the hard cap.
-    assert climate_kic_discovery["max_depth"] == 2
-    assert climate_kic_discovery["max_pages"] == 100
+     # Current call details are seeded explicitly; avoid crawling historical attachments.
+    assert climate_kic_discovery["max_depth"] == 1
+    assert climate_kic_discovery["max_pages"] == 160
+    assert climate_kic_discovery["follow_pdfs"] is False
+    assert climate_kic_discovery["follow_documents"] is False
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 5 and sbir_discovery["max_pages"] == 120
