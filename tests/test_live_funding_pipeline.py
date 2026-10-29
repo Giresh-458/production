@@ -1617,4 +1617,4 @@ def test_sbir_nih_recurring_due_dates_use_next_future_window(monkeypatch):
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.deadline == "2027-01-05"
-    assert opportunity.application_url == source_url
+    assert opportunity.application_url == official_url
