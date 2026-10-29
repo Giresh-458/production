@@ -1413,7 +1413,11 @@ def _fetch_currentness_verification_context(
     warnings: Optional[List[str]] = None,
 ) -> str:
     """Verify explicitly configured publisher-owned application/currentness evidence."""
-    urls = source.collection.get("currentness_verification_urls", [])
+    discovery = source.collection.get("discovery", {}) or {}
+    urls = source.collection.get(
+        "currentness_verification_urls",
+        discovery.get("currentness_verification_urls", []),
+    )
     if not isinstance(urls, list) or not urls:
         return ""
     document_url = urlparse(str(document.source or ""))
