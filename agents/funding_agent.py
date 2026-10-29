@@ -1887,22 +1887,18 @@ def _sbir_mirror_disclaims_currentness(source_url: str, content: str) -> bool:
 def _resolve_application_url(content: str, source_url: str, status: str) -> str | None:
     """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
     parsed_source = urlparse(source_url or "")
-    is_open_sbir_topic = (
-        (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
-        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
-        and status in {"OPEN_CALL", "UPCOMING_CALL"}
-        and re.search(r"(?i)\bsolicitation status\s*:\s*open\b", content or "")
-    )
-    has_official_nsf_solicitation = bool(re.search(
-        r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
-        content or "",
-    ))
-    has_verified_official_solicitation = bool(re.search(
-        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
-        content or "",
-        flags=re.IGNORECASE,
-    ))
     extracted = _extract_application_url(content)
+    # A topic/mirror page, generic SBIR apply page, or solicitation document is
+    # not itself the submission route. Keep application_url empty unless a real
+    # application portal or direct form is linked.
+    if extracted and (
+        _is_generic_application_url(extracted)
+        or re.search(
+            r"(?i)^https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation/?$",
+            extracted,
+        )
+    ):
+        extracted = None
 
     # A linked sample/template is supporting material, not a live submission
     # endpoint. Submission instructions on the information page do not prove that
@@ -1927,22 +1923,6 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     if (
         parsed_source.path.casefold().endswith((".docx", ".pdf"))
         and re.search(r"\bapplication form\b", (content or "")[:1200], re.IGNORECASE)
-    ):
-        return source_url
-
-    # The SBIR topic page itself is the relevant instructions destination when
-    # the only non-generic link discovered is the linked NSF solicitation PDF/page.
-    # The solicitation explains the topic; it is not necessarily the online submit endpoint.
-    extracted_is_nsf_solicitation = bool(
-        extracted
-        and re.search(
-            r"(?i)^https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation/?$",
-            extracted,
-        )
-    )
-    if is_open_sbir_topic and (
-        (has_official_nsf_solicitation and (not extracted or extracted_is_nsf_solicitation))
-        or has_verified_official_solicitation
     ):
         return source_url
 
