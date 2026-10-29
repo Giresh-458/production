@@ -505,9 +505,11 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 2
-    assert discovery["max_pages"] == 100
+    assert discovery["max_depth"] == 1
+    assert discovery["max_pages"] == 160
     assert discovery["pagination"] is False
+    assert discovery["follow_pdfs"] is False
+    assert discovery["follow_documents"] is False
     # The current 2027 SME Market Expansion call is seeded canonically, rather
     # than relying on a deep link from a historical investment-news page.
     current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
@@ -737,6 +739,8 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
+    assert "https://www.near.org/founder-hub" in discovery["currentness_verification_urls"]
+    assert "https://www.nearprotocolrewards.com/" in discovery["currentness_verification_urls"]
     patterns = discovery.get("exclude_url_patterns", [])
     import re
     assert any(re.search(pattern, "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form", re.IGNORECASE) for pattern in patterns)
@@ -749,3 +753,10 @@ def test_ripple_ubri_direct_page_is_current_udax_2027_entrypoint():
     source = by_name["Ripple UBRI"]
     assert source.get("direct_page") is True
     assert source["collection"]["discovery"]["start_urls"] == [source["url"]]
+    assert source["collection"]["discovery"]["currentness_verification_urls"] == [source["url"]]
+
+
+def test_filecoin_currentness_verification_is_scoped_to_official_programme_docs():
+    entry = next(e for e in _entries() if e["name"] == "Filecoin Grants and Funding")
+    discovery = entry["collection"]["discovery"]
+    assert discovery["currentness_verification_urls"] == discovery["direct_page_urls"]
