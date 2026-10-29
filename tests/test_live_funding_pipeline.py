@@ -1477,6 +1477,7 @@ def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url()
     )
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
+    assert opportunity.program_name == "UBRI Digital Asset Xcelerator (UDAX) 2027"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == source_url
 
