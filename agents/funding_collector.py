@@ -1407,6 +1407,53 @@ def _fetch_status_verification_context(
     return "\n".join(dict.fromkeys(evidence))
 
 
+def _fetch_currentness_verification_context(
+    source: FundingSource,
+    warnings: Optional[List[str]] = None,
+) -> str:
+    """Verify explicitly configured publisher-owned application/currentness evidence."""
+    urls = source.collection.get("currentness_verification_urls", [])
+    if not isinstance(urls, list) or not urls:
+        return ""
+    from core.http_client import fetch_text
+
+    patterns = (
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"apply for protocol rewards",
+        r"apply to horizon",
+        r"applying is as simple as creating a github issue",
+        r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
+        r"proposals are accepted on a rolling basis",
+    )
+    verified = []
+    for url in urls:
+        if not isinstance(url, str) or not url.startswith("https://"):
+            continue
+        expected = urlparse(url)
+        try:
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+        except Exception as exc:
+            if warnings is not None:
+                warnings.append(f"{source.name}: currentness verification could not be fetched from {url}: {exc}")
+            LOGGER.warning("Currentness verification fetch failed for %s (%s): %s", source.name, url, exc)
+            continue
+        final_url = str(final_url or url)
+        final = urlparse(final_url)
+        if final.scheme.casefold() != "https" or (final.hostname or "").casefold() != (expected.hostname or "").casefold():
+            continue
+        body = str(body or "")
+        for pattern in patterns:
+            match = re.search(pattern, body, flags=re.IGNORECASE)
+            if match:
+                excerpt = cleaned_text(body[max(0, match.start() - 180):min(len(body), match.end() + 240)])
+                verified.append(
+                    f"Official currentness verification: CURRENT APPLICATION EVIDENCE CONFIRMED\n"
+                    f"Official currentness URL: {final_url}\n{excerpt[:700]}"
+                )
+                break
+    return "\n".join(dict.fromkeys(verified))
+
+
 def _fetch_linked_official_sbir_context(
     document: FundingDocument,
     warnings: Optional[List[str]] = None,
@@ -1578,6 +1625,7 @@ def _collect_web_source(
     result.records_discovered = len(raw_opps)
 
     verification_context = _fetch_status_verification_context(source, warnings)
+    currentness_context = _fetch_currentness_verification_context(source, warnings)
     # Cache linked agency solicitations within this source run so a shared
     # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
     official_verification_cache: dict[str, str] = {}
@@ -1623,6 +1671,13 @@ def _collect_web_source(
             })
             if warnings is not None:
                 warnings.append(f"Web analysis failed for {raw_url}: {e}")
+
+        if currentness_context:
+            doc.content = (
+                doc.content.rstrip()
+                + "\n\n## Official Currentness Verification\n"
+                + currentness_context
+            )[:200000]
 
     # An explicit empty-state marker is meaningful only if no actual call records
     # survived filtering. A placeholder must never override a genuine call.
