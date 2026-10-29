@@ -1597,10 +1597,16 @@ def _fetch_linked_official_sbir_context(
         and not _is_generic_sbir_topic_title(topic_title)
         and normalized_topic in normalized_official_identity
     )
-    if not matched_ids or not official_current or not topic_confirmed:
-        if warnings is not None and matched_ids and official_current and not topic_confirmed:
+    # NSF 26-510/26-511 are umbrella solicitations covering many topic areas;
+    # matching that number alone cannot verify an individual SBIR.gov topic.
+    # A unique opportunity identifier such as PA-27-100 can verify the record
+    # when the official opportunity page repeats that identifier and open status.
+    generic_umbrella_ids = {"NSF26-510", "NSF26-511"}
+    requires_topic_identity = any(identifier in generic_umbrella_ids for identifier in matched_ids)
+    if not matched_ids or not official_current or (requires_topic_identity and not topic_confirmed):
+        if warnings is not None and matched_ids and official_current and requires_topic_identity and not topic_confirmed:
             warnings.append(
-                f"NSF solicitation {matched_ids[0]} is current, but official evidence does not "
+                f"NSF umbrella solicitation {matched_ids[0]} is current, but official evidence does not "
                 f"confirm mirror topic '{topic_title or document.source}'; keeping topic status unknown."
             )
         cache[candidate_url] = ""
