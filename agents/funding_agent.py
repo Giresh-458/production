@@ -1480,10 +1480,9 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "research_intent_evidence": list(research_intent_evidence or []),
         }
     themes_str = ", ".join(themes) if themes else "relevant technologies"
-    # Do not assume that every research call is about technology deployment,
-    # commercialization, or adoption. Keep the mission neutral and bounded by
-    # the actual themes extracted from the source.
-    mission = f"Investigate the challenges, evidence needs, and remaining gaps related to {themes_str}, using the funding call's stated scope as the boundary."
+    # Research intent alone does not establish a source-grounded research problem.
+    # Keep exploratory questions separate from the problem field; analyze_document
+    # fills inferred_challenges only when extraction finds a concrete source passage.
     
     if any(t.lower() in ("cyber-physical systems", "cps", "digital healthcare") for t in themes):
         questions = [
@@ -1512,15 +1511,15 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
         "domain": domain or "General",
         "technology_themes": themes,
         "funding_priorities": support,
-        # Outcomes are only retained when they are explicitly represented by the
-        # observed support priorities. The mission itself is an inference and is
-        # labelled as such; no generic outcome is presented as a fact.
+        # Outcomes are only retained when explicitly represented by observed
+        # source priorities. Exploratory questions are not promoted to a problem
+        # statement without a concrete source passage.
         "target_outcomes": list(dict.fromkeys(support)),
         "investigation_questions": questions,
-        "inferred_challenges": [mission] if mission else [],
+        "inferred_challenges": [],
         "evidence_refs": [],
-        "inference_provenance": ["INFERENCE"] if mission else [],
-        "confidence": "Low" if mission else "Unknown",
+        "inference_provenance": [],
+        "confidence": "Unknown",
         "research_intent": research_intent,
         "research_intent_evidence": list(research_intent_evidence or []),
     }
