@@ -1278,7 +1278,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal")
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax")
     )
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
@@ -1892,6 +1892,21 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
 
     if extracted:
         return extracted
+
+    # Ripple's official UBRI page currently exposes the UDAX 2027 application CTA,
+    # but the rendered button may not expose its destination to the crawler. Keep
+    # the official call-detail page as the route rather than inventing a form URL.
+    is_ripple_udax_cta = (
+        (parsed_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
+        and parsed_source.path.rstrip("/") == "/impact/ubri"
+        and re.search(
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\\s+\\(udax\\))?\\s+2027",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_ripple_udax_cta:
+        return source_url
 
     # Superteam processes applications on the individual Earn listing. Crawl4AI may
     # render the visible "Apply Now" CTA as text without its client-side href, so
