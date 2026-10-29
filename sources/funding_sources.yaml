@@ -63,9 +63,7 @@ sources:
           - '^https?://(?:www\.)?share\.hsforms\.com/'
           - '^https?://earn\.superteam\.fun/grants(?:/|\?|$)'
           - '^https?://solana\.com/news/'
-          # These shared views are placeholder tables / application destinations, not call detail pages.
-          - '^https?://airtable[.]com/apppDmK2Pin9WX8jV/shrDbfJ1wktQ7pB6f(?:/|[?#]|$)'
-          - '^https?://airtable[.]com/apppDmK2Pin9WX8jV/shrolVvhFsrwvq3rA(?:/|[?#]|$)'
+          # The public RFP database and active-RFP table are official discovery routes linked from Solana.
   - name: Superteam Development Grants
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://superteam.fun/earn/opportunities/development-grants/

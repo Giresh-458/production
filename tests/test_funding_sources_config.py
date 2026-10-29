@@ -253,6 +253,11 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "superteam.fun" not in solana["collection"]["allowed_domains"]
     assert any("/news/" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
     assert solana["collection"]["discovery"]["max_pages"] == 30
+    # The official Public RFP Database must remain crawlable because it is linked
+    # from the Foundation funding page; exclude application forms, not RFP tables.
+    exclusions = solana["collection"]["discovery"]["exclude_url_patterns"]
+    assert not any("shrDbfJ1wktQ7pB6f" in pattern for pattern in exclusions)
+    assert not any("shrolVvhFsrwvq3rA" in pattern for pattern in exclusions)
 
     superteam = by_name["Superteam Development Grants"]
     assert superteam["url"] == "https://superteam.fun/earn/opportunities/development-grants/"
