@@ -543,8 +543,8 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         # These are supporting application artefacts, not independent calls.
         r"(?:^|[-_ ])(?:guidelines[-_ ]for[-_ ]applicants|guidance[-_ ]for[-_ ]applicants)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:letter[-_ ]of[-_ ]commitment|declaration[-_ ]of[-_ ]affiliation)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
-        r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
-        r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])womentecheu.*(?:eligibility|application[-_ ]form).*[.](?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:annex[-_ ]1|wteu2eic).*application[-_ ]form.*[.](?:pdf|docx|xlsx)$",
     )
