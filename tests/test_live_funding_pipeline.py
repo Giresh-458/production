@@ -1449,8 +1449,8 @@ def test_filecoin_rolling_issue_application_is_currentness_evidence():
         content=(
             "# FIL Builder Next Step Grants\n"
             "Filecoin Foundation is working with FIL-B to provide $5k to $10k support.\n"
-            "Applying is as simple as creating a Github Issue here: "
-            "https://github.com/filecoin-project/devgrants/issues/new/choose"
+            "Applying is as simple as creating a Github Issue "
+            "[here](https://github.com/filecoin-project/devgrants/issues/new/choose)"
         ),
         year=2026,
     )
