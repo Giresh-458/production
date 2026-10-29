@@ -301,6 +301,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://www.eitfood.eu/innovation" not in climate_discovery["start_urls"]
     current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
     assert current_eit_culture_call not in climate_discovery["start_urls"]
+    assert current_eit_culture_call not in climate_discovery["direct_page_urls"]
     assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 100
     import re
     assert any(re.search(pattern, current_eit_culture_call, re.IGNORECASE) for pattern in climate_discovery["exclude_url_patterns"])
