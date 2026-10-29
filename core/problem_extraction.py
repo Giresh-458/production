@@ -152,6 +152,14 @@ def _is_objective_or_task_statement(text: str) -> bool:
         r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\s*:",
         r"^(?:potential\s+)?(?:application|use|target)\s+(?:fields?|areas?|domains?|sectors?)\s+include\b",
         r"^(?:potential\s+)?(?:application fields|application areas|use cases)\s+include\b",
+        # Applicant guidance, topic lists, capability descriptions and desired
+        # outcomes are not evidence that a technical problem currently exists.
+        r"^(?:you can choose what you would like to cover|the focus should be on|focus should be on)\\b",
+        r"^(?:policy makers?|decision makers?|stakeholders?)\\s+(?:are|become|will be)\\s+more\\s+(?:aware|informed|capable|able)\\b",
+        r"^(?:reduced vulnerability|increased resilience|improved resilience|lowering flood risks|increasing resilience)\\b",
+        r"^(?:it returns|the platform returns|the system returns|the tool returns|our product|the platform provides|the system provides)\\b",
+        r"^(?:grant size|approved so far|applications paused|skills needed|live grants|contact|you are welcome to|welcome to join)\\b",
+        r"^(?:deep tech for|developing and commercially scaling)\\b",
         r"^(?:accelerating|accelerate|promoting|promote|supporting|support|enabling|enable)\s+"
         r"(?:the\s+)?(?:market uptake|commercial uptake|adoption|deployment|innovation|business growth)\b",
         r"^(?:build|create|develop|implement|track|submit|apply|provide|support|assess|evaluate|"
@@ -183,6 +191,10 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
         r"\b(?:participation|eligibility|applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:limited|restricted|confined)\s+to\b",
         r"\b(?:applicants?|beneficiaries|legal entities|institutions?)\b.{0,180}\b(?:must be|established in|registered in|incorporated in|located in|based in)\b",
         r"\bto qualify\b.{0,180}\b(?:institution|applicant|beneficiary|legal entit|must be|established in|registered in)\b",
+        # Scope lists and programme rules can use "limited" without describing
+        # a limitation in the research or technology.
+        r"\\b(?:including but not limited to|not limited to)\\b",
+        r"\\b(?:research|analytical)\\s+(?:effort|work)\\b.{0,180}\\b(?:research partners?|consultants?|subcontractors?|third parties)\\b",
     )
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
