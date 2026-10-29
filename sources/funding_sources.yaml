@@ -362,14 +362,12 @@ sources:
         # Official companion announcement contains additional eligibility criteria
         # (minimum three FTE and TRL 7+) omitted from the call-detail page.
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        # Official EIT Culture & Creativity call page; the previous announcement URL retired.
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
         - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        - https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale
         # One extra level fetches current-call attachments linked from official
         # partner detail pages; max_pages remains a hard cap against crawl fan-out.
         # The official index separates live calls from its large closed-call archive.
