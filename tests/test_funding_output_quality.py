@@ -542,8 +542,8 @@ def test_solana_public_rfp_empty_state_requires_publisher_warning_on_known_views
     )
 
     message = (
-        "Solana Foundation Public RFP Database\\n"
-        "RFP CONTEXT\\n"
+        "Solana Foundation Public RFP Database\n"
+        "RFP CONTEXT\n"
         "DO NOT APPLY FOR THIS. There are no other active RFPs at this time."
     )
     observed_view = (
@@ -573,12 +573,14 @@ def test_solana_public_rfp_empty_state_requires_publisher_warning_on_known_views
     )
 
 
-def test_solana_public_rfp_empty_state_requires_explicit_warning(monkeypatch):
-    from core.crawl4ai_web import _reports_no_active_funding, _classify_page_stage_b
+def test_solana_public_rfp_empty_state_requires_explicit_warning():
+    from core.crawl4ai_web import (
+        _reports_no_active_funding, _classify_page_stage_b, _is_generic_funding_hub
+    )
 
     message = (
-        "Solana Foundation Public RFP Database\\n"
-        "RFP CONTEXT\\n"
+        "Solana Foundation Public RFP Database\n"
+        "RFP CONTEXT\n"
         "DO NOT APPLY FOR THIS. There are no other active RFPs at this time."
     )
     observed_view = (
