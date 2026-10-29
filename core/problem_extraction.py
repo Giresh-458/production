@@ -194,7 +194,7 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
         # Scope lists and programme rules can use "limited" without describing
         # a limitation in the research or technology.
         r"\b(?:including but not limited to|not limited to)\b",
-        r"\b(?:research|analytical)\s+(?:effort|work)\b.{0,180}\b(?:research partners?|consultants?|subcontractors?|third parties)\b",
+        r"\b(?:research(?:\s+or\s+analytical)?|analytical)\s+(?:effort|work)\b.{0,180}\b(?:research partners?|consultants?|subcontractors?|third parties)\b",
     )
     return any(re.search(pattern, value, flags=re.IGNORECASE) for pattern in patterns)
 
