@@ -1183,7 +1183,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply to horizon|"
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
                 r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
                 lowered,
                 flags=re.IGNORECASE,
@@ -1233,7 +1233,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply to horizon|"
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
                 r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
         lowered,
         flags=re.IGNORECASE,
@@ -1278,7 +1278,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax", "protocol rewards", "horizon")
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax", "protocol rewards", "horizon", "incubation program")
     )
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
@@ -2532,6 +2532,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"applying is as simple as creating a github issue",
             r"apply for protocol rewards",
             r"apply for next cohort",
+            r"apply for the program",
             r"apply to horizon",
             r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
             r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
