@@ -221,8 +221,6 @@ def collect_auto_sources(
         test_source_names = [
             "Filecoin Grants and Funding",
             "Climate KIC Open Calls",
-            "NSF SBIR Trusted Identity",
-            "NSF SBIR Climate Change Adaptation and Mitigation",
             "Ethereum ESP RFPs",
         ]
         sources = [s for s in sources if s.name in test_source_names]
