@@ -401,7 +401,7 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
     # Current call details are seeded explicitly; supporting call documents are still audited.
-    assert climate_kic_discovery["max_depth"] == 2
+    assert climate_kic_discovery["max_depth"] == 3
     assert climate_kic_discovery["max_pages"] == 100
     assert climate_kic_discovery["follow_pdfs"] is True
     assert climate_kic_discovery["follow_documents"] is True
@@ -434,7 +434,7 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
     assert excluded("https://www.whitehouse.gov/wp-content/uploads/2021/06/M-21-26.pdf")
     assert excluded("https://www.congress.gov/117/plaws/publ58/PLAW-117publ58.pdf")
     assert excluded("https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i-nsf-small-business-innovation-research-small-business/505960/nsf23-515/solicitation")
-    # Individual current NSF SBIR solicitations remain traversable.
+    # Older solicitation context remains traversable when needed; NSF 26-510 is verified separately and excluded from duplicate record emission.
     assert not excluded(
         "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
     )
