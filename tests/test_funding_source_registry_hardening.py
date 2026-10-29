@@ -39,7 +39,7 @@ def test_funding_registry_uses_exact_curated_batch_one_sources():
         "I-DAPT Hub Cyber-Physical Systems Calls": "https://www.idapthub.org/applications/call_for_proposals",
     }
     assert sources == expected
-    assert len(sources) == 15
+    assert len(sources) == 13
     assert "https://chain.link/blog/build-program-evolution" not in sources.values()
     assert "https://climatepitch.org/" not in sources.values()
     assert "NSF CPS Foundations and Connected Communities" not in sources
