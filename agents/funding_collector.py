@@ -1409,12 +1409,28 @@ def _fetch_status_verification_context(
 
 def _fetch_currentness_verification_context(
     source: FundingSource,
+    document: FundingDocument,
     warnings: Optional[List[str]] = None,
 ) -> str:
     """Verify explicitly configured publisher-owned application/currentness evidence."""
     urls = source.collection.get("currentness_verification_urls", [])
     if not isinstance(urls, list) or not urls:
         return ""
+    document_url = urlparse(str(document.source or ""))
+    configured_urls = []
+    for candidate in urls:
+        if not isinstance(candidate, str) or not candidate.startswith("https://"):
+            continue
+        parsed = urlparse(candidate)
+        if (
+            (parsed.hostname or "").casefold() == (document_url.hostname or "").casefold()
+            and parsed.path.rstrip("/") == document_url.path.rstrip("/")
+        ):
+            configured_urls.append(candidate)
+    # Do not leak a source-level status cue into unrelated opportunity documents.
+    if not configured_urls:
+        return ""
+
     from core.http_client import fetch_text
 
     patterns = (
@@ -1426,9 +1442,7 @@ def _fetch_currentness_verification_context(
         r"proposals are accepted on a rolling basis",
     )
     verified = []
-    for url in urls:
-        if not isinstance(url, str) or not url.startswith("https://"):
-            continue
+    for url in configured_urls:
         expected = urlparse(url)
         try:
             body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
@@ -1625,7 +1639,7 @@ def _collect_web_source(
     result.records_discovered = len(raw_opps)
 
     verification_context = _fetch_status_verification_context(source, warnings)
-    currentness_context = _fetch_currentness_verification_context(source, warnings)
+    currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
     # Cache linked agency solicitations within this source run so a shared
     # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
     official_verification_cache: dict[str, str] = {}
