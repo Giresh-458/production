@@ -1900,7 +1900,7 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         (parsed_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
         and parsed_source.path.rstrip("/") == "/impact/ubri"
         and re.search(
-            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\\s+\\(udax\\))?\\s+2027",
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
             content or "",
             flags=re.IGNORECASE,
         )
