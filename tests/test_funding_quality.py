@@ -194,6 +194,52 @@ def test_unknown_source_status_blocks_even_when_verification_flags_are_true():
     assert "source status unknown" in blocker["message"]
 
 
+def test_non_opportunity_generic_record_does_not_invalidate_source_flags():
+    from types import SimpleNamespace
+    from core.schemas import CollectionResult
+    from agents.funding_agent import _update_source_verification_flags
+
+    call_document = SimpleNamespace(
+        source="https://example.org/call",
+        title="Example call",
+        content="Applications open 1 October 2026. Deadline 1 December 2026.",
+    )
+    call_analysis = SimpleNamespace(
+        program_name="Example call",
+        status="OPEN_CALL",
+        evidence={"status": "Applications open", "deadline": "1 December 2026"},
+    )
+    support_document = SimpleNamespace(
+        source="https://example.org/files/call-manual.pdf",
+        title="the",
+        content="Call manual. Application closes 1 December 2026.",
+    )
+    support_analysis = SimpleNamespace(
+        program_name="the",
+        status="OPEN_CALL",
+        evidence={},
+    )
+    result = CollectionResult(
+        source_id="source-with-supporting-document",
+        method="web",
+        final_status="VERIFIED",
+        pages_fetched=1,
+        detail_pages_fetched=1,
+        documents_fetched=1,
+        records_valid=2,
+        discovery_exhausted=True,
+        opportunities=[
+            (call_document, call_analysis),
+            (support_document, support_analysis),
+        ],
+    )
+
+    _update_source_verification_flags(result)
+
+    assert result.evidence_verified is True
+    assert result.currentness_verified is True
+
+
 def test_source_verification_flags_require_explicit_evidence_and_complete_acquisition():
     from types import SimpleNamespace
     from core.schemas import CollectionResult

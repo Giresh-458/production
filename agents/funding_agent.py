@@ -318,6 +318,8 @@ def _update_source_verification_flags(result: Any) -> Any:
             record_evidence_verified = False
 
         status = str(getattr(analysis, "status", "") or "").upper()
+        # The classifier's enum alone is not independent currentness evidence.
+        # Require an extracted source field that states status or a date.
         status_evidence = evidence.get("status")
         date_evidence = evidence.get("opening_date") or evidence.get("deadline")
         if status not in {"OPEN_CALL", "UPCOMING_CALL", "CLOSED_CALL", "FUNDED_PROJECT"}:
