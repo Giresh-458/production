@@ -1865,6 +1865,11 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
         content or "",
     ))
+    has_verified_official_solicitation = bool(re.search(
+        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
+        content or "",
+        flags=re.IGNORECASE,
+    ))
     extracted = _extract_application_url(content)
 
     # A linked sample/template is supporting material, not a live submission
@@ -1903,8 +1908,9 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
             extracted,
         )
     )
-    if is_open_sbir_topic and has_official_nsf_solicitation and (
-        not extracted or extracted_is_nsf_solicitation
+    if is_open_sbir_topic and (
+        (has_official_nsf_solicitation and (not extracted or extracted_is_nsf_solicitation))
+        or has_verified_official_solicitation
     ):
         return source_url
 
