@@ -619,8 +619,9 @@ def test_solana_public_rfp_empty_state_requires_explicit_warning():
     assert not _classify_page_stage_b(
         observed_view, "Airtable - Solana Foundation Public RFP Database", non_empty_text
     )
-    # A call in a different detail route remains eligible for normal classification.
-    assert _classify_page_stage_b(
+    # Test generic-hub detection on a separate detail route. Stage-B's
+    # production threshold intentionally requires more than minimal copy.
+    assert not _is_generic_funding_hub(
         "https://airtable.com/appDifferentBase/real-call",
         "Open call for distributed identity",
         "Applications are open. Eligible applicants may apply by the deadline. RFP."
