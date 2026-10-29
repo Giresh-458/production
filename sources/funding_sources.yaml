@@ -373,7 +373,7 @@ sources:
           # programme pages are seeded separately below.
           - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
           # Supporting files are not independent calls; call detail pages remain the evidence source.
-          - '^https?://[^?#]+[.](?:pdf|docx|doc|xlsx|pptx)(?:[?#].*)?
+          - '^https?://[^?#]+[.](?:pdf|docx|doc|xlsx|pptx)(?:[?#].*)?$'
           # These historical announcements are not canonical call pages; current call details are seeded above.
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-proposals-for-citizen-engagement/(?:[?#].*)?$'
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-regions-cities-or-affiliated-entities-capitalising-on-existing-public-realm-solutions/(?:[?#].*)?$'
