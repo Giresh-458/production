@@ -410,7 +410,10 @@ sources:
           - '^https?://ec[.]europa[.]eu/eusurvey/runner/EIC_WLP4_Application_Form(?:[?#].*)?$'
           # These official PDFs are supporting call manuals/guidelines, not separate funding opportunities.
           # Their canonical HTML call pages are seeded above and remain the authoritative records.
-          - '^https?://neb[.]eitcommunity[.]eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover[.]pdf(?:[?#].*)?          - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?$'
+          - '^https?://neb[.]eitcommunity[.]eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover[.]pdf(?:[?#].*)?$'
+          - '^https?://womentecheurope[.]eu/wp-content/uploads/2026/09/WomenTech_Guidelines_FullProposal[.]pdf(?:[?#].*)?$'
+          # Standalone budget templates are supporting documents, not call-detail pages.
+          - '^https?://eit-hei[.]eu/wp-content/uploads/2026/10/EIT-HEI-Call-2026-Project-Budget-Template[.]xlsx(?:[?#].*)?$'
           - '^https?://neb[.]eitcommunity[.]eu/wp-content/uploads/2026/07/Co_create_Budget[.]xlsx(?:[?#].*)?$'
           - '^https?://(?:www[.])?eiturbanmobility[.]eu/wp-content/uploads/2021/07/Budget-template_branded[.]xlsx(?:[?#].*)?$'
           # EIT taxonomy, historical news, procurement, and expert-account navigation are not funding opportunities.
