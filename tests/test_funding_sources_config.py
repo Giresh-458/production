@@ -154,11 +154,9 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     )
     assert "ipfsgrants.io" not in collection["allowed_domains"]
     discovery = collection["discovery"]
-    assert discovery["start_urls"] == [
-        official_url,
-        readme_url,
-        next_step_url,
-    ]
+    # Do not retry the foundation directory while its robots endpoint is rate-limited.
+    # The official Filecoin-maintained programme documents are the crawl roots.
+    assert discovery["start_urls"] == [readme_url, next_step_url]
     assert discovery["max_depth"] == 3
     assert discovery["max_pages"] == 30
     assert discovery["direct_page_urls"] == [readme_url, next_step_url]
