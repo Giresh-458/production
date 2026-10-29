@@ -249,7 +249,11 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     # This URL is a generic grant directory and must be traversed, not emitted as a grant.
     assert solana.get("direct_page", False) is False
     assert solana["url"] == "https://solana.org/grants-funding"
-    assert solana["collection"]["discovery"]["start_urls"] == [solana["url"]]
+    # Keep the official funding directory as the first seed, and explicitly
+    # seed the public RFP table because discovery did not reliably queue it.
+    solana_start_urls = solana["collection"]["discovery"]["start_urls"]
+    assert solana_start_urls[0] == solana["url"]
+    assert "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/tbli2ERM3sdhyHJYB" in solana_start_urls
     assert "superteam.fun" not in solana["collection"]["allowed_domains"]
     assert any("/news/" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
     assert solana["collection"]["discovery"]["max_pages"] == 30
