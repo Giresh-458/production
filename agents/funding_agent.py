@@ -1460,7 +1460,7 @@ def detect_research_intent(text: str, *, focus_area: str = "General", themes: li
         # Horizon Europe calls may state research intent through application of
         # research outputs to pilots rather than call themselves research grants.
         # This is scoped evidence, unlike a footer that merely links to a report.
-        r"applied research results",
+        r"\bapplied research results\b",
     )
     negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't)\s+(?:offer|request|provide|require)\s+(?:funding|research|grant|deliverables?)\b"
     evidence: list[str] = []
