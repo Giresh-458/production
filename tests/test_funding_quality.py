@@ -389,7 +389,7 @@ def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified():
             "url": source.url,
             "title": "Topic",
             "content": (
-                "## Trusted Identity and Identity Management\\n"
+                "## Trusted Identity and Identity Management\n"
                 "Solicitation Number: NSF 26-510. Solicitation Status: Open. "
                 "These topics are copies and are not necessarily the latest and most up-to-date."
             ),
