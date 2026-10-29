@@ -133,6 +133,11 @@ sources:
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
+        # These two official publisher pages have explicit current application CTAs;
+        # force their page classification instead of relying on link-anchor heuristics.
+        direct_page_urls:
+        - https://www.nearprotocolrewards.com/
+        - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
         # Leave room for current opportunities while excluding non-call social/docs links.
@@ -358,7 +363,6 @@ sources:
         # (minimum three FTE and TRL 7+) omitted from the call-detail page.
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
         # Official EIT Culture & Creativity call page; the previous announcement URL retired.
-        - https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
@@ -371,7 +375,7 @@ sources:
         # The official index separates live calls from its large closed-call archive.
         # One detail-page level preserves current-call discovery without recursively
         # fetching years of obsolete attachments and third-party application portals.
-        max_depth: 2
+        max_depth: 3
         max_pages: 100
         exclude_url_patterns:
           # The directory separates four live Climate KIC calls from a large closed-call archive.
@@ -380,7 +384,16 @@ sources:
           # These historical announcements are not canonical call pages; current call details are seeded above.
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-proposals-for-citizen-engagement/(?:[?#].*)?$'
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-regions-cities-or-affiliated-entities-capitalising-on-existing-public-realm-solutions/(?:[?#].*)?$'
-          # Application destination only, not a call-detail page.
+          # The EIT-HEI partner route is blocked by Cloudflare, but its current call is
+          # represented by the directly seeded official Climate KIC call page above.
+          - '^https?://(?:www[.])?eit-hei[.]eu/funding-support/funding-opportunities/open-calls/call-for-proposals-2026/?(?:[?#].*)?$'
+          # EIT Culture & Creativity opportunities are creative-sector calls, not the
+          # climate/ESG scope of this source; do not let their collateral contaminate it.
+          - '^https?://eit-culture-creativity[.]eu/your-opportunities/calls-funding/(?:financial-support-startups-and-scaleups-shape-acceleration-scale|new-ventures-creative-tech-spark-incubation|innovation-projects|skills-based-cpd-courses)(?:/|[?#]|$)'
+          - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026-(?:06|09|10)/.*(?:EITCC|Open%20Call|Application|CPD|Innovation|Eligibility|Financial%20support).*[.](?:pdf|docx?)(?:[?#].*)?$'
+          - '^https?://eitcc-dev[.]wmstudio[.]space/sites/default/files/2026-(?:07|08|10)/.*(?:EITCC|CPD|Eligibility).*[.](?:pdf|docx?)(?:[?#].*)?$'
+          # A confirmed 404 supporting attachment is not a live call or coverage root.
+          - '^https?://eit-culture-creativity[.]eu/sites/default/files/2026/10/Financial%20support%20to%20Startups%20and%20Scaleups_7[.]10[.]2026[.]pdf(?:[?#].*)?$'
           # Retired partner URLs now return 404; current official programme/call
           # pages are seeded above so stale aliases do not masquerade as missed coverage.
           - '^https?://eit-culture-creativity[.]eu/open-call-acceleration-and-post-acceleration-programmes/?(?:[?#].*)?$'
@@ -614,9 +627,15 @@ sources:
         follow_pdfs: true
         pagination: true
         exclude_url_patterns:
-        # Keep only the verified current NSF 26-510 solicitation among NSF outbound links.
-        # Other NSF navigation pages are outside this SBIR discovery frontier.
-        - '^https?://(?:www[.])?nsf[.]gov/(?!funding/opportunities/(?:small-business-innovation-research-small-business-technology/nsf26-510/solicitation|sbirsttr-phase-i/505960/nsf24-579/solicitation)(?:[?#]|$))'
+        # Official NSF 26-510 is fetched by the per-topic verification helper, not emitted
+        # as a second generic "Program Solicitation" opportunity from this discovery crawl.
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation(?:[?#].*)?$'
+        # Other NSF navigation and procedure pages are not individual funding calls.
+        - '^https?://(?:www[.])?nsf[.]gov/(?:funding/(?:preparing-proposal|submitting-proposal|merit-review|opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation)|policies/|awards(?:/|$))'
+        - '^https?://seedfund[.]nsf[.]gov/solicitation-(?:merit-review|post-award|eligibility|proposal|project-description|budget|documents)(?:/|[?#]|$)'
+        # Historical TABA supplement and generic SBIR eligibility guidance are not open calls.
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/dcl-technical-business-assistance-taba-supplement-active-small/nsf22-063(?:/|[?#]|$)'
+        - '^https?://(?:www[.])?sbir[.]gov/sites/default/files/elig_size_compliance_guide[.]pdf(?:[?#].*)?$'
         - '^https?://(?:www[.])?sbir[.]gov/javascript[.]void'
         - '^https?://(?:www[.])?sbir[.]gov/awards(?:/|[?#]|$)'
         - '^https?://(?:www[.])?sbir[.]gov/apply(?:/|[?#]|$)'
