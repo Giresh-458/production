@@ -358,6 +358,65 @@ def test_unknown_record_status_does_not_verify_source_currentness():
     assert result.currentness_verified is False
 
 
+def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified():
+    from types import SimpleNamespace
+    from agents.funding_collector import _collect_web_source
+    from agents.funding_agent import FundingSource
+    from core.schemas import CollectionResult
+    import agents.funding_collector as collector
+
+    source = FundingSource(
+        name="NSF SBIR Trusted Identity",
+        url="https://www.sbir.gov/topics/1012406",
+        research_domains=["DID"],
+        collection={
+            "mode": "web",
+            "engine": "crawl4ai",
+            "allowed_domains": ["sbir.gov", "www.sbir.gov"],
+            "discovery": {"start_urls": ["https://www.sbir.gov/topics/1012406"], "max_depth": 0},
+        },
+        direct_page=True,
+    )
+    result = CollectionResult(
+        source_id=source.name,
+        method="web",
+        final_status="VERIFIED",
+        pages_fetched=1,
+        records_discovered=1,
+        discovery_exhausted=True,
+        opportunities=[{
+            "type": "html",
+            "url": source.url,
+            "title": "Topic",
+            "content": (
+                "## Trusted Identity and Identity Management\\n"
+                "Solicitation Number: NSF 26-510. Solicitation Status: Open. "
+                "These topics are copies and are not necessarily the latest and most up-to-date."
+            ),
+        }],
+    )
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(collector, "crawl_funding_source", lambda *args, **kwargs: result)
+    monkeypatch.setattr(collector, "_fetch_linked_official_sbir_context", lambda *args, **kwargs: "")
+    monkeypatch.setattr(collector, "_fetch_currentness_verification_context", lambda *args, **kwargs: "")
+    try:
+        normalized = collector._collect_web_source(source, None, warnings=[])
+    finally:
+        monkeypatch.undo()
+
+    assert normalized.records_discovered == 1
+    assert normalized.records_valid == 0
+    assert normalized.records_filtered == 1
+    assert normalized.records_filtered_by_reason == {"unverified_sbir_mirror_topic": 1}
+    assert normalized.opportunities == []
+    # With no independently verified topic and no publisher-confirmed empty state,
+    # source-level currentness remains unverified and production acceptance stays blocked.
+    from agents.funding_agent import _update_source_verification_flags
+    _update_source_verification_flags(normalized)
+    assert normalized.currentness_verified is False
+    assert normalized.evidence_verified is False
+
+
 def test_missing_record_accounting_blocks_batch_acceptance():
     result = assess_batch_acceptance(
         run_status="success",
