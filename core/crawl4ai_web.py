@@ -402,8 +402,8 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
                 "/apppdmk2pin9wx8jv/shrdbfj1wktq7pb6f",
             )
         )
-        and re.search(r"\\brfp context\\b", combined, re.IGNORECASE)
-        and re.search(r"\\bdo not apply for this\\b", combined, re.IGNORECASE)
+        and re.search(r"\brfp context\b", combined, re.IGNORECASE)
+        and re.search(r"\bdo not apply for this\b", combined, re.IGNORECASE)
         and re.search(r"no other active rfp(?:s)?(?: are available| at this time| available)?", combined, re.IGNORECASE)
     ):
         return True
