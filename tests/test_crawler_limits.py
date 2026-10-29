@@ -357,3 +357,99 @@ def test_browser_download_truncation_records_the_exact_document_url(monkeypatch)
         "document_type": "docx",
         "character_limit": 200000,
     } in result.truncation_details
+
+
+
+def test_crawl4ai_excludes_known_climate_timeline_as_call_record_but_keeps_pdf_fetch(monkeypatch):
+    """The timeline is a fetched source document, not an independently actionable call."""
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://neb.eitcommunity.eu/wp-content/uploads/2026/07/"
+        "2026-Open-call-timeline-EIT-Community-NEB.pdf"
+    )
+    monkeypatch.setattr(
+        crawler, "_get_robots_policy",
+        lambda *a, **k: (True, 1.0, None),
+    )
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr(
+        crawler, "_fetch_pdf",
+        lambda requested, max_pdf_pages=None: {
+            "success": True, "url": requested,
+            "content": "Enhance NEB call timeline. Dates are indicative and subject to change.",
+            "total_pages": 2, "pages_processed": 2,
+            "truncated": False, "error": None,
+        },
+    )
+
+    result = crawler.crawl_funding_source(
+        "Climate KIC Open Calls", url,
+        {
+            "start_urls": [url], "max_depth": 0, "max_pages": 3,
+            "follow_pdfs": True, "follow_detail_pages": False,
+        },
+        allowed_domains=["neb.eitcommunity.eu"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert result.records_discovered == 0
+    assert result.opportunities == []
+
+
+def test_crawl4ai_browser_triggered_pdf_applies_support_document_guard(monkeypatch):
+    """A Playwright download result must not bypass support-document filtering."""
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://neb.eitcommunity.eu/wp-content/uploads/2026/07/"
+        "2026-Open-call-timeline-EIT-Community-NEB.pdf"
+    )
+    monkeypatch.setattr(crawler, "_get_robots_policy", lambda *a, **k: (True, 1.0, None))
+    monkeypatch.setattr(crawler, "_wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr(
+        crawler, "_fetch_sync",
+        lambda requested: {
+            "success": False, "error_message": "Page.goto: Download is starting",
+            "status_code": None, "url": requested, "markdown": "", "html": "",
+            "links": [], "pagination_links": [],
+        },
+    )
+    monkeypatch.setattr(
+        crawler, "_fetch_pdf",
+        lambda requested, max_pdf_pages=None: {
+            "success": True, "url": requested,
+            "content": "Enhance NEB call timeline. Dates are indicative and subject to change.",
+            "total_pages": 2, "pages_processed": 2,
+            "truncated": False, "error": None,
+        },
+    )
+
+    result = crawler.crawl_funding_source(
+        "Climate KIC Open Calls", url,
+        {
+            "start_urls": [url], "max_depth": 0, "max_pages": 3,
+            "follow_pdfs": True, "follow_detail_pages": False,
+        },
+        allowed_domains=["neb.eitcommunity.eu"],
+    )
+
+    assert result.documents_discovered == 1
+    assert result.documents_fetched == 1
+    assert result.documents_failed == 0
+    assert result.records_discovered == 0
+    assert result.opportunities == []
+
+
+def test_genuine_climate_call_manual_is_support_evidence_not_standalone_call():
+    import core.crawl4ai_web as crawler
+
+    url = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
+    )
+    title = "Call Manual SME Market Expansion Call 2027 final v1.2 271026"
+    assert crawler._is_supporting_document_record(url, title) is True
+    assert crawler._is_climate_kic_noncall_timeline(url) is False

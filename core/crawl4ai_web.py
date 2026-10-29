@@ -511,6 +511,29 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     return any(re.search(pattern, combined, flags=re.IGNORECASE) for pattern in directory_markers)
 
 
+
+def _is_climate_kic_noncall_timeline(url: str) -> bool:
+    """Exclude a known timeline attachment from call records without dropping its audit fetch.
+
+    This specific EIT Community NEB timeline lists indicative milestones, not a
+    live, separately actionable funding opportunity. Keep the PDF acquisition
+    counters intact; only prevent the timeline from being emitted as a call.
+    """
+    parsed = urlparse(str(url or ""))
+    return (
+        (parsed.hostname or "").casefold() == "neb.eitcommunity.eu"
+        and parsed.path.casefold()
+        == "/wp-content/uploads/2026/07/2026-open-call-timeline-eit-community-neb.pdf"
+    )
+
+
+def _is_supporting_document_record(url: str, title: str | None = None) -> bool:
+    """Apply non-call document guards consistently to every PDF/download path."""
+    if _is_supporting_funding_document(url, title):
+        return True
+    return _is_climate_kic_noncall_timeline(url)
+
+
 def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
     """Identify unambiguous application/support artifacts, not funding calls.
 
@@ -1386,9 +1409,10 @@ def crawl_funding_source(
                         "pages_processed": pdf_result.get("pages_processed"),
                         "total_pages": pdf_result.get("total_pages"),
                     })
-                # A fetched supporting template/FAQ is useful crawl evidence,
-                # but it must not become a standalone funding-call record.
-                if _is_supporting_funding_document(current_url, urlparse(current_url).path.split("/")[-1].replace("-", " ").replace("_", " ")):
+                # Keep supporting files in acquisition telemetry but do not
+                # emit them as separate opportunities.
+                path_title = urlparse(current_url).path.split("/")[-1].replace("-", " ").replace("_", " ")
+                if _is_supporting_document_record(current_url, path_title):
                     continue
                 result.opportunities.append({
                     "type": "pdf",
@@ -1506,7 +1530,11 @@ def crawl_funding_source(
                         for key in ("total_pages", "pages_processed", "paragraphs_extracted", "sheets_extracted")
                         if key in document_result
                     })
-                    if _is_supporting_funding_document(current_url, document_result.get("title")):
+                    resolved_title = document_result.get("title") or opportunity.get("title")
+                    if _is_supporting_document_record(current_url, resolved_title):
+                        continue
+                    resolved_title = document_result.get("title") or opportunity.get("title")
+                    if _is_supporting_document_record(current_url, resolved_title):
                         continue
                     result.opportunities.append(opportunity)
                 else:
