@@ -433,9 +433,10 @@ def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
 
     # Solana's Airtable RFP context row is a placeholder, not a standalone call.
     # The exact table can still be crawled for its explicit empty-state message.
-    if origin == "https://airtable.com" and path.startswith(
-        "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7"
-    ):
+    if origin == "https://airtable.com" and path.startswith((
+        "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7",
+        "/apppdmk2pin9wx8jv/shrdbfj1wktq7pb6f",
+    )):
         return True
     # The related Airtable application form is a submission endpoint, not a call.
     if origin == "https://airtable.com" and path.startswith(
