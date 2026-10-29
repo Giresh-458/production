@@ -398,7 +398,7 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-     # Current call details are seeded explicitly; avoid crawling historical attachments.
+    # Current call details are seeded explicitly; avoid crawling historical attachments.
     assert climate_kic_discovery["max_depth"] == 1
     assert climate_kic_discovery["max_pages"] == 160
     assert climate_kic_discovery["follow_pdfs"] is False
