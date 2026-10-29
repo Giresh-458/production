@@ -367,6 +367,7 @@ def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified(monke
     source = FundingSource(
         name="NSF SBIR Trusted Identity",
         url="https://www.sbir.gov/topics/1012406",
+        tier="primary",
         focus="NSF SBIR Trusted Identity",
         research_domains=["DID"],
         collection={
@@ -411,6 +412,7 @@ def test_unverified_sbir_mirror_topic_is_filtered_not_currentness_verified(monke
     _update_source_verification_flags(normalized)
     assert normalized.currentness_verified is False
     assert normalized.evidence_verified is False
+
 
 def test_missing_record_accounting_blocks_batch_acceptance():
     result = assess_batch_acceptance(
