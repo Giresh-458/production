@@ -607,10 +607,13 @@ def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_o
     assert 'error.get("operation") == "fetch_detail_metadata"' in workflow
     assert '"detail_fetch_warnings": detail_fetch_warnings' in workflow
     assert '"non_cap_errors": non_cap_errors' in workflow
-    # Root/search API acquisition errors remain blocking; only detail-fetch errors
-    # are separated as warnings, and the audit still fails when no valid records remain.
+    # Root/search API acquisition errors remain blocking. Detail-fetch errors are
+    # visible warnings, while a zero-qualified bounded sample is left to the
+    # mandatory full configured scan and strict production selector.
     assert 'if non_cap_errors:' in workflow
-    assert 'if result.records_valid == 0:' in workflow
+    assert 'if result.records_valid == 0:' not in workflow
+    assert 'Run full configured Batch 1 scan and strict production selector' in workflow
+    assert 'preflight_eu_qualification.json' in workflow
 
 def test_eit_urban_mobility_companion_page_is_configured_for_eligibility_context():
     climate = next(
