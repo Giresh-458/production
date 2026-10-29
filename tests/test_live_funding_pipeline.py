@@ -1479,3 +1479,24 @@ def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url()
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.evidence.get("status")
     assert opportunity.application_url == source_url
+
+
+def test_near_protocol_rewards_cta_is_a_current_rolling_application():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    source_url = "https://www.nearprotocolrewards.com/"
+    document = FundingDocument(
+        organization="NEAR Ecosystem Funding",
+        title="NEAR Protocol Rewards",
+        source=source_url,
+        source_type="html",
+        content=(
+            "Build on NEAR and earn up to $10,000 each month through Protocol Rewards. "
+            "Apply for Protocol Rewards."
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == source_url
