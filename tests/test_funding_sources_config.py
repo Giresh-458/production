@@ -547,8 +547,10 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert "eitcc-dev.wmstudio.space" in domains
     assert "eit-girlsgostem.eu" in domains
     assert "assets.eitfood.eu" in domains
-    # Creative-sector funding routes are outside this source's climate/ESG scope.
-    assert excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects")
+    # The current EITCC innovation call and its actual call PDF remain crawlable;
+    # only its non-call application/support collateral is filtered.
+    assert not excluded("https://eit-culture-creativity.eu/your-opportunities/calls-funding/innovation-projects")
+    assert not excluded("https://eitcc-dev.wmstudio.space/sites/default/files/2026-10/EITCC_Open%20call_Innovation%20projects_21.10.2026.pdf")
     assert not excluded("https://assets.eitfood.eu/files/OPEN-CALLS/FFDI_MERGED_CALL_GUIDELINES.pdf")
     assert not excluded("https://www.eitfood.eu/open-calls/seedbed-teamup-exploration-phase")
     # Generic taxonomy, procurement archives, result pages and login routes are not call details.
