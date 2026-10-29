@@ -317,6 +317,14 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert climate_discovery["pagination"] is False
     assert climate_discovery["follow_documents"] is True
     assert climate_discovery["follow_pdfs"] is True
+    supporting_call_documents = [
+        "https://neb.eitcommunity.eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover.pdf",
+        "https://womentecheurope.eu/wp-content/uploads/2026/09/WomenTech_Guidelines_FullProposal.pdf",
+    ]
+    assert all(
+        any(re.search(pattern, url, re.IGNORECASE) for pattern in climate_discovery["exclude_url_patterns"])
+        for url in supporting_call_documents
+    )
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
