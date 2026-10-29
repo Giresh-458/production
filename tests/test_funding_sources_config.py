@@ -787,3 +787,12 @@ def test_filecoin_currentness_verification_is_scoped_to_official_programme_docs(
     entry = next(e for e in _entries() if e["name"] == "Filecoin Grants and Funding")
     discovery = entry["collection"]["discovery"]
     assert discovery["currentness_verification_urls"] == discovery["direct_page_urls"]
+
+
+
+def test_full_live_audit_preserves_per_record_rejection_details():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
+    assert '"rejected_candidate_details": [' in workflow
+    assert '"title": candidate.get("title")' in workflow
+    assert '"source_url": candidate.get("source_url")' in workflow
+    assert '"reasons": list(candidate.get("reasons") or [])' in workflow
