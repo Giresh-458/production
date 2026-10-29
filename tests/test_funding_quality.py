@@ -434,3 +434,61 @@ def test_empty_source_without_a_successful_fetch_is_not_verified():
 
     assert result.evidence_verified is False
     assert result.currentness_verified is False
+
+
+def test_esgf_climate_projection_call_is_not_misclassified_as_esg():
+    from core.schemas import rank_research_areas
+
+    source_text = """
+    Sustainability and resilience of climate projections and related data records
+    for European and global science and policy.
+    The resilience of the Earth System Grid Federation (ESGF) is strengthened.
+    Secure access to climate observations and projections for climate science.
+    Improve data infrastructure, interoperability, and long-term operations.
+    """
+    ranked = rank_research_areas(source_text)
+    esg = next(item for item in ranked if item["domain"] == "ESG")
+
+    # "ESGF", climate science, and generic sustainability language are not
+    # sufficient evidence for the separate ESG / carbon-accounting RIF domain.
+    assert esg["score"] == 0
+    assert esg["raw_score"] == 0
+    assert esg["matched_terms"] == []
+
+
+def test_direct_esg_carbon_or_mrv_evidence_still_matches_esg_domain():
+    from core.schemas import rank_research_areas
+
+    source_text = """
+    The call supports ESG reporting, carbon emissions accounting, and
+    measurement, reporting and verification (MRV) workflows.
+    """
+    ranked = rank_research_areas(source_text)
+    esg = next(item for item in ranked if item["domain"] == "ESG")
+
+    assert esg["score"] > 0
+    assert esg["raw_score"] > 0
+    assert any(term in esg["matched_terms"] for term in ("esg", "carbon", "emissions", "mrv"))
+
+
+def test_general_research_questions_do_not_inject_esg_carbon_or_mrv_themes():
+    from agents.funding_agent import generate_research_mission
+
+    context = generate_research_mission(
+        ["Climate Projections", "Climate Data Infrastructure"],
+        [],
+        "Sustainability and resilience of climate projections",
+        "General",
+        research_intent="research",
+        research_intent_evidence=["Climate projections and scientific data are in scope."],
+    )
+    questions = " ".join(context["investigation_questions"])
+    mission = " ".join(context["inferred_challenges"])
+
+    assert "Climate Projections" in questions
+    assert "Climate Data Infrastructure" in questions
+    assert "carbon" not in questions.casefold()
+    assert "mrv" not in questions.casefold()
+    assert "ESG" not in questions
+    assert "commercialization" not in mission
+    assert "adoption" not in mission
