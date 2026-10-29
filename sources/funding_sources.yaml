@@ -119,7 +119,6 @@ sources:
       - hzn.xyz
       - www.hzn.xyz
       - airtable.com
-      - near-foundation.notion.site
       - nearn.io
       - docs.metapool.app
       - potlock.org
@@ -130,7 +129,6 @@ sources:
         - https://www.near.org/founder-hub
         - https://www.nearprotocolrewards.com/
         - https://www.hzn.xyz/
-        - https://near-foundation.notion.site/1d0da22d7b6480e6a423cd2681fd8a00
         - https://nearn.io/devhub/
         - https://app.potlock.org/campaigns
         - https://app.potlock.org/pots
@@ -143,6 +141,8 @@ sources:
         pagination: true
         # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
         exclude_url_patterns:
+          # NEAR's social-media amplification form is not a funding application.
+          - '^https?://near-foundation[.]notion[.]site/1d0da22d7b6480e6a423cd2681fd8a00(?:[/?#].*)?$'
           - '^https?://(?:www\.)?x\.com/'
           - '^https?://(?:www\.)?linkedin\.com/'
           - '^https?://(?:www\.)?t\.me/'
