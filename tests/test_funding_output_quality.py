@@ -136,6 +136,25 @@ def test_funding_problem_signal_rejects_eligibility_geography_as_problem():
     assert intelligence["problem_evidence"] == []
 
 
+def test_funding_problem_signal_rejects_scope_rules_and_desired_outcomes():
+    non_problem_texts = [
+        "You can choose what you would like to cover, including but not limited to: Products: DeFi, Consumer, RWA, Gaming, AI, Stablecoins, etc.",
+        "SBIR projects allow for limited research or analytical effort to be done by research partners or consultants.",
+        "For this reason, participation is limited to legal entities established in Member States, Iceland and Norway and associated countries.",
+        "Policy makers are more aware of risks associated with eutrophication and local needs regarding soil health, and can use this knowledge to design more effective policies.",
+        "Reduced vulnerability to climate change related risks, for example lowering flood risks by increasing natural buffer capacity.",
+        "It returns data points and risk scores related to the contract's security, potential vulnerabilities, and historical behavior.",
+        "The focus should be on actions in selected key areas, including biorefining, biotechnology, and biomanufacturing.",
+    ]
+
+    for content in non_problem_texts:
+        document = _document(content)
+        intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+        assert intelligence["selected_problem"] is None, content
+        assert intelligence["problem_type"] == "unresolved", content
+        assert intelligence["problem_evidence"] == [], content
+
+
 def test_funding_problem_signal_is_concise_and_evidence_backed():
     content = (
         "About the programme.\n\n"
