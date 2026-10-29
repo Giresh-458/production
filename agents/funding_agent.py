@@ -1479,7 +1479,7 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "confidence": "Unknown", "research_intent": research_intent,
             "research_intent_evidence": list(research_intent_evidence or []),
         }
-    themes_str = ", ".join(themes) if themes else "the call's stated research topic"
+    themes_str = ", ".join(themes) if themes else "relevant technologies"
     # Do not assume that every research call is about technology deployment,
     # commercialization, or adoption. Keep the mission neutral and bounded by
     # the actual themes extracted from the source.
