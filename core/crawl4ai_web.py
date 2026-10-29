@@ -580,6 +580,19 @@ def _classify_page_stage_b(url: str, title: str, content: str) -> bool:
     if _is_supporting_funding_document(url):
         return False
 
+    # Some PDF readers expose a one-word article from the first text fragment
+    # as the entire title (observed as "the" on two call-manual PDFs). Such a
+    # record is not independently identifiable as a funding call. Keep the
+    # document downloaded for provenance/parent-call evidence but do not emit
+    # it as an individual opportunity.
+    parsed_path = urlparse(url).path.casefold().replace("%20", " ")
+    if (
+        str(title or "").strip().casefold() in {"the", "a", "an"}
+        and parsed_path.endswith(".pdf")
+        and ("call-manual" in parsed_path or "call_manual" in parsed_path)
+    ):
+        return False
+
     # Explicitly empty listings and ecosystem directories are traversal roots,
     # not individual applications. Their links are still explored below.
     if _reports_no_active_funding(url, title, content) or _is_generic_funding_hub(url, title, content):

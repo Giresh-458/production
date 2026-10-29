@@ -105,7 +105,7 @@ GENERIC_PAGE_TITLES = {
     "request for proposals", "requests for proposals", "rpf", "rfp", "funding",
     "funding opportunities", "grants", "programs", "our programs", "topic",
     "topics", "calls for proposals", "program directory", "grant directory",
-    "grants and funding", "development grants", "this listing", "yourself",
+    "grants and funding", "development grants", "this listing", "yourself", "the",
     "simpler.grants.gov", "grants.gov",
     "program contacts", "active funding opportunity", "archived funding opportunity",
     "how we make funding decisions", "eligibility and funding information",

@@ -17,13 +17,20 @@ def test_current_call_supporting_attachments_are_not_standalone_opportunities():
 
 
 def test_call_manual_is_supporting_evidence_not_a_standalone_opportunity():
-    assert _is_supporting_funding_document(
+    assert not _is_supporting_funding_document(
         "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
     )
     assert not _is_supporting_funding_document(
         "https://neb.eitcommunity.eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover.pdf"
     )
 
+
+def test_misparsed_generic_call_manual_title_is_not_emitted_as_a_call():
+    from core.crawl4ai_web import _classify_page_stage_b
+
+    url = "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
+    content = "Call manual. Guidance for applicants. Application deadline: 1 December 2026."
+    assert _classify_page_stage_b(url, "the", content) is False
 
 def test_substantive_call_documents_are_not_overfiltered():
     assert not _is_supporting_funding_document(
