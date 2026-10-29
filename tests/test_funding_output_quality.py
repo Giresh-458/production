@@ -537,7 +537,9 @@ def test_sbir_mirror_disclaimer_prevents_unverified_open_status_and_deadline():
 
 
 def test_solana_public_rfp_empty_state_requires_publisher_warning_on_known_views():
-    from core.crawl4ai_web import _reports_no_active_funding, _classify_page_stage_b
+    from core.crawl4ai_web import (
+        _reports_no_active_funding, _classify_page_stage_b, _is_generic_funding_hub
+    )
 
     message = (
         "Solana Foundation Public RFP Database\\n"
@@ -593,6 +595,19 @@ def test_solana_public_rfp_empty_state_requires_explicit_warning(monkeypatch):
     )
     assert _reports_no_active_funding(
         seeded_view, "Airtable - Solana Foundation Public RFP Database", message
+    )
+    # Both the original seed view and the view actually found in the full audit
+    # are discovery directories; neither may be emitted as an individual call.
+    assert _is_generic_funding_hub(
+        observed_view, "Airtable - Solana Foundation Public RFP Database", message
+    )
+    assert _is_generic_funding_hub(
+        seeded_view, "Airtable - Solana Foundation Public RFP Database", message
+    )
+    assert not _is_generic_funding_hub(
+        "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/real-call",
+        "Open call for distributed identity",
+        "Applications are open. Eligible applicants may apply by the deadline. RFP."
     )
     assert not _reports_no_active_funding(
         observed_view, "Airtable - Solana Foundation Public RFP Database",
