@@ -540,6 +540,13 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"(?:^|[-_ ])guidelines[-_ ]for[-_ ]evaluators(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
+        # These are supporting application artefacts, not independent calls.
+        r"(?:^|[-_ ])(?:guidelines[-_ ]for[-_ ]applicants|guidance[-_ ]for[-_ ]applicants)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx)$",
+        r"(?:^|[-_ ])(?:letter[-_ ]of[-_ ]commitment|declaration[-_ ]of[-_ ]affiliation)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])womentecheu.*(?:eligibility|application[-_ ]form).*[.](?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:annex[-_ ]1|wteu2eic).*application[-_ ]form.*[.](?:pdf|docx|xlsx)$",
     )
     if any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns):
         return True
@@ -552,6 +559,11 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"\bguidelines for evaluators\b",
         r"\b(?:faqs?|frequently asked questions)\b",
         r"\b(?:info session|info days?|webinar)\b",
+        r"\bguidelines for applicants\b",
+        r"\bguidance for applicants\b",
+        r"\b(?:letter of commitment|declaration of affiliation)\b",
+        r"\beligibility of expenditures\b",
+        r"\bapplication form for evaluators\b",
     )
     return any(re.search(pattern, normalized_title) for pattern in title_patterns)
 
