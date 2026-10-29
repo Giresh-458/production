@@ -1637,7 +1637,7 @@ def _fetch_linked_official_sbir_context(
 
 def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: str) -> bool:
     """Identify explicit publisher empty-state rows without mistaking open RFPs for placeholders."""
-    content = re.sub(r"\\s+", " ", cleaned_text(str(document.content or "")).casefold())
+    content = re.sub(r"\s+", " ", cleaned_text(str(document.content or "")).casefold())
     title = cleaned_text(str(document.title or "")).casefold()
     source_url = str(document.source or "").casefold()
     if (
@@ -1657,8 +1657,8 @@ def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: s
     )
     return bool(
         known_solana_rfp_view
-        and re.search(r"\\brfp context\\b", content)
-        and re.search(r"\\bdo not apply for this\\b", content)
+        and re.search(r"\brfp context\b", content)
+        and re.search(r"\bdo not apply for this\b", content)
         and re.search(
             r"no other active rfp(?:s)?(?: are available| at this time| available)?",
             content,
