@@ -541,8 +541,8 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"(?:^|[-_ ])(?:faq|faqs|frequently[-_ ]asked[-_ ]questions)(?:[-_ ][a-z0-9]+)*\.(?:pdf|docx)$",
         r"(?:^|[-_ ])(?:info[-_ ]?session|info[-_ ]?days?|webinar|presentation)(?:[-_ ][a-z0-9]+)*\.(?:pdf|pptx)$",
         # These are supporting application artefacts, not independent calls.
-        r"(?:^|[-_ ])(?:guidelines[-_ ]for[-_ ]applicants|guidance[-_ ]for[-_ ]applicants)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx)$",
-        r"(?:^|[-_ ])(?:letter[-_ ]of[-_ ]commitment|declaration[-_ ]of[-_ ]affiliation)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
+        r"(?:^|[-_ ])(?:guidelines[-_ ]for[-_ ]applicants|guidance[-_ ]for[-_ ]applicants)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx)$",
+        r"(?:^|[-_ ])(?:letter[-_ ]of[-_ ]commitment|declaration[-_ ]of[-_ ]affiliation)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])womentecheu.*(?:eligibility|application[-_ ]form).*[.](?:pdf|docx|xlsx)$",
