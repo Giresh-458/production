@@ -217,7 +217,7 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
     )
     concrete_constraint = re.search(
         r"\b(?:eligible|eligibility|may apply|can apply|may submit|can submit|"
-        r"must be|must include|must have|are required to|are limited to|"
+        r"must be|must include|must have|are required to|are limited to|limited to|"
         r"addressed to|targeted at|not eligible|cannot apply|established|registered|incorporated|"
         r"resident|reside|domiciled|based in|located in|citizens? of|"
         r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
