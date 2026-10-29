@@ -300,9 +300,10 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://www.climate-kic.org/get-involved/open-calls/" not in climate_discovery["start_urls"]
     assert "https://www.eitfood.eu/innovation" not in climate_discovery["start_urls"]
     current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
-    assert current_eit_culture_call in climate_discovery["start_urls"]
-    assert current_eit_culture_call in climate_discovery["direct_page_urls"]
-    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 100
+    assert current_eit_culture_call not in climate_discovery["start_urls"]
+    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 100
+    import re
+    assert any(re.search(pattern, current_eit_culture_call, re.IGNORECASE) for pattern in climate_discovery["exclude_url_patterns"])
     assert climate_discovery["pagination"] is False
     assert climate_discovery["follow_documents"] is True
     assert climate_discovery["follow_pdfs"] is True
@@ -437,9 +438,11 @@ def test_open_sbir_excludes_generic_navigation_without_excluding_solicitations()
     assert not excluded(
         "https://www.nsf.gov/funding/opportunities/sbirsttr-phase-i/505960/nsf24-579/solicitation"
     )
-    assert not excluded(
+    assert excluded(
         "https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation"
     )
+    assert excluded("https://seedfund.nsf.gov/solicitation-eligibility/")
+    assert excluded("https://www.sbir.gov/sites/default/files/elig_size_compliance_guide.pdf")
 
 
 def test_climate_kic_excludes_stale_partner_posts_and_social_links():
@@ -742,6 +745,7 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com", "near-foundation.notion.site"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
+    assert set(discovery["direct_page_urls"]) >= {"https://www.nearprotocolrewards.com/", "https://www.hzn.xyz/"}
     patterns = discovery.get("exclude_url_patterns", [])
     import re
     assert any(re.search(pattern, "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form", re.IGNORECASE) for pattern in patterns)
