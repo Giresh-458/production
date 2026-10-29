@@ -297,14 +297,15 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://www.climate-kic.org/open-call/desirmed-climate-ambassador/" in climate_discovery["start_urls"]
     assert "https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/" in climate_discovery["start_urls"]
     assert "https://womentecheurope.eu/active-calls/" in climate_discovery["start_urls"]
-    assert "https://www.eitfood.eu/innovation" in climate_discovery["start_urls"]
+    assert "https://www.climate-kic.org/get-involved/open-calls/" not in climate_discovery["start_urls"]
+    assert "https://www.eitfood.eu/innovation" not in climate_discovery["start_urls"]
     current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
     assert current_eit_culture_call in climate_discovery["start_urls"]
     assert current_eit_culture_call in climate_discovery["direct_page_urls"]
-    assert climate_discovery["max_depth"] == 1 and climate_discovery["max_pages"] == 160
+    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 100
     assert climate_discovery["pagination"] is False
-    assert climate_discovery["follow_documents"] is False
-    assert climate_discovery["follow_pdfs"] is False
+    assert climate_discovery["follow_documents"] is True
+    assert climate_discovery["follow_pdfs"] is True
     assert climate.get("direct_page", False) is False
 
     nsf_identity = by_name["NSF SBIR Trusted Identity"]
@@ -398,11 +399,11 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # Current call details are seeded explicitly; avoid crawling historical attachments.
-    assert climate_kic_discovery["max_depth"] == 1
-    assert climate_kic_discovery["max_pages"] == 160
-    assert climate_kic_discovery["follow_pdfs"] is False
-    assert climate_kic_discovery["follow_documents"] is False
+    # Current call details are seeded explicitly; supporting call documents are still audited.
+    assert climate_kic_discovery["max_depth"] == 2
+    assert climate_kic_discovery["max_pages"] == 100
+    assert climate_kic_discovery["follow_pdfs"] is True
+    assert climate_kic_discovery["follow_documents"] is True
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 5 and sbir_discovery["max_pages"] == 120
@@ -507,11 +508,11 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 1
-    assert discovery["max_pages"] == 160
+    assert discovery["max_depth"] == 2
+    assert discovery["max_pages"] == 100
     assert discovery["pagination"] is False
-    assert discovery["follow_pdfs"] is False
-    assert discovery["follow_documents"] is False
+    assert discovery["follow_pdfs"] is True
+    assert discovery["follow_documents"] is True
     # The current 2027 SME Market Expansion call is seeded canonically, rather
     # than relying on a deep link from a historical investment-news page.
     current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
@@ -738,7 +739,7 @@ def test_near_funding_roots_cover_current_official_apply_destinations():
     source = by_name["NEAR Ecosystem Funding"]
     discovery = source["collection"]["discovery"]
     domains = set(source["collection"]["allowed_domains"])
-    assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com"}.issubset(domains)
+    assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com", "near-foundation.notion.site"}.issubset(domains)
     assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
     assert "https://www.hzn.xyz/" in discovery["start_urls"]
     patterns = discovery.get("exclude_url_patterns", [])
