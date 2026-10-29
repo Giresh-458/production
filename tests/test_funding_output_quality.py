@@ -15,6 +15,7 @@ from agents.funding_agent import (
     _resolve_application_url,
     analyze_document,
     extract_funding_problem_intelligence,
+    generate_research_mission,
 )
 
 
@@ -87,6 +88,25 @@ def test_bioeconomy_giants_pdf_metadata_uses_call_factsheet_not_project_metadata
     ) == "Call for Scaling Up and Piloting"
     assert _extract_funding_body(content, "Climate KIC Open Calls") == "Circular Bio-based Europe Joint Undertaking"
     assert _extract_funding_amount(content) == "€ 70,000"
+
+
+def test_research_mission_does_not_invent_problem_without_source_evidence():
+    context = generate_research_mission(
+        themes=["ESG", "Carbon and MRV"],
+        support=["Testing and validation"],
+        title="Example research grant",
+        domain="ESG",
+        research_intent="research",
+        research_intent_evidence=["The programme supports research proposals."],
+    )
+
+    assert context["research_intent"] == "research"
+    assert context["research_intent_evidence"] == ["The programme supports research proposals."]
+    assert context["investigation_questions"]
+    assert context["inferred_challenges"] == []
+    assert context["evidence_refs"] == []
+    assert context["inference_provenance"] == []
+    assert context["confidence"] == "Unknown"
 
 
 def test_funding_problem_signal_rejects_potential_application_scope_as_problem():
