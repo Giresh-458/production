@@ -492,3 +492,37 @@ def test_general_research_questions_do_not_inject_esg_carbon_or_mrv_themes():
     assert "ESG" not in questions
     assert "commercialization" not in mission
     assert "adoption" not in mission
+
+
+def test_official_esgf_climate_call_stays_unscoped_and_questions_follow_source_topics():
+    import re
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="EU Open and Forthcoming Funding Calls",
+        title="Sustainability and resilience of climate projections and related data records for European and global science and policy",
+        source="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-04-08",
+        source_type="Official EU Funding & Tenders Search API",
+        year=2026,
+        content="""
+        Expected Outcome: The EU climate data and infrastructure sovereignty is
+        strengthened, securing access to essential observation and modelling data
+        for European research community. The resilience of the Earth System Grid
+        Federation (ESGF) is strengthened in Europe and globally.
+        Scope: The evolution of the geopolitical situation and changes in science
+        funding priorities and data access policies represent a major threat to
+        evidence-based decision making. The continuity of production, maintenance
+        and open access to climate data, including observations and projections,
+        is fundamental for European and global climate science and policy action.
+        Improve architecture and interoperability, governance, service quality,
+        operational aspects, storage capacity, and long-term data availability.
+        """,
+    )
+
+    analysis = analyze_document(document)
+    questions = " ".join((analysis.research_context or {}).get("investigation_questions", []))
+
+    assert analysis.focus_area == "General"
+    assert questions
+    assert not re.search(r"\\bESG\\b|\\bcarbon\\b|\\bMRV\\b", questions, flags=re.IGNORECASE)
+    assert "climate" in questions.casefold() or "data" in questions.casefold()
