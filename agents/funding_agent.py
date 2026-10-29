@@ -1888,9 +1888,24 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
     parsed_source = urlparse(source_url or "")
     extracted = _extract_application_url(content)
-    # A topic/mirror page, generic SBIR apply page, or solicitation document is
-    # not itself the submission route. Keep application_url empty unless a real
-    # application portal or direct form is linked.
+    # A verified, unique Grants.gov opportunity page is a valid route to the
+    # call details and its application controls, even if the mirror's link label
+    # is "View Official Solicitation" rather than "Apply".
+    if re.search(
+        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
+        content or "",
+        flags=re.IGNORECASE,
+    ):
+        official_grants_opportunity = re.search(
+            r"https?://(?:www\.)?(?:simpler\.)?grants\.gov/opportunity/[A-Za-z0-9-]+",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+        if official_grants_opportunity:
+            extracted = official_grants_opportunity.group(0).rstrip(").,")
+    # A topic/mirror page, generic SBIR apply page, or umbrella solicitation
+    # document is not itself the submission route. Keep application_url empty
+    # unless a real application portal or official call-detail page is linked.
     if extracted and (
         _is_generic_application_url(extracted)
         or re.search(
