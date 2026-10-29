@@ -301,7 +301,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
     assert current_eit_culture_call in climate_discovery["start_urls"]
     assert current_eit_culture_call in climate_discovery["direct_page_urls"]
-    assert climate_discovery["max_depth"] == 1 and climate_discovery["max_pages"] == 160
+    assert climate_discovery["max_depth"] == 2 and climate_discovery["max_pages"] == 100
     assert climate_discovery["pagination"] is False
     assert climate_discovery["follow_documents"] is False
     assert climate_discovery["follow_pdfs"] is False
@@ -399,8 +399,8 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
     # The depth-8 crawl follows bounded EIT pagination to official call details; max_pages remains the hard cap.
-    assert climate_kic_discovery["max_depth"] == 1
-    assert climate_kic_discovery["max_pages"] == 160
+    assert climate_kic_discovery["max_depth"] == 2
+    assert climate_kic_discovery["max_pages"] == 100
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 5 and sbir_discovery["max_pages"] == 120
@@ -502,8 +502,8 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 1
-    assert discovery["max_pages"] == 160
+    assert discovery["max_depth"] == 2
+    assert discovery["max_pages"] == 100
     assert discovery["pagination"] is False
     # The current 2027 SME Market Expansion call is seeded canonically, rather
     # than relying on a deep link from a historical investment-news page.
@@ -722,5 +722,22 @@ def test_open_sbir_discovery_reaches_linked_official_nsf_topic_details():
     assert discovery["max_depth"] >= 5
     # Agency solicitations are verified via their explicit official links, not
     # recursively crawled as part of the SBIR topic-discovery boundary.
-    assert set(entry["collection"]["allowed_domains"]) == {"sbir.gov", "www.sbir.gov"}
+    assert set(entry["collection"]["allowed_domains"]) == {"sbir.gov", "www.sbir.gov", "nsf.gov", "www.nsf.gov"}
 
+
+
+def test_near_funding_roots_cover_current_official_apply_destinations():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    source = by_name["NEAR Ecosystem Funding"]
+    discovery = source["collection"]["discovery"]
+    domains = set(source["collection"]["allowed_domains"])
+    assert {"nearprotocolrewards.com", "www.nearprotocolrewards.com", "hzn.xyz", "www.hzn.xyz", "airtable.com", "near-foundation.notion.site"}.issubset(domains)
+    assert "https://www.nearprotocolrewards.com/" in discovery["start_urls"]
+    assert "https://www.hzn.xyz/" in discovery["start_urls"]
+
+
+def test_ripple_ubri_direct_page_is_current_udax_2027_entrypoint():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    source = by_name["Ripple UBRI"]
+    assert source.get("direct_page") is True
+    assert source["collection"]["discovery"]["start_urls"] == [source["url"]]
