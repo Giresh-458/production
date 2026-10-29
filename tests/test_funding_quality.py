@@ -524,5 +524,5 @@ def test_official_esgf_climate_call_stays_unscoped_and_questions_follow_source_t
 
     assert analysis.focus_area == "General"
     assert questions
-    assert not re.search(r"\\bESG\\b|\\bcarbon\\b|\\bMRV\\b", questions, flags=re.IGNORECASE)
+    assert not re.search(r"\bESG\b|\bcarbon\b|\bMRV\b", questions, flags=re.IGNORECASE)
     assert "climate" in questions.casefold() or "data" in questions.casefold()
