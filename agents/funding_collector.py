@@ -1639,7 +1639,6 @@ def _collect_web_source(
     result.records_discovered = len(raw_opps)
 
     verification_context = _fetch_status_verification_context(source, warnings)
-    currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
     # Cache linked agency solicitations within this source run so a shared
     # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
     official_verification_cache: dict[str, str] = {}
@@ -1653,6 +1652,7 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
         linked_official_context = _fetch_linked_official_sbir_context(
             doc, warnings, official_verification_cache
         )
