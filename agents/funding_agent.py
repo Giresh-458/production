@@ -1278,7 +1278,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax")
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax", "protocol rewards", "horizon")
     )
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
@@ -1913,6 +1913,20 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
         )
     )
     if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_ripple_udax_cta:
+        return source_url
+
+    # Some official NEAR programme pages render the apply CTA without a stable
+    # destination href. Route to the official programme detail page rather than
+    # inventing an application form URL.
+    is_near_protocol_rewards_cta = (
+        (parsed_source.hostname or "").casefold() in {"nearprotocolrewards.com", "www.nearprotocolrewards.com"}
+        and bool(re.search(r"apply for protocol rewards", content or "", flags=re.IGNORECASE))
+    )
+    is_near_horizon_cta = (
+        (parsed_source.hostname or "").casefold() in {"hzn.xyz", "www.hzn.xyz"}
+        and bool(re.search(r"apply to horizon", content or "", flags=re.IGNORECASE))
+    )
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and (is_near_protocol_rewards_cta or is_near_horizon_cta):
         return source_url
 
     # Superteam processes applications on the individual Earn listing. Crawl4AI may
