@@ -625,7 +625,8 @@ sources:
         # Follow the one verified current NSF 26-510 solicitation linked by topic records,
         # but keep unrelated NSF site navigation outside this SBIR discovery frontier.
         - '^https?://(?:www[.])?nsf[.]gov/(?!funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation(?:[?#]|$))'
-        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/?(?:[?#].*)?        # Exclude generic NSF audience/admin hubs, but preserve individual SBIR/STTR solicitations.
+        - '^https?://(?:www[.])?nsf[.]gov/funding/opportunities/?(?:[?#].*)?$'
+        # Exclude generic NSF audience/admin hubs, but preserve individual SBIR/STTR solicitations.
         - '^https?://(?:www[.])?nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
         - '^https?://new[.]nsf[.]gov/funding/(?:getting-started|postdocs|undergraduates|industry|submitting-proposal)(?:/|[?#].*)?$'
         - '^https?://(?:www[.])?nsf[.]gov/(?:awards(?:/|$)|bfa/(?:dias|dfm)(?:/|$)|policies/(?:pappg|document|brand|records)(?:/|$)|funding/(?:proposal-budget|senior-personnel-documents|data-management-plan|research-involving-[^/]+|learn(?:/|$)|overview/?$|preparing-proposal/?$|graduate-students/?$|entrepreneurs/?$|early-career-researchers/?$|initiatives(?:/|$))|od/honorary-awards(?:/|$))'
