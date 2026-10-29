@@ -1492,7 +1492,7 @@ def test_near_protocol_rewards_cta_is_a_current_rolling_application():
         source_type="html",
         content=(
             "Build on NEAR and earn up to $10,000 each month through Protocol Rewards. "
-            "Apply for Protocol Rewards."
+            "Apply for Next Cohort."
         ),
         year=2026,
     )
