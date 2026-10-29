@@ -1636,8 +1636,8 @@ def _fetch_linked_official_sbir_context(
 
 
 def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: str) -> bool:
-    """Identify a known explicit empty-state record, not a genuine funding call."""
-    content = cleaned_text(str(document.content or "")).casefold()
+    """Identify explicit publisher empty-state rows without mistaking open RFPs for placeholders."""
+    content = re.sub(r"\\s+", " ", cleaned_text(str(document.content or "")).casefold())
     title = cleaned_text(str(document.title or "")).casefold()
     source_url = str(document.source or "").casefold()
     if (
@@ -1645,12 +1645,24 @@ def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: s
         and "do not apply for this" in content
     ):
         return True
-    # Solana's public Airtable table uses a single synthetic 'RFP CONTEXT' row
-    # when there are no live records. The row is a directory placeholder.
-    return (
+
+    parsed = urlparse(source_url)
+    known_solana_rfp_view = (
         source_name == "Solana Grants and Funding"
-        and title == "rfp context"
-        and "airtable.com/apppdmk2pin9wx8jv/" in source_url
+        and (parsed.hostname or "").casefold() in {"airtable.com", "www.airtable.com"}
+        and parsed.path.casefold().startswith((
+            "/apppdmk2pin9wx8jv/shrr0umku4n57tgw7",
+            "/apppdmk2pin9wx8jv/shrdbfj1wktq7pb6f",
+        ))
+    )
+    return bool(
+        known_solana_rfp_view
+        and re.search(r"\\brfp context\\b", content)
+        and re.search(r"\\bdo not apply for this\\b", content)
+        and re.search(
+            r"no other active rfp(?:s)?(?: are available| at this time| available)?",
+            content,
+        )
     )
 
 
