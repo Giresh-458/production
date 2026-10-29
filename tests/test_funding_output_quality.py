@@ -103,6 +103,19 @@ def test_funding_problem_signal_rejects_potential_application_scope_as_problem()
     assert intelligence["problem_evidence"] == []
 
 
+def test_funding_problem_signal_rejects_eligibility_geography_as_problem():
+    content = (
+        "For this reason, participation is limited to legal entities established "
+        "in Member States, Iceland and Norway and associated countries."
+    )
+    document = _document(content)
+    intelligence = extract_funding_problem_intelligence(document, _analysis(document))
+
+    assert intelligence["selected_problem"] is None
+    assert intelligence["problem_type"] == "unresolved"
+    assert intelligence["problem_evidence"] == []
+
+
 def test_funding_problem_signal_is_concise_and_evidence_backed():
     content = (
         "About the programme.\n\n"
