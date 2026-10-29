@@ -146,7 +146,7 @@ jobs:
               )
               and not any(marker in str(error.get("error", error)) for marker in cap_markers)
           ]
-          print(json.dumps({
+          audit = {
               "records_discovered": result.records_discovered,
               "records_valid": result.records_valid,
               "records_filtered": result.records_filtered,
@@ -158,11 +158,19 @@ jobs:
               "qualified_samples": qualified[:10],
               "detail_fetch_warnings": detail_fetch_warnings,
               "non_cap_errors": non_cap_errors,
-          }, indent=2, ensure_ascii=False))
+          }
+          print(json.dumps(audit, indent=2, ensure_ascii=False))
+          # Preserve the bounded qualification evidence even when it finds no
+          # eligible call in its deliberately shallow sample. The strict full
+          # configured scan below is the acceptance decision; a bounded sample
+          # with zero qualified records is not, by itself, proof the source is empty.
+          audit_dir = Path("outputs/ci_batch1_full_live")
+          audit_dir.mkdir(parents=True, exist_ok=True)
+          (audit_dir / "preflight_eu_qualification.json").write_text(
+              json.dumps(audit, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
           if not result.records_discovered:
               raise SystemExit("EU API returned no records")
-          if result.records_valid == 0:
-              raise SystemExit("EU API returned no currently eligible, RIF-domain-matched opportunities in the bounded query set")
           if non_cap_errors:
               raise SystemExit("EU qualification audit had non-limit acquisition/normalization errors")
           PY
