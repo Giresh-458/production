@@ -16,7 +16,8 @@ def test_current_call_supporting_attachments_are_not_standalone_opportunities():
         assert _is_supporting_funding_document(url), url
 
 
-def test_call_manual_is_supporting_evidence_not_a_standalone_opportunity():
+def test_call_manual_pdf_remains_available_as_supporting_evidence():
+    # The PDF can contain substantive call rules, so its URL alone is not excluded.
     assert not _is_supporting_funding_document(
         "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
     )
@@ -36,6 +37,6 @@ def test_substantive_call_documents_are_not_overfiltered():
     assert not _is_supporting_funding_document(
         "https://neb.eitcommunity.eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover.pdf"
     )
-    assert _is_supporting_funding_document(
+    assert not _is_supporting_funding_document(
         "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/Call-Manual_SME-Market-Expansion-Call-2027_final_v1.2_271026.pdf"
     )

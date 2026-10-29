@@ -194,6 +194,12 @@ def test_unknown_source_status_blocks_even_when_verification_flags_are_true():
     assert "source status unknown" in blocker["message"]
 
 
+def test_single_article_pdf_title_is_not_a_valid_funding_identity():
+    from agents.funding_agent import _is_generic_funding_title
+
+    assert _is_generic_funding_title("the") is True
+    assert _is_generic_funding_title("SME Market Expansion Open Call 2027") is False
+
 def test_non_opportunity_generic_record_does_not_invalidate_source_flags():
     from types import SimpleNamespace
     from core.schemas import CollectionResult
