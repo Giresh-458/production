@@ -1407,6 +1407,128 @@ def _fetch_status_verification_context(
     return "\n".join(dict.fromkeys(evidence))
 
 
+def _fetch_linked_official_sbir_context(
+    document: FundingDocument,
+    warnings: Optional[List[str]] = None,
+    cache: Optional[dict[str, str]] = None,
+) -> str:
+    """Verify an SBIR mirror record against the official solicitation it links to.
+
+    SBIR.gov warns that topic pages may lag the issuing agency. For topic pages,
+    follow only the page's explicitly labelled official-solicitation link, require
+    an HTTPS .gov destination, and verify that the solicitation identifier matches
+    before trusting its current/open status. A mirror's own disclaimer is never
+    treated as proof that a call is stale or current.
+    """
+    parsed_source = urlparse(str(document.source or ""))
+    if (
+        (parsed_source.hostname or "").casefold() not in {"sbir.gov", "www.sbir.gov"}
+        or not re.fullmatch(r"/topics/\d+/?", parsed_source.path)
+        or not re.search(
+            r"not necessarily the latest and most up-to-date",
+            str(document.content or ""),
+            flags=re.IGNORECASE,
+        )
+    ):
+        return ""
+
+    link = re.search(
+        r"\[\s*View Official Solicitation\s*\]\((https://[^)\s]+)\)",
+        str(document.content or ""),
+        flags=re.IGNORECASE,
+    )
+    if not link:
+        return ""
+    candidate_url = link.group(1).strip()
+    candidate = urlparse(candidate_url)
+    if (
+        candidate.scheme.casefold() != "https"
+        or not candidate.hostname
+        or not candidate.hostname.casefold().endswith(".gov")
+        or candidate.port not in (None, 443)
+        or candidate.username
+        or candidate.password
+    ):
+        return ""
+
+    cache = cache if cache is not None else {}
+    if candidate_url in cache:
+        return cache[candidate_url]
+
+    from core.http_client import fetch_text
+
+    try:
+        official_text, final_url = fetch_text(candidate_url, timeout=(8.0, 20.0), retries=1)
+    except Exception as exc:
+        if warnings is not None:
+            warnings.append(
+                f"SBIR official solicitation verification failed for {candidate_url}: {exc}"
+            )
+        cache[candidate_url] = ""
+        return ""
+
+    final_url = str(final_url or candidate_url)
+    final = urlparse(final_url)
+    if (
+        final.scheme.casefold() != "https"
+        or not final.hostname
+        or not final.hostname.casefold().endswith(".gov")
+    ):
+        cache[candidate_url] = ""
+        return ""
+
+    source_text = str(document.content or "")
+    official_text = str(official_text or "")
+    identifier_pattern = re.compile(
+        r"\b(?:[A-Z]{2,6}\s+\d{2}-\d{3}|[A-Z]{2,6}-\d{2}-\d{2,3})\b",
+        flags=re.IGNORECASE,
+    )
+    source_ids = {
+        re.sub(r"\s+", "", match.group(0)).upper()
+        for match in identifier_pattern.finditer(source_text)
+    }
+    official_ids = {
+        re.sub(r"\s+", "", match.group(0)).upper()
+        for match in identifier_pattern.finditer(official_text)
+    }
+    matched_ids = sorted(source_ids & official_ids)
+    normalized_official = re.sub(r"\s+", " ", official_text).casefold()
+    official_current = bool(
+        re.search(
+            r"\bactive funding opportunity\b|"
+            r"\bthis document is the current version\b|"
+            r"\b(?:solicitation status|opportunity status)\s*:?\s*open\b",
+            normalized_official,
+            flags=re.IGNORECASE,
+        )
+    )
+    if not matched_ids or not official_current:
+        cache[candidate_url] = ""
+        return ""
+
+    relevant_lines = [
+        cleaned_text(line)
+        for line in official_text.splitlines()
+        if re.search(
+            r"active funding opportunity|current version|program solicitation|"
+            r"solicitation number|opportunity status|solicitation status|"
+            r"full proposal deadline|due date|close date|application deadline|open date",
+            line,
+            flags=re.IGNORECASE,
+        )
+    ]
+    excerpt = "\n".join(dict.fromkeys(line for line in relevant_lines if line))[:5000]
+    context = (
+        "\n\n## Official Solicitation Verification\n"
+        "Official solicitation verification: CURRENT VERSION CONFIRMED\n"
+        f"Official solicitation URL: {final_url}\n"
+        f"Matched solicitation identifier: {matched_ids[0]}\n"
+        f"{excerpt}"
+    )
+    cache[candidate_url] = context
+    return context
+
+
 def _is_explicit_no_active_placeholder(document: FundingDocument, source_name: str) -> bool:
     """Identify a known explicit empty-state record, not a genuine funding call."""
     content = cleaned_text(str(document.content or "")).casefold()
@@ -1455,6 +1577,9 @@ def _collect_web_source(
     result.records_discovered = len(raw_opps)
 
     verification_context = _fetch_status_verification_context(source, warnings)
+    # Cache linked agency solicitations within this source run so a shared
+    # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
+    official_verification_cache: dict[str, str] = {}
     seen_urls: set[str] = set()
     explicit_empty_state_seen = False
     for raw in raw_opps:
@@ -1465,6 +1590,11 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        linked_official_context = _fetch_linked_official_sbir_context(
+            doc, warnings, official_verification_cache
+        )
+        if linked_official_context:
+            doc.content = (doc.content.rstrip() + linked_official_context)[:200000]
         if _is_explicit_no_active_placeholder(doc, source.name):
             explicit_empty_state_seen = True
             result.records_filtered += 1
