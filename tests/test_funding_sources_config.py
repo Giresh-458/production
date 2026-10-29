@@ -714,5 +714,7 @@ def test_open_sbir_discovery_reaches_linked_official_nsf_topic_details():
     # the previous boundary. Increase traversal depth without relaxing any
     # record-level eligibility or currentness checks.
     assert discovery["max_depth"] >= 5
-    assert "nsf.gov" in entry["collection"]["allowed_domains"]
+    # Agency solicitations are verified via their explicit official links, not
+    # recursively crawled as part of the SBIR topic-discovery boundary.
+    assert set(entry["collection"]["allowed_domains"]) == {"sbir.gov", "www.sbir.gov"}
 
