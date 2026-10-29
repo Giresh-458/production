@@ -734,8 +734,10 @@ def test_solana_public_rfp_routes_are_explicitly_seeded_and_not_excluded():
     assert public_rfp_url in discovery["start_urls"]
     assert not any(re.search(pattern, public_rfp_url, re.IGNORECASE) for pattern in patterns)
 
-    # The application form remains a submission destination, not a standalone call.
+    # The official application destination must be crawlable for source verification,
+    # but it remains a submission route rather than a standalone funding-call record.
     application_form = "https://share.hsforms.com/1GE1hYdApQGaDiCgaiWMXHA5lohw"
+    assert "share.hsforms.com" in source["collection"]["allowed_domains"]
     assert not any(re.search(pattern, application_form, re.IGNORECASE) for pattern in patterns)
 
 

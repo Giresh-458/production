@@ -49,6 +49,9 @@ sources:
       - solana.org
       - solana.com
       - airtable.com
+      # The official grants page links to this HubSpot submission destination.
+      # Allow only this host for source verification; the form is not a call record.
+      - share.hsforms.com
       # Seed the official public RFP database explicitly: page-level link
       # extraction did not reliably queue it in the previous full audit.
       discovery:
