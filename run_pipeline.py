@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
+from core.batch2 import evaluate_collection_health, minimum_healthy_collectors
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -25,26 +26,6 @@ from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
 
-
-def evaluate_collection_health(collection_tasks: list[dict], min_required_agents: int) -> tuple[bool, int]:
-    healthy_agents = set()
-    for t in collection_tasks:
-        agent_name = str(t.get("agent_name"))
-        status = str(t.get("status", "")).lower()
-        outputs_count = int(t.get("outputs_count", 0) or 0)
-
-        # An agent is healthy if it succeeded (or partially succeeded) AND produced evidence.
-        if status in ("success", "partial_success", "partial_limit") and outputs_count > 0:
-            healthy_agents.add(agent_name)
-
-    is_healthy = len(healthy_agents) >= min_required_agents
-    return is_healthy, len(healthy_agents)
-
-def minimum_healthy_collectors(total_agents: int) -> int:
-    """Require a strict majority, with a three-agent floor for larger batches."""
-    if total_agents <= 0:
-        return 0
-    return min(total_agents, max(3, total_agents // 2 + 1))
 
 def run_stage(agent: str, mode: str, area: str | None, payload: dict[str, Any], funding_context: FundingCallContext | None = None) -> dict[str, Any]:
     return run_registered_agent(agent, mode, area=area, input_data=payload, funding_context=funding_context)
@@ -616,6 +597,23 @@ def main() -> int:
 
     valid_calls = research_calls
     all_contexts = research_contexts
+
+    # Persist the validated Batch-1 contexts so Batch-2 can be rerun independently
+    # without rediscovering or reconstructing the selected funding opportunities.
+    context_handoff_dir = root / "workflow"
+    context_handoff_dir.mkdir(parents=True, exist_ok=True)
+    context_handoff_path = context_handoff_dir / "funding_contexts.json"
+    context_handoff_path.write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "funding_contexts": [context.to_dict() for context in all_contexts],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ) + "\\n",
+        encoding="utf-8",
+    )
     print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
 
     # Pre-sync registry ONCE before parallel operations

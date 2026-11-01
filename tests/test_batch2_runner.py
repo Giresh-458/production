@@ -1,0 +1,190 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+from core.batch2 import execute_batch2
+from core.funding_selection import FundingCallContext
+from core.normalization import resolve_refresh_context
+
+
+def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
+    return FundingCallContext(
+        funding_call_id=call_id,
+        funding_body="Batch-1 Test Agency",
+        program_name="Privacy-preserving settlement research",
+        call_id=call_id,
+        call_title="Privacy-preserving settlement research",
+        status="OPEN_CALL",
+        opening_date="2026-01-01",
+        deadline="2027-12-31",
+        funding_amount="1000000",
+        currency="EUR",
+        duration="24 months",
+        eligible_costs="Personnel and equipment",
+        eligibility="Universities and research organizations may apply.",
+        geography="EU",
+        trl="TRL3-TRL5",
+        research_priorities=["zero knowledge verification"],
+        required_partners="Research and industry partners",
+        deliverables="Prototype and benchmark report",
+        evaluation_criteria="Excellence and implementation",
+        application_url="https://example.org/apply",
+        source_url="https://example.org/funding-call",
+        source_name="Batch-1 Test Agency",
+        publication_date="2026-01-01",
+        last_updated="2026-01-01",
+        research_area="RWA",
+        selection_mode="autonomous",
+        selection_score=0.95,
+        selection_reasons=["Validated Batch-1 fixture"],
+    )
+
+
+def _artifact(run_id: str, call_id: str) -> str:
+    return f"""# Zero-knowledge verification throughput bottleneck
+
+## Shared Metadata
+- title: Zero-knowledge verification throughput bottleneck
+- source: https://example.org/research/zk-verification
+- layer: Literature
+- research_area: RWA
+- collected_at: 2026-11-01T10:00:00+00:00
+- agent_name: literature
+- run_id: {run_id}
+- funding_call_id: {call_id}
+- funding_call_ids: {call_id}
+- collection_mode: configured_scan
+
+## Provenance
+- source_url: https://example.org/research/zk-verification
+- collected_at: 2026-11-01T10:00:00+00:00
+
+## Evidence Bundle
+### Page Title
+Zero-knowledge verification throughput bottleneck
+### Key Paragraphs
+- Zero knowledge verification latency increases under high transaction volume and limits settlement throughput.
+### Evidence Snippets
+- Zero knowledge verification throughput degrades under high transaction volume.
+### Excerpt Windows
+- The benchmark reports verification latency and throughput constraints.
+
+## Problem Intelligence
+**Selected Problem**: Zero knowledge verification throughput degrades under high transaction volume, limiting secure settlement.
+**Original Candidate**: Zero knowledge verification throughput degrades under high transaction volume.
+**Mode**: deterministic
+**Confidence**: High
+
+### Problem Candidates
+- none
+
+## Agent-Specific Body
+### Source Type
+- Research paper
+
+## Machine Metadata
+- source_hints: {{"published_at": "2026-10-01"}}
+
+## Raw Content
+Zero knowledge verification latency increases under high transaction volume and limits settlement throughput. The source reports measurable verification bottlenecks and scalability constraints.
+"""
+
+
+def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_path):
+    context = _context()
+    captured = {}
+
+    def fake_execute_batch_run(**kwargs):
+        captured.update(kwargs)
+        run_root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
+        artifact_dir = run_root / "intermediate" / "literature"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "signal.md").write_text(
+            _artifact(kwargs["base_input_data"]["run_id"], context.funding_call_id),
+            encoding="utf-8",
+        )
+        return {
+            "status": "completed",
+            "tasks": [
+                {
+                    "agent_name": agent,
+                    "status": "success",
+                    "outputs_count": 1,
+                    "items_processed": 1,
+                    "items_saved": 1,
+                }
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ],
+        }
+
+    with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
+        report = execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path / "batch2",
+            run_id="batch2-test-run",
+            execution_mode="sequential",
+            max_workers=1,
+            timeout_budget_seconds=60,
+        )
+
+    assert report["status"] == "ready_for_batch3"
+    assert report["batch3_started"] is False
+    assert report["collector_health"]["total_agents"] == 11
+    assert report["collector_health"]["healthy_agents"] == 11
+    assert set(captured["agent_names"]) == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+    assert captured["area_names"] == [None]
+    assert captured["analysis_mode"] == "collect_only"
+    assert captured["base_input_data"]["allow_llm_refinement"] is False
+    assert captured["base_input_data"]["run_id"] == "batch2-test-run"
+
+    call_report = report["funding_calls"][0]
+    assert call_report["status"] == "ready_for_batch3"
+    assert call_report["normalized_records"] == 1
+
+    call_root = tmp_path / "batch2" / "batch2-test-run" / "calls" / context.funding_call_id
+    records = json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert records[0]["funding_call_id"] == context.funding_call_id
+    assert records[0]["run_id"] == "batch2-test-run"
+    assert records[0]["normalization_status"] == "NORMALIZED"
+
+    # The persisted selected-call shape must remain compatible with Batch-3 refresh.
+    roots, target_call_id, gate = resolve_refresh_context(call_root)
+    assert target_call_id == context.funding_call_id
+    assert roots[0].name == "intermediate"
+    assert gate(records[0]) is True
+
+    report_path = Path(report["report_path"])
+    assert report_path.is_file()
+    saved_report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert saved_report["batch3_started"] is False
+    assert saved_report["status"] == "ready_for_batch3"
+
+
+def test_batch2_rejects_duplicate_call_ids(tmp_path):
+    context = _context()
+    with pytest.raises(ValueError, match="must be unique"):
+        execute_batch2(
+            funding_contexts=[context, context],
+            output_root=tmp_path,
+            run_id="duplicate-test",
+        )
+
+
+def test_batch2_does_not_reuse_nonempty_run_directory(tmp_path):
+    context = _context()
+    run_root = tmp_path / "existing-run"
+    run_root.mkdir()
+    (run_root / "stale.md").write_text("old data", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Use a new --run-id"):
+        execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path,
+            run_id="existing-run",
+        )

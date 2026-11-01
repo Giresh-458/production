@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+from core.batch2 import execute_batch2
+from core.funding_selection import FundingCallContext
+
+
+def load_funding_contexts(path: Path) -> list[FundingCallContext]:
+    try:
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read funding-context JSON from {path}: {exc}") from exc
+
+    if isinstance(payload, list):
+        raw_contexts = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("funding_contexts"), list):
+        raw_contexts = payload["funding_contexts"]
+    elif isinstance(payload, dict) and isinstance(payload.get("contexts"), list):
+        raw_contexts = payload["contexts"]
+    elif isinstance(payload, dict) and isinstance(payload.get("funding_context"), dict):
+        raw_contexts = [payload["funding_context"]]
+    elif isinstance(payload, dict) and payload.get("funding_call_id"):
+        raw_contexts = [payload]
+    else:
+        raise ValueError(
+            "Expected a FundingCallContext object, a list of contexts, or an object "
+            "containing 'funding_contexts'. Use the Batch-1 workflow/funding_contexts.json output."
+        )
+
+    if not raw_contexts or not all(isinstance(item, dict) for item in raw_contexts):
+        raise ValueError("Funding-context input must contain one or more JSON objects.")
+
+    try:
+        return [FundingCallContext.from_dict(item) for item in raw_contexts]
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ValueError(
+            "Funding-context JSON does not match the validated FundingCallContext schema. "
+            f"Details: {exc}"
+        ) from exc
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run RIF Batch-2 collection and normalization, stopping before Batch-3."
+    )
+    parser.add_argument(
+        "--funding-context-file",
+        required=True,
+        help="JSON exported by Batch-1 at workflow/funding_contexts.json.",
+    )
+    parser.add_argument("--output-root", default="outputs/batch2_runs")
+    parser.add_argument("--run-id", default=None, help="Optional unique run ID.")
+    parser.add_argument(
+        "--profile",
+        choices=["smoke", "regression", "refresh"],
+        default="refresh",
+    )
+    parser.add_argument(
+        "--execution-mode",
+        choices=["parallel", "sequential"],
+        default="parallel",
+    )
+    parser.add_argument("--max-workers", type=int, default=6)
+    parser.add_argument(
+        "--scheduled-refresh",
+        action="store_true",
+        help="Use source refresh schedules instead of forcing a live refresh.",
+    )
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    logging.basicConfig(level=logging.INFO)
+
+    profiles = {
+        "smoke": {"default_limit": 1, "timeout_budget_seconds": 600},
+        "regression": {"default_limit": 2, "timeout_budget_seconds": 1800},
+        "refresh": {"default_limit": None, "timeout_budget_seconds": 3600},
+    }
+    profile = profiles[args.profile]
+
+    try:
+        contexts = load_funding_contexts(Path(args.funding_context_file))
+        report = execute_batch2(
+            funding_contexts=contexts,
+            output_root=Path(args.output_root),
+            run_id=args.run_id,
+            execution_mode=args.execution_mode,
+            max_workers=args.max_workers,
+            timeout_budget_seconds=profile["timeout_budget_seconds"],
+            default_limit=profile["default_limit"],
+            force_refresh=not args.scheduled_refresh,
+        )
+    except Exception as exc:
+        logging.exception("Batch-2 execution failed")
+        print(f"Batch-2 failed: {exc}")
+        return 1
+
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0 if report.get("status") == "ready_for_batch3" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

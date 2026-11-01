@@ -17,6 +17,7 @@ on:
       - "core/funding_selection.py"
       - "core/schemas.py"
       - "tests/test_all_collection_agents.py"
+      - "tests/test_manual_url_collection.py"
       - "tests/test_funding_routing_golden.py"
       - ".github/workflows/collection-agent-contract-tests.yml"
 
@@ -43,4 +44,4 @@ jobs:
 
       - name: Verify all collection-agent contracts and funding routing
         run: |
-          python -m pytest tests/test_all_collection_agents.py tests/test_funding_routing_golden.py -q
+          python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_funding_routing_golden.py -q

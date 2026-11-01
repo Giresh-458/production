@@ -535,6 +535,9 @@ def build_manual_url_document(
     area: str | None,
     focus: str | None,
 ) -> RegulationDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,

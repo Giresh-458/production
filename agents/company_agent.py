@@ -558,6 +558,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
 
 
 def build_manual_url_document(url: str, company_name: str | None, source_type: str | None, area: str | None, focus: str | None, funding_context: str = "") -> CompanyDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,
