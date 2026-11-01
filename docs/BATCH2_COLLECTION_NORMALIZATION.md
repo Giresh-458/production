@@ -170,7 +170,7 @@ The full pipeline runs Batch-1, then the same 11-agent collection and per-call n
 
 ## Runtime dependencies and external services
 
-The Python dependencies are declared in requirements.txt and pyproject.toml. The Batch-2 code paths use the repository's existing HTTP and HTML collection clients, Crawl4AI/Playwright for browser-rendered sources, PDF extraction support, YAML configuration loading, deterministic semantic ranking, and the built-in sqlite3 module for the evidence ledger. Install the repository requirements rather than installing a separate, incompatible crawler stack.
+The Python dependencies are declared in requirements.txt and pyproject.toml. The Batch-2 code paths use the repository's existing HTTP and HTML collection clients, Playwright for browser-rendered sources, PDF extraction support, YAML configuration loading, deterministic semantic ranking, and the built-in sqlite3 module for the evidence ledger. Crawl4AI is included in the repository dependency set for the separate Batch-1 Funding Agent; the standalone Batch-2 runner does not execute the Funding Agent's Crawl4AI traversal. Install the repository requirements rather than installing a separate, incompatible crawler stack.
 
 Playwright's Chromium browser is installed separately with python -m playwright install chromium. Live configured collection requires outbound network access to the selected source sites. The default Batch-2 path does not require Docker, an external database, or a local Ollama service. Existing Docker-related files are left unchanged.
 
