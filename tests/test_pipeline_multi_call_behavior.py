@@ -71,6 +71,8 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     mock_execute_batch = MagicMock()
     def side_effect_execute_batch(*args, **kwargs):
         ctxs = kwargs.get("funding_contexts")
+        assert kwargs["base_input_data"]["allow_llm_analysis"] is False
+        assert kwargs["base_input_data"]["allow_llm_refinement"] is False
         assert ctxs is not None, "execute_batch_run must receive funding_contexts"
         assert len(ctxs) == 3, "must pass all contexts"
 
