@@ -7,6 +7,7 @@ import copy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_pipeline import main
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
@@ -121,7 +122,10 @@ Classic
                 )
                 artifact.write_text(artifact_text, encoding="utf-8")
 
-        return {"tasks": []}
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
 
     mock_execute_batch.side_effect = fake_execute_batch
 
@@ -195,7 +199,10 @@ def test_empty_evidence_aborts(
 
     def fake_execute_batch(**kwargs):
         # Do not write any markdown files to intermediate_dir!
-        return {"tasks": []}
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
 
     mock_execute_batch.side_effect = fake_execute_batch
 
