@@ -678,6 +678,7 @@ def main() -> int:
                 "pipeline_run_dir": str(root), # output to root/intermediate
                 "force_refresh": bool(getattr(args, "force_refresh", False) or not getattr(args, "scheduled_refresh", False)),
                 "allow_llm_refinement": False,
+                "allow_llm_analysis": False,
             },
             execution_mode="parallel",
             max_workers=6,
