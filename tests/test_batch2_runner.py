@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import execute_batch2
+from core.batch2 import execute_batch2, evaluate_collection_health, _validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
 from core.normalization import resolve_refresh_context
@@ -330,3 +330,96 @@ def test_batch2_accepts_either_official_source_or_application_url_from_batch1():
 
     assert validate_batch1_context(source_only) == []
     assert validate_batch1_context(application_only) == []
+
+
+
+def test_batch2_refuses_to_reuse_even_an_empty_run_directory(tmp_path):
+    context = _context()
+    run_root = tmp_path / "empty-existing-run"
+    run_root.mkdir()
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path,
+            run_id="empty-existing-run",
+        )
+
+
+def test_collection_health_ignores_unexpected_agent_names():
+    tasks = [
+        {"agent_name": f"unexpected-{index}", "status": "success", "outputs_count": 1}
+        for index in range(6)
+    ]
+    healthy, count = evaluate_collection_health(
+        tasks,
+        min_required_agents=6,
+        expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+    )
+    assert healthy is False
+    assert count == 0
+
+
+def test_normalized_handoff_rejects_invalid_records_and_provenance():
+    errors = _validate_normalized_handoff(
+        [
+            "not-an-object",
+            {
+                "record_id": "r1",
+                "evidence_id": "e1",
+                "source_id": "s1",
+                "content_hash": "h1",
+                "title": "Evidence",
+                "agent_name": "unknown-agent",
+                "run_id": "wrong-run",
+                "funding_call_id": "wrong-call",
+                "source_url": "not-a-url",
+                "normalization_status": "NEEDS_REVIEW",
+                "collected_at": "not-a-timestamp",
+                "problem_statement": "",
+                "context_summary": "",
+                "evidence_snippets": [],
+                "excerpt_windows": [],
+                "mission_relevance": {"passed": False},
+            },
+        ],
+        funding_call_id="CALL-BATCH2-001",
+        run_id="batch2-run",
+        expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+    )
+    assert any("not a JSON object" in error for error in errors)
+    assert any("mismatched run_id" in error for error in errors)
+    assert any("mismatched funding_call_id" in error for error in errors)
+    assert any("usable HTTP(S)" in error for error in errors)
+    assert any("unknown collection agent" in error for error in errors)
+    assert any("invalid collected_at" in error for error in errors)
+    assert any("no usable evidence text" in error for error in errors)
+    assert any("mission-relevance" in error for error in errors)
+
+
+def test_normalized_handoff_accepts_valid_evidence_record():
+    agent = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)[0]
+    record = {
+        "record_id": "r1",
+        "evidence_id": "e1",
+        "source_id": "s1",
+        "content_hash": "h1",
+        "title": "Evidence",
+        "agent_name": agent,
+        "run_id": "batch2-run",
+        "funding_call_id": "CALL-BATCH2-001",
+        "source_url": "https://example.org/evidence",
+        "normalization_status": "NORMALIZED",
+        "collected_at": "2026-11-01T10:00:00+00:00",
+        "problem_statement": "A source-grounded technical limitation.",
+        "context_summary": "A source-grounded technical limitation.",
+        "evidence_snippets": ["A measurable limitation."],
+        "excerpt_windows": [],
+        "mission_relevance": {"passed": True},
+    }
+    assert _validate_normalized_handoff(
+        [record],
+        funding_call_id="CALL-BATCH2-001",
+        run_id="batch2-run",
+        expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+    ) == []
