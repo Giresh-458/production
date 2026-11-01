@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
+from core.file_lock import atomic_write_json
 from core.batch2 import evaluate_collection_health, minimum_healthy_collectors, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
@@ -622,16 +623,12 @@ def main() -> int:
         serialized_contexts.append(payload)
 
     if context_handoff_valid:
-        context_handoff_path.write_text(
-            json.dumps(
-                {
-                    "run_id": run_id,
-                    "funding_contexts": serialized_contexts,
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        atomic_write_json(
+            context_handoff_path,
+            {
+                "run_id": run_id,
+                "funding_contexts": serialized_contexts,
+            },
         )
     else:
         print(
