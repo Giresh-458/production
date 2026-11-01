@@ -14,6 +14,7 @@ from core.source_registry import (
     sync_source_registry,
 )
 import run_pipeline
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 
 def _sample_registry_payload() -> dict:
@@ -179,20 +180,28 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
         return {"status": "success", "outputs": [{"prop": 1}], "outputs_count": 1}
 
     def fake_save(roots, call_root, call_id, **kwargs):
-        if "filter_func" in kwargs and kwargs["filter_func"]:
-            kwargs["filter_func"]({"evidence_id": "e1", "title": "t", "research_area": "DePIN"})
         norm = call_root / "normalized"
         norm.mkdir(parents=True, exist_ok=True)
         record = {
             "evidence_id": "e1",
             "record_id": "r1",
+            "source_id": "source-1",
+            "content_hash": "content-1",
+            "agent_name": "literature",
             "run_id": kwargs.get("target_run_id"),
             "funding_call_id": call_id,
             "source_url": "https://example.com/evidence",
             "normalization_status": "NORMALIZED",
             "research_area": "DePIN",
             "title": "Test evidence",
+            "collected_at": "2026-11-01T10:00:00+00:00",
+            "problem_statement": "A source-grounded research limitation.",
+            "context_summary": "A source-grounded research limitation.",
+            "evidence_snippets": ["A measurable source-grounded limitation."],
+            "excerpt_windows": [],
         }
+        if "filter_func" in kwargs and kwargs["filter_func"]:
+            kwargs["filter_func"](record)
         (norm / "records.json").write_text(json.dumps([record]), encoding="utf-8")
         (norm / "by_area.json").write_text(json.dumps({"DePIN": [record]}), encoding="utf-8")
         (norm / "by_layer.json").write_text(json.dumps({"Literature": [record]}), encoding="utf-8")
@@ -214,7 +223,7 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 
     with patch("run_pipeline.run_stage", side_effect=fake_run_stage), \
-         patch("run_pipeline.execute_batch_run", return_value={"tasks": [{"agent_name": f"a_{i}", "status": "success", "outputs_count": 1} for i in range(11)]}), \
+         patch("run_pipeline.execute_batch_run", return_value={"tasks": [{"agent_name": agent, "status": "success", "outputs_count": 1} for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))]}), \
          patch("run_pipeline.evaluate_collection_health", return_value=(True, 11)), \
          patch("run_pipeline.save_normalized_collection_records", side_effect=fake_save), \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}), \
