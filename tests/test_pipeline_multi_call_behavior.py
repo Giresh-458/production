@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from run_pipeline import main
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
@@ -79,8 +80,8 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         return {
             "status": "success",
             "tasks": [
-                {"status": "success", "agent_name": f"mock_agent_{i}", "outputs_count": 1}
-                for i in range(11)
+                {"status": "success", "agent_name": agent, "outputs_count": 1}
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
             ]
         }
 
