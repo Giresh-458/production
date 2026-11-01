@@ -10,6 +10,8 @@ on:
     paths:
       - "agents/**"
       - "core/agent_interface.py"
+      - "core/file_lock.py"
+      - "core/batch2.py"
       - "core/agent_registry.py"
       - "core/batch_runner.py"
       - "core/collection_schemas.py"

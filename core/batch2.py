@@ -5,11 +5,12 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 from core.batch_runner import execute_batch_run
 from core.file_lock import atomic_write_json
-from core.funding_selection import FundingCallContext
+from core.funding_selection import FundingCallContext, has_substantive_eligibility_evidence
 from core.mission_gate import relevance as mission_relevance
 from core.normalization import save_normalized_collection_records
 
@@ -34,6 +35,50 @@ def minimum_healthy_collectors(total_agents: int) -> int:
     if total_agents <= 0:
         return 0
     return min(total_agents, max(3, total_agents // 2 + 1))
+
+
+def validate_batch1_context(context: FundingCallContext) -> list[str]:
+    """Reject handoff data that does not satisfy the Batch-1 downstream contract."""
+    if not isinstance(context, FundingCallContext):
+        return ["input is not a FundingCallContext"]
+
+    issues: list[str] = []
+    if str(context.status or "").strip().upper() != "OPEN_CALL":
+        issues.append("funding call is not confirmed currently open")
+    source_parts = urlparse(str(context.source_url or "").strip())
+    application_parts = urlparse(str(context.application_url or "").strip())
+    if source_parts.scheme not in {"http", "https"} or not source_parts.netloc:
+        issues.append("funding call is missing a usable HTTP(S) official source URL")
+    if application_parts.scheme not in {"http", "https"} or not application_parts.netloc:
+        issues.append("funding call is missing a usable HTTP(S) application URL")
+    if not has_substantive_eligibility_evidence(context.eligibility):
+        issues.append("funding call is missing substantive applicant eligibility evidence")
+
+    research_context = context.research_context
+    if research_context is None:
+        issues.append("funding call is missing its validated research context")
+    else:
+        def field(name: str) -> Any:
+            if isinstance(research_context, dict):
+                return research_context.get(name)
+            return getattr(research_context, name, None)
+
+        if str(field("funding_call_id") or "").strip() != context.funding_call_id:
+            issues.append("research-context funding_call_id does not match the selected funding call")
+        if str(field("research_intent") or "").strip().casefold() != "research":
+            issues.append("research intent is not explicitly verified as research")
+        if str(field("confidence") or "").strip().casefold() in {"", "unknown", "none", "n/a", "unverified"}:
+            issues.append("research-context confidence is unknown")
+        for name, label in (
+            ("inferred_challenges", "source-grounded research problem signal"),
+            ("evidence_refs", "research-context evidence references"),
+            ("inference_provenance", "research-context inference provenance"),
+            ("research_intent_evidence", "research-intent evidence"),
+        ):
+            if not field(name):
+                issues.append(f"research context is missing {label}")
+
+    return issues
 
 
 def _selected_call_record(context: FundingCallContext) -> dict[str, Any]:
@@ -72,9 +117,11 @@ def _selected_call_record(context: FundingCallContext) -> dict[str, Any]:
 def _read_json_list(path: Path) -> list[Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read JSON list {path}: {exc}") from exc
+    if not isinstance(value, list):
+        raise ValueError(f"expected a JSON list in {path}")
+    return value
 
 
 def execute_batch2(
@@ -82,11 +129,13 @@ def execute_batch2(
     funding_contexts: list[FundingCallContext],
     output_root: Path | str = Path("outputs/batch2_runs"),
     run_id: str | None = None,
+    batch1_run_id: str | None = None,
     execution_mode: str = "parallel",
     max_workers: int = 6,
     timeout_budget_seconds: int = 1500,
     default_limit: int | None = None,
     force_refresh: bool = True,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Run all 11 downstream collectors, normalize per call, and stop before Batch-3.
 
@@ -96,6 +145,13 @@ def execute_batch2(
     contexts = list(funding_contexts or [])
     if not contexts:
         raise ValueError("At least one validated Batch-1 FundingCallContext is required.")
+    for index, context in enumerate(contexts, start=1):
+        context_issues = validate_batch1_context(context)
+        if context_issues:
+            raise ValueError(
+                f"FundingCallContext #{index} failed Batch-1 handoff validation: "
+                + "; ".join(context_issues)
+            )
     if execution_mode not in {"parallel", "sequential"}:
         raise ValueError("execution_mode must be 'parallel' or 'sequential'.")
     if max_workers < 1:
@@ -124,6 +180,14 @@ def execute_batch2(
         )
     workflow_root = run_root / "workflow"
     workflow_root.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(
+        workflow_root / "funding_contexts.json",
+        {
+            "batch1_run_id": batch1_run_id,
+            "batch2_run_id": resolved_run_id,
+            "funding_contexts": [context.to_dict() for context in contexts],
+        },
+    )
 
     expected_agents = set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
     if len(expected_agents) != 11:
@@ -141,9 +205,10 @@ def execute_batch2(
             "pipeline_run_dir": str(run_root),
             "force_refresh": bool(force_refresh),
             "allow_llm_refinement": False,
+            "allow_llm_analysis": False,
         },
         execution_mode=execution_mode,
-        dry_run=False,
+        dry_run=dry_run,
         default_limit=default_limit,
         timeout_budget_seconds=timeout_budget_seconds,
         max_workers=max_workers,
@@ -153,6 +218,31 @@ def execute_batch2(
     )
 
     tasks = collection_report.get("tasks", []) if isinstance(collection_report, dict) else []
+    if dry_run:
+        report = {
+            "run_id": resolved_run_id,
+            "batch1_run_id": batch1_run_id,
+            "status": "dry_run",
+            "dry_run": True,
+            "output_root": str(run_root.resolve()),
+            "scope": "Batch-2 collection and normalization only",
+            "batch3_started": False,
+            "normalization_started": False,
+            "next_stage": "Batch-2 execution was planned only; no collection or normalization ran",
+            "collection": collection_report,
+            "funding_calls": [
+                {
+                    "funding_call_id": context.funding_call_id,
+                    "title": context.call_title or context.program_name,
+                    "status": "not_run_dry_run",
+                }
+                for context in contexts
+            ],
+        }
+        atomic_write_json(workflow_root / "batch2_report.json", report)
+        report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
+        return report
+
     scheduled_agents = {str(task.get("agent_name") or "") for task in tasks}
     missing_agents = sorted(expected_agents - scheduled_agents)
     min_required = minimum_healthy_collectors(len(expected_agents))
@@ -167,6 +257,7 @@ def execute_batch2(
 
     report: dict[str, Any] = {
         "run_id": resolved_run_id,
+        "batch1_run_id": batch1_run_id,
         "status": "running",
         "output_root": str(run_root.resolve()),
         "scope": "Batch-2 collection and normalization only",
@@ -208,6 +299,7 @@ def execute_batch2(
             call_workflow / "selected_funding_call.json",
             {
                 "run_id": resolved_run_id,
+                "batch1_run_id": batch1_run_id,
                 "selected": _selected_call_record(context),
                 "rejected_alternatives": [],
             },
@@ -242,8 +334,33 @@ def execute_batch2(
             filter_func=apply_mission_gate,
             target_run_id=resolved_run_id,
         )
-        records = _read_json_list(normalized_paths["records"])
-        normalization_errors = _read_json_list(normalized_paths["errors"])
+        normalization_errors: list[Any] = []
+        try:
+            records = _read_json_list(normalized_paths["records"])
+        except ValueError as exc:
+            records = []
+            normalization_errors.append(str(exc))
+        try:
+            normalization_errors.extend(_read_json_list(normalized_paths["errors"]))
+        except ValueError as exc:
+            normalization_errors.append(str(exc))
+        try:
+            skipped_artifacts = _read_json_list(normalized_paths["skipped_artifacts"])
+        except ValueError as exc:
+            skipped_artifacts = []
+            normalization_errors.append(str(exc))
+
+        required_normalized_outputs = {
+            "input_manifest": call_root / "normalized" / "input_manifest.json",
+            "evidence_ledger": call_root / "normalized" / "evidence_ledger.db",
+            "by_area": normalized_paths["by_area"],
+            "by_layer": normalized_paths["by_layer"],
+        }
+        for output_name, output_path in required_normalized_outputs.items():
+            if not output_path.exists():
+                normalization_errors.append(
+                    f"required normalization output is missing: {output_name}"
+                )
 
         handoff_errors: list[str] = []
         for record in records:
@@ -288,6 +405,8 @@ def execute_batch2(
                 "status": call_status,
                 "normalized_records": len(records),
                 "normalization_errors": normalization_errors,
+                "skipped_artifacts": skipped_artifacts,
+                "skipped_artifact_count": len(skipped_artifacts),
                 "handoff_errors": handoff_errors,
                 "normalized_paths": {
                     name: str(path.resolve()) for name, path in normalized_paths.items()

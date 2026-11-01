@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.schemas import normalize_area, rank_research_areas, ALLOWED_RESEARCH_AREAS
+from core.file_lock import atomic_write_json
 from core.evidence_ledger import (
     get_ledger_connection,
     upsert_canonical_evidence,
@@ -594,8 +595,10 @@ def build_normalized_collection_records(
     *,
     target_run_id: str | None = None,
     errors: list[str] | None = None,
+    skipped_artifacts: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
+    skipped = skipped_artifacts if skipped_artifacts is not None else []
 
     roots = [intermediate_root] if isinstance(intermediate_root, Path) else intermediate_root
 
@@ -604,31 +607,75 @@ def build_normalized_collection_records(
             continue
         for path in sorted(root.rglob("*.md")):
             if path.name.lower() == "insights.md":
+                skipped.append({"path": str(path.resolve()), "reason": "downstream_insights_file"})
                 continue
             try:
+                parsed_sections = _parse_multilevel_markdown(path).get("sections", {})
+                normalized_headings = {
+                    re.sub(r"^\d+\.\s*", "", str(name)).strip().casefold()
+                    for name in parsed_sections
+                }
+                recognized_artifact_sections = {
+                    "shared metadata", "provenance", "evidence bundle",
+                    "problem intelligence", "agent-specific body", "machine metadata",
+                    "metadata", "problem", "problem statement", "problem preview",
+                    "focus area", "source details", "layer", "raw content",
+                }
+                if not normalized_headings.intersection(recognized_artifact_sections):
+                    skipped.append({
+                        "path": str(path.resolve()),
+                        "reason": "not_intermediate_artifact",
+                    })
+                    continue
                 record = normalize_intermediate_artifact(path)
                 # A run-scoped caller must never consume artifacts from a prior
                 # or unknown run, even if they remain under a reused output root.
-                if target_run_id and str(record.get("run_id") or "").strip() != target_run_id:
+                artifact_run_id = str(record.get("run_id") or "").strip()
+                if target_run_id and artifact_run_id != target_run_id:
+                    skipped.append({
+                        "path": str(path.resolve()),
+                        "reason": "run_id_mismatch",
+                        "artifact_run_id": artifact_run_id or None,
+                        "target_run_id": target_run_id,
+                    })
                     continue
 
-                # Filter by target_funding_call_id if provided
+                # An explicit owner is authoritative. A secondary multi-call list
+                # must never override a conflicting explicit funding_call_id.
                 if target_funding_call_id:
                     call_ids = record.get("funding_call_ids", [])
-                    explicit_id = record.get("funding_call_id")
+                    explicit_id = str(record.get("funding_call_id") or "").strip()
 
-                    if explicit_id == target_funding_call_id:
-                        # Valid explicit ownership
-                        pass
-                    elif target_funding_call_id in call_ids:
-                        # Do not treat appearance in a broad multi-ID list as proof of ownership
-                        if len(call_ids) > 3:
-                            # Ambiguous: leave evidence unassigned / skip for this call
+                    if explicit_id:
+                        if explicit_id != target_funding_call_id:
+                            skipped.append({
+                                "path": str(path.resolve()),
+                                "reason": "explicit_funding_call_id_mismatch",
+                                "artifact_funding_call_id": explicit_id,
+                                "target_funding_call_id": target_funding_call_id,
+                                "funding_call_ids": call_ids,
+                            })
                             continue
-                        else:
-                            # Legitimate shared evidence (e.g. 1-3 specific calls)
-                            record["funding_call_id"] = target_funding_call_id
+                    elif target_funding_call_id in call_ids:
+                        # Do not treat appearance in a broad multi-ID list as proof of ownership.
+                        if len(call_ids) > 3:
+                            skipped.append({
+                                "path": str(path.resolve()),
+                                "reason": "ambiguous_multi_call_attribution",
+                                "target_funding_call_id": target_funding_call_id,
+                                "funding_call_ids": call_ids,
+                            })
+                            continue
+                        # Legitimate shared evidence (e.g. 1-3 specific calls).
+                        record["funding_call_id"] = target_funding_call_id
                     else:
+                        skipped.append({
+                            "path": str(path.resolve()),
+                            "reason": "funding_call_attribution_missing_or_mismatch",
+                            "artifact_funding_call_id": explicit_id or None,
+                            "target_funding_call_id": target_funding_call_id,
+                            "funding_call_ids": call_ids,
+                        })
                         continue
 
                 records.append(record)
@@ -720,6 +767,7 @@ def save_normalized_collection_records(
     target_run_id: str | None = None,
 ) -> dict[str, Path]:
     errors: list[str] = []
+    skipped_artifacts: list[dict[str, Any]] = []
     input_manifest = _normalization_input_manifest(
         intermediate_root, output_dir, target_funding_call_id, target_run_id
     )
@@ -728,6 +776,7 @@ def save_normalized_collection_records(
         target_funding_call_id=target_funding_call_id,
         target_run_id=target_run_id,
         errors=errors,
+        skipped_artifacts=skipped_artifacts,
     )
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
@@ -766,19 +815,16 @@ def save_normalized_collection_records(
     normalized_root.mkdir(parents=True, exist_ok=True)
 
     records_path = normalized_root / "records.json"
-    records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    (normalized_root / "input_manifest.json").write_text(
-        json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(records_path, records)
+    atomic_write_json(normalized_root / "input_manifest.json", input_manifest)
 
     by_area, by_layer = _build_indexes(records)
 
     by_area_path = normalized_root / "by_area.json"
-    by_area_path.write_text(json.dumps(by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(by_area_path, by_area)
 
     by_layer_path = normalized_root / "by_layer.json"
-    by_layer_path.write_text(json.dumps(by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(by_layer_path, by_layer)
 
     # DB Insertion Layer for Evidence Ledger
     try:
@@ -876,13 +922,16 @@ def save_normalized_collection_records(
         errors.append(f"Ledger DB Init Error: {e}")
 
     errors_path = normalized_root / "errors.json"
-    errors_path.write_text(json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(errors_path, errors)
+    skipped_path = normalized_root / "skipped_artifacts.json"
+    atomic_write_json(skipped_path, skipped_artifacts)
 
     return {
         "records": records_path,
         "by_area": by_area_path,
         "by_layer": by_layer_path,
         "errors": errors_path,
+        "skipped_artifacts": skipped_path,
     }
 
 
@@ -967,6 +1016,10 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     # The mtime-only cache check misses deleted inputs, edits with restored
     # timestamps, and call-context changes. Require an exact input manifest match.
     manifest_path = outputs_root / "normalized" / "input_manifest.json"
+    skipped_path = outputs_root / "normalized" / "skipped_artifacts.json"
+    errors_path = outputs_root / "normalized" / "errors.json"
+    if not skipped_path.exists() or not errors_path.exists():
+        force_refresh = True
     if not force_refresh:
         try:
             cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1012,8 +1065,8 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
                     needs_repair = True
 
                 if needs_repair:
-                    area_path.write_text(json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                    layer_path.write_text(json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    atomic_write_json(area_path, expected_by_area)
+                    atomic_write_json(layer_path, expected_by_layer)
         except Exception:
             force_refresh = True
 
@@ -1030,4 +1083,5 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
         "by_area": outputs_root / "normalized" / "by_area.json",
         "by_layer": outputs_root / "normalized" / "by_layer.json",
         "errors": outputs_root / "normalized" / "errors.json",
+        "skipped_artifacts": outputs_root / "normalized" / "skipped_artifacts.json",
     }

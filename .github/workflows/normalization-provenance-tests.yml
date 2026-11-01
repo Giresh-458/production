@@ -9,6 +9,12 @@ on:
       - main
     paths:
       - "core/agent_interface.py"
+      - "core/batch2.py"
+      - "core/batch_runner.py"
+      - "core/file_lock.py"
+      - "scripts/pipeline_tools/run_batch2.py"
+      - "tests/test_batch2_runner.py"
+      - "tests/test_normalization_skip_audit.py"
       - "core/normalization.py"
       - "core/intelligence.py"
       - "agents/literature_agent.py"
@@ -56,6 +62,7 @@ jobs:
           python -m pytest \
             tests/test_agent_normalization_refresh.py \
             tests/test_batch2_runner.py \
+            tests/test_normalization_skip_audit.py \
             tests/test_literature_run_provenance.py \
             tests/test_batch4_normalization.py \
             tests/test_multi_call_evidence_attribution.py \

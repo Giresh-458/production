@@ -39,13 +39,13 @@ def with_registry_lock(func):
                     pass
     return wrapper
 
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Writes a JSON file atomically using a temporary file and os.replace."""
+def atomic_write_text(path: Path, content: str) -> None:
+    """Write UTF-8 text atomically so interrupted writes cannot truncate an artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp", text=True)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
         os.replace(temp_path, path)
     except Exception:
         try:
@@ -53,3 +53,8 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         except OSError:
             pass
         raise
+
+
+def atomic_write_json(path: Path, payload: Any) -> None:
+    """Write JSON atomically using a temporary file and os.replace."""
+    atomic_write_text(path, json.dumps(payload, indent=2, ensure_ascii=False))

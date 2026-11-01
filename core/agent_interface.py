@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from core.collection_schemas import get_collection_schema, ordered_agent_body_items, validate_agent_specific_body
 from core.evidence import build_evidence_bundle
+from core.file_lock import atomic_write_text
 from core.quality import evaluate_collection_quality
 from core.recursive_collection import update_recursive_review
 from core.schemas import ALLOWED_MODES, ALLOWED_RESEARCH_AREAS, normalize_area, resolve_research_area, validate_response_structure
@@ -644,7 +645,7 @@ def save_intermediate_markdown(
             "",
         ]
     )
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(output_path, "\n".join(lines))
     return output_path
 
 

@@ -611,7 +611,7 @@ def main() -> int:
             },
             indent=2,
             ensure_ascii=False,
-        ) + "\\n",
+        ),
         encoding="utf-8",
     )
     print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
@@ -772,22 +772,135 @@ def main() -> int:
             continue
 
         records_path = call_root / "normalized" / "records.json"
-        records = json.loads(records_path.read_text(encoding="utf-8")) if records_path.exists() else []
+        records = []
+        normalization_errors: list[Any] = []
+        skipped_artifacts: list[Any] = []
+        if not records_path.exists():
+            normalization_errors.append("normalized records.json is missing")
+        else:
+            try:
+                loaded_records = json.loads(records_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_records, list):
+                    records = loaded_records
+                else:
+                    normalization_errors.append("normalized records.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalized records.json: {exc}")
+
+        required_normalized_outputs = {
+            "by_area": call_root / "normalized" / "by_area.json",
+            "by_layer": call_root / "normalized" / "by_layer.json",
+            "input_manifest": call_root / "normalized" / "input_manifest.json",
+            "errors": call_root / "normalized" / "errors.json",
+            "skipped_artifacts": call_root / "normalized" / "skipped_artifacts.json",
+            "evidence_ledger": call_root / "normalized" / "evidence_ledger.db",
+        }
+        for output_name, output_path in required_normalized_outputs.items():
+            if not output_path.exists():
+                normalization_errors.append(f"required normalization output is missing: {output_name}")
+
+        errors_path = normalized.get("errors", required_normalized_outputs["errors"])
+        if Path(errors_path).exists():
+            try:
+                loaded_errors = json.loads(Path(errors_path).read_text(encoding="utf-8"))
+                if isinstance(loaded_errors, list):
+                    normalization_errors.extend(loaded_errors)
+                else:
+                    normalization_errors.append("normalization errors.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalization errors.json: {exc}")
+
+        skipped_path = normalized.get("skipped_artifacts", required_normalized_outputs["skipped_artifacts"])
+        if Path(skipped_path).exists():
+            try:
+                loaded_skipped = json.loads(Path(skipped_path).read_text(encoding="utf-8"))
+                if isinstance(loaded_skipped, list):
+                    skipped_artifacts = loaded_skipped
+                else:
+                    normalization_errors.append("normalization skipped_artifacts.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalization skipped_artifacts.json: {exc}")
 
         accepted_count = len(accepted_evidence_ids)
         rejected_count = len(rejected_evidence_ids)
         input_count = accepted_count + rejected_count
+        handoff_errors: list[str] = []
+        for record in records:
+            if record.get("run_id") != run_id:
+                handoff_errors.append(f"record {record.get('record_id')} has a mismatched run_id")
+            if record.get("funding_call_id") != context.funding_call_id:
+                handoff_errors.append(f"record {record.get('record_id')} has a mismatched funding_call_id")
+            if not str(record.get("source_url") or "").startswith(("http://", "https://")):
+                handoff_errors.append(f"record {record.get('record_id')} has no usable HTTP(S) source URL")
+            if record.get("normalization_status") != "NORMALIZED":
+                handoff_errors.append(
+                    f"record {record.get('record_id')} is marked {record.get('normalization_status')!r}"
+                )
 
-        if input_count == 0:
-            print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+        normalization_audit = {
+            "input_records": input_count,
+            "normalized_records": len(records),
+            "accepted_records": accepted_count,
+            "rejected_records": rejected_count,
+            "errors": normalization_errors,
+            "error_count": len(normalization_errors),
+            "handoff_errors": handoff_errors,
+            "handoff_error_count": len(handoff_errors),
+            "skipped_artifacts": skipped_artifacts,
+            "skipped_artifact_count": len(skipped_artifacts),
+        }
+        (call_root / "workflow" / "normalization_audit.json").write_text(
+            json.dumps(normalization_audit, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        if normalization_errors or handoff_errors:
+            print(
+                f"❌ Normalization handoff failed: {len(normalization_errors)} normalization error(s), "
+                f"{len(handoff_errors)} record validation error(s); stopping before Batch-3."
+            )
+            report = {
+                "run_id": run_id,
+                "status": "normalization_failed",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "normalization": normalization_audit,
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            (call_root / "workflow" / "pipeline_report.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        (call_root / "workflow" / "mission_relevance_gate.json").write_text(json.dumps({"input_records": input_count, "accepted_records": accepted_count, "rejected_records": rejected_count, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        if input_count == 0:
+            print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+            report = {
+                "run_id": run_id,
+                "status": "no_usable_evidence",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "normalization": normalization_audit,
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            (call_root / "workflow" / "pipeline_report.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            all_reports.append(report)
+            global_exit_code = max(global_exit_code, 4)
+            continue
+
+        (call_root / "workflow" / "mission_relevance_gate.json").write_text(
+            json.dumps({**normalization_audit, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
 
         if not records:
-            report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
+            report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "normalization": normalization_audit, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
             (call_root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
             print("⚠️ Funding call found, but no collected evidence passed the mission relevance gate. No proposal will be generated.")
             all_reports.append(report)
@@ -841,7 +954,8 @@ def main() -> int:
             report = {
                 "run_id": run_id, "status": "failed_quality_gate", "output_root": str(call_root.resolve()),
                 "funding": {"selected": selected, "rejected_alternatives": rejected if call_idx == 1 else [], "selected_funding_call_id": context.funding_call_id},
-                "collection": downstream_plan, "adaptive_research": adaptive_result, "stage_results": stage_results,
+                "collection": downstream_plan, "normalization": normalization_audit,
+                "adaptive_research": adaptive_result, "stage_results": stage_results,
                 "failure_reason": "synthesis_failed_or_empty", "final_output": None, "proposal_count": 0,
             }
             workflow = call_root / "workflow"; workflow.mkdir(parents=True, exist_ok=True)
@@ -911,6 +1025,7 @@ def main() -> int:
                 "adaptive_mode": bool(adaptive_result),
             },
             "collection": downstream_plan,
+            "normalization": normalization_audit,
             "adaptive_research": adaptive_result,
             "stage_results": stage_results,
             "final_output": str(final_output.resolve()) if final_output else None,

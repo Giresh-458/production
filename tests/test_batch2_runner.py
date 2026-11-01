@@ -9,6 +9,7 @@ import pytest
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 from core.batch2 import execute_batch2
 from core.funding_selection import FundingCallContext
+from core.research_schemas import FundingResearchContext
 from core.normalization import resolve_refresh_context
 
 
@@ -42,6 +43,22 @@ def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
         selection_mode="autonomous",
         selection_score=0.95,
         selection_reasons=["Validated Batch-1 fixture"],
+        research_context=FundingResearchContext(
+            funding_call_id=call_id,
+            domain="RWA",
+            technology_themes=("zero knowledge verification",),
+            funding_priorities=("zero knowledge verification",),
+            target_outcomes=("scalable secure settlement",),
+            investigation_questions=("How can verification throughput scale securely?",),
+            inferred_challenges=("Verification throughput degrades under high transaction volume.",),
+            evidence_refs=("https://example.org/funding-call",),
+            inference_provenance=("source_grounded_problem_extraction",),
+            confidence="High",
+            research_intent="research",
+            research_intent_evidence=("The official call supports technical research and validation.",),
+            selected_domains=("RWA",),
+            domain_relevance=(),
+        ),
     )
 
 
@@ -127,12 +144,14 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
             funding_contexts=[context],
             output_root=tmp_path / "batch2",
             run_id="batch2-test-run",
+            batch1_run_id="batch1-test-run",
             execution_mode="sequential",
             max_workers=1,
             timeout_budget_seconds=60,
         )
 
     assert report["status"] == "ready_for_batch3"
+    assert report["batch1_run_id"] == "batch1-test-run"
     assert report["batch3_started"] is False
     assert report["collector_health"]["total_agents"] == 11
     assert report["collector_health"]["healthy_agents"] == 11
@@ -140,6 +159,7 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
     assert captured["area_names"] == [None]
     assert captured["analysis_mode"] == "collect_only"
     assert captured["base_input_data"]["allow_llm_refinement"] is False
+    assert captured["base_input_data"]["allow_llm_analysis"] is False
     assert captured["base_input_data"]["run_id"] == "batch2-test-run"
 
     call_report = report["funding_calls"][0]
@@ -164,6 +184,11 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
     saved_report = json.loads(report_path.read_text(encoding="utf-8"))
     assert saved_report["batch3_started"] is False
     assert saved_report["status"] == "ready_for_batch3"
+    handoff_copy = json.loads(
+        (call_root.parent.parent / "workflow" / "funding_contexts.json").read_text(encoding="utf-8")
+    )
+    assert handoff_copy["batch1_run_id"] == "batch1-test-run"
+    assert handoff_copy["funding_contexts"][0]["funding_call_id"] == context.funding_call_id
 
 
 def test_batch2_rejects_duplicate_call_ids(tmp_path):
@@ -187,4 +212,71 @@ def test_batch2_does_not_reuse_nonempty_run_directory(tmp_path):
             funding_contexts=[context],
             output_root=tmp_path,
             run_id="existing-run",
+        )
+
+
+def test_batch2_dry_run_plans_all_collectors_without_normalizing(tmp_path):
+    context = _context()
+    captured = {}
+
+    def fake_execute_batch_run(**kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "dry_run",
+            "tasks": [
+                {"agent_name": agent, "status": "planned", "outputs_count": 0}
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ],
+        }
+
+    with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
+        report = execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path / "dry-run",
+            run_id="batch2-dry-run",
+            dry_run=True,
+        )
+
+    assert report["status"] == "dry_run"
+    assert report["normalization_started"] is False
+    assert report["batch3_started"] is False
+    assert captured["dry_run"] is True
+    assert set(captured["agent_names"]) == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+    call_root = tmp_path / "dry-run" / "batch2-dry-run" / "calls" / context.funding_call_id
+    assert not (call_root / "normalized").exists()
+
+
+def test_batch1_funding_context_handoff_file_loads_without_reconstructing_batch1(tmp_path):
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff, load_funding_contexts
+
+    context = _context()
+    handoff = tmp_path / "funding_contexts.json"
+    handoff.write_text(
+        json.dumps(
+            {
+                "run_id": "batch1-fixture-run",
+                "funding_contexts": [context.to_dict()],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    loaded, batch1_run_id = load_funding_context_handoff(handoff)
+    assert batch1_run_id == "batch1-fixture-run"
+    assert load_funding_contexts(handoff)[0].funding_call_id == context.funding_call_id
+    assert len(loaded) == 1
+    assert loaded[0].funding_call_id == context.funding_call_id
+    assert loaded[0].research_priorities == context.research_priorities
+
+
+def test_batch2_rejects_context_that_does_not_pass_batch1_handoff_gates(tmp_path):
+    context = _context()
+    invalid = FundingCallContext.from_dict({**context.to_dict(), "status": "CLOSED_CALL"})
+
+    with pytest.raises(ValueError, match="not confirmed currently open"):
+        execute_batch2(
+            funding_contexts=[invalid],
+            output_root=tmp_path,
+            run_id="invalid-context-run",
         )
