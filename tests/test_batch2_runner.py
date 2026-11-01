@@ -378,7 +378,7 @@ def test_normalized_handoff_rejects_invalid_records_and_provenance():
                 "collected_at": "not-a-timestamp",
                 "problem_statement": "",
                 "context_summary": "",
-                "evidence_snippets": [],
+                "evidence_snippets": "",
                 "excerpt_windows": [],
                 "mission_relevance": {"passed": False},
             },
@@ -394,6 +394,7 @@ def test_normalized_handoff_rejects_invalid_records_and_provenance():
     assert any("unknown collection agent" in error for error in errors)
     assert any("invalid collected_at" in error for error in errors)
     assert any("no usable evidence text" in error for error in errors)
+    assert any("field 'evidence_snippets' must be a list" in error for error in errors)
     assert any("mission-relevance" in error for error in errors)
 
 
@@ -423,3 +424,28 @@ def test_normalized_handoff_accepts_valid_evidence_record():
         run_id="batch2-run",
         expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
     ) == []
+
+
+
+def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
+    context = _context()
+    tasks = [
+        {"agent_name": agent, "status": "success", "outputs_count": 1}
+        for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+    ]
+    tasks.append({"agent_name": "unexpected_agent", "status": "success", "outputs_count": 1})
+
+    with patch("core.batch2.execute_batch_run", return_value={"status": "completed", "tasks": tasks}):
+        report = execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path,
+            run_id="unexpected-agent-run",
+        )
+
+    assert report["status"] == "blocked_collection_health"
+    assert report["collector_health"]["healthy_agents"] == 11
+    assert report["collector_health"]["unexpected_agents"] == ["unexpected_agent"]
+    assert any(
+        blocker["code"] == "UNEXPECTED_COLLECTOR_TASKS"
+        for blocker in report["blockers"]
+    )
