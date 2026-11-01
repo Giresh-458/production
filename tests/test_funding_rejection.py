@@ -37,7 +37,7 @@ def run_pipeline_mocks():
                 "source_id": "source-1",
                 "content_hash": "content-1",
                 "title": "Controlled Batch-2 fixture evidence",
-                "agent_name": "literature",
+                "agent_name": run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS[0],
                 "research_area": "Unscoped",
                 "collected_at": "2026-11-01T10:00:00+00:00",
                 "problem_statement": "A source-grounded research limitation.",
