@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
-from core.batch2 import evaluate_collection_health, minimum_healthy_collectors
+from core.batch2 import evaluate_collection_health, minimum_healthy_collectors, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -692,12 +692,31 @@ def main() -> int:
         return 4
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
+    expected_downstream_agents = set(downstream_agents)
+    task_agent_names = {
+        str(task.get("agent_name") or "").strip()
+        for task in collection_tasks if isinstance(task, dict)
+    }
+    missing_collectors = sorted(expected_downstream_agents - task_agent_names)
+    unexpected_collectors = sorted(task_agent_names - expected_downstream_agents)
     min_required = minimum_healthy_collectors(len(downstream_agents))
-    is_healthy, healthy_count = evaluate_collection_health(collection_tasks, min_required)
+    is_healthy, healthy_count = evaluate_collection_health(
+        collection_tasks, min_required, expected_downstream_agents
+    )
 
-    collector_health = {"healthy_agents": healthy_count, "total_agents": len(downstream_agents), "required": min_required}
-    if not is_healthy:
-        print(f"❌ Shared collection quality gate failed: {healthy_count}/{len(downstream_agents)} unique collectors produced evidence.")
+    collector_health = {
+        "healthy_agents": healthy_count,
+        "total_agents": len(downstream_agents),
+        "required": min_required,
+        "missing_agents": missing_collectors,
+        "unexpected_agents": unexpected_collectors,
+    }
+    if not is_healthy or missing_collectors or unexpected_collectors:
+        print(
+            f"❌ Shared collection quality gate failed: {healthy_count}/{len(downstream_agents)} "
+            f"expected collectors produced evidence; missing={missing_collectors}; "
+            f"unexpected={unexpected_collectors}."
+        )
         return 4
     # ---------------------------------------------------------
 
@@ -849,18 +868,12 @@ def main() -> int:
         accepted_count = len(accepted_evidence_ids)
         rejected_count = len(rejected_evidence_ids)
         input_count = accepted_count + rejected_count
-        handoff_errors: list[str] = []
-        for record in records:
-            if record.get("run_id") != run_id:
-                handoff_errors.append(f"record {record.get('record_id')} has a mismatched run_id")
-            if record.get("funding_call_id") != context.funding_call_id:
-                handoff_errors.append(f"record {record.get('record_id')} has a mismatched funding_call_id")
-            if not str(record.get("source_url") or "").startswith(("http://", "https://")):
-                handoff_errors.append(f"record {record.get('record_id')} has no usable HTTP(S) source URL")
-            if record.get("normalization_status") != "NORMALIZED":
-                handoff_errors.append(
-                    f"record {record.get('record_id')} is marked {record.get('normalization_status')!r}"
-                )
+        handoff_errors = validate_normalized_handoff(
+            records,
+            funding_call_id=context.funding_call_id,
+            run_id=run_id,
+            expected_agents=expected_downstream_agents,
+        )
 
         normalization_audit = {
             "input_records": input_count,
