@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import run_pipeline
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 import argparse
 
 @pytest.fixture
@@ -18,7 +19,10 @@ def run_pipeline_mocks():
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
         
         mock_run_stage.return_value = {"outputs": [], "status": "success", "outputs_count": 1}
-        mock_execute_batch.return_value = {"tasks": [{"agent_name": f"dummy_{i}", "status": "success", "outputs_count": 1} for i in range(11)]}
+        mock_execute_batch.return_value = {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
         mock_mission_relevance.return_value = {"passed": True}
         
         def fake_save(roots, call_root, call_id, **kwargs):
@@ -28,8 +32,16 @@ def run_pipeline_mocks():
             record = {
                 "record_id": "1",
                 "evidence_id": "evidence-1",
+                "source_id": "source-1",
+                "content_hash": "content-1",
                 "title": "Controlled Batch-2 fixture evidence",
+                "agent_name": "literature",
                 "research_area": "Unscoped",
+                "collected_at": "2026-11-01T10:00:00+00:00",
+                "problem_statement": "A source-grounded research limitation.",
+                "context_summary": "A source-grounded research limitation.",
+                "evidence_snippets": ["A measurable source-grounded limitation."],
+                "excerpt_windows": [],
                 "run_id": kwargs.get("target_run_id"),
                 "funding_call_id": call_id,
                 "source_url": "https://example.org/evidence",
