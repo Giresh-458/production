@@ -45,12 +45,20 @@ def minimum_healthy_collectors(total_agents: int) -> int:
     return min(total_agents, max(3, total_agents // 2 + 1))
 
 
+def is_safe_path_component(value: Any) -> bool:
+    """Return whether a user/source-derived identifier is safe as one path component."""
+    rendered = str(value or "").strip()
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", rendered))
+
+
 def validate_batch1_context(context: FundingCallContext) -> list[str]:
     """Reject handoff data that does not satisfy the Batch-1 downstream contract."""
     if not isinstance(context, FundingCallContext):
         return ["input is not a FundingCallContext"]
 
     issues: list[str] = []
+    if not is_safe_path_component(context.funding_call_id):
+        issues.append("funding_call_id is not a safe path component")
     if str(context.status or "").strip().upper() != "OPEN_CALL":
         issues.append("funding call is not confirmed currently open")
     source_parts = urlparse(str(context.source_url or "").strip())
@@ -247,9 +255,9 @@ def execute_batch2(
         if not re.fullmatch(r"[A-Za-z0-9._-]+", call_id):
             raise ValueError(f"Unsafe funding_call_id for output directory: {call_id!r}")
 
-    resolved_run_id = run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", resolved_run_id):
-        raise ValueError(f"Unsafe run_id for output directory: {resolved_run_id!r}")
+    resolved_run_id = str(run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")).strip()
+    if not is_safe_path_component(resolved_run_id):
+        raise ValueError("run_id must be a safe path component containing only letters, numbers, dots, underscores, or hyphens")
 
     run_root = Path(output_root) / resolved_run_id
     # Atomic exclusive creation prevents two processes from sharing a run root,
