@@ -1,3 +1,4 @@
+import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -44,9 +45,38 @@ def create_base_mock_stage(proposal_mock):
 
 
 def mock_save(*args, **kwargs):
-    if "filter_func" in kwargs and kwargs["filter_func"]:
-        kwargs["filter_func"]({"evidence_id": "dummy", "title": "t", "research_area": "Unscoped", "source_url": "u", "funding_call_ids": ["test-123"]})
-    return [{"record_id": "r1"}]
+    call_root = args[1]
+    call_id = args[2]
+    run_id = kwargs.get("target_run_id")
+    norm_dir = call_root / "normalized"
+    norm_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "record_id": "r1",
+        "evidence_id": "dummy",
+        "title": "Controlled proposal-gate evidence",
+        "research_area": "Unscoped",
+        "source_url": "https://example.org/evidence",
+        "funding_call_ids": [call_id],
+        "funding_call_id": call_id,
+        "run_id": run_id,
+        "normalization_status": "NORMALIZED",
+    }
+    if kwargs.get("filter_func"):
+        kwargs["filter_func"](record)
+    (norm_dir / "records.json").write_text(json.dumps([record]), encoding="utf-8")
+    (norm_dir / "by_area.json").write_text(json.dumps({"Unscoped": [record]}), encoding="utf-8")
+    (norm_dir / "by_layer.json").write_text(json.dumps({"Literature": [record]}), encoding="utf-8")
+    (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
+    (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
+    (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+    (norm_dir / "evidence_ledger.db").touch()
+    return {
+        "records": norm_dir / "records.json",
+        "by_area": norm_dir / "by_area.json",
+        "by_layer": norm_dir / "by_layer.json",
+        "errors": norm_dir / "errors.json",
+        "skipped_artifacts": norm_dir / "skipped_artifacts.json",
+    }
 
 @pytest.fixture
 def mock_pipeline_deps():
@@ -58,9 +88,6 @@ def mock_pipeline_deps():
          patch("run_pipeline.get_all_open_funding_calls", return_value=([{"funding_call_id": "test-123", "title": "Test", "program_name": "Test", "status": "OPEN_CALL", "source_url": "http://test", "domain_relevance": [{"area": "DePIN", "score": 1.0}], "research_context": {"funding_call_id": "test-123", "domain": "DePIN", "technology_themes": [], "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": ["The official call identifies a source-supported research challenge."], "evidence_refs": ["http://test"], "inference_provenance": ["source_grounded_problem_extraction"], "confidence": "Medium", "research_intent": "research", "research_intent_evidence": ["The call explicitly supports research and technical validation."]}}], [])) as mock_get_open, \
          patch("builtins.print") as mock_print, \
          patch("pathlib.Path.rglob") as mock_rglob, \
-         patch("pathlib.Path.exists", return_value=True), \
-         patch("pathlib.Path.write_text"), \
-         patch("pathlib.Path.read_text", return_value='[{"record_id": "r1", "title": "t", "research_area": "Unscoped", "source_url": "u", "funding_call_ids": ["test-123"]}]'), \
          patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
 

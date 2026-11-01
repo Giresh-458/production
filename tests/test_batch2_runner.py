@@ -62,28 +62,30 @@ def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
     )
 
 
-def _artifact(run_id: str, call_id: str) -> str:
-    return f"""# Zero-knowledge verification throughput bottleneck
+def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
+    title = f"Zero-knowledge verification evidence from {agent_name}"
+    source_url = f"https://example.org/research/{agent_name}"
+    return f"""# {title}
 
 ## Shared Metadata
-- title: Zero-knowledge verification throughput bottleneck
-- source: https://example.org/research/zk-verification
+- title: {title}
+- source: {source_url}
 - layer: Literature
 - research_area: RWA
 - collected_at: 2026-11-01T10:00:00+00:00
-- agent_name: literature
+- agent_name: {agent_name}
 - run_id: {run_id}
 - funding_call_id: {call_id}
 - funding_call_ids: {call_id}
 - collection_mode: configured_scan
 
 ## Provenance
-- source_url: https://example.org/research/zk-verification
+- source_url: {source_url}
 - collected_at: 2026-11-01T10:00:00+00:00
 
 ## Evidence Bundle
 ### Page Title
-Zero-knowledge verification throughput bottleneck
+{title}
 ### Key Paragraphs
 - Zero knowledge verification latency increases under high transaction volume and limits settlement throughput.
 ### Evidence Snippets
@@ -119,12 +121,13 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
     def fake_execute_batch_run(**kwargs):
         captured.update(kwargs)
         run_root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        artifact_dir = run_root / "intermediate" / "literature"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "signal.md").write_text(
-            _artifact(kwargs["base_input_data"]["run_id"], context.funding_call_id),
-            encoding="utf-8",
-        )
+        for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
+            artifact_dir = run_root / "intermediate" / agent
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / f"{agent}-signal.md").write_text(
+                _artifact(kwargs["base_input_data"]["run_id"], context.funding_call_id, agent),
+                encoding="utf-8",
+            )
         return {
             "status": "completed",
             "tasks": [
@@ -164,11 +167,11 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
 
     call_report = report["funding_calls"][0]
     assert call_report["status"] == "ready_for_batch3"
-    assert call_report["normalized_records"] == 1
+    assert call_report["normalized_records"] == 11
 
     call_root = tmp_path / "batch2" / "batch2-test-run" / "calls" / context.funding_call_id
     records = json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8"))
-    assert len(records) == 1
+    assert len(records) == 11
     assert records[0]["funding_call_id"] == context.funding_call_id
     assert records[0]["run_id"] == "batch2-test-run"
     assert records[0]["normalization_status"] == "NORMALIZED"
@@ -178,6 +181,27 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
     assert target_call_id == context.funding_call_id
     assert roots[0].name == "intermediate"
     assert gate(records[0]) is True
+
+    # Batch-3's real tagging entry point must be able to reload and consume the
+    # normalized per-call records. Keep semantic scores deterministic so this
+    # integration test does not depend on Ollama or a transformer download.
+    from agents import tagging_agent
+
+    tag_output = call_root / "processed" / "tags"
+    with patch("agents.tagging_agent._semantic_tag_scores", return_value={}), patch(
+        "agents.tagging_agent._semantic_signal_scores", return_value={}
+    ):
+        tagging_response = tagging_agent.run_agent(
+            "configured_scan",
+            area="RWA",
+            input_data={
+                "outputs_root": str(call_root),
+                "output_dir": str(tag_output),
+            },
+        )
+    assert tagging_response["status"] == "success"
+    assert tagging_response["metadata"]["tagging_summary"]["records_tagged"] == 11
+    assert Path(tagging_response["metadata"]["tagging_summary"]["summary_markdown"]).is_file()
 
     report_path = Path(report["report_path"])
     assert report_path.is_file()

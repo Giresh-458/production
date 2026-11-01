@@ -918,7 +918,7 @@ def main() -> int:
             continue
 
         (call_root / "workflow" / "mission_relevance_gate.json").write_text(
-            json.dumps({**normalization_audit, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n",
+            json.dumps({**normalization_audit, "details": gate_details}, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")

@@ -394,7 +394,7 @@ def execute_batch2(
             "input_records": input_count,
             "accepted_records": len(accepted_ids),
             "rejected_records": len(rejected_ids),
-            "details": gate_details[:500],
+            "details": gate_details,
         }
         atomic_write_json(call_workflow / "mission_relevance_gate.json", gate_report)
 

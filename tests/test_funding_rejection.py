@@ -22,13 +22,35 @@ def run_pipeline_mocks():
         mock_mission_relevance.return_value = {"passed": True}
         
         def fake_save(roots, call_root, call_id, **kwargs):
-            if "filter_func" in kwargs:
-                kwargs["filter_func"]({"record_id": "1", "research_area": "Unscoped"})
             import json
             norm_dir = call_root / "normalized"
             norm_dir.mkdir(parents=True, exist_ok=True)
-            (norm_dir / "records.json").write_text(json.dumps([{"record_id": "1", "research_area": "Unscoped"}]), encoding="utf-8")
-            return {"records": norm_dir / "records.json"}
+            record = {
+                "record_id": "1",
+                "evidence_id": "evidence-1",
+                "title": "Controlled Batch-2 fixture evidence",
+                "research_area": "Unscoped",
+                "run_id": kwargs.get("target_run_id"),
+                "funding_call_id": call_id,
+                "source_url": "https://example.org/evidence",
+                "normalization_status": "NORMALIZED",
+            }
+            if kwargs.get("filter_func"):
+                kwargs["filter_func"](record)
+            (norm_dir / "records.json").write_text(json.dumps([record]), encoding="utf-8")
+            (norm_dir / "by_area.json").write_text(json.dumps({"Unscoped": [record]}), encoding="utf-8")
+            (norm_dir / "by_layer.json").write_text(json.dumps({"Literature": [record]}), encoding="utf-8")
+            (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
+            (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
+            (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+            (norm_dir / "evidence_ledger.db").touch()
+            return {
+                "records": norm_dir / "records.json",
+                "by_area": norm_dir / "by_area.json",
+                "by_layer": norm_dir / "by_layer.json",
+                "errors": norm_dir / "errors.json",
+                "skipped_artifacts": norm_dir / "skipped_artifacts.json",
+            }
             
         mock_save_normalized.side_effect = fake_save
         
