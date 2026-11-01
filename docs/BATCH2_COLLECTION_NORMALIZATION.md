@@ -44,7 +44,7 @@ The JSON object contains the Batch-1 run ID and a funding_contexts array. The st
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
 - Confirmed OPEN_CALL status.
-- Absolute HTTP(S) official source and application URLs.
+- At least one absolute HTTP(S) official source or application URL.
 - Substantive applicant eligibility evidence.
 - Explicit research intent.
 - Known research-context confidence.

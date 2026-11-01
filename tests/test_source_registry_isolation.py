@@ -183,11 +183,33 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
             kwargs["filter_func"]({"evidence_id": "e1", "title": "t", "research_area": "DePIN"})
         norm = call_root / "normalized"
         norm.mkdir(parents=True, exist_ok=True)
-        (norm / "records.json").write_text('[{"evidence_id": "e1", "record_id": "r1"}]', encoding="utf-8")
+        record = {
+            "evidence_id": "e1",
+            "record_id": "r1",
+            "run_id": kwargs.get("target_run_id"),
+            "funding_call_id": call_id,
+            "source_url": "https://example.com/evidence",
+            "normalization_status": "NORMALIZED",
+            "research_area": "DePIN",
+            "title": "Test evidence",
+        }
+        (norm / "records.json").write_text(json.dumps([record]), encoding="utf-8")
+        (norm / "by_area.json").write_text(json.dumps({"DePIN": [record]}), encoding="utf-8")
+        (norm / "by_layer.json").write_text(json.dumps({"Literature": [record]}), encoding="utf-8")
+        (norm / "input_manifest.json").write_text("{}", encoding="utf-8")
+        (norm / "errors.json").write_text("[]", encoding="utf-8")
+        (norm / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+        (norm / "evidence_ledger.db").touch()
         prop_dir = call_root / "proposals"
         prop_dir.mkdir(parents=True, exist_ok=True)
         (prop_dir / "proposal_1.md").write_text("# Proposal", encoding="utf-8")
-        return [{"record_id": "r1"}]
+        return {
+            "records": norm / "records.json",
+            "by_area": norm / "by_area.json",
+            "by_layer": norm / "by_layer.json",
+            "errors": norm / "errors.json",
+            "skipped_artifacts": norm / "skipped_artifacts.json",
+        }
 
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 

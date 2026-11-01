@@ -52,13 +52,38 @@ def run_pipeline_with_mocked_areas(
     mock_evaluate_health.return_value = (True, 11)
 
     def fake_save_normalized(roots, call_root, call_id, **kwargs):
-        if "filter_func" in kwargs:
-            for r in accepted_records:
-                kwargs["filter_func"](r)
+        run_id = kwargs.get("target_run_id")
+        normalized_records = []
+        for index, original in enumerate(accepted_records):
+            record = dict(original)
+            record.setdefault("evidence_id", f"adaptive-{index}")
+            record.setdefault("title", "Adaptive area test evidence")
+            record.update({
+                "run_id": run_id,
+                "funding_call_id": call_id,
+                "source_url": "https://example.com/adaptive-evidence",
+                "normalization_status": "NORMALIZED",
+            })
+            normalized_records.append(record)
+            if kwargs.get("filter_func"):
+                kwargs["filter_func"](record)
+
         norm_dir = call_root / "normalized"
         norm_dir.mkdir(parents=True, exist_ok=True)
-        (norm_dir / "records.json").write_text(json.dumps(accepted_records), encoding="utf-8")
-        return {"records": norm_dir / "records.json"}
+        (norm_dir / "records.json").write_text(json.dumps(normalized_records), encoding="utf-8")
+        (norm_dir / "by_area.json").write_text(json.dumps({}), encoding="utf-8")
+        (norm_dir / "by_layer.json").write_text(json.dumps({}), encoding="utf-8")
+        (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
+        (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
+        (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+        (norm_dir / "evidence_ledger.db").touch()
+        return {
+            "records": norm_dir / "records.json",
+            "by_area": norm_dir / "by_area.json",
+            "by_layer": norm_dir / "by_layer.json",
+            "errors": norm_dir / "errors.json",
+            "skipped_artifacts": norm_dir / "skipped_artifacts.json",
+        }
 
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}

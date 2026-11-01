@@ -619,7 +619,7 @@ def build_normalized_collection_records(
                     "shared metadata", "provenance", "evidence bundle",
                     "problem intelligence", "agent-specific body", "machine metadata",
                     "metadata", "problem", "problem statement", "problem preview",
-                    "focus area", "source details", "layer", "raw content",
+                    "focus area", "research area", "research gap", "source details", "layer", "raw content",
                 }
                 if not normalized_headings.intersection(recognized_artifact_sections):
                     skipped.append({

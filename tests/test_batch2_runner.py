@@ -280,3 +280,14 @@ def test_batch2_rejects_context_that_does_not_pass_batch1_handoff_gates(tmp_path
             output_root=tmp_path,
             run_id="invalid-context-run",
         )
+
+
+def test_batch2_accepts_either_official_source_or_application_url_from_batch1():
+    from core.batch2 import validate_batch1_context
+
+    context = _context()
+    source_only = FundingCallContext.from_dict({**context.to_dict(), "application_url": None})
+    application_only = FundingCallContext.from_dict({**context.to_dict(), "source_url": None})
+
+    assert validate_batch1_context(source_only) == []
+    assert validate_batch1_context(application_only) == []

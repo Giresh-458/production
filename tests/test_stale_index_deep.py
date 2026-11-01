@@ -89,6 +89,8 @@ def test_deep_index_repair(tmp_path):
         json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
         encoding="utf-8",
     )
+    (normalized / "errors.json").write_text("[]", encoding="utf-8")
+    (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
 
     # Mock so that we just check IF it was called. Also mock the mission gate so we guarantee good_record passes!
     with patch("core.mission_gate.relevance") as mock_gate, patch("core.normalization.save_normalized_collection_records") as mock_save:

@@ -88,6 +88,8 @@ def test_stale_index_survives_cache_hit(tmp_path):
         json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
         encoding="utf-8",
     )
+    (normalized / "errors.json").write_text("[]", encoding="utf-8")
+    (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
 
     with patch("core.mission_gate.relevance") as mock_gate, patch("core.normalization.save_normalized_collection_records") as mock_save:
         mock_gate.return_value = {"passed": True}

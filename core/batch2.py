@@ -47,10 +47,10 @@ def validate_batch1_context(context: FundingCallContext) -> list[str]:
         issues.append("funding call is not confirmed currently open")
     source_parts = urlparse(str(context.source_url or "").strip())
     application_parts = urlparse(str(context.application_url or "").strip())
-    if source_parts.scheme not in {"http", "https"} or not source_parts.netloc:
-        issues.append("funding call is missing a usable HTTP(S) official source URL")
-    if application_parts.scheme not in {"http", "https"} or not application_parts.netloc:
-        issues.append("funding call is missing a usable HTTP(S) application URL")
+    has_source_url = source_parts.scheme in {"http", "https"} and bool(source_parts.netloc)
+    has_application_url = application_parts.scheme in {"http", "https"} and bool(application_parts.netloc)
+    if not (has_source_url or has_application_url):
+        issues.append("funding call is missing a usable HTTP(S) source or application URL")
     if not has_substantive_eligibility_evidence(context.eligibility):
         issues.append("funding call is missing substantive applicant eligibility evidence")
 
@@ -411,6 +411,8 @@ def execute_batch2(
                 "normalized_paths": {
                     name: str(path.resolve()) for name, path in normalized_paths.items()
                 },
+                "input_manifest": str(required_normalized_outputs["input_manifest"].resolve()),
+                "evidence_ledger": str(required_normalized_outputs["evidence_ledger"].resolve()),
                 "mission_relevance_gate": gate_report,
                 "output_root": str(call_root.resolve()),
             }

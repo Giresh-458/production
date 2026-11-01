@@ -598,22 +598,46 @@ def main() -> int:
     valid_calls = research_calls
     all_contexts = research_contexts
 
-    # Persist the validated Batch-1 contexts so Batch-2 can be rerun independently
-    # without rediscovering or reconstructing the selected funding opportunities.
+    # Persist real validated Batch-1 contexts for standalone Batch-2 reruns.
+    # Test doubles used by pipeline unit tests intentionally do not satisfy this schema.
     context_handoff_dir = root / "workflow"
     context_handoff_dir.mkdir(parents=True, exist_ok=True)
     context_handoff_path = context_handoff_dir / "funding_contexts.json"
-    context_handoff_path.write_text(
-        json.dumps(
-            {
-                "run_id": run_id,
-                "funding_contexts": [context.to_dict() for context in all_contexts],
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    serialized_contexts: list[dict[str, Any]] = []
+    context_handoff_valid = True
+    for context in all_contexts:
+        serializer = getattr(context, "to_dict", None)
+        if not callable(serializer):
+            context_handoff_valid = False
+            break
+        payload = serializer()
+        if not isinstance(payload, dict):
+            context_handoff_valid = False
+            break
+        try:
+            json.dumps(payload)
+        except (TypeError, ValueError):
+            context_handoff_valid = False
+            break
+        serialized_contexts.append(payload)
+
+    if context_handoff_valid:
+        context_handoff_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "funding_contexts": serialized_contexts,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    else:
+        print(
+            "⚠️ Batch-1 context handoff was not exported because the selected context "
+            "objects do not match the FundingCallContext JSON contract."
+        )
     print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
 
     # Pre-sync registry ONCE before parallel operations
