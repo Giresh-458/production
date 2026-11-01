@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.file_lock import atomic_write_json
-from core.batch2 import evaluate_collection_health, minimum_healthy_collectors, validate_normalized_handoff
+from core.batch2 import evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -723,6 +723,10 @@ def main() -> int:
     all_reports = []
 
     for call_idx, (selected, context) in enumerate(zip(valid_calls, all_contexts), 1):
+        if not is_safe_path_component(context.funding_call_id):
+            print(f"❌ Funding call ID is not safe for an output-directory name: {context.funding_call_id!r}")
+            global_exit_code = max(global_exit_code, 4)
+            continue
         canonical_areas = select_collection_areas(selected, args.area)
         unknown_area = not canonical_areas or max((float(x.get("score", 0.0) or 0.0) for x in selected.get("domain_relevance", []) or []), default=0.0) < 0.10
 
