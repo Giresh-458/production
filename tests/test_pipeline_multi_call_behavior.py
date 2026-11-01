@@ -102,22 +102,56 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
 
         # We need to simulate the records.json existence since save_normalized isn't actually writing it
         def create_records_mock(*args, **kwargs):
-            # args[0] is call_root
-            call_root = args[0]
+            # save_normalized_collection_records(intermediate_roots, call_root, call_id, ...)
+            call_root = args[1]
+            call_id = args[2]
             records_path = call_root / "normalized" / "records.json"
             records_path.parent.mkdir(parents=True, exist_ok=True)
-            records_path.write_text('[{"record_id": 1, "title": "test"}]')
 
-            # also simulate proposal output
-            proposals_dir = call_root / "proposals"
-            proposals_dir.mkdir(parents=True, exist_ok=True)
-            (proposals_dir / "prop.md").write_text("test")
+            record = {
+                "record_id": f"record-{call_id}",
+                "evidence_id": f"evidence-{call_id}",
+                "source_id": f"source-{call_id}",
+                "content_hash": f"content-{call_id}",
+                "title": "Controlled shared-collection evidence",
+                "agent_name": "literature",
+                "run_id": kwargs["target_run_id"],
+                "funding_call_id": call_id,
+                "funding_call_ids": [call_id],
+                "source_url": "https://example.org/evidence",
+                "normalization_status": "NORMALIZED",
+                "collected_at": "2026-11-01T10:00:00+00:00",
+                "problem_statement": "A controlled source-grounded technical limitation.",
+                "context_summary": "A controlled source-grounded technical limitation.",
+                "evidence_snippets": ["A measurable technical limitation."],
+                "excerpt_windows": [],
+            }
+            if kwargs.get("filter_func"):
+                kwargs["filter_func"](record)
+            records_path.write_text(json.dumps([record]), encoding="utf-8")
 
-            # Simulate the "Call Bad" processing exception for coverage of failure mode during processing
-            if "Call Bad" in str(call_root):
+            # Simulate the normalization failure for one selected call while
+            # allowing the other two calls to continue through later stages.
+            selected_wrapper = json.loads(
+                (call_root / "workflow" / "selected_funding_call.json").read_text(encoding="utf-8")
+            )
+            selected_title = selected_wrapper.get("selected", {}).get("title")
+            if selected_title == "Call Bad":
                 raise ValueError("Simulated extraction error for Call Bad")
 
-            return True
+            (call_root / "normalized" / "by_area.json").write_text("{}", encoding="utf-8")
+            (call_root / "normalized" / "by_layer.json").write_text("{}", encoding="utf-8")
+            (call_root / "normalized" / "input_manifest.json").write_text("{}", encoding="utf-8")
+            (call_root / "normalized" / "errors.json").write_text("[]", encoding="utf-8")
+            (call_root / "normalized" / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+            (call_root / "normalized" / "evidence_ledger.db").touch()
+            return {
+                "records": records_path,
+                "by_area": call_root / "normalized" / "by_area.json",
+                "by_layer": call_root / "normalized" / "by_layer.json",
+                "errors": call_root / "normalized" / "errors.json",
+                "skipped_artifacts": call_root / "normalized" / "skipped_artifacts.json",
+            }
 
         mock_save_normalized.side_effect = create_records_mock
 
