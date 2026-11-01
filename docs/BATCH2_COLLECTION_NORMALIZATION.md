@@ -132,6 +132,8 @@ Every run receives a new output directory. The runner refuses to reuse any exist
 
 The workflow/funding_contexts.json copy preserves both the Batch-1 run ID and Batch-2 run ID, together with the validated contexts. batch2_report.json records collector health, per-call normalization status, skipped artifacts, normalization errors, and handoff validation errors.
 
+The standalone runner and full pipeline share the same normalized-record validator; a weaker duplicate handoff check must not be introduced in either path.
+
 A call is marked ready_for_batch3 only when:
 - The collection health gate passes.
 - Normalized records exist.
@@ -140,7 +142,7 @@ A call is marked ready_for_batch3 only when:
 - Every handoff record has the current Batch-2 run ID and selected funding-call ID, and belongs to one of the expected 11 collection agents.
 - Every record has a usable HTTP(S) source URL, NORMALIZED status, a recognized collector identity, stable record/evidence/source/content IDs, a parseable collection timestamp, non-empty evidence text, and a passed mission-relevance decision.
 
-A successful HTTP request alone is not evidence of successful collection. The live health gate retains the existing policy: at least 6 of the 11 collectors must produce usable artifacts. Each of the 11 agents must still pass its deterministic contract and regression tests.
+A successful HTTP request alone is not evidence of successful collection. Both the standalone runner and the full pipeline require all 11 expected collector tasks to be present and reject unexpected task names. The live evidence-health gate retains the existing policy: at least 6 of the 11 collectors must produce usable artifacts. Each of the 11 agents must still pass its deterministic contract and regression tests.
 
 ## Normalization, provenance, and isolation
 
