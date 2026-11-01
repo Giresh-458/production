@@ -696,21 +696,21 @@ def main() -> int:
     }
     missing_collectors = sorted(expected_downstream_agents - task_agent_names)
     unexpected_collectors = sorted(task_agent_names - expected_downstream_agents)
-    min_required = minimum_healthy_collectors(len(downstream_agents))
+    min_required = minimum_healthy_collectors(len(expected_downstream_agents))
     is_healthy, healthy_count = evaluate_collection_health(
         collection_tasks, min_required, expected_downstream_agents
     )
 
     collector_health = {
         "healthy_agents": healthy_count,
-        "total_agents": len(downstream_agents),
+        "total_agents": len(expected_downstream_agents),
         "required": min_required,
         "missing_agents": missing_collectors,
         "unexpected_agents": unexpected_collectors,
     }
     if not is_healthy or missing_collectors or unexpected_collectors:
         print(
-            f"❌ Shared collection quality gate failed: {healthy_count}/{len(downstream_agents)} "
+            f"❌ Shared collection quality gate failed: {healthy_count}/{len(expected_downstream_agents)} "
             f"expected collectors produced evidence; missing={missing_collectors}; "
             f"unexpected={unexpected_collectors}."
         )
