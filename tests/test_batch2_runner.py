@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import execute_batch2, evaluate_collection_health, _validate_normalized_handoff
+from core.batch2 import execute_batch2, evaluate_collection_health, validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
 from core.normalization import resolve_refresh_context
