@@ -50,6 +50,7 @@ def mock_save(*args, **kwargs):
     run_id = kwargs.get("target_run_id")
     norm_dir = call_root / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
+    (call_root / "proposals").mkdir(parents=True, exist_ok=True)
     record = {
         "record_id": "r1",
         "evidence_id": "dummy",
