@@ -132,7 +132,7 @@ def _read_json_list(path: Path) -> list[Any]:
     return value
 
 
-def _validate_normalized_handoff(
+def validate_normalized_handoff(
     records: list[Any],
     *,
     funding_call_id: str,
@@ -455,7 +455,7 @@ def execute_batch2(
                     f"required normalization output is missing: {output_name}"
                 )
 
-        handoff_errors = _validate_normalized_handoff(
+        handoff_errors = validate_normalized_handoff(
             records,
             funding_call_id=call_id,
             run_id=resolved_run_id,
