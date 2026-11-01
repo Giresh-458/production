@@ -19,10 +19,12 @@ def run_pipeline_mocks():
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
         
         mock_run_stage.return_value = {"outputs": [], "status": "success", "outputs_count": 1}
-        mock_execute_batch.return_value = {"tasks": [
-            {"agent_name": agent, "status": "success", "outputs_count": 1}
-            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
-        ]}
+        mock_execute_batch.side_effect = lambda **kwargs: {
+            "tasks": [
+                {"agent_name": agent, "status": "success", "outputs_count": 1}
+                for agent in kwargs.get("agent_names", DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ]
+        }
         mock_mission_relevance.return_value = {"passed": True}
         
         def fake_save(roots, call_root, call_id, **kwargs):
