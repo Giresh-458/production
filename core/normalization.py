@@ -869,7 +869,12 @@ def save_normalized_collection_records(
                 "evidence_excerpt": "\n".join(record["excerpt_windows"]),
                 "evidence_type": record["evidence_type"],
                 "research_area": record["research_area"],
-                "published_at": record["machine_metadata"].get("source_hints", {}).get("published_at"),
+                "published_at": (
+                    record.get("machine_metadata", {}).get("source_hints", {}).get("published_at")
+                    if isinstance(record.get("machine_metadata"), dict)
+                    and isinstance(record.get("machine_metadata", {}).get("source_hints"), dict)
+                    else None
+                ),
                 "retrieved_at": record["collected_at"],
                 "updated_at": None,
                 "content_hash": record["content_hash"],
