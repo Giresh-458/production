@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import run_pipeline
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 def create_base_mock_stage(proposal_mock):
     def fake_run_stage(agent, mode, area, payload, context=None):
@@ -54,9 +55,17 @@ def mock_save(*args, **kwargs):
     record = {
         "record_id": "r1",
         "evidence_id": "dummy",
+        "source_id": "source-1",
+        "content_hash": "content-1",
         "title": "Controlled proposal-gate evidence",
+        "agent_name": "literature",
         "research_area": "Unscoped",
         "source_url": "https://example.org/evidence",
+        "collected_at": "2026-11-01T10:00:00+00:00",
+        "problem_statement": "A controlled source-grounded research limitation.",
+        "context_summary": "A controlled source-grounded research limitation.",
+        "evidence_snippets": ["A measurable source-grounded limitation."],
+        "excerpt_windows": [],
         "funding_call_ids": [call_id],
         "funding_call_id": call_id,
         "run_id": run_id,
@@ -83,7 +92,7 @@ def mock_save(*args, **kwargs):
 def mock_pipeline_deps():
     with patch("run_pipeline.run_stage") as mock_run_stage, \
          patch("run_pipeline.execute_batch_run") as mock_exec_batch, \
-         patch("run_pipeline.evaluate_collection_health", return_value=(True, 3)) as mock_eval, \
+         patch("run_pipeline.evaluate_collection_health", return_value=(True, 11)) as mock_eval, \
          patch("run_pipeline.save_normalized_collection_records", side_effect=mock_save) as mock_save_patch, \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}) as mock_mission, \
          patch("run_pipeline.get_all_open_funding_calls", return_value=([{"funding_call_id": "test-123", "title": "Test", "program_name": "Test", "status": "OPEN_CALL", "source_url": "http://test", "domain_relevance": [{"area": "DePIN", "score": 1.0}], "research_context": {"funding_call_id": "test-123", "domain": "DePIN", "technology_themes": [], "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": ["The official call identifies a source-supported research challenge."], "evidence_refs": ["http://test"], "inference_provenance": ["source_grounded_problem_extraction"], "confidence": "Medium", "research_intent": "research", "research_intent_evidence": ["The call explicitly supports research and technical validation."]}}], [])) as mock_get_open, \
@@ -92,7 +101,12 @@ def mock_pipeline_deps():
          patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
 
-        mock_exec_batch.return_value = {"tasks": []}
+        mock_exec_batch.return_value = {
+            "tasks": [
+                {"agent_name": agent, "status": "success", "outputs_count": 1}
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ]
+        }
 
         yield {
             "run_stage": mock_run_stage,
