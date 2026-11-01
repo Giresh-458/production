@@ -219,6 +219,7 @@ jobs:
           )
           handoff_contexts = []
           handoff_context_issues = []
+          validated_contexts = []
           for record in selected:
               context = build__selected_call_context(record)
               issues = []
@@ -260,6 +261,20 @@ jobs:
                       "source_url": context.source_url,
                       "issues": list(dict.fromkeys(issues)),
                   })
+              else:
+                  validated_contexts.append(context)
+          if validated_contexts and not handoff_context_issues:
+              (output_dir / "funding_contexts.json").write_text(
+                  json.dumps(
+                      {
+                          "batch1_run_id": run_id,
+                          "funding_contexts": [context.to_dict() for context in validated_contexts],
+                      },
+                      indent=2,
+                      ensure_ascii=False,
+                  ),
+                  encoding="utf-8",
+              )
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(
               r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
@@ -802,6 +817,18 @@ jobs:
                   + json.dumps(summary["batch_acceptance"]["blockers"], ensure_ascii=False)
               )
           PY
+
+      - name: Run bounded live Batch 2 smoke from the validated Batch 1 handoff
+        if: success()
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          python scripts/pipeline_tools/run_batch2.py \
+            --funding-context-file outputs/ci_batch1_full_live/funding_contexts.json \
+            --profile smoke \
+            --execution-mode parallel \
+            --max-workers 6 \
+            --output-root outputs/ci_batch1_full_live/batch2_live_smoke
 
       - name: Upload full Batch 1 audit artifacts
         if: always()

@@ -79,7 +79,7 @@ Focused Batch-2, agent-contract, and normalization checks:
 
     python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_agent_normalization_refresh.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
 
-These tests use controlled fixtures and mocks where appropriate. They do not prove that every live external source is reachable today; live source availability must be assessed from the actual collection report.
+These tests use controlled fixtures and mocks where appropriate. The PR's RIF funding and collection quality-gates workflow also runs a bounded live Batch-1-to-Batch-2 smoke when Batch-1 produces validated funding contexts. That live smoke is non-blocking for external-source variability; inspect the batch2_report.json and source artifacts in the batch1-full-live-audit workflow artifact for the actual result.
 
 ## Run Batch-2 independently
 
