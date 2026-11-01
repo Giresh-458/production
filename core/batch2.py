@@ -183,8 +183,16 @@ def _validate_normalized_handoff(
             record.get("problem_statement"),
             record.get("context_summary"),
         ]
-        evidence_values.extend(record.get("evidence_snippets") or [])
-        evidence_values.extend(record.get("excerpt_windows") or [])
+        for field in ("evidence_snippets", "excerpt_windows"):
+            values = record.get(field)
+            if values is None:
+                continue
+            if isinstance(values, list):
+                evidence_values.extend(values)
+            else:
+                errors.append(f"{label} ({record.get('record_id')}) field {field!r} must be a list")
+                if isinstance(values, str):
+                    evidence_values.append(values)
         if not any(str(value or "").strip() for value in evidence_values):
             errors.append(f"{label} ({record.get('record_id')}) contains no usable evidence text")
 
