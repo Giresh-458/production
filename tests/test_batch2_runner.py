@@ -361,7 +361,7 @@ def test_collection_health_ignores_unexpected_agent_names():
 
 
 def test_normalized_handoff_rejects_invalid_records_and_provenance():
-    errors = _validate_normalized_handoff(
+    errors = validate_normalized_handoff(
         [
             "not-an-object",
             {
@@ -418,7 +418,7 @@ def test_normalized_handoff_accepts_valid_evidence_record():
         "excerpt_windows": [],
         "mission_relevance": {"passed": True},
     }
-    assert _validate_normalized_handoff(
+    assert validate_normalized_handoff(
         [record],
         funding_call_id="CALL-BATCH2-001",
         run_id="batch2-run",
