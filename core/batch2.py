@@ -357,7 +357,7 @@ def execute_batch2(
         "funding_calls": [],
     }
 
-    if missing_agents or not healthy:
+    if missing_agents or unexpected_agents or not healthy:
         report["status"] = "blocked_collection_health"
         report["blockers"] = []
         if missing_agents:
