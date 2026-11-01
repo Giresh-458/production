@@ -98,7 +98,7 @@ Available profiles:
 
 Use --execution-mode sequential to troubleshoot one collector at a time. Use --scheduled-refresh only when intentionally honoring configured source refresh intervals instead of forcing a live fetch. Use --output-root to change the output location and --run-id to choose an explicit unique run ID.
 
-Every run receives a new output directory. The runner refuses to reuse a non-empty run directory so stale artifacts cannot silently mix with the current execution.
+Every run receives a new output directory. The runner refuses to reuse any existing run directory, including an empty directory. Exclusive directory creation prevents concurrent runs from sharing the same run ID.
 
 ### Exit codes
 
@@ -137,8 +137,8 @@ A call is marked ready_for_batch3 only when:
 - Normalized records exist.
 - Required normalized outputs and the evidence ledger exist.
 - No normalization errors were reported.
-- Every handoff record has the current Batch-2 run ID and selected funding-call ID.
-- Every record has a usable HTTP(S) source URL and NORMALIZED status.
+- Every handoff record has the current Batch-2 run ID and selected funding-call ID, and belongs to one of the expected 11 collection agents.
+- Every record has a usable HTTP(S) source URL, NORMALIZED status, a recognized collector identity, stable record/evidence/source/content IDs, a parseable collection timestamp, non-empty evidence text, and a passed mission-relevance decision.
 
 A successful HTTP request alone is not evidence of successful collection. The live health gate retains the existing policy: at least 6 of the 11 collectors must produce usable artifacts. Each of the 11 agents must still pass its deterministic contract and regression tests.
 
