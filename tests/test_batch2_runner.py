@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import execute_batch2, evaluate_collection_health, validate_normalized_handoff
+from core.batch2 import execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
 from core.normalization import resolve_refresh_context
@@ -449,3 +449,32 @@ def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
         blocker["code"] == "UNEXPECTED_COLLECTOR_TASKS"
         for blocker in report["blockers"]
     )
+
+
+
+def test_path_component_validation_rejects_traversal_and_accepts_generated_ids():
+    assert is_safe_path_component("20261101T183000Z")
+    assert is_safe_path_component("CALL-AB12_cd.3")
+    assert not is_safe_path_component("../outside")
+    assert not is_safe_path_component("folder/name")
+    assert not is_safe_path_component(r"..\\outside")
+    assert not is_safe_path_component("C:\\temp\\run")
+
+
+def test_batch2_rejects_path_traversal_run_id(tmp_path):
+    context = _context()
+    with pytest.raises(ValueError, match="run_id must be a safe path component"):
+        execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path,
+            run_id="../outside",
+        )
+    assert not (tmp_path.parent / "outside").exists()
+
+
+def test_batch1_context_rejects_unsafe_funding_call_id():
+    context = _context()
+    context.funding_call_id = "../outside"
+    context.research_context.funding_call_id = "../outside"
+    issues = validate_batch1_context(context)
+    assert "funding_call_id is not a safe path component" in issues
