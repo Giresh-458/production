@@ -23,12 +23,12 @@ def create_base_mock_stage(proposal_mock):
                         "funding_priorities": [],
                         "target_outcomes": [],
                         "investigation_questions": [],
-                        "inferred_challenges": [],
-                        "evidence_refs": [],
-                        "inference_provenance": "mock",
-                        "confidence": 1.0,
+                        "inferred_challenges": ["The official call identifies a source-supported research challenge."],
+                        "evidence_refs": ["http://test"],
+                        "inference_provenance": ["source_grounded_problem_extraction"],
+                        "confidence": "Medium",
                         "research_intent": "research",
-                        "research_intent_evidence": []
+                        "research_intent_evidence": ["The call explicitly supports research and technical validation."]
                     }
                 }],
                 "errors": []
@@ -55,7 +55,7 @@ def mock_pipeline_deps():
          patch("run_pipeline.evaluate_collection_health", return_value=(True, 3)) as mock_eval, \
          patch("run_pipeline.save_normalized_collection_records", side_effect=mock_save) as mock_save_patch, \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}) as mock_mission, \
-         patch("run_pipeline.get_all_open_funding_calls", return_value=([{"funding_call_id": "test-123", "title": "Test", "program_name": "Test", "status": "OPEN_CALL", "source_url": "http://test", "domain_relevance": [{"area": "DePIN", "score": 1.0}], "research_context": {"funding_call_id": "test-123", "domain": "DePIN", "technology_themes": [], "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": [], "evidence_refs": [], "inference_provenance": "mock", "confidence": 1.0, "research_intent": "research", "research_intent_evidence": []}}], [])) as mock_get_open, \
+         patch("run_pipeline.get_all_open_funding_calls", return_value=([{"funding_call_id": "test-123", "title": "Test", "program_name": "Test", "status": "OPEN_CALL", "source_url": "http://test", "domain_relevance": [{"area": "DePIN", "score": 1.0}], "research_context": {"funding_call_id": "test-123", "domain": "DePIN", "technology_themes": [], "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": ["The official call identifies a source-supported research challenge."], "evidence_refs": ["http://test"], "inference_provenance": ["source_grounded_problem_extraction"], "confidence": "Medium", "research_intent": "research", "research_intent_evidence": ["The call explicitly supports research and technical validation."]}}], [])) as mock_get_open, \
          patch("builtins.print") as mock_print, \
          patch("pathlib.Path.rglob") as mock_rglob, \
          patch("pathlib.Path.exists", return_value=True), \

@@ -79,9 +79,14 @@ We look forward to your participation and to supporting the translation of promi
     assert len(questions) > 3
     assert any("What technical barriers" in q for q in questions)
     
-    # Check provenance
-    assert "INFERENCE" in rc["inference_provenance"]
-    
+    # No concrete problem statement appears in this programme overview.
+    # Exploratory questions may be generated, but an inferred challenge must not
+    # be fabricated without a source-grounded problem passage.
+    assert rc["inferred_challenges"] == []
+    assert rc["evidence_refs"] == []
+    assert rc["inference_provenance"] == []
+    assert rc["confidence"] == "Unknown"
+
     # Ensure problem_intelligence is NOT present
     assert "problem_intelligence" not in output
 

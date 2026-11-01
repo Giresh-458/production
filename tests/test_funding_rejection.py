@@ -157,6 +157,54 @@ def test_open_call_missing_intent_rejected(run_pipeline_mocks, tmp_path, monkeyp
     assert report["status"] == "no_research_opportunity"
     assert report["rejected_non_research"][0]["reason"] == "unrecognized_intent"
 
+def test_open_call_with_unverified_research_context_is_not_handed_downstream(run_pipeline_mocks, tmp_path, monkeypatch):
+    def mock_run_stage_func(agent, *args, **kwargs):
+        if agent == "funding":
+            return {"outputs": [{
+                "call_id": "call_context_missing",
+                "title": "Test Title",
+                "source_url": "http://test",
+                "eligibility": "Eligible applicants must be registered organizations.",
+                "application_url": "http://test/apply",
+                "deadline": "2030-01-01",
+                "status": "OPEN_CALL",
+                "domain_relevance": [{"domain": "DePIN", "score": 0.75, "raw_score": 3.0, "matched_terms": ["depin"]}],
+                "source_research_domains": ["DePIN"],
+            }]}
+        return {"status": "success", "outputs_count": 1, "outputs": []}
+    run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
+
+    mock_ctx = MagicMock()
+    mock_ctx.research_context.research_intent = "research"
+    mock_ctx.research_context.research_intent_evidence = "Research funding is mentioned."
+    mock_ctx.research_context.confidence = "Unknown"
+    mock_ctx.research_context.inferred_challenges = []
+    mock_ctx.research_context.evidence_refs = []
+    mock_ctx.research_context.inference_provenance = []
+    mock_ctx.funding_call_id = "call_context_missing"
+    run_pipeline_mocks["build_ctx"].return_value = mock_ctx
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument("--scheduled-refresh", action="store_true")
+    parser.add_argument("--input-file", default=None)
+    parser.add_argument("--output-root", default=str(tmp_path))
+    parser.add_argument("--area", default=None)
+    parser.add_argument("--funding-sources", default="dummy")
+    parser.add_argument("--max-open-calls", type=int, default=None)
+    monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
+
+    exit_code = run_pipeline.main()
+
+    assert exit_code == 3
+    run_pipeline_mocks["execute_batch"].assert_not_called()
+    workflow_dir = next(tmp_path.glob("*/workflow"))
+    report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "no_research_opportunity"
+    assert report["rejected_unverified_research_context"][0]["reason"] == "research_context_unverified"
+    assert "research-context confidence is unknown" in report["rejected_unverified_research_context"][0]["reasons"]
+
+
 def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
 
     def mock_run_stage_func(agent, *args, **kwargs):
@@ -168,6 +216,10 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
     mock_ctx = MagicMock()
     mock_ctx.research_context.research_intent = "research"
     mock_ctx.research_context.research_intent_evidence = "Basic research"
+    mock_ctx.research_context.confidence = "Medium"
+    mock_ctx.research_context.inferred_challenges = ["The call identifies a source-supported research gap."]
+    mock_ctx.research_context.evidence_refs = ["http://test"]
+    mock_ctx.research_context.inference_provenance = ["source_grounded_problem_extraction"]
     mock_ctx.funding_call_id = "call3"
     run_pipeline_mocks["build_ctx"].return_value = mock_ctx
     parser = argparse.ArgumentParser()
@@ -196,6 +248,10 @@ def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkey
     good_ctx = MagicMock()
     good_ctx.research_context.research_intent = "research"
     good_ctx.research_context.research_intent_evidence = "Research"
+    good_ctx.research_context.confidence = "Medium"
+    good_ctx.research_context.inferred_challenges = ["The call identifies a source-supported research gap."]
+    good_ctx.research_context.evidence_refs = ["http://test"]
+    good_ctx.research_context.inference_provenance = ["source_grounded_problem_extraction"]
     good_ctx.funding_call_id = "call_good"
     bad_ctx = MagicMock()
     bad_ctx.research_context.research_intent = "non_research"

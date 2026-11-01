@@ -40,6 +40,7 @@ from core.source_registry import apply_refresh_policy
 from core.structured_sources import collect_structured_source
 from core.web_collection import collect_source
 from core.http_client import canonicalize_url
+from core.crawl4ai_web import _is_supporting_funding_document
 DEFAULT_OUTPUT_DIR = Path("outputs/funding")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "funding_memory.db"
 DEFAULT_SOURCES_PATH = Path("sources/funding_sources.yaml")
@@ -104,16 +105,35 @@ GENERIC_PAGE_TITLES = {
     "request for proposals", "requests for proposals", "rpf", "rfp", "funding",
     "funding opportunities", "grants", "programs", "our programs", "topic",
     "topics", "calls for proposals", "program directory", "grant directory",
-    "grants and funding", "development grants", "this listing", "yourself",
+    "grants and funding", "development grants", "this listing", "yourself", "the",
+    "simpler.grants.gov", "grants.gov",
+    "program contacts", "active funding opportunity", "archived funding opportunity",
+    "how we make funding decisions", "eligibility and funding information",
+    "open call", "call documents", "programme theme", "program theme",
+    "grant details", "funding allocation", "funding and prizes", "details",
+    "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
 }
 
 def _is_generic_funding_title(value: str | None) -> bool:
     """Recognize generic browser titles even when the site appends its brand."""
     normalized = re.sub(r"\s+", " ", str(value or "").casefold()).strip()
+    # Airtable-backed source directories can expose a generic table title or
+    # record-context label as if it were an individual call. Keep the table
+    # crawlable for discovery, but never emit these labels as call identities.
+    if normalized in {
+        "rfp context",
+        "airtable - solana foundation active rfps",
+        "solana foundation active rfps",
+        "airtable - solana foundation public rfp database",
+        "solana foundation public rfp database",
+    }:
+        return True
     # Check browser-generated pagination labels before stripping the suffix
     # after a pipe; otherwise "Documents | Page 10" becomes "documents" and
     # escapes this guard.
     if re.fullmatch(r"documents\s*\|\s*page\s*\d+", normalized):
+        return True
+    if re.fullmatch(r"(?:technologies|solutions)\s+to\s+be\s+improved\s+for\s+projects", normalized):
         return True
     normalized = re.split(r"\s+[|·—–]\s+|\s+-\s+", normalized, maxsplit=1)[0].strip(" .:-")
     return normalized in GENERIC_PAGE_TITLES or normalized in {"getting started", "funding at nsf"}
@@ -193,6 +213,132 @@ def _normalize_collection_coverage_status(result: Any) -> Any:
         result.discovery_exhausted = False
         result.pagination_complete = False
     return result
+
+
+def _update_source_verification_flags(result: Any) -> Any:
+    """Set source-level verification flags only when the corresponding checks ran.
+
+    Evidence verification means every emitted record has a source URL, source
+    content, and at least one extracted source-grounded evidence field. Currentness
+    verification additionally requires complete source acquisition and explicit
+    status/date evidence for every emitted record. A confirmed, fully exhausted
+    empty-state page can verify that no active opportunities were found.
+    """
+    opportunities = list(getattr(result, "opportunities", None) or [])
+    errors = list(getattr(result, "errors", None) or [])
+    gaps = list(getattr(result, "coverage_gaps", None) or [])
+    has_acquired_evidence = any(
+        int(getattr(result, field, 0) or 0) > 0
+        for field in ("pages_fetched", "detail_pages_fetched", "documents_fetched", "api_pages_fetched", "records_discovered")
+    )
+    complete = (
+        has_acquired_evidence
+        and str(getattr(result, "final_status", "") or "").upper()
+        in {"VERIFIED", "NO_ACTIVE_OPPORTUNITIES"}
+        and bool(getattr(result, "discovery_exhausted", False))
+        and not bool(getattr(result, "truncated", False))
+        and not gaps
+        and int(getattr(result, "relevant_urls_skipped", 0) or 0) == 0
+        and int(getattr(result, "pages_failed", 0) or 0) == 0
+        and int(getattr(result, "detail_pages_failed", 0) or 0) == 0
+        and int(getattr(result, "documents_failed", 0) or 0) == 0
+        and int(getattr(result, "records_failed", 0) or 0) == 0
+        and not errors
+        and (
+            not bool(getattr(result, "pagination_detected", False))
+            or bool(getattr(result, "pagination_complete", False))
+        )
+    )
+
+    if not opportunities:
+        confirmed_empty = (
+            complete
+            and bool(getattr(result, "no_active_opportunities_confirmed", False))
+            and str(getattr(result, "final_status", "") or "").upper() == "NO_ACTIVE_OPPORTUNITIES"
+        )
+        result.evidence_verified = confirmed_empty
+        result.currentness_verified = confirmed_empty
+        return result
+
+    qualified_opportunities = []
+    for item in opportunities:
+        # Only complete document+analysis pairs can contribute source-level
+        # opportunity verification. Supporting files and generic labels are not calls.
+        if not isinstance(item, (tuple, list)) or len(item) < 2:
+            continue
+        document, analysis = item[0], item[1]
+        title = getattr(analysis, "program_name", None) or getattr(document, "title", None)
+        source_url = str(getattr(document, "source", "") or getattr(analysis, "source_url", "") or "")
+        if _is_generic_funding_title(str(title or "")) or _is_supporting_funding_document(source_url, str(title or "")):
+            continue
+        qualified_opportunities.append(item)
+
+    # A crawl containing only generic navigation pages is not evidence that a
+    # funding source is verified or empty. Require either a real call record or
+    # the explicit empty-state path handled above.
+    if not qualified_opportunities:
+        result.evidence_verified = False
+        result.currentness_verified = False
+        return result
+
+    # Current source results must exclude non-opportunity attachments (for example
+    # call manuals titled "the") from per-opportunity verification. Retain the
+    # attachment in acquisition telemetry and call evidence, but verify the real
+    # parent call, not the supporting PDF as if it were a separate call.
+    qualified_opportunities = [
+        item for item in qualified_opportunities
+        if not (
+            isinstance(item, (tuple, list))
+            and len(item) >= 2
+            and _is_generic_funding_title(str(
+                getattr(item[1], "program_name", None)
+                or getattr(item[0], "title", None)
+                or ""
+            ))
+        )
+    ]
+    if not qualified_opportunities:
+        result.evidence_verified = False
+        result.currentness_verified = False
+        return result
+
+    record_evidence_verified = True
+    record_currentness_verified = True
+    for item in qualified_opportunities:
+        if not isinstance(item, (tuple, list)) or len(item) < 2:
+            record_evidence_verified = False
+            record_currentness_verified = False
+            continue
+        document, analysis = item[0], item[1]
+        source_url = str(getattr(document, "source", "") or getattr(analysis, "source_url", "") or "")
+        source_content = str(getattr(document, "content", "") or "").strip()
+        evidence = getattr(analysis, "evidence", None)
+        if not isinstance(evidence, dict):
+            evidence = {}
+        has_field_evidence = any(
+            isinstance(value, str) and value.strip()
+            for value in evidence.values()
+        )
+        if not (source_url.startswith(("https://", "http://")) and source_content and has_field_evidence):
+            record_evidence_verified = False
+
+        status = str(getattr(analysis, "status", "") or "").upper()
+        # The classifier's enum alone is not independent currentness evidence.
+        # Require an extracted source field that states status or a date.
+        status_evidence = evidence.get("status")
+        date_evidence = evidence.get("opening_date") or evidence.get("deadline")
+        if status not in {"OPEN_CALL", "UPCOMING_CALL", "CLOSED_CALL", "FUNDED_PROJECT"}:
+            record_currentness_verified = False
+        if not (isinstance(status_evidence, str) and status_evidence.strip()) and not (
+            isinstance(date_evidence, str) and date_evidence.strip()
+        ):
+            record_currentness_verified = False
+
+    result.evidence_verified = record_evidence_verified and int(getattr(result, "records_failed", 0) or 0) == 0
+    result.currentness_verified = bool(complete and result.evidence_verified and record_currentness_verified)
+    return result
+
+
 RECURSIVE_DIRECT_PAGE_CONFIG = RecursiveCollectionConfig(
     # Funding/RFP pages often link from a landing page to the actual call,
     # eligibility, FAQ and application portal. Give the crawler enough budget
@@ -983,7 +1129,16 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     normalized_explicit = None
     if explicit_status:
         normalized_explicit = str(explicit_status).strip().upper()
-        aliases = {"FUNDED": "FUNDED_PROJECT", "OPEN": "OPEN_CALL", "CLOSED": "CLOSED_CALL", "UPCOMING": "UPCOMING_CALL"}
+        aliases = {
+            "FUNDED": "FUNDED_PROJECT",
+            "OPEN": "OPEN_CALL",
+            "ACTIVE": "OPEN_CALL",
+            "ACCEPTING APPLICATIONS": "OPEN_CALL",
+            "ACCEPTING PROPOSALS": "OPEN_CALL",
+            "CLOSED": "CLOSED_CALL",
+            "PAUSED": "CLOSED_CALL",
+            "UPCOMING": "UPCOMING_CALL",
+        }
         normalized_explicit = aliases.get(normalized_explicit, normalized_explicit)
         if normalized_explicit not in {
             "FUNDED_PROJECT", "CLOSED_CALL", "UPCOMING_CALL", "OPEN_CALL",
@@ -1026,6 +1181,13 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         lowered,
         flags=re.IGNORECASE,
     ))
+    hard_closed = hard_closed or bool(re.search(
+        r"\bapplications?\s+(?:(?:are|have been|remain|were)\s+)?closed\b|"
+        r"\bapplication period (?:is )?closed\b|"
+        r"\b(?:the )?program(?:me)? is closed for applications\b",
+        lowered,
+        flags=re.IGNORECASE,
+    ))
     if hard_closed or normalized_explicit == "CLOSED_CALL":
         return "CLOSED_CALL"
 
@@ -1041,7 +1203,26 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     # status text and must not become an actionable call by itself.
     if normalized_explicit == "OPEN_CALL":
         if _is_generic_funding_title(title):
-            return "UNKNOWN"
+            # Generic navigation titles cannot establish a call on their own,
+            # but explicit rolling-application language plus a contextual CTA
+            # is concrete status evidence even when the page title is generic.
+            rolling_acceptance_evidence = bool(re.search(
+                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+                r"(?:grant )?fellows are accepted on a rolling basis|"
+                r"proposals are accepted on a rolling basis|"
+                r"applying is as simple as creating a github issue|"
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
+                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
+                lowered,
+                flags=re.IGNORECASE,
+            ))
+            rolling_review_with_cta = bool(re.search(
+                r"\bapplications? (?:are )?reviewed on a rolling basis\b",
+                lowered,
+                flags=re.IGNORECASE,
+            )) and bool(_extract_application_url(content))
+            if not (rolling_acceptance_evidence or rolling_review_with_cta):
+                return "UNKNOWN"
         return "OPEN_CALL"
 
     # Individual Superteam listings expose a structured badge such as
@@ -1078,15 +1259,46 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     rolling_acceptance = bool(re.search(
         r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
         r"(?:grant )?fellows are accepted on a rolling basis|"
-        r"proposals are accepted on a rolling basis)\b",
+        r"proposals are accepted on a rolling basis|"
+                r"applying is as simple as creating a github issue|"
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
+                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
         lowered,
         flags=re.IGNORECASE,
     ))
-    rolling_review_with_application = bool(re.search(
+    rolling_review_phrase = bool(re.search(
         r"\bapplications? (?:are )?reviewed on a rolling basis\b",
         lowered,
         flags=re.IGNORECASE,
-    )) and bool(_extract_application_url(content))
+    ))
+    rolling_review_has_contextual_link = bool(_extract_application_url(content))
+    if rolling_review_phrase and not rolling_review_has_contextual_link:
+        # Preserve an explicit application CTA such as "fill out the application
+        # [here](...)" even if a stricter endpoint classifier cannot yet resolve
+        # the target. This can support status classification, but does not populate
+        # application_url; endpoint verification remains a separate quality gate.
+        for link_match in re.finditer(r"\[([^\]]{1,160})\]\((https?://[^)\s]+)\)", content or "", re.IGNORECASE):
+            label = link_match.group(1).strip().casefold()
+            candidate = link_match.group(2).rstrip(".,")
+            before = (content or "")[max(0, link_match.start() - 180):link_match.start()].casefold()
+            path = urlparse(candidate).path.casefold()
+            sample_link = bool(re.search(
+                r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+                label + " " + path,
+            ))
+            if (
+                label in {"here", "this form", "the form", "application form", "application portal", "apply", "apply here"}
+                and re.search(r"\b(?:application|apply|submit|submission|proposal|form)\b", before)
+                and not sample_link
+            ):
+                # Status evidence and endpoint quality are different gates:
+                # a contextual CTA supports rolling acceptance even when the
+                # endpoint host cannot be independently trusted/resolved.
+                # The application URL extractor/selector still validates the
+                # endpoint separately and must not inherit this status shortcut.
+                rolling_review_has_contextual_link = True
+                break
+    rolling_review_with_application = rolling_review_phrase and rolling_review_has_contextual_link
     open_grants_applications_welcome = bool(re.search(
         r"\bopen grants? applications?[^.!?]{0,160}\b(?:are\s+)?welcome\b",
         lowered,
@@ -1094,7 +1306,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal")
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax", "protocol rewards", "horizon", "incubation program")
     )
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
@@ -1147,11 +1359,28 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
     text = cleaned_text(re.sub(r"[*_`]", "", str(content or "")))
     month = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
     date_token = rf"(?:{month}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,)?\s+20\d{{2}}|\d{{1,2}}(?:st|nd|rd|th)?\s+{month}\s+20\d{{2}}|20\d{{2}}[-/]\d{{1,2}}[-/]\d{{1,2}}|\d{{1,2}}[-/]\d{{1,2}}[-/]20\d{{2}})"
+    # Grants.gov's overall opportunity closing/archive date is not necessarily
+    # the next applicant due date when the page links to a formal full-announcement
+    # attachment (common for NIH SBIR/STTR recurring schedules). Avoid promoting
+    # that metadata date into a false application deadline; the linked announcement
+    # is collected separately and supplies the actual schedule.
+    has_official_announcement_attachment = bool(re.search(
+        r"/attachments/[^)\s\]]*(?:full[-_ ]announcement|notice[-_ ]of[-_ ]funding[-_ ]opportunity|nofo)",
+        text,
+        flags=re.IGNORECASE,
+    ))
+    if has_official_announcement_attachment:
+        text = re.sub(
+            rf"\bclosing\s*[:\-]\s*[*_]*{date_token}",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
     patterns = {
         # Do not treat the word "Open" in a title like "Open Grant Proposal"
         # as a date cue. "Opens:", "opening date", "open date", and
         # "applications open" remain valid date cues.
-        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bstart(?:s|ing)?\b|\blaunch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
+        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bcall\s+launch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
         "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date(?:\s+to\s+apply)?\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bapply\s+by\b|\bsubmit\s+by\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_]*({date_token})",
     }
 
@@ -1221,6 +1450,17 @@ def detect_research_intent(text: str, *, focus_area: str = "General", themes: li
         r"\b(?:grant|funding|support|award)\b.*\b(?:research|r&d|scientific|investigat|study)\b",
         r"\b(?:research project|scientific research|research study|research proposal|principal investigator|research objectives|research questions)\b",
         r"\b(?:hypothesis|methodology|experimental evaluation)\b",
+        # Some official research calls state the scientific need in the scope
+        # and expected outcomes rather than saying "research grant" verbatim.
+        # Require domain-specific scientific artefacts; generic mentions of
+        # research in boilerplate or eligibility text are not enough.
+        r"\b(?:climate projections?|climate science|scientific data|research infrastructure)\b",
+        r"\b(?:research|scientific) community\b.{0,160}\b(?:data|science|climate|observations?|projections?|infrastructure)\b",
+        r"\b(?:research and innovation action|research and innovation actions)\b",
+        # Horizon Europe calls may state research intent through application of
+        # research outputs to pilots rather than call themselves research grants.
+        # This is scoped evidence, unlike a footer that merely links to a report.
+        r"\bapplied research results\b",
     )
     negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't)\s+(?:offer|request|provide|require)\s+(?:funding|research|grant|deliverables?)\b"
     evidence: list[str] = []
@@ -1244,7 +1484,9 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "research_intent_evidence": list(research_intent_evidence or []),
         }
     themes_str = ", ".join(themes) if themes else "relevant technologies"
-    mission = f"Investigate barriers affecting the transition of {themes_str} from research/proof-of-concept toward validation, deployment, adoption and commercialization."
+    # Research intent alone does not establish a source-grounded research problem.
+    # Keep exploratory questions separate from the problem field; analyze_document
+    # fills inferred_challenges only when extraction finds a concrete source passage.
     
     if any(t.lower() in ("cyber-physical systems", "cps", "digital healthcare") for t in themes):
         questions = [
@@ -1258,10 +1500,12 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
             "Which existing solutions already address these issues?"
         ]
     else:
+        # Ask source-bounded questions rather than injecting a default business
+        # frame (deployment/adoption) or unrelated themes from another domain.
         questions = [
-            f"What technical barriers limit the deployment of {themes_str}?",
-            f"What validation and evaluation gaps limit adoption of {themes_str}?",
-            f"Which existing solutions already address these problems, and what gaps remain?"
+            f"What challenges or constraints does the call identify for {themes_str}?",
+            f"What evidence, evaluation, or coordination gaps are described for {themes_str}?",
+            "Which existing initiatives or approaches does the call name, and what gaps does it say remain?",
         ]
         
     identity_material = "|".join([str(domain or "General").strip().lower(), str(title).strip().lower()])
@@ -1271,20 +1515,29 @@ def generate_research_mission(themes: list[str], support: list[str], title: str,
         "domain": domain or "General",
         "technology_themes": themes,
         "funding_priorities": support,
-        # Outcomes are only retained when they are explicitly represented by the
-        # observed support priorities. The mission itself is an inference and is
-        # labelled as such; no generic outcome is presented as a fact.
+        # Outcomes are only retained when explicitly represented by observed
+        # source priorities. Exploratory questions are not promoted to a problem
+        # statement without a concrete source passage.
         "target_outcomes": list(dict.fromkeys(support)),
         "investigation_questions": questions,
-        "inferred_challenges": [mission] if mission else [],
+        "inferred_challenges": [],
         "evidence_refs": [],
-        "inference_provenance": ["INFERENCE"] if mission else [],
-        "confidence": "Low" if mission else "Unknown",
+        "inference_provenance": [],
+        "confidence": "Unknown",
         "research_intent": research_intent,
         "research_intent_evidence": list(research_intent_evidence or []),
     }
 
 def _extract_funding_body(text: str, fallback: str) -> str:
+    # Prefer the formal grant authority over the configured crawl-directory label.
+    authority = re.search(
+        r"(?im)^\s*(?:granting authority|grant authority|funding body)\s*[:\-]?\s*(.{3,180}?)\s*$",
+        str(text or ""),
+    )
+    if authority:
+        value = cleaned_text(authority.group(1))
+        if value and not _is_generic_funding_title(value):
+            return value
     patterns = [
         r"Greetings from\s+(.+?)(?:\.|\n)",
         r"an initiative of\s+(.+?)(?:\s+focused on|\.|\n)",
@@ -1299,14 +1552,35 @@ def _extract_funding_body(text: str, fallback: str) -> str:
 
 
 def _extract_program_name(text: str, fallback: str) -> str:
-    # Prefer a specific Markdown H1 before scanning broad section headings such
-    # as "About DD.xyz". The H1 often identifies the opportunity when the browser
-    # title or fallback title is unrelated.
-    for heading in re.finditer(r"(?im)^\s*#\s+(.{3,180}?)\s*$", text):
-        candidate = cleaned_text(heading.group(1)).rstrip(" .:-")
+    # Ripple's UBRI landing page is a programme overview, but its explicit current
+    # UDAX 2027 application CTA identifies the actionable call within that page.
+    if re.search(
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ):
+        return "Digital Asset Xcelerator (UDAX) 2027"
+
+    # Search H1-H6 headings in document order. Browser/page titles such as
+    # "Topic" may be generic while the actual solicitation appears in an H2.
+    # SBIR topic pages are a known layout: the browser title and H1 say "Topic",
+    # while the actual topic title is the first specific H2 and may not contain
+    # words such as "grant" or "funding" (for example, "Trusted Identity and
+    # Identity Management").
+    is_sbir_topic_page = bool(
+        _is_generic_funding_title(fallback)
+        and re.search(r"\b(?:SBIR|STTR)\b", str(fallback or ""), re.IGNORECASE)
+        and re.search(r"\bTopic Number\b", text, re.IGNORECASE)
+        and re.search(r"\bSolicitation Status\s*:", text, re.IGNORECASE)
+    )
+    for heading in re.finditer(r"(?im)^\s*(#{1,6})\s+(.{3,180}?)\s*$", text):
+        heading_level = len(heading.group(1))
+        candidate = cleaned_text(heading.group(2)).rstrip(" .:-")
         normalized = candidate.lower().rstrip(" .:-")
         if not candidate or _is_generic_funding_title(candidate):
             continue
+        if is_sbir_topic_page and heading_level >= 2:
+            return candidate
         if re.search(
             r"\b(?:grants?|funding|calls?|fellowships?|challenges?|proposals?|rfps?|programs?|programmes?)\b",
             candidate,
@@ -1318,6 +1592,8 @@ def _extract_program_name(text: str, fallback: str) -> str:
     # field even when the browser/H1 title is generic (e.g. "Topic | SBIR").
     # Prefer that source-provided title over the generic browser title.
     labelled_title_patterns = (
+        # Some official PDF fact sheets use "Call Title <value>" without punctuation.
+        r"(?im)^[ \t]*call[ \t]+title[ \t]*(?:[:\-][ \t]*|[ \t]+)(.{8,180}?)[ \t]*$",
         r"(?im)^\s*(?:topic title|topic name|solicitation title|funding opportunity title|opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
         r"(?im)^\s*(?:NOFO title|notice of funding opportunity title)\s*[:\-]\s*(.{8,180}?)\s*$",
     )
@@ -1372,17 +1648,48 @@ def _extract_program_name(text: str, fallback: str) -> str:
     return title or fallback
 
 
+def _split_funding_sentences(text: str) -> list[str]:
+    """Split source text into sentences without breaking common abbreviations.
+
+    Funding pages frequently use labels such as Rs., B.Tech., M.E. and Ph.D.
+    Splitting on every period can detach the amount/eligibility cue from its value.
+    """
+    protected = re.sub(
+        r"\b(?:Rs|B\.Tech|B\.E|M\.Tech|M\.E|Ph\.D|U\.S|U\.K)\.",
+        lambda match: match.group(0).replace(".", "¤"),
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+    return [
+        part.replace("¤", ".").strip()
+        for part in re.split(r"(?<=[.!?])\s+|\n+", protected)
+        if part.strip()
+    ]
+
+
 def _extract_funding_amount(text: str) -> str | None:
     """Extract explicit funding amounts without inventing or hard-coding values."""
     unit = r"(?:K|M|B|lakh|crore|million|billion)"
-    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR)"
+    currency = r"(?:₹|\$|€|£|USD|EUR|GBP|INR|Rs\.?)"
+    # Include common web3 grant-denomination tokens when explicitly adjacent
+    # to an amount (for example, "$200 USDG cheque").
+    token_currency = r"(?:USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)"
     number = r"\d[\d,]*(?:\.\d+)?"
     amount_re = re.compile(
-        rf"(?:{currency}\s*{number}(?:\s*{unit})?(?:\s*[–-]\s*(?:{currency}\s*)?{number}(?:\s*{unit})?)?|{number}\s*{unit}(?:\s*[–-]\s*{number}\s*{unit})?)",
+        rf"(?:{currency}\s*{number}(?:\s*{unit})?(?:\s*{token_currency})?(?:\s*[–-]\s*(?:{currency}\s*)?{number}(?:\s*{unit})?(?:\s*{token_currency})?)?|{number}\s*(?:{unit}|{token_currency})(?:\s*[–-]\s*{number}\s*(?:{unit}|{token_currency}))?)",
         re.IGNORECASE,
     )
+    # Prefer the per-project ceiling over a programme-wide total budget.
+    per_project = re.search(
+        rf"\b(?:max(?:imum)?\s+)?(?:grant|funding|award)\s+(?:amount\s+)?per\s+project\b\s*[:\-]?\s*({currency}\s*{number}(?:\s*{unit})?(?:\s*{token_currency})?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if per_project:
+        return cleaned_text(per_project.group(1))
+
     labelled: list[str] = []
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+    for sentence in _split_funding_sentences(text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1401,10 +1708,14 @@ def _extract_funding_amount(text: str) -> str | None:
     amounts: list[str] = []
     # Require a strict semantic relationship, not just proximity
     # Matches patterns like "grant of $X", "award up to $X", "$X budget"
-    strict_prefix = r"(?:grant|award|funding|budget|prize|fund|request)s?(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?\s*$"
+    strict_prefix = (
+        r"(?:grant|award|funding|budget|prize|fund|request)s?"
+        r"(?:\s+(?:of|up to|for|is a total of|is|amount|:|max(?:imum)?|=|-))?"
+        r"\s*(?:₹|\$|€|£|USD|EUR|GBP|INR|Rs\.?)?\s*$"
+    )
     strict_suffix = r"^\s*(?:grant|award|funding|budget|prize|fund)s?"
     
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+    for sentence in _split_funding_sentences(text):
         matches = list(amount_re.finditer(sentence))
         for match in matches:
             amount = cleaned_text(match.group(0))
@@ -1416,7 +1727,19 @@ def _extract_funding_amount(text: str) -> str | None:
             if re.search(strict_prefix, before) or re.search(strict_suffix, after):
                 is_valid = True
             
-            # Additional heuristic: if it's explicitly stated as "X per project" etc.
+            # Explicit award-form wording supports amounts such as "$200 USDG cheque".
+            if re.search(r"\b(?:cheque|check|bounty|prize|stipend)\b", after):
+                is_valid = True
+            # Fellowship/stipend amounts are often expressed as a monthly rate.
+            if (
+                re.search(
+                    r"\b(?:fellowship|scholarship|stipend)\s+(?:amount\b|will\s+be\b|is\b)",
+                    before,
+                )
+                and re.search(r"\b(?:per\s+month|monthly|consolidated)\b", after)
+            ):
+                is_valid = True
+            # Also accept explicit per-unit award wording.
             if re.search(r"^\s*(?:per project|per startup|per applicant|maximum)", after):
                 is_valid = True
                 
@@ -1430,20 +1753,51 @@ def _extract_funding_amount(text: str) -> str | None:
     return "; ".join(amounts[:8]) or None
 
 
+def _extract_currency(amount: str | None) -> str | None:
+    """Return a currency/token only when it is explicit in the extracted amount."""
+    if not amount:
+        return None
+    token_match = re.search(r"\b(USDG|USDC|USDT|DAI|SOL|ETH|FIL|NEAR|XRP|BTC)\b", amount, re.IGNORECASE)
+    if token_match:
+        return token_match.group(1).upper()
+    if re.search(r"\bINR\b|₹|\bRs\.?\b", amount, re.IGNORECASE):
+        return "INR"
+    if re.search(r"\bEUR\b|€", amount, re.IGNORECASE):
+        return "EUR"
+    if re.search(r"\bGBP\b|£", amount, re.IGNORECASE):
+        return "GBP"
+    if re.search(r"\bUSD\b|\$", amount, re.IGNORECASE):
+        return "USD"
+    return None
+
+
 def _extract_duration(text: str) -> str | None:
     m = re.search(r"\b(\d+)\s*[–-]\s*(\d+)\s*months\b", text, flags=re.IGNORECASE)
     return f"{m.group(1)}–{m.group(2)} months" if m else None
 
 
 def _extract_application_url(text: str) -> str | None:
-    """Return an application endpoint only when adjacent source text/anchor identifies it."""
+    """Return a verified application endpoint, preferring portal CTAs over templates."""
     markdown_link = re.compile(r"\[([^\]]{1,160})\]\((https?://[^)\s]+)\)", re.IGNORECASE)
     for match in markdown_link.finditer(text):
-        label = match.group(1).lower()
+        label = match.group(1).strip().lower()
+        candidate_url = match.group(2).rstrip(".,")
+        candidate_path = urlparse(candidate_url).path.lower()
+        # Sample/template/example files are supporting documents, never submission
+        # endpoints. Continue searching because the real portal link may follow.
+        is_sample_template = bool(re.search(
+            r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            label + " " + candidate_path,
+            flags=re.IGNORECASE,
+        ))
+        if is_sample_template:
+            continue
+
         before = text[max(0, match.start() - 200):match.start()].lower()
-        is_application_label = re.search(
+        after = text[match.end():match.end() + 200].lower()
+        is_application_label = bool(re.search(
             r"\b(?:apply|application|submit|submission|proposal)\b", label
-        )
+        ))
         is_grant_issue_template = (
             "new issue" in label
             and re.search(r"\b(?:grant|proposal|application|funding)\b", before)
@@ -1452,30 +1806,59 @@ def _extract_application_url(text: str) -> str | None:
         # application instructions. Do not classify an arbitrary repository link
         # as an application URL merely because the word "applications" appeared
         # earlier in the same paragraph.
-        short_application_label = label.strip().rstrip(".") in {
+        short_application_label = label.rstrip(".") in {
             "here", "this form", "the form", "application form", "application portal"
         }
         is_contextual_application_link = bool(
             short_application_label
+            and (
+                re.search(
+                    r"\b(?:application|apply|submit|submission|proposal|form)\b",
+                    before[-150:],
+                    flags=re.IGNORECASE,
+                )
+                or re.search(
+                    r"\bapplying is as simple as creating a github issue\b",
+                    before[-150:],
+                    flags=re.IGNORECASE,
+                )
+            )
+        )
+        is_contextual_portal_link = bool(
+            "portal" in label
             and re.search(
                 r"\b(?:application|apply|submit|submission|proposal|form)\b",
-                before[-150:],
+                before[-150:] + " " + after[:150],
                 flags=re.IGNORECASE,
             )
         )
-        if is_application_label or is_grant_issue_template or is_contextual_application_link:
-            candidate_url = match.group(2).rstrip(".,")
+        if (
+            is_application_label
+            or is_grant_issue_template
+            or is_contextual_application_link
+            or is_contextual_portal_link
+        ):
             if _is_generic_application_url(candidate_url):
                 continue
             return candidate_url
+
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
-        r"(?:application|apply|submit|submission|proposal)\s*(?:link|url|portal|here)?\s*[:\-]?\s*("
+        r"(?:application|apply|submit|submission|proposal|"
+        r"applying is as simple as creating a github issue)\s*"
+        r"(?:link|url|portal|here)?\s*[:\-]?\s*("
         + url_pattern + r")",
         re.IGNORECASE,
     )
     for match in contextual.finditer(text):
         candidate_url = match.group(1).rstrip(".,")
+        candidate_path = urlparse(candidate_url).path.lower()
+        if re.search(
+            r"(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            candidate_path,
+            flags=re.IGNORECASE,
+        ):
+            continue
         if _is_generic_application_url(candidate_url):
             continue
         return candidate_url
@@ -1483,38 +1866,116 @@ def _extract_application_url(text: str) -> str | None:
 
 
 
+def _sbir_mirror_disclaims_currentness(source_url: str, content: str) -> bool:
+    """Detect SBIR.gov topic mirrors that explicitly warn their status may be stale."""
+    # A matching, current official agency solicitation is stronger evidence
+    # than the mirror disclaimer. Without this marker, fail closed as before.
+    if re.search(
+        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
+        content or "",
+        flags=re.IGNORECASE,
+    ):
+        return False
+    parsed = urlparse(source_url or "")
+    return bool(
+        (parsed.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
+        and re.fullmatch(r"/topics/\d+", parsed.path.rstrip("/"))
+        and re.search(
+            r"not necessarily the latest and most up-to-date",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _resolve_application_url(content: str, source_url: str, status: str) -> str | None:
     """Resolve a direct endpoint, or use an open Superteam listing with an on-page CTA."""
     parsed_source = urlparse(source_url or "")
-    is_open_sbir_topic = (
-        (parsed_source.hostname or "").casefold() in {"sbir.gov", "www.sbir.gov"}
-        and re.fullmatch(r"/topics/\d+", parsed_source.path.rstrip("/"))
-        and status in {"OPEN_CALL", "UPCOMING_CALL"}
-        and re.search(r"(?i)\bsolicitation status\s*:\s*open\b", content or "")
-    )
-    has_official_nsf_solicitation = bool(re.search(
-        r"(?i)https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation",
-        content or "",
-    ))
     extracted = _extract_application_url(content)
-
-    # The SBIR topic page itself is the relevant instructions destination when
-    # the only non-generic link discovered is the linked NSF solicitation PDF/page.
-    # The solicitation explains the topic; it is not necessarily the online submit endpoint.
-    extracted_is_nsf_solicitation = bool(
-        extracted
-        and re.search(
+    # A verified, unique Grants.gov opportunity page is a valid route to the
+    # call details and its application controls, even if the mirror's link label
+    # is "View Official Solicitation" rather than "Apply".
+    if re.search(
+        r"Official solicitation verification:\s*CURRENT VERSION CONFIRMED",
+        content or "",
+        flags=re.IGNORECASE,
+    ):
+        official_grants_opportunity = re.search(
+            r"https?://(?:www\.)?(?:simpler\.)?grants\.gov/opportunity/[A-Za-z0-9-]+",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+        if official_grants_opportunity:
+            extracted = official_grants_opportunity.group(0).rstrip(").,")
+    # A topic/mirror page, generic SBIR apply page, or umbrella solicitation
+    # document is not itself the submission route. Keep application_url empty
+    # unless a real application portal or official call-detail page is linked.
+    if extracted and (
+        _is_generic_application_url(extracted)
+        or re.search(
             r"(?i)^https?://(?:www\.)?nsf\.gov/funding/opportunities/[^)\s\]]+/solicitation/?$",
             extracted,
         )
-    )
-    if is_open_sbir_topic and has_official_nsf_solicitation and (
-        not extracted or extracted_is_nsf_solicitation
+    ):
+        extracted = None
+
+    # A linked sample/template is supporting material, not a live submission
+    # endpoint. Submission instructions on the information page do not prove that
+    # the information page itself accepts applications. Leave the destination
+    # unresolved so the acceptance audit can flag it for manual review.
+    if (
+        extracted
+        and re.search(
+            r"(?i)(?:sample|template|example)[^/]{0,100}application|application[^/]{0,100}(?:sample|template|example)",
+            urlparse(extracted).path,
+        )
+        and re.search(
+            r"(?i)\b(?:submit|submission|apply|application portal|application form)\b",
+            content or "",
+        )
+        and not parsed_source.path.casefold().endswith((".docx", ".pdf"))
+    ):
+        return None
+
+    # A directly linked DOCX/PDF application form is itself an application
+    # endpoint, even when it contains no HTML-style "Apply" hyperlink.
+    if (
+        parsed_source.path.casefold().endswith((".docx", ".pdf"))
+        and re.search(r"\bapplication form\b", (content or "")[:1200], re.IGNORECASE)
     ):
         return source_url
 
     if extracted:
         return extracted
+
+    # Ripple's official UBRI page currently exposes the UDAX 2027 application CTA,
+    # but the rendered button may not expose its destination to the crawler. Keep
+    # the official call-detail page as the route rather than inventing a form URL.
+    is_ripple_udax_cta = (
+        (parsed_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
+        and parsed_source.path.rstrip("/") == "/impact/ubri"
+        and re.search(
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+            content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_ripple_udax_cta:
+        return source_url
+
+    # Some official NEAR programme pages render the apply CTA without a stable
+    # destination href. Route to the official programme detail page rather than
+    # inventing an application form URL.
+    is_near_protocol_rewards_cta = (
+        (parsed_source.hostname or "").casefold() in {"nearprotocolrewards.com", "www.nearprotocolrewards.com"}
+        and bool(re.search(r"apply for (?:protocol rewards|next cohort)", content or "", flags=re.IGNORECASE))
+    )
+    is_near_horizon_cta = (
+        (parsed_source.hostname or "").casefold() in {"hzn.xyz", "www.hzn.xyz"}
+        and bool(re.search(r"apply to horizon", content or "", flags=re.IGNORECASE))
+    )
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and (is_near_protocol_rewards_cta or is_near_horizon_cta):
+        return source_url
 
     # Superteam processes applications on the individual Earn listing. Crawl4AI may
     # render the visible "Apply Now" CTA as text without its client-side href, so
@@ -1542,6 +2003,16 @@ def _evidence_excerpt(text: str, patterns: list[str], window: int = 240) -> str 
             if re.search(pattern, chunk, flags=re.IGNORECASE):
                 return chunk[:window]
     return None
+
+def _status_evidence_excerpt(text: str, patterns: list[str], window: int = 240) -> str | None:
+    """Extract status evidence across line-wrapped badges without joining unrelated fields."""
+    flattened = cleaned_text(str(text or ""))
+    for pattern in patterns:
+        match = re.search(pattern, flattened, flags=re.IGNORECASE)
+        if match:
+            return cleaned_text(match.group(0))[:window]
+    return _evidence_excerpt(text, patterns, window=window)
+
 
 def _field_evidence_is_specific(field: str, value: str | None, evidence: str | None) -> bool:
     """Require field evidence to contain the extracted value or a field-specific cue."""
@@ -1600,8 +2071,39 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
                 value,
             ):
                 continue
+            # Ignore placeholder values in generated page metadata so they do
+            # not mask the actual source section further down the document.
+            if value.casefold().strip(" .:-") in {"unknown", "none", "n/a", "not specified", "not available"}:
+                continue
             if value and len(value) > 3:
                 hits.append(value[:max_chars])
+    if not hits:
+        # Real calls often put the label in a standalone Markdown heading
+        # ("## Who can apply?") and the criteria in the following paragraph.
+        # Read only within that labelled section and stop at the next heading.
+        normalized_labels = {re.sub(r"[^a-z0-9]+", " ", label.casefold()).strip() for label in labels}
+        lines = str(text or "").splitlines()
+        for index, line in enumerate(lines):
+            heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+            if not heading:
+                continue
+            heading_text = re.sub(r"[^a-z0-9]+", " ", cleaned_text(heading.group(1)).casefold()).strip()
+            if heading_text not in normalized_labels:
+                continue
+            section_parts: list[str] = []
+            for following in lines[index + 1:]:
+                if re.match(r"^\s{0,3}#{1,6}\s+", following):
+                    break
+                cleaned = cleaned_text(re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", following))
+                if not cleaned or cleaned.casefold().strip(" .:-") in {"unknown", "none", "n/a", "not specified", "not available"}:
+                    continue
+                section_parts.append(cleaned)
+                if sum(len(part) for part in section_parts) >= max_chars:
+                    break
+            section_value = cleaned_text(" ".join(section_parts))[:max_chars]
+            if section_value:
+                hits.append(section_value)
+                break
     if hits:
         eligibility_labels = {
             "eligibility", "who can apply", "eligible applicants", "eligible organizations"
@@ -1625,31 +2127,76 @@ def _extract_section_value(text: str, labels: tuple[str, ...], *, max_chars: int
 
 
 def _extract_eligibility_from_prose(text: str) -> str | None:
-    """Extract explicit applicant restrictions stated in prose when no labelled section exists."""
+    """Collect distinct, explicit eligibility criteria without inferring missing rules."""
     chunks = [
         cleaned_text(part)
-        for part in re.split(r"(?<=[.!?])\s+|\n+", str(text or ""))
+        for part in _split_funding_sentences(text)
         if cleaned_text(part)
     ]
     patterns = (
         r"\bapplications?\s+(?:are\s+)?(?:accepted|limited|restricted)\s+to\s+.{8,220}",
         r"\bapplications?\s+from\s+.{8,220}\b(?:small business concerns?|small businesses|SBCs?|SMEs?|research institutions?|universities|nonprofit organizations?|non-profit organizations?)\b.{0,160}",
-        r"\b(?:eligible applicants?|applicants?|business concerns?)\s+(?:must|should|are required to)\s+.{8,220}",
+        r"\b(?:eligible applicants?|applicants?|business concerns?|SMEs?|small and medium enterprises?)\s+(?:must|should|are required to|need to|have to)\s+.{8,260}",
+        # Official call pages sometimes state applicant scope as "the call is
+        # addressed to..." rather than using a dedicated Eligibility heading.
+        r"\b(?:this\s+)?(?:call|programme|program)\s+(?:is|will be)\s+(?:a\s+)?(?:mono[- ]beneficiary\s+)?call\s+addressed\s+to\s+.{8,260}",
+        r"\b(?:call|programme|program)\s+(?:is aimed at|targets?|is open to|is intended for)\s+.{8,260}",
+        r"\b(?:applicants?|SMEs?|entities|companies)\b.{0,180}\b(?:not eligible|ineligible|cannot apply|may not apply)\b.{0,180}",
         r"\b(?:qualifying|eligible)\s+(?:U\.?S\.?|United States)\s+(?:small business concerns?|SBCs?)\b.{0,160}",
         r"\b(?:only|must)\s+.{0,100}\b(?:U\.?S\.?|United States)\s+small business concerns?\b.{0,120}",
         r"\b(?:small business concerns?|small businesses)\b.{0,160}\b(?:established|organized|registered|located|based)\s+in\s+(?:the\s+)?(?:United States|U\.?S\.?|USA)\b",
+        # Explicit geographic eligibility clauses may be phrased as an
+        # establishment rule without the words "applicants must".
+        r"\b(?:legal entities|entities|organisations?|organizations?)\s+established\s+in\s+.{8,220}\b(?:eligible|may participate|can apply|may apply)\b.{0,160}",
+        # Explicit qualification statements often name the applicant category
+        # rather than using an "Eligibility" heading.
+        r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
+        # Technology maturity is an eligibility criterion when the source explicitly
+        # ties the solution's TRL to a requirement.
+        r"\b(?:solution|technology|product)\b.{0,180}\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,120}",
+        r"\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,160}\b(?:required|must|commercially mature|eligib(?:le|ility))\b",
     )
+    matches: list[str] = []
     for chunk in chunks:
-        if any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
-            return chunk[:900]
-    return None
+        if not any(re.search(pattern, chunk, flags=re.IGNORECASE) for pattern in patterns):
+            continue
+        # Some structured source records concatenate a generic eligibility
+        # label with the sentence's own subject, duplicating the prefix.
+        normalized = re.sub(
+            r"^(Eligible applicants must be)\s+Applicants must be\s+",
+            r"\1 ",
+            chunk[:900],
+            flags=re.IGNORECASE,
+        )
+        normalized = cleaned_text(normalized)
+        if normalized and normalized.casefold() not in {value.casefold() for value in matches}:
+            matches.append(normalized)
+    return " ".join(matches) if matches else None
 
 
 def _extract_geography_from_prose(text: str) -> str | None:
-    """Preserve explicit country restrictions as source text rather than guessing."""
+    """Extract only explicitly stated eligible geographies; never infer from source domain."""
     eligibility = _extract_eligibility_from_prose(text)
-    if eligibility and re.search(r"\b(?:United States|U\.?S\.?|USA|United States of America)\b", eligibility, flags=re.IGNORECASE):
-        return eligibility
+    if not eligibility:
+        return None
+
+    if re.search(r"\b(?:United States|U\.?S\.?|USA|United States of America)\b", eligibility, flags=re.IGNORECASE):
+        return "United States"
+
+    explicit_geographies = (
+        (r"\blow-\s*to\s+middle-income countries\b", "Low- and middle-income countries (exceptionally eligible)"),
+        (r"\blow\s+or\s+lower/upper-middle-income countries\b", "Low- and middle-income countries (exceptionally eligible)"),
+        (r"\bAfrican Union member states\b", "African Union member states (exceptionally eligible)"),
+        (r"\bEU Member State\b.{0,100}\bcountry associated with Horizon Europe\b", "EU Member States and Horizon Europe Associated Countries"),
+        (r"\bMember States, Iceland and Norway and associated countries\b", "EU Member States, Iceland, Norway, and associated countries"),
+        (r"\bMember States and Associated Countries\b", "EU Member States and Associated Countries"),
+        (r"\bEU Member State\b", "EU Member States"),
+        (r"\bMission Cities\b", "EU Mission Cities"),
+        (r"\bAustralia, Brazil, Canada, Chile, India, Japan, Mexico, New Zealand, Republic of Korea, Singapore, and USA\b", "Australia, Brazil, Canada, Chile, India, Japan, Mexico, New Zealand, Republic of Korea, Singapore, and USA"),
+    )
+    for pattern, geography in explicit_geographies:
+        if re.search(pattern, eligibility, flags=re.IGNORECASE):
+            return geography
     return None
 
 
@@ -1693,7 +2240,7 @@ def _extract_general_themes(content: str) -> list[str]:
         'focus', 'focuses', 'focused', 'focusing', 'target', 'targets', 'targeted', 'targeting',
         'significantly', 'systematically', 'example', 'scope', 'content', 'traditional',
         'knowledge', 'approaches', 'professional', 'educators', 'degrees', 'k', 'infusion', 'projects',
-        'applications'
+        'applications', 'fun', 'earn'
     }
     
     generic_administrative = {
@@ -1761,7 +2308,15 @@ def _extract_general_themes(content: str) -> list[str]:
             continue
             
         if len(words) == 1:
-            if not (words[0] in high_signal_technical or has_acronym):
+            # Generic single-word tokens can come from navigation or page chrome.
+            # Keep specific technical terms (for example, robotics), but suppress
+            # broad/noisy singletons while allowing informative multi-word phrases.
+            low_signal_singletons = {"image", "processing", "learning", "vision", "earn", "fun"}
+            specific_technical_singleton = (
+                words[0] in high_signal_technical
+                and words[0] not in low_signal_singletons
+            )
+            if not (specific_technical_singleton or has_acronym):
                 continue
                 
         # Must be valid
@@ -1869,6 +2424,43 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     mission_ctx["selected_domains"] = tuple(selected_domains)
 
     program_name = _extract_program_name(document.content, document.title)
+    # HTML/Markdown extraction can leave heading markers in the title. Keep the
+    # structured title human-readable without changing its source wording.
+    program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
+    # Ripple's current UBRI page promotes the distinct UDAX 2027 application.
+    # Do not mislabel that application as the parent university research programme.
+    ripple_source = urlparse(document.source or "")
+    ripple_udax_cta = (
+        (ripple_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
+        and ripple_source.path.rstrip("/") == "/impact/ubri"
+        and re.search(
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+            document.content or "",
+            flags=re.IGNORECASE,
+        )
+    )
+    if ripple_udax_cta:
+        program_name = "UBRI Digital Asset Xcelerator (UDAX) 2027"
+        identity_material = "|".join([
+            document.organization.strip().lower(),
+            program_name.strip().lower(),
+            canonicalize_url(document.source),
+        ])
+        mission_ctx["funding_call_id"] = "CALL-" + hashlib.sha256(identity_material.encode("utf-8")).hexdigest()[:12].upper()
+    # Some Grants.gov detail pages expose the site brand as their title while
+    # the source-provided title contains the actual solicitation name. Prefer
+    # that explicit source title rather than emitting the publisher brand.
+    if _is_generic_funding_title(program_name):
+        source_title = cleaned_text(document.title)
+        source_title = re.sub(
+            r"^(?:Opportunity Listing|Funding Opportunity Listing|Funding Opportunity)\s*[-:|]\s*",
+            "",
+            source_title,
+            flags=re.IGNORECASE,
+        )
+        source_title = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", source_title))
+        if source_title and not _is_generic_funding_title(source_title):
+            program_name = source_title
     # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
     # explicit STTR body text establish the distinct official opportunity.
     solicitation_match = re.search(
@@ -1896,11 +2488,23 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         program_name = document.organization.strip()
     explicit_status_match = re.search(
-        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status)\s*[:：]\s*(open|closed|paused|upcoming|funded)\b",
+        r"(?im)^\s*(?:solicitation\s+status|application\s+status|call\s+status|funding\s+status|status)\s*[:：-]\s*(open|active|closed|paused|upcoming|funded)\b",
+        document.content,
+    )
+    explicit_acceptance_match = re.search(
+        r"(?i)\b(?:currently\s+)?accepting\s+(?:new\s+)?(applications|proposals)\b",
         document.content,
     )
     explicit_status = explicit_status_match.group(1) if explicit_status_match else None
+    if not explicit_status and explicit_acceptance_match:
+        explicit_status = f"ACCEPTING {explicit_acceptance_match.group(1).upper()}"
     status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
+    if _sbir_mirror_disclaims_currentness(document.source, document.content):
+        # SBIR.gov explicitly says its topic copies may not be current. Preserve
+        # the record, but do not promote mirror dates/status into verified facts.
+        status = "UNKNOWN"
+        opening_date = None
+        deadline = None
     opp_type = "FUNDED_PROJECT" if status == "FUNDED_PROJECT" else "FUNDING_CALL"
 
     amount = _extract_funding_amount(document.content)
@@ -1941,6 +2545,13 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     ):
         eligibility_section = None
     eligibility = eligibility_section or _extract_eligibility_from_prose(eligibility_source_text)
+    if eligibility:
+        eligibility = re.sub(
+            r"^(Eligible applicants must be)\s+Applicants must be\s+",
+            r"\1 ",
+            eligibility,
+            flags=re.IGNORECASE,
+        )
     if eligibility and re.search(
         r"(?i)better understand the application process|eligibility and final selection|"
         r"eligible applicants? will be evaluated|eligible applicants? will then be invited",
@@ -1969,20 +2580,50 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     eligible_costs = _extract_section_value(document.content, ("eligible costs", "allowable costs", "eligible expenses"))
 
     evidence = {
-        "status": _evidence_excerpt(document.content, [
+        "status": _status_evidence_excerpt(document.content, [
+            # These are source excerpts, not automatic acceptance decisions.
+            # Cover explicit status fields, directory badges and application windows.
+            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active|closed|paused|upcoming|funded)",
+            r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals)",
             r"applications? (?:are|now) open",
-            r"applications? (?:are )?reviewed on a rolling basis",
             r"open for applications",
+            r"open for proposals",
+            r"open for submissions",
+            r"currently accepting (?:applications|proposals|submissions)",
+            r"accepting (?:new )?(?:applications|proposals|submissions)",
+            r"applications? (?:are )?reviewed on a rolling basis",
             r"applications? can be submitted at any time",
             r"applications? (?:are )?accepted on a rolling basis",
             r"(?:grant )?fellows are accepted on a rolling basis",
             r"proposals are accepted on a rolling basis",
             r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
+            r"applying is as simple as creating a github issue",
+            r"apply for protocol rewards",
+            r"apply for next cohort",
+            r"apply for the program",
+            r"apply to horizon",
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+            r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
             r"request for proposals",
             r"call for proposals",
+            r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
+            r"no longer accepting (?:applications|submissions)",
+            r"applications? (?:are )?(?:closed|paused|suspended)",
+            r"deadline[^.\n]{0,180}20\d{2}",
+            r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
+            r"(?:was|has been|have been) awarded[^.\n]{0,160}",
         ]),
-        "opening_date": _evidence_excerpt(document.content, [r"opens?[^.\n]{0,120}20\d{2}", r"applications? open[^.\n]{0,120}20\d{2}"]),
-        "deadline": _evidence_excerpt(document.content, [r"closes?[^.\n]{0,160}20\d{2}", r"deadline[^.\n]{0,160}20\d{2}", r"applications? close[^.\n]{0,160}20\d{2}"]),
+        "opening_date": _evidence_excerpt(document.content, [
+            r"opens?[^.\n]{0,160}20\d{2}",
+            r"applications? open[^.\n]{0,160}20\d{2}",
+            r"application window[^.\n]{0,160}20\d{2}",
+        ]),
+        "deadline": _evidence_excerpt(document.content, [
+            r"closes?[^.\n]{0,180}20\d{2}",
+            r"deadline[^.\n]{0,180}20\d{2}",
+            r"applications? close[^.\n]{0,180}20\d{2}",
+            r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
+        ]),
         "funding_amount": _evidence_excerpt(document.content, [r"(?:funding|financial support|grant|award)[^.\n]{0,240}(?:₹|\$|€|£|USD|EUR|GBP|INR)\s*\d"]),
         "eligibility": _evidence_excerpt(document.content, [r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\n]{0,10}[:\-]?[^.\n]{0,700}" ]),
         "geography": _evidence_excerpt(document.content, [r"(?:geographic eligibility|eligible countries|eligible regions|geography)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),
@@ -2010,7 +2651,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         elif key == "application_url" and application_url and application_url in str(ev):
             evidence[key] = ev
 
-    return FundingOpportunity(
+    analysis = FundingOpportunity(
         funding_body=funding_body,
         program_name=program_name,
         call_id=mission_ctx.get("funding_call_id"),
@@ -2018,7 +2659,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         opening_date=opening_date,
         deadline=deadline,
         funding_amount=amount,
-        currency=None,  # Do not hardcode — extract from amount string if present
+        currency=_extract_currency(amount),
         duration=duration,
         eligibility=eligibility,
         geography=geography,
@@ -2041,6 +2682,17 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         last_verified_at=datetime.now(UTC).isoformat(),
         evidence=evidence,
     )
+    # Reuse a source-grounded problem sentence in the research context. Do not
+    # invent a generic challenge merely to fill a missing field.
+    problem_intel = extract_funding_problem_intelligence(document, analysis)
+    source_problem = problem_intel.get("selected_problem")
+    if source_problem:
+        mission_ctx["inferred_challenges"] = [source_problem]
+        mission_ctx["evidence_refs"] = [document.source]
+        mission_ctx["inference_provenance"] = ["source_grounded_problem_extraction"]
+        mission_ctx["confidence"] = problem_intel.get("problem_confidence") or "Medium"
+        analysis.research_context = mission_ctx
+    return analysis
 
 def build_domain_relevance(text: str) -> list[dict]:
     """Return the canonical seven-domain relevance ranking for a funding call.
@@ -2052,6 +2704,27 @@ def build_domain_relevance(text: str) -> list[dict]:
     from core.schemas import rank_research_areas
 
     return rank_research_areas(text)
+
+
+def extract_funding_problem_intelligence(document: FundingDocument, analysis: FundingOpportunity) -> dict:
+    """Extract a concise, source-grounded problem signal instead of copying the page.
+
+    Funding pages often contain navigation, eligibility rules and application
+    instructions rather than a concrete technical problem. In that case the
+    signal stays unresolved; the source text is not promoted as if it were a
+    problem statement. Every selected signal must retain its supporting passage.
+    """
+    from core.problem_extraction import extract_problem_intelligence
+
+    evidence_snippets = [str(value) for value in (analysis.evidence or {}).values() if str(value).strip()]
+    return extract_problem_intelligence(
+        content=document.content,
+        title=analysis.program_name,
+        evidence_bundle={"evidence_snippets": evidence_snippets},
+        allow_llm_refinement=False,
+        research_area=analysis.focus_area,
+        agent_name="funding",
+    )
 
 
 def build_tags(analysis: FundingOpportunity) -> list[str]:
@@ -2089,16 +2762,7 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
 
     run_id_line = f"\n        - Run Id: {run_id}" if run_id else ""
 
-    from core.problem_extraction import extract_problem_intelligence
-    content_for_extraction = "\n".join(analysis.evidence.values()) if analysis.evidence else document.content
-    intel = extract_problem_intelligence(
-        content=content_for_extraction,
-        title=analysis.program_name,
-        evidence_bundle={"evidence_snippets": list(analysis.evidence.values())} if analysis.evidence else {},
-        allow_llm_refinement=False,
-        research_area=analysis.focus_area,
-        agent_name="funding"
-    )
+    intel = extract_funding_problem_intelligence(document, analysis)
     selected_problem = intel.get("selected_problem") or "Insufficient problem signal"
     problem_confidence = intel.get("problem_confidence") or "Low"
 
@@ -2467,6 +3131,84 @@ def _funding_sources_fingerprint(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _funding_url_key(value: str | None) -> str:
+    """Normalize a source URL for matching explicitly configured companion pages."""
+    parsed = urlparse(str(value or ""))
+    return f"{parsed.scheme.casefold()}://{parsed.netloc.casefold()}{parsed.path.rstrip('/')}"
+
+
+def _merge_related_eligibility_context(
+    documents: list[tuple[FundingDocument, FundingOpportunity]],
+    sources: list[Any],
+) -> tuple[set[str], list[str]]:
+    """Merge explicitly configured official companion-page eligibility into a call.
+
+    Relationships are declared in source configuration rather than inferred from
+    title similarity. Supplemental evidence is retained with its source URL, and a
+    missing companion page is marked unresolved for the audit instead of guessed.
+    """
+    documents_by_url = {
+        _funding_url_key(document.source): (document, analysis)
+        for document, analysis in documents
+    }
+    supplemental_context_urls: set[str] = set()
+    warnings: list[str] = []
+
+    for source in sources:
+        collection = getattr(source, "collection", {}) or {}
+        relations = collection.get("related_context_pages", []) or []
+        for relation in relations:
+            fields = relation.get("fields", ["eligibility"]) or ["eligibility"]
+            if "eligibility" not in fields:
+                continue
+
+            primary_key = _funding_url_key(relation.get("primary_url"))
+            context_key = _funding_url_key(relation.get("context_url"))
+            primary_entry = documents_by_url.get(primary_key)
+            context_entry = documents_by_url.get(context_key)
+            if not primary_entry:
+                continue
+
+            primary_document, primary_analysis = primary_entry
+            primary_analysis.evidence = dict(primary_analysis.evidence or {})
+            if not context_entry:
+                primary_analysis.evidence["eligibility_supplemental_context_status"] = "missing"
+                warnings.append(
+                    "Official eligibility companion page was not fetched for "
+                    f"{primary_document.source}: {relation.get('context_url')}"
+                )
+                continue
+
+            context_document, _context_analysis = context_entry
+            supplemental_context_urls.add(context_key)
+            supplemental_eligibility = _extract_eligibility_from_prose(context_document.content)
+            if not supplemental_eligibility:
+                primary_analysis.evidence["eligibility_supplemental_context_status"] = "unresolved"
+                primary_analysis.evidence["eligibility_supplemental_source_url"] = context_document.source
+                warnings.append(
+                    "Official eligibility companion page was fetched but no explicit eligibility "
+                    f"criteria were extracted: {context_document.source}"
+                )
+                continue
+
+            eligibility_values = [
+                cleaned_text(value)
+                for value in (primary_analysis.eligibility, supplemental_eligibility)
+                if cleaned_text(value)
+            ]
+            merged_values: list[str] = []
+            for value in eligibility_values:
+                if value.casefold() not in {existing.casefold() for existing in merged_values}:
+                    merged_values.append(value)
+
+            primary_analysis.eligibility = " ".join(merged_values) or None
+            primary_analysis.evidence["eligibility_supplemental_context_status"] = "verified"
+            primary_analysis.evidence["eligibility_supplemental_source_url"] = context_document.source
+            primary_analysis.evidence["eligibility_supplemental_text"] = supplemental_eligibility
+
+    return supplemental_context_urls, warnings
+
+
 def run_agent(mode: str, area: str | None = None, input_data: dict | None = None, funding_context: FundingCallContext | None = None, funding_contexts: list[FundingCallContext] | None = None) -> dict:
     from datetime import UTC, datetime, date
     from core.agent_interface import (
@@ -2597,6 +3339,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Process and save progressively to avoid data loss on crash
                 for res in collection_iterator:
                     _normalize_collection_coverage_status(res)
+                    _update_source_verification_flags(res)
                     collection_results.append(res)
                     source_docs = []
                     for doc, analysis in res.opportunities:
@@ -2640,13 +3383,30 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             if analysis_mode == "analyze":
                 process_documents([(doc, analysis)], output_dir, db_path, run_id=run_id)
             
+        supplemental_context_urls: set[str] = set()
+        if mode == "configured_scan":
+            configured_sources = load_sources(Path(payload.get("sources_path", DEFAULT_SOURCES_PATH)))
+            supplemental_context_urls, context_warnings = _merge_related_eligibility_context(
+                documents,
+                configured_sources,
+            )
+            extra_warnings.extend(context_warnings)
+
         outputs = []
         docs_only = []
+        companion_context_skipped_count = 0
+        generic_title_skipped_count = 0
         for doc, analysis in documents:
+            # Companion pages are merged into their configured primary call above;
+            # do not emit them as duplicate independent opportunities.
+            if _funding_url_key(doc.source) in supplemental_context_urls:
+                companion_context_skipped_count += 1
+                continue
             # Do not emit navigation/portal chrome as a funding opportunity.
             # Keep the record out of structured output as well as downstream
             # qualification; generic labels such as "Topic | SBIR" are not calls.
             if _is_generic_funding_title(analysis.program_name or doc.title):
+                generic_title_skipped_count += 1
                 extra_warnings.append(
                     f"Skipped generic funding-page title: {analysis.program_name or doc.title!r} ({doc.source})"
                 )
@@ -2670,7 +3430,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "opening_date": analysis.opening_date,
                 "deadline": analysis.deadline,
                 "funding_amount": analysis.funding_amount,
-                "currency": analysis.currency,
+                "currency": _extract_currency(analysis.funding_amount),
                 "duration": analysis.duration,
                 "eligibility": analysis.eligibility,
                 "geography": analysis.geography,
@@ -2700,8 +3460,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 "retrieved_at": analysis.retrieved_at,
                 "last_verified_at": analysis.last_verified_at,
                 "created_at": analysis.retrieved_at,
-                "problem": doc.content.strip(),
-                "problem_signal": doc.content.strip(),
+                "problem": (problem_intel := extract_funding_problem_intelligence(doc, analysis)).get("selected_problem"),
+                "problem_signal": problem_intel.get("selected_problem"),
+                "problem_type": problem_intel.get("problem_type"),
+                "problem_signal_status": "resolved" if problem_intel.get("selected_problem") else "unresolved",
+                "problem_confidence": problem_intel.get("problem_confidence"),
+                "problem_evidence": problem_intel.get("problem_evidence") or [],
                 "markdown_path": str(output_path.resolve()) if output_path else None,
                 "evidence": {k: v for k, v in evidence.items() if v},
                 "provenance_type": "observed_source_with_deterministic_extraction",
@@ -2725,6 +3489,43 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             }
         }
         if mode == "configured_scan":
+            # Recompute flags for resumed checkpoint entries as well as sources
+            # collected in this invocation; defaults are never audit evidence.
+            for source_result in collection_results:
+                _normalize_collection_coverage_status(source_result)
+                _update_source_verification_flags(source_result)
+
+            source_records_discovered_total = sum(int(getattr(item, "records_discovered", 0) or 0) for item in collection_results)
+            source_records_valid_total = sum(int(getattr(item, "records_valid", 0) or 0) for item in collection_results)
+            source_records_failed_total = sum(int(getattr(item, "records_failed", 0) or 0) for item in collection_results)
+            source_records_filtered_total = sum(int(getattr(item, "records_filtered", 0) or 0) for item in collection_results)
+            source_duplicates_removed_total = sum(int(getattr(item, "duplicates_removed", 0) or 0) for item in collection_results)
+            source_documents_processed = len(documents)
+            records_emitted = len(outputs)
+            unaccounted_source_to_documents_delta = source_records_valid_total - source_documents_processed
+            unaccounted_documents_to_outputs_delta = (
+                source_documents_processed
+                - companion_context_skipped_count
+                - generic_title_skipped_count
+                - records_emitted
+            )
+            response["record_accounting"] = {
+                "source_records_discovered_total": source_records_discovered_total,
+                "source_records_valid_total": source_records_valid_total,
+                "source_records_failed_total": source_records_failed_total,
+                "source_records_filtered_total": source_records_filtered_total,
+                "source_duplicates_removed_total": source_duplicates_removed_total,
+                "agent_documents_processed": source_documents_processed,
+                "companion_context_documents_merged": companion_context_skipped_count,
+                "generic_title_records_skipped": generic_title_skipped_count,
+                "raw_records_emitted": records_emitted,
+                "unaccounted_source_to_documents_delta": unaccounted_source_to_documents_delta,
+                "unaccounted_documents_to_outputs_delta": unaccounted_documents_to_outputs_delta,
+                "reconciled": (
+                    unaccounted_source_to_documents_delta == 0
+                    and unaccounted_documents_to_outputs_delta == 0
+                ),
+            }
             response["collection_results"] = [
                 {
                     "source_id": res.source_id,
@@ -2756,10 +3557,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "failed_urls": res.failed_urls,
                     "evidence_verified": res.evidence_verified,
                     "currentness_verified": res.currentness_verified,
+                    "no_active_opportunities_confirmed": res.no_active_opportunities_confirmed,
                     "pagination_detected": res.pagination_detected,
                     "pagination_complete": res.pagination_complete,
                     "discovery_exhausted": res.discovery_exhausted,
                     "truncated": res.truncated,
+                    "truncation_details": res.truncation_details,
                     "max_depth": res.max_depth,
                     "max_depth_reached": res.max_depth_reached,
                     "errors": res.errors,

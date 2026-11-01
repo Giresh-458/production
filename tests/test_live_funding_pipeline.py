@@ -354,7 +354,7 @@ def test_eligibility_extractor_does_not_return_application_workflow_copy():
 def test_solana_current_program_uses_contextual_application_link_and_rolling_review():
     from agents.funding_agent import FundingDocument, analyze_document
 
-    application_url = "https://share.hsforms.com/example-solana-grant-application"
+    application_url = "https://share.hsforms.com/solana-grant-application"
     content = (
         "# Grants and Funding\n"
         "## Solana Foundation Funding\n"
@@ -498,7 +498,7 @@ def test_successful_redirect_uses_destination_status_and_final_url():
     assert result.pages_fetched == 1
     assert result.pages_failed == 0
     assert result.errors == []
-    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+    assert result.final_status == "PARTIAL"
 
 
 def test_final_page_url_prefers_redirect_destination_for_relative_links():
@@ -951,7 +951,7 @@ def test_generic_sbir_apply_page_is_not_used_as_call_application_url():
     assert _extract_application_url(content) is None
 
 
-def test_specific_open_sbir_topic_uses_its_topic_page_not_generic_apply_guidance():
+def test_sbir_topic_page_is_not_mistaken_for_a_direct_application_route():
     from agents.funding_agent import _resolve_application_url
 
     source_url = "https://www.sbir.gov/topics/1012406"
@@ -961,7 +961,7 @@ def test_specific_open_sbir_topic_uses_its_topic_page_not_generic_apply_guidance
         "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/"
         "small-business-innovation-research-small-business-technology/nsf26-510/solicitation)"
     )
-    assert _resolve_application_url(content, source_url, "OPEN_CALL") == source_url
+    assert _resolve_application_url(content, source_url, "OPEN_CALL") is None
 
 
 def test_eligibility_heading_is_not_misread_as_a_requirement_value():
@@ -1266,3 +1266,355 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
     assert opportunity.eligibility is not None
     assert "United States" in opportunity.eligibility
     assert opportunity.geography is not None
+
+
+def test_generic_simpler_title_uses_source_opportunity_title(monkeypatch):
+    import agents.funding_agent as funding_agent
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    monkeypatch.setattr(
+        funding_agent, "_extract_program_name",
+        lambda text, fallback: "Simpler.Grants.gov",
+    )
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title=(
+            "Opportunity Listing - NIH Small Business Innovation Research (SBIR) "
+            "Phase IIB Strategic Breakthrough Award (Parent [R44] Clinical Trial Optional)"
+        ),
+        source="https://simpler.grants.gov/opportunity/example",
+        source_type="html",
+        content="Funding opportunity number: PA-27-101. Solicitation Status: Open.",
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name.startswith("NIH Small Business Innovation Research")
+    assert "Simpler.Grants.gov" not in opportunity.program_name
+
+
+def test_grants_opportunity_expiry_is_not_application_deadline_when_full_announcement_is_linked():
+    from agents.funding_agent import extract_call_dates
+
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        "Closing: April 5, 2029. Archive date: June 4, 2029."
+    )
+
+    opening, deadline = extract_call_dates(content)
+
+    assert opening is None
+    assert deadline is None
+
+
+def test_grants_full_announcement_schedule_uses_next_future_due_date():
+    from agents.funding_agent import extract_call_dates
+
+    today = datetime.now(UTC).date()
+    past = (today - timedelta(days=30)).isoformat()
+    next_due = (today + timedelta(days=30)).isoformat()
+    later_due = (today + timedelta(days=90)).isoformat()
+    content = (
+        "Documents: [PA-27-101-Revised-Full-Announcement.html]"
+        "(https://files.simpler.grants.gov/opportunities/example/attachments/"
+        "PA-27-101-Revised-Full-Announcement.html). "
+        f"Closing: {(today + timedelta(days=900)).isoformat()}. "
+        f"Due Date(s): {past}; {next_due}; {later_due}."
+    )
+
+    _, deadline = extract_call_dates(content)
+
+    assert deadline == next_due
+
+def test_eit_urban_mobility_2027_call_extracts_eligibility_and_uses_call_page_not_sample_form():
+    from agents.funding_agent import FundingDocument, analyze_document
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    source_url = (
+        "https://www.eiturbanmobility.eu/call-for-proposals/"
+        "sme-market-expansion-open-call-2027/"
+    )
+    sample_form_url = (
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2026/10/"
+        "SAMPLE_Application_form_SME-Market-Expansion-Call-2027.pdf"
+    )
+    document = FundingDocument(
+        organization="Climate KIC Open Calls",
+        title="SME Market Expansion Open Call 2027",
+        source=source_url,
+        source_type="html",
+        content=(
+            "SME Market Expansion Open Call 2027. "
+            "The Call is designed to promote business growth and market expansion. "
+            "The Call will focus on five topics: Public and Shared Transport, Urban Logistics, "
+            "Electrification of transport and alternative fuels, Mobility data management, "
+            "Health and mobility. "
+            "Each awarded entity will receive a fixed lump sum grant of EUR 60,000. "
+            "Who can apply? This Call is a mono-beneficiary call addressed to small and "
+            "medium enterprises (SMEs) that are supported by an end client, a public or "
+            "private entity, committed to testing and demonstrating the solution. "
+            "Call opening: 9 October 2026. "
+            "Call closing (submission of completed application): 1 December 2026 at 17.00 CET. "
+            f"[Application form sample]({sample_form_url}) "
+            "Access the EIT UM Programmes Portal and submit your application form within the given deadline."
+        ),
+        year=2026,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name == "SME Market Expansion Open Call 2027"
+    assert opportunity.opening_date == "2026-10-09"
+    assert opportunity.deadline == "2026-12-01"
+    assert opportunity.funding_amount is not None
+    assert "60,000" in opportunity.funding_amount
+    assert opportunity.eligibility is not None
+    assert "SMEs" in opportunity.eligibility
+    assert "end client" in opportunity.eligibility
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+    assert opportunity.focus_area == "ESG"
+    assert opportunity.application_url is None
+
+
+
+def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_text = "\n".join([
+        "# Topic Funding Opportunities",
+        "## Trusted Identity and Identity Management",
+        "Funding Agency: NSF",
+        "Solicitation Number: NSF 26-510",
+        "Solicitation Status: Open",
+        "NOTE: The Solicitations and topics listed on this site are copies from various agency solicitations and are not necessarily the latest and most up-to-date.",
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation)",
+        "Open Date: May 22, 2026",
+        "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
+        "Close Date: July 7, 2027",
+    ])
+    official_text = "\n".join([
+        "Active funding opportunity",
+        "This document is the current version.",
+        "Program Solicitation NSF 26-510",
+        "Full Proposal Deadline(s): November 04, 2026; March 04, 2027; July 07, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url.endswith("/nsf26-510/solicitation")
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="Topic | SBIR",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, warnings=[], cache={})
+    assert context == ""
+
+    opportunity = analyze_document(document)
+    assert opportunity.status == "UNKNOWN"
+    assert opportunity.opening_date is None
+    assert opportunity.deadline is None
+    assert opportunity.application_url is None
+
+
+def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_text = "\n".join([
+        "# Topic Funding Opportunities",
+        "## Trusted Identity and Identity Management",
+        "Funding Agency: NSF",
+        "Solicitation Number: NSF 26-510",
+        "Solicitation Status: Open",
+        "NOTE: The Solicitations and topics listed on this site are copies from various agency solicitations and are not necessarily the latest and most up-to-date.",
+        "[View Official Solicitation](https://www.nsf.gov/funding/opportunities/small-business-innovation-research-small-business-technology/nsf26-510/solicitation)",
+        "Open Date: May 22, 2026",
+        "Due Date(s): July 27, 2026; November 4, 2026; March 4, 2027; July 7, 2027",
+        "Close Date: July 7, 2027",
+    ])
+    official_text = "\n".join([
+        "Active funding opportunity",
+        "This document is the current version.",
+        "Trusted Identity and Identity Management",
+        "Program Solicitation NSF 26-510",
+        "Full Proposal Deadline(s): November 04, 2026; March 04, 2027; July 07, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url.endswith("/nsf26-510/solicitation")
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="NSF SBIR Trusted Identity",
+        title="Topic | SBIR",
+        source="https://www.sbir.gov/topics/1012406",
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, cache={})
+    assert "CURRENT VERSION CONFIRMED" in context
+    document.content += context
+
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2026-11-04"
+    assert opportunity.application_url is None
+
+
+def test_filecoin_builder_next_step_explicit_issue_application_is_rolling_open():
+    from agents.funding_agent import determine_status
+
+    content = "\n".join([
+        "FIL Builder Next Step Grants",
+        "Filecoin Foundation is working with FIL-B to provide $5,000 to $10,000 support for builders taking their Filecoin projects to the next level.",
+        "How to apply: Applying is as simple as creating a GitHub Issue here: https://github.com/filecoin-project/devgrants/issues/new/choose",
+    ])
+    assert determine_status(None, None, None, content, "FIL Builder Next Step Grants") == "OPEN_CALL"
+
+
+def test_filecoin_rolling_issue_application_is_currentness_evidence():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Filecoin Grants and Funding",
+        title="FIL Builder Next Step Grants",
+        source="https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md",
+        source_type="markdown",
+        content=(
+            "# FIL Builder Next Step Grants\n"
+            "Filecoin Foundation is working with FIL-B to provide $5k to $10k support.\n"
+            "Applying is as simple as creating a Github Issue "
+            "[here](https://github.com/filecoin-project/devgrants/issues/new/choose)"
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == "https://github.com/filecoin-project/devgrants/issues/new/choose"
+
+
+def test_ripple_udax_2027_current_cta_is_actionable_without_inventing_form_url():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    source_url = "https://ripple.com/impact/ubri/"
+    document = FundingDocument(
+        organization="Ripple UBRI",
+        title="University Blockchain Research Initiative",
+        source=source_url,
+        source_type="html",
+        content=(
+            "University Blockchain Research Initiative supports blockchain research.\n"
+            "Apply to UBRI Digital Asset Xcelerator (UDAX) 2027."
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.program_name == "UBRI Digital Asset Xcelerator (UDAX) 2027"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == source_url
+
+
+def test_near_protocol_rewards_cta_is_a_current_rolling_application():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    source_url = "https://www.nearprotocolrewards.com/"
+    document = FundingDocument(
+        organization="NEAR Ecosystem Funding",
+        title="NEAR Protocol Rewards",
+        source=source_url,
+        source_type="html",
+        content=(
+            "Build on NEAR and earn up to $10,000 each month through Protocol Rewards. "
+            "Apply for Next Cohort."
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.program_name == "NEAR Protocol Rewards"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == source_url
+
+
+def test_near_hzn_incubation_program_application_is_current():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    application_url = "https://airtable.com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form"
+    document = FundingDocument(
+        organization="NEAR Ecosystem Funding",
+        title="AI + HZN | NEAR AI Incubation Program",
+        source="https://www.hzn.xyz/",
+        source_type="html",
+        content=(
+            "Join our AI Incubation Program to pioneer decentralized AI applications. "
+            "Gain support, compute credits, mentorship, and strategic partnerships. "
+            f"[Apply for the Program]({application_url})"
+        ),
+        year=2026,
+    )
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.evidence.get("status")
+    assert opportunity.application_url == application_url
+
+
+def test_sbir_nih_recurring_due_dates_use_next_future_window(monkeypatch):
+    from agents.funding_agent import FundingDocument, analyze_document
+    from agents.funding_collector import _fetch_linked_official_sbir_context
+    import core.http_client
+
+    source_url = "https://www.sbir.gov/topics/12563"
+    official_url = "https://simpler.grants.gov/opportunity/d1ba49e5-3684-4420-849a-ab2330ec493e"
+    source_text = "\n".join([
+        "NIH, CDC and FDA Small Business Innovation Research Grant (Parent SBIR [R43/R44] Clinical Trial Optional)",
+        "Funding Agency: HHS",
+        "Solicitation Number: PA-27-100",
+        "Solicitation Status: Open",
+        "NOTE: the topics listed on this site are not necessarily the latest and most up-to-date.",
+        f"[View Official Solicitation]({official_url})",
+        "Open Date: August 05, 2026",
+        "Due Date(s): September 05, 2026; January 05, 2027; April 05, 2027",
+        "Close Date: April 06, 2027",
+    ])
+    official_text = "\n".join([
+        "Open Open opportunity Last Updated: Jun 1, 2026",
+        "Funding opportunity number: PA-27-100",
+        "Closing: April 5, 2027",
+    ])
+
+    def fake_fetch_text(url, **kwargs):
+        assert url == official_url
+        return official_text, url
+
+    monkeypatch.setattr(core.http_client, "fetch_text", fake_fetch_text)
+    document = FundingDocument(
+        organization="Open SBIR Funding Topics",
+        title="NIH, CDC and FDA Small Business Innovation Research Grant (Parent SBIR [R43/R44] Clinical Trial Optional)",
+        source=source_url,
+        source_type="html",
+        content=source_text,
+        year=2026,
+    )
+    context = _fetch_linked_official_sbir_context(document, cache={})
+    assert "CURRENT VERSION CONFIRMED" in context
+    document.content += context
+    opportunity = analyze_document(document)
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2027-01-05"
+    assert opportunity.application_url == official_url
