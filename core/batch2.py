@@ -18,14 +18,22 @@ from core.normalization import save_normalized_collection_records
 def evaluate_collection_health(
     collection_tasks: list[dict[str, Any]],
     min_required_agents: int,
+    expected_agents: set[str] | None = None,
 ) -> tuple[bool, int]:
-    """Count unique collectors that returned usable persisted artifacts."""
+    """Count only expected collectors that returned usable persisted artifacts."""
     healthy_agents: set[str] = set()
     for task in collection_tasks:
+        if not isinstance(task, dict):
+            continue
         agent_name = str(task.get("agent_name") or "").strip()
+        if not agent_name or (expected_agents is not None and agent_name not in expected_agents):
+            continue
         status = str(task.get("status", "")).lower()
-        outputs_count = int(task.get("outputs_count", 0) or 0)
-        if agent_name and status in {"success", "partial_success", "partial_limit"} and outputs_count > 0:
+        try:
+            outputs_count = int(task.get("outputs_count", 0) or 0)
+        except (TypeError, ValueError):
+            outputs_count = 0
+        if status in {"success", "partial_success", "partial_limit"} and outputs_count > 0:
             healthy_agents.add(agent_name)
     return len(healthy_agents) >= min_required_agents, len(healthy_agents)
 
@@ -124,6 +132,69 @@ def _read_json_list(path: Path) -> list[Any]:
     return value
 
 
+def _validate_normalized_handoff(
+    records: list[Any],
+    *,
+    funding_call_id: str,
+    run_id: str,
+    expected_agents: set[str],
+) -> list[str]:
+    """Validate each record before declaring the per-call Batch-3 handoff ready."""
+    errors: list[str] = []
+    for index, record in enumerate(records):
+        label = f"record[{index}]"
+        if not isinstance(record, dict):
+            errors.append(f"{label} is not a JSON object")
+            continue
+
+        if record.get("run_id") != run_id:
+            errors.append(f"{label} ({record.get('record_id')}) has a mismatched run_id")
+        if record.get("funding_call_id") != funding_call_id:
+            errors.append(f"{label} ({record.get('record_id')}) has a mismatched funding_call_id")
+
+        source_url = str(record.get("source_url") or "").strip()
+        parsed_source = urlparse(source_url)
+        if parsed_source.scheme not in {"http", "https"} or not parsed_source.netloc:
+            errors.append(f"{label} ({record.get('record_id')}) has no usable HTTP(S) source URL")
+
+        if record.get("normalization_status") != "NORMALIZED":
+            errors.append(
+                f"{label} ({record.get('record_id')}) is marked "
+                f"{record.get('normalization_status')!r}"
+            )
+
+        agent_name = str(record.get("agent_name") or "").strip()
+        if agent_name not in expected_agents:
+            errors.append(f"{label} ({record.get('record_id')}) has an unknown collection agent: {agent_name!r}")
+
+        for field in ("record_id", "evidence_id", "source_id", "content_hash", "title"):
+            if not str(record.get(field) or "").strip():
+                errors.append(f"{label} is missing required normalized field {field!r}")
+
+        collected_at = str(record.get("collected_at") or "").strip()
+        try:
+            if not collected_at:
+                raise ValueError("empty timestamp")
+            datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+        except ValueError:
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid collected_at timestamp")
+
+        evidence_values = [
+            record.get("problem_statement"),
+            record.get("context_summary"),
+        ]
+        evidence_values.extend(record.get("evidence_snippets") or [])
+        evidence_values.extend(record.get("excerpt_windows") or [])
+        if not any(str(value or "").strip() for value in evidence_values):
+            errors.append(f"{label} ({record.get('record_id')}) contains no usable evidence text")
+
+        mission_gate = record.get("mission_relevance")
+        if not isinstance(mission_gate, dict) or mission_gate.get("passed") is not True:
+            errors.append(f"{label} ({record.get('record_id')}) is missing a passed mission-relevance decision")
+
+    return errors
+
+
 def execute_batch2(
     *,
     funding_contexts: list[FundingCallContext],
@@ -173,13 +244,17 @@ def execute_batch2(
         raise ValueError(f"Unsafe run_id for output directory: {resolved_run_id!r}")
 
     run_root = Path(output_root) / resolved_run_id
-    if run_root.exists() and any(run_root.iterdir()):
+    # Atomic exclusive creation prevents two processes from sharing a run root,
+    # even when both start while the directory is still empty.
+    try:
+        run_root.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
         raise FileExistsError(
-            f"Batch-2 output directory already contains data: {run_root}. "
+            f"Batch-2 output directory already exists: {run_root}. "
             "Use a new --run-id so artifacts from separate executions cannot mix."
-        )
+        ) from exc
     workflow_root = run_root / "workflow"
-    workflow_root.mkdir(parents=True, exist_ok=True)
+    workflow_root.mkdir(parents=True, exist_ok=False)
     atomic_write_json(
         workflow_root / "funding_contexts.json",
         {
@@ -243,13 +318,19 @@ def execute_batch2(
         report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
         return report
 
-    scheduled_agents = {str(task.get("agent_name") or "") for task in tasks}
+    task_agent_names = {
+        str(task.get("agent_name") or "").strip()
+        for task in tasks if isinstance(task, dict)
+    }
+    scheduled_agents = task_agent_names & expected_agents
+    unexpected_agents = sorted(task_agent_names - expected_agents)
     missing_agents = sorted(expected_agents - scheduled_agents)
     min_required = minimum_healthy_collectors(len(expected_agents))
-    healthy, healthy_count = evaluate_collection_health(tasks, min_required)
+    healthy, healthy_count = evaluate_collection_health(tasks, min_required, expected_agents)
     collector_health = {
         "scheduled_agents": sorted(scheduled_agents),
         "missing_agents": missing_agents,
+        "unexpected_agents": unexpected_agents,
         "healthy_agents": healthy_count,
         "total_agents": len(expected_agents),
         "required_healthy_agents": min_required,
@@ -274,6 +355,10 @@ def execute_batch2(
         if missing_agents:
             report["blockers"].append(
                 {"code": "MISSING_COLLECTOR_TASKS", "agents": missing_agents}
+            )
+        if unexpected_agents:
+            report["blockers"].append(
+                {"code": "UNEXPECTED_COLLECTOR_TASKS", "agents": unexpected_agents}
             )
         if not healthy:
             report["blockers"].append(
@@ -362,24 +447,12 @@ def execute_batch2(
                     f"required normalization output is missing: {output_name}"
                 )
 
-        handoff_errors: list[str] = []
-        for record in records:
-            if record.get("run_id") != resolved_run_id:
-                handoff_errors.append(
-                    f"record {record.get('record_id')} has a mismatched run_id"
-                )
-            if record.get("funding_call_id") != call_id:
-                handoff_errors.append(
-                    f"record {record.get('record_id')} has a mismatched funding_call_id"
-                )
-            if not str(record.get("source_url") or "").startswith(("http://", "https://")):
-                handoff_errors.append(
-                    f"record {record.get('record_id')} has no usable HTTP(S) source URL"
-                )
-            if record.get("normalization_status") != "NORMALIZED":
-                handoff_errors.append(
-                    f"record {record.get('record_id')} is marked {record.get('normalization_status')!r}"
-                )
+        handoff_errors = _validate_normalized_handoff(
+            records,
+            funding_call_id=call_id,
+            run_id=resolved_run_id,
+            expected_agents=expected_agents,
+        )
 
         input_count = len(accepted_ids) + len(rejected_ids)
         call_status = "ready_for_batch3"
