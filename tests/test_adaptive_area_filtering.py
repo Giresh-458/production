@@ -7,6 +7,7 @@ import sys
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import run_pipeline
 from run_pipeline import main
 from core.intelligence import refresh_intelligence_views
 
@@ -57,7 +58,15 @@ def run_pipeline_with_mocked_areas(
         for index, original in enumerate(accepted_records):
             record = dict(original)
             record.setdefault("evidence_id", f"adaptive-{index}")
+            record.setdefault("source_id", f"adaptive-source-{index}")
+            record.setdefault("content_hash", f"adaptive-content-{index}")
             record.setdefault("title", "Adaptive area test evidence")
+            record.setdefault("agent_name", "literature")
+            record.setdefault("collected_at", "2026-11-01T10:00:00+00:00")
+            record.setdefault("problem_statement", "A controlled source-grounded research limitation.")
+            record.setdefault("context_summary", "A controlled source-grounded research limitation.")
+            record.setdefault("evidence_snippets", ["A measurable source-grounded limitation."])
+            record.setdefault("excerpt_windows", [])
             record.update({
                 "run_id": run_id,
                 "funding_call_id": call_id,
@@ -87,7 +96,10 @@ def run_pipeline_with_mocked_areas(
 
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}
-    mock_execute_batch.return_value = {"tasks": []}
+    mock_execute_batch.return_value = {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
     mock_run_stage.return_value = {"status": "success", "outputs_count": 1, "outputs": [{}]}
 
     exit_code = main()
