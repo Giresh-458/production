@@ -114,8 +114,23 @@ Zero knowledge verification latency increases under high transaction volume and 
 """
 
 
-def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_path):
+def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path):
     context = _context()
+    batch1_handoff = tmp_path / "batch1" / "workflow" / "funding_contexts.json"
+    batch1_handoff.parent.mkdir(parents=True, exist_ok=True)
+    batch1_handoff.write_text(
+        json.dumps(
+            {
+                "run_id": "batch1-test-run",
+                "funding_contexts": [context.to_dict()],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff
+
+    loaded_contexts, batch1_run_id = load_funding_context_handoff(batch1_handoff)
     captured = {}
 
     def fake_execute_batch_run(**kwargs):
@@ -144,10 +159,10 @@ def test_batch2_runs_eleven_collectors_normalizes_and_stops_before_batch3(tmp_pa
 
     with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
-            funding_contexts=[context],
+            funding_contexts=loaded_contexts,
             output_root=tmp_path / "batch2",
             run_id="batch2-test-run",
-            batch1_run_id="batch1-test-run",
+            batch1_run_id=batch1_run_id,
             execution_mode="sequential",
             max_workers=1,
             timeout_budget_seconds=60,

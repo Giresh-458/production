@@ -168,6 +168,12 @@ The backward-compatible entry point remains:
 
 The full pipeline runs Batch-1, then the same 11-agent collection and per-call normalization implementation, and continues to Batch-3 only after upstream collection and normalization gates pass. The standalone runner is for independently executing and verifying Batch-2 without rerunning Batch-1 or starting Batch-3.
 
+## Runtime dependencies and external services
+
+The Python dependencies are declared in requirements.txt and pyproject.toml. The Batch-2 code paths use the repository's existing HTTP and HTML collection clients, Crawl4AI/Playwright for browser-rendered sources, PDF extraction support, YAML configuration loading, deterministic semantic ranking, and the built-in sqlite3 module for the evidence ledger. Install the repository requirements rather than installing a separate, incompatible crawler stack.
+
+Playwright's Chromium browser is installed separately with python -m playwright install chromium. Live configured collection requires outbound network access to the selected source sites. The default Batch-2 path does not require Docker, an external database, or a local Ollama service. Existing Docker-related files are left unchanged.
+
 ## Ollama and embedding dependencies
 
 The standalone Batch-2 runner explicitly uses:
