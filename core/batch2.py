@@ -394,7 +394,7 @@ def audit_collector_artifacts(
                 shared_header = parsed_artifact.get("shared_header", {})
                 provenance = parsed_artifact.get("provenance", {})
                 machine_payload_match = re.search(
-                    r"## Machine-Readable Payload\s*\x60\x60\x60json\s*(.*?)\s*\x60\x60\x60",
+                    r"(?ms)^## Machine-Readable Payload[ \\t]*\\n^\x60\x60\x60json[ \\t]*\\n(.*?)\\n^\x60\x60\x60[ \\t]*$",
                     artifact_text,
                     flags=re.IGNORECASE | re.DOTALL,
                 )
