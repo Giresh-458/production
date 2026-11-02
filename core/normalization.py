@@ -213,6 +213,30 @@ def generate_content_hash(title: str, source_type: str, problem_statement: str, 
     text = f"{_clean(title)}|{_clean(source_type)}|{_clean(problem_statement)}|{_clean(context_summary)}"
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+
+def generate_evidence_id(
+    source_id: str,
+    funding_call_id: str,
+    agent_name: str,
+    layer: str,
+    evidence_snippets: list[str] | None = None,
+    excerpt_windows: list[str] | None = None,
+    problem_statement: str = "",
+    context_summary: str = "",
+    title: str = "",
+) -> str:
+    """Create a stable evidence identity with a meaningful fallback when excerpts are absent."""
+    evidence_text = "\n".join(str(item) for item in (evidence_snippets or []) if str(item).strip())
+    if not evidence_text:
+        evidence_text = "\n".join(str(item) for item in (excerpt_windows or []) if str(item).strip())
+    if not evidence_text:
+        evidence_text = _clean(problem_statement) or _clean(context_summary) or _clean(title)
+    identity = (
+        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|"
+        f"{layer.casefold()}|{evidence_text}"
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
 def extract_source_identity(title: str, source_url: str, canonical_url: str, metadata: dict) -> str:
     # 1. DOI
     source_hints = metadata.get("source_hints", {})
@@ -505,13 +529,21 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     needs_review = (not funding_call_id and not funding_call_ids) or not source_url
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
 
-    evidence_snippets_str = "\n".join(evidence.get("evidence_snippets", []))
     # Keep observations from different collection layers distinct. They may
     # describe the same underlying source, but merging them here loses which
-    # collector actually produced each evidence record.
-    evidence_id = hashlib.sha256(
-        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
-    ).hexdigest()[:16]
+    # collector actually produced each evidence record. Use the problem/context
+    # as a deterministic fallback when a source has no explicit excerpt snippets.
+    evidence_id = generate_evidence_id(
+        source_id,
+        funding_call_id,
+        agent_name,
+        layer,
+        evidence.get("evidence_snippets", []),
+        evidence.get("excerpt_windows", []),
+        normalized_problem,
+        context_summary,
+        title,
+    )
 
     # Domain relevance is evidence-derived and deliberately independent from
     # the routed research_area. This prevents routing metadata from overriding
@@ -671,12 +703,17 @@ def build_normalized_collection_records(
                         # The first-pass evidence ID was generated before ownership
                         # was resolved. Recompute it now so each call-scoped copy has
                         # a distinct canonical identity in its own evidence ledger.
-                        evidence_snippets_str = "\n".join(record.get("evidence_snippets", []) or [])
-                        record["evidence_id"] = hashlib.sha256(
-                            f"{record.get('source_id', '')}|{target_funding_call_id}|"
-                            f"{str(record.get('agent_name', '')).casefold()}|"
-                            f"{str(record.get('layer', '')).casefold()}|{evidence_snippets_str}".encode("utf-8")
-                        ).hexdigest()[:16]
+                        record["evidence_id"] = generate_evidence_id(
+                            str(record.get("source_id") or ""),
+                            target_funding_call_id,
+                            str(record.get("agent_name") or ""),
+                            str(record.get("layer") or ""),
+                            record.get("evidence_snippets") or [],
+                            record.get("excerpt_windows") or [],
+                            str(record.get("problem_statement") or ""),
+                            str(record.get("context_summary") or ""),
+                            str(record.get("title") or ""),
+                        )
                     else:
                         skipped.append({
                             "path": str(path.resolve()),
