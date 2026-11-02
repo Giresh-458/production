@@ -42,7 +42,7 @@ A normal full-pipeline run writes validated contexts to:
 
     outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json
 
-The JSON object contains the Batch-1 run ID and a funding_contexts array. The standalone runner reads this file directly and does not rerun Batch-1. The file must be an auditable Batch-1 envelope containing a non-empty `batch1_run_id` or `run_id`; a bare FundingCallContext object or list is not accepted by the CLI.
+The JSON object contains the Batch-1 run ID and a funding_contexts array. The standalone runner reads this file directly and does not rerun Batch-1. The file must be an auditable Batch-1 envelope containing a non-empty `batch1_run_id`, the serialized contexts, and a `batch1_acceptance` attestation with `accepted=true`, `status=ACCEPTED`, `source_coverage_verified=true`, and the same Batch-1 run ID. The strict Batch-1 quality workflow writes this attestation only after source coverage, accounting, selector, and context gates all pass. A bare FundingCallContext object/list, a per-context-ready-only handoff, or a blocked/mismatched acceptance attestation is rejected by the standalone CLI.
 
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
