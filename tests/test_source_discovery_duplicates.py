@@ -66,6 +66,7 @@ def test_source_discovery_duplicate_preservation(
 - title: Blockchain basics
 - source: https://example.org/accepted
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DISC
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:00+00:00
@@ -85,6 +86,7 @@ Blockchain ledger systems.
 - title: Nothing matches here
 - source: https://example.org/rejected
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DISC
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:01+00:00
@@ -101,6 +103,7 @@ Trees and leaves.
 - title: Missing title keywords
 - source: https://example.org/conflict
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DISC
 - research_area: Unscoped
 - collected_at: 2026-08-24T10:00:02+00:00
@@ -119,6 +122,7 @@ A completely unrelated problem statement.
 - title: Blockchain conflict resolution
 - source: https://example.org/conflict
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DISC
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:03+00:00
