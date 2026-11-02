@@ -151,7 +151,7 @@ def test_evidence_ids_use_problem_text_when_source_has_no_excerpt_snippets(tmp_p
         "A source-grounded technical limitation that can be measured.",
         "A different source-grounded limitation requiring longitudinal validation.",
     )
-    for artifact in (first, second):
+    for name, artifact in (("first", first), ("second", second)):
         artifact = artifact.replace(
             "### Evidence Snippets\n- A source-grounded excerpt from the paper.\n",
             "### Evidence Snippets\n",
@@ -160,10 +160,7 @@ def test_evidence_ids_use_problem_text_when_source_has_no_excerpt_snippets(tmp_p
             "### Excerpt Windows\n- A source-grounded excerpt from the paper.\n",
             "### Excerpt Windows\n",
         )
-        if artifact is first:
-            (agent_dir / "first.md").write_text(artifact, encoding="utf-8")
-        else:
-            (agent_dir / "second.md").write_text(artifact, encoding="utf-8")
+        (agent_dir / f"{name}.md").write_text(artifact, encoding="utf-8")
 
     records = build_normalized_collection_records(
         root,
