@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -418,10 +419,25 @@ def audit_collector_artifacts(
                     reasons.append("artifact_provenance_agent_name_missing_or_mismatched")
                 if str(provenance.get("collected_at") or "").strip() != str(shared_header.get("collected_at") or "").strip():
                     reasons.append("artifact_header_and_provenance_timestamp_conflict")
-                if not str(provenance.get("document_identity") or "").strip():
+                document_identity = str(provenance.get("document_identity") or "").strip()
+                expected_document_identity = hashlib.sha256(
+                    f"{header_source}|{str(shared_header.get('title') or '').strip()}".encode("utf-8")
+                ).hexdigest()
+                if not document_identity:
                     reasons.append("artifact_provenance_document_identity_missing")
-                if not str(provenance.get("content_hash") or "").strip():
+                elif document_identity != expected_document_identity:
+                    reasons.append("artifact_provenance_document_identity_mismatch")
+
+                provenance_content_hash = str(provenance.get("content_hash") or "").strip()
+                raw_content = str(parsed_artifact.get("raw_content") or "").strip()
+                if not provenance_content_hash:
                     reasons.append("artifact_provenance_content_hash_missing")
+                elif not raw_content:
+                    reasons.append("artifact_raw_content_missing_for_hash_verification")
+                else:
+                    expected_content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
+                    if provenance_content_hash != expected_content_hash:
+                        reasons.append("artifact_provenance_content_hash_mismatch")
 
                 record = normalize_intermediate_artifact(path)
                 if str(record.get("agent_name") or "").strip() != agent:
