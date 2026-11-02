@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from core.file_lock import atomic_write_json
 from core.funding_selection import FundingCallContext, has_substantive_eligibility_evidence
 from core.mission_gate import relevance as mission_relevance
 from core.normalization import save_normalized_collection_records
+from core.source_registry import build_source_refresh_plan, sync_source_registry
 
 
 def evaluate_collection_health(
@@ -159,6 +161,11 @@ def validate_normalized_handoff(
             errors.append(f"{label} ({record.get('record_id')}) has a mismatched run_id")
         if record.get("funding_call_id") != funding_call_id:
             errors.append(f"{label} ({record.get('record_id')}) has a mismatched funding_call_id")
+        call_ids = record.get("funding_call_ids")
+        if not isinstance(call_ids, list) or call_ids != [funding_call_id]:
+            errors.append(
+                f"{label} ({record.get('record_id')}) is not isolated to exactly one funding_call_id"
+            )
 
         source_url = str(record.get("source_url") or "").strip()
         parsed_source = urlparse(source_url)
@@ -183,9 +190,11 @@ def validate_normalized_handoff(
         try:
             if not collected_at:
                 raise ValueError("empty timestamp")
-            datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+            parsed_collected_at = datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+            if parsed_collected_at.tzinfo is None or parsed_collected_at.utcoffset() is None:
+                raise ValueError("timestamp must include a timezone")
         except ValueError:
-            errors.append(f"{label} ({record.get('record_id')}) has an invalid collected_at timestamp")
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid or timezone-naive collected_at timestamp")
 
         evidence_values = [
             record.get("problem_statement"),
@@ -207,6 +216,78 @@ def validate_normalized_handoff(
         mission_gate = record.get("mission_relevance")
         if not isinstance(mission_gate, dict) or mission_gate.get("passed") is not True:
             errors.append(f"{label} ({record.get('record_id')}) is missing a passed mission-relevance decision")
+
+    return errors
+
+
+def validate_evidence_ledger(
+    ledger_path: Path,
+    records: list[dict[str, Any]],
+    *,
+    funding_call_id: str,
+    run_id: str,
+) -> list[str]:
+    """Verify the SQLite ledger is healthy and contains exactly this call/run's records."""
+    errors: list[str] = []
+    if not ledger_path.is_file() or ledger_path.stat().st_size == 0:
+        return [f"evidence ledger is missing or empty: {ledger_path}"]
+
+    expected = {str(record.get("evidence_id") or ""): record for record in records}
+    if "" in expected:
+        errors.append("normalized records contain an empty evidence_id")
+        expected.pop("", None)
+
+    connection = None
+    try:
+        connection = sqlite3.connect(str(ledger_path))
+        quick_check = connection.execute("PRAGMA quick_check").fetchone()
+        if not quick_check or str(quick_check[0]).lower() != "ok":
+            errors.append(f"evidence ledger SQLite quick_check failed: {quick_check!r}")
+
+        total_rows = int(connection.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0])
+        rows = connection.execute(
+            """
+            SELECT evidence_id, record_id, funding_call_id, run_id, agent,
+                   source_url, retrieved_at, content_hash, normalization_status
+            FROM canonical_evidence
+            WHERE funding_call_id = ? AND run_id = ?
+            """,
+            (funding_call_id, run_id),
+        ).fetchall()
+
+        if total_rows != len(records):
+            errors.append(
+                f"evidence ledger row count {total_rows} does not match normalized record count {len(records)}"
+            )
+        actual_ids = {str(row[0]) for row in rows}
+        if actual_ids != set(expected):
+            errors.append("evidence ledger evidence_id set does not match normalized records")
+
+        for row in rows:
+            evidence_id, record_id, call_id, row_run_id, agent, source_url, retrieved_at, content_hash, status = row
+            record = expected.get(str(evidence_id))
+            if record is None:
+                continue
+            comparisons = {
+                "record_id": (record_id, record.get("record_id")),
+                "funding_call_id": (call_id, funding_call_id),
+                "run_id": (row_run_id, run_id),
+                "agent": (agent, record.get("agent_name")),
+                "source_url": (source_url, record.get("source_url")),
+                "retrieved_at": (retrieved_at, record.get("collected_at")),
+                "content_hash": (content_hash, record.get("content_hash")),
+                "normalization_status": (status, "NORMALIZED"),
+            }
+            for field, (actual, wanted) in comparisons.items():
+                if actual != wanted:
+                    errors.append(
+                        f"evidence ledger {field} mismatch for evidence_id {evidence_id}"
+                    )
+    except (sqlite3.Error, OSError, TypeError, ValueError) as exc:
+        errors.append(f"could not validate evidence ledger {ledger_path}: {exc}")
+    finally:
+        if connection is not None:
+            connection.close()
 
     return errors
 
@@ -286,7 +367,42 @@ def execute_batch2(
             f"Expected exactly 11 downstream collection agents, found {len(expected_agents)}."
         )
 
-    collection_report = execute_batch_run(
+    source_registry_report: dict[str, Any] = {"status": "skipped_dry_run"}
+    if not dry_run:
+        try:
+            registry_sync = sync_source_registry()
+            refresh_plan = build_source_refresh_plan(force=bool(force_refresh))
+            source_registry_report = {
+                "status": "ready",
+                "total_entries": registry_sync.total_entries,
+                "active_entries": registry_sync.active_entries,
+                "deprecated_entries": registry_sync.deprecated_entries,
+                "refresh_plan_entries": refresh_plan.total_entries,
+                "refresh_due_entries": refresh_plan.due_entries,
+                "refresh_skipped_entries": refresh_plan.skipped_entries,
+            }
+        except Exception as exc:
+            report = {
+                "run_id": resolved_run_id,
+                "batch1_run_id": batch1_run_id,
+                "status": "blocked_source_registry",
+                "dry_run": False,
+                "output_root": str(run_root.resolve()),
+                "scope": "Batch-2 collection and normalization only",
+                "batch3_started": False,
+                "source_registry": {"status": "error", "error": str(exc)},
+                "blockers": [{"code": "SOURCE_REGISTRY_PREPARATION_FAILED", "message": str(exc)}],
+                "funding_calls": [
+                    {"funding_call_id": context.funding_call_id, "status": "not_started"}
+                    for context in contexts
+                ],
+            }
+            atomic_write_json(workflow_root / "batch2_report.json", report)
+            report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
+            return report
+
+    try:
+        collection_report = execute_batch_run(
         agent_names=sorted(expected_agents),
         area_names=[None],
         mode="configured_scan",
@@ -297,6 +413,8 @@ def execute_batch2(
             "force_refresh": bool(force_refresh),
             "allow_llm_refinement": False,
             "allow_llm_analysis": False,
+            # The coordinator synchronized the registry once before worker launch.
+            "defer_registry_sync": True,
         },
         execution_mode=execution_mode,
         dry_run=dry_run,
@@ -306,7 +424,25 @@ def execute_batch2(
         analysis_mode="collect_only",
         report_path=workflow_root / "shared_downstream_collection_plan.json",
         funding_contexts=contexts,
-    )
+        )
+    except Exception as exc:
+        report = {
+            "run_id": resolved_run_id,
+            "batch1_run_id": batch1_run_id,
+            "status": "blocked_collection_execution",
+            "output_root": str(run_root.resolve()),
+            "scope": "Batch-2 collection and normalization only",
+            "batch3_started": False,
+            "source_registry": source_registry_report,
+            "blockers": [{"code": "COLLECTION_EXECUTION_EXCEPTION", "message": str(exc)}],
+            "funding_calls": [
+                {"funding_call_id": context.funding_call_id, "status": "not_started"}
+                for context in contexts
+            ],
+        }
+        atomic_write_json(workflow_root / "batch2_report.json", report)
+        report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
+        return report
 
     tasks = collection_report.get("tasks", []) if isinstance(collection_report, dict) else []
     if dry_run:
@@ -319,6 +455,7 @@ def execute_batch2(
             "scope": "Batch-2 collection and normalization only",
             "batch3_started": False,
             "normalization_started": False,
+            "source_registry": source_registry_report,
             "next_stage": "Batch-2 execution was planned only; no collection or normalization ran",
             "collection": collection_report,
             "funding_calls": [
@@ -361,6 +498,7 @@ def execute_batch2(
         "batch3_started": False,
         "next_stage": "Batch-3 NLP processing (not executed by this runner)",
         "collector_health": collector_health,
+        "source_registry": source_registry_report,
         "collection": collection_report,
         "funding_calls": [],
     }
@@ -469,6 +607,13 @@ def execute_batch2(
             run_id=resolved_run_id,
             expected_agents=expected_agents,
         )
+        ledger_errors = validate_evidence_ledger(
+            required_normalized_outputs["evidence_ledger"],
+            records,
+            funding_call_id=call_id,
+            run_id=resolved_run_id,
+        )
+        normalization_errors.extend(ledger_errors)
 
         input_count = len(accepted_ids) + len(rejected_ids)
         call_status = "ready_for_batch3"
@@ -494,6 +639,7 @@ def execute_batch2(
                 "status": call_status,
                 "normalized_records": len(records),
                 "normalization_errors": normalization_errors,
+                "evidence_ledger_errors": ledger_errors,
                 "skipped_artifacts": skipped_artifacts,
                 "skipped_artifact_count": len(skipped_artifacts),
                 "handoff_errors": handoff_errors,
