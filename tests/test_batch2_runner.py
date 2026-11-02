@@ -890,7 +890,7 @@ def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
     ]
     tasks.append({"agent_name": "unexpected_agent", "status": "success", "outputs_count": 1})
 
-    from batch2_test_helpers import write_test_collector_artifacts
+    from tests.batch2_test_helpers import write_test_collector_artifacts
     run_id = "unexpected-agent-run"
 
     def fake_execute_batch_run(**kwargs):
