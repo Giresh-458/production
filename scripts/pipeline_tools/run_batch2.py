@@ -20,12 +20,17 @@ def load_funding_context_handoff(path: Path) -> tuple[list[FundingCallContext], 
     if isinstance(payload, dict):
         batch1_run_id = payload.get("batch1_run_id") or payload.get("run_id")
         acceptance = payload.get("batch1_acceptance")
+        nested_acceptance = acceptance.get("acceptance") if isinstance(acceptance, dict) else None
         if (
             not isinstance(acceptance, dict)
             or acceptance.get("accepted") is not True
             or str(acceptance.get("status") or "").upper() != "ACCEPTED"
             or acceptance.get("source_coverage_verified") is not True
             or str(acceptance.get("batch1_run_id") or "") != str(batch1_run_id or "")
+            or not isinstance(nested_acceptance, dict)
+            or nested_acceptance.get("accepted") is not True
+            or str(nested_acceptance.get("status") or "").upper() != "ACCEPTED"
+            or bool(nested_acceptance.get("blockers"))
         ):
             raise ValueError(
                 "Batch-2 requires a Batch-1 handoff carrying an ACCEPTED global "
