@@ -387,13 +387,21 @@ def audit_collector_artifacts(
         tasks_by_agent.setdefault(agent, []).append(task)
 
     intermediate_root = run_root / "intermediate"
-    quarantine_root = run_root / "workflow" / "quarantined_intermediate"
+    workflow_root = run_root / "workflow"
+    quarantine_root = workflow_root / "quarantined_intermediate"
     resolved_run_root = run_root.resolve()
-    if intermediate_root.exists() and not intermediate_root.resolve().is_relative_to(resolved_run_root):
+    if (
+        (intermediate_root.exists() or intermediate_root.is_symlink())
+        and not intermediate_root.resolve().is_relative_to(resolved_run_root)
+    ):
         raise ValueError("intermediate output root resolves outside the Batch-2 run directory")
+    for directory, label in (
+        (workflow_root, "workflow"),
+        (quarantine_root, "artifact quarantine"),
+    ):
+        if (directory.exists() or directory.is_symlink()) and not directory.resolve().is_relative_to(resolved_run_root):
+            raise ValueError(f"{label} root resolves outside the Batch-2 run directory")
     quarantine_root.mkdir(parents=True, exist_ok=True)
-    if not quarantine_root.resolve().is_relative_to(resolved_run_root):
-        raise ValueError("artifact quarantine root resolves outside the Batch-2 run directory")
     agent_audits: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
