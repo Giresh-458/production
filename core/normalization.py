@@ -230,7 +230,10 @@ def generate_evidence_id(
     if not evidence_text:
         evidence_text = "\n".join(str(item) for item in (excerpt_windows or []) if str(item).strip())
     if not evidence_text:
-        evidence_text = _clean(problem_statement) or _clean(context_summary) or _clean(title)
+        # Keep identity stable when the same source is updated. Problem/context
+        # text belongs in content_hash/content_versions, not the evidence key;
+        # otherwise an ordinary revision becomes a second evidence record.
+        evidence_text = _clean(title)
     identity = (
         f"{source_id}|{funding_call_id}|{agent_name.casefold()}|"
         f"{layer.casefold()}|{evidence_text}"
