@@ -66,6 +66,7 @@ def test_duplicate_mission_gate_statistics(
 - title: Quantum entanglement
 - source: https://example.org/quant
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:00+00:00
@@ -83,6 +84,7 @@ Quantum entanglement networks.
 - title: Quantum entanglement
 - source: https://example.org/quant
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:01+00:00
@@ -100,6 +102,7 @@ Quantum entanglement networks part 2.
 - title: Classic networking
 - source: https://example.org/class
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:02+00:00
