@@ -52,21 +52,28 @@ def mock_save(*args, **kwargs):
     norm_dir = call_root / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
     (call_root / "proposals").mkdir(parents=True, exist_ok=True)
+    import hashlib
+    source_url = "https://example.org/evidence"
     record = {
-        "record_id": "r1",
-        "evidence_id": "dummy",
-        "source_id": "source-1",
-        "content_hash": "content-1",
+        "record_id": hashlib.sha1(f"record-{call_id}".encode()).hexdigest()[:16],
+        "evidence_id": hashlib.sha256(f"evidence-{call_id}".encode()).hexdigest()[:16],
+        "source_id": f"url:{source_url}",
+        "content_hash": hashlib.sha256(f"content-{call_id}".encode()).hexdigest(),
         "title": "Controlled proposal-gate evidence",
         "agent_name": "literature",
+        "layer": "Literature",
+        "source_type": "web_page",
+        "evidence_type": "web_source",
+        "evidence_strength": 0.7,
         "research_area": "Unscoped",
-        "source_url": "https://example.org/evidence",
+        "source_url": source_url,
         "collected_at": "2026-11-01T10:00:00+00:00",
         "problem_statement": "A controlled source-grounded research limitation.",
         "context_summary": "A controlled source-grounded research limitation.",
         "evidence_snippets": ["A measurable source-grounded limitation."],
         "excerpt_windows": [],
         "funding_call_ids": [call_id],
+        "source_funding_call_ids": [call_id],
         "funding_call_id": call_id,
         "run_id": run_id,
         "normalization_status": "NORMALIZED",
@@ -79,7 +86,8 @@ def mock_save(*args, **kwargs):
     (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
     (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
     (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-    (norm_dir / "evidence_ledger.db").touch()
+    from _batch2_helpers import write_test_evidence_ledger
+    write_test_evidence_ledger(norm_dir / "evidence_ledger.db", [record])
     return {
         "records": norm_dir / "records.json",
         "by_area": norm_dir / "by_area.json",
