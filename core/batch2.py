@@ -667,11 +667,19 @@ def execute_batch2(
     contexts = list(funding_contexts or [])
     if not contexts:
         raise ValueError("At least one validated Batch-1 FundingCallContext is required.")
+    nested_acceptance = (
+        batch1_acceptance.get("acceptance")
+        if isinstance(batch1_acceptance, dict) else None
+    )
     if (
         not isinstance(batch1_acceptance, dict)
         or batch1_acceptance.get("accepted") is not True
         or str(batch1_acceptance.get("status") or "").upper() != "ACCEPTED"
         or batch1_acceptance.get("source_coverage_verified") is not True
+        or not isinstance(nested_acceptance, dict)
+        or nested_acceptance.get("accepted") is not True
+        or str(nested_acceptance.get("status") or "").upper() != "ACCEPTED"
+        or bool(nested_acceptance.get("blockers"))
     ):
         raise ValueError(
             "Batch-2 requires an ACCEPTED Batch-1 global source-coverage attestation."
