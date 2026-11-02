@@ -389,9 +389,41 @@ def audit_collector_artifacts(
                 resolved = path.resolve()
                 if not resolved.is_relative_to(agent_root.resolve()):
                     reasons.append("artifact_path_escapes_agent_output_directory")
+                artifact_text = path.read_text(encoding="utf-8")
                 parsed_artifact = _normalize_intermediate_sections(path)
                 shared_header = parsed_artifact.get("shared_header", {})
                 provenance = parsed_artifact.get("provenance", {})
+                machine_payload_match = re.search(
+                    r"## Machine-Readable Payload\\s*\\x60\\x60\\x60json\\s*(.*?)\\s*\\x60\\x60\\x60",
+                    artifact_text,
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+                machine_payload: dict[str, Any] = {}
+                if not machine_payload_match:
+                    reasons.append("artifact_machine_readable_payload_missing")
+                else:
+                    try:
+                        loaded_payload = json.loads(machine_payload_match.group(1))
+                        if isinstance(loaded_payload, dict):
+                            machine_payload = loaded_payload
+                        else:
+                            reasons.append("artifact_machine_readable_payload_not_an_object")
+                    except (json.JSONDecodeError, TypeError):
+                        reasons.append("artifact_machine_readable_payload_invalid_json")
+                machine_header = machine_payload.get("shared_header", {})
+                machine_provenance = machine_payload.get("provenance", {})
+                if not isinstance(machine_header, dict):
+                    machine_header = {}
+                    reasons.append("artifact_machine_payload_shared_header_invalid")
+                if not isinstance(machine_provenance, dict):
+                    machine_provenance = {}
+                    reasons.append("artifact_machine_payload_provenance_invalid")
+                for field in ("title", "source", "agent_name", "run_id", "collected_at"):
+                    if str(machine_header.get(field) or "").strip() != str(shared_header.get(field) or "").strip():
+                        reasons.append(f"artifact_markdown_and_machine_payload_{field}_mismatch")
+                for field in ("source_url", "collected_at", "agent_name", "document_identity", "content_hash"):
+                    if str(machine_provenance.get(field) or "").strip() != str(provenance.get(field) or "").strip():
+                        reasons.append(f"artifact_markdown_and_machine_payload_provenance_{field}_mismatch")
                 if str(shared_header.get("agent_name") or "").strip() != agent:
                     reasons.append("artifact_agent_name_header_missing_or_mismatched")
                 if str(shared_header.get("run_id") or "").strip() != run_id:
@@ -420,8 +452,10 @@ def audit_collector_artifacts(
                 if str(provenance.get("collected_at") or "").strip() != str(shared_header.get("collected_at") or "").strip():
                     reasons.append("artifact_header_and_provenance_timestamp_conflict")
                 document_identity = str(provenance.get("document_identity") or "").strip()
+                machine_source = str(machine_header.get("source") or "").strip()
+                machine_title = str(machine_header.get("title") or "").strip()
                 expected_document_identity = hashlib.sha256(
-                    f"{header_source}|{str(shared_header.get('title') or '').strip()}".encode("utf-8")
+                    f"{machine_source}|{machine_title}".encode("utf-8")
                 ).hexdigest()
                 if not document_identity:
                     reasons.append("artifact_provenance_document_identity_missing")
@@ -429,11 +463,11 @@ def audit_collector_artifacts(
                     reasons.append("artifact_provenance_document_identity_mismatch")
 
                 provenance_content_hash = str(provenance.get("content_hash") or "").strip()
-                raw_content = str(parsed_artifact.get("raw_content") or "").strip()
+                raw_content = str(machine_payload.get("raw_content") or "").strip()
                 if not provenance_content_hash:
                     reasons.append("artifact_provenance_content_hash_missing")
                 elif not raw_content:
-                    reasons.append("artifact_raw_content_missing_for_hash_verification")
+                    reasons.append("artifact_machine_payload_raw_content_missing_for_hash_verification")
                 else:
                     expected_content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
                     if provenance_content_hash != expected_content_hash:
