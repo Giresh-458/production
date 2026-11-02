@@ -120,6 +120,7 @@ def test_normalized_shared_evidence_is_scoped_to_one_call_at_a_time(tmp_path):
     assert second_records[0]["funding_call_id"] == "CALL-SHARED-B"
     assert second_records[0]["funding_call_ids"] == ["CALL-SHARED-B"]
     assert second_records[0]["source_funding_call_ids"] == ["CALL-SHARED-A", "CALL-SHARED-B"]
+    assert first_records[0]["evidence_id"] != second_records[0]["evidence_id"]
 
 
 def test_normalized_handoff_rejects_cross_call_ids_and_timezone_naive_dates():
