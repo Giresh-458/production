@@ -495,6 +495,27 @@ def audit_collector_artifacts(
                 ):
                     if str(machine_provenance.get(field) or "").strip() != str(provenance.get(field) or "").strip():
                         reasons.append(f"artifact_markdown_and_machine_payload_provenance_{field}_mismatch")
+                machine_evidence = machine_payload.get("evidence_bundle")
+                markdown_evidence = parsed_artifact.get("evidence_bundle")
+                if not isinstance(machine_evidence, dict):
+                    reasons.append("artifact_machine_payload_evidence_bundle_missing_or_invalid")
+                elif not isinstance(markdown_evidence, dict):
+                    reasons.append("artifact_markdown_evidence_bundle_missing_or_invalid")
+                else:
+                    if str(machine_evidence.get("page_title") or "").strip() != str(markdown_evidence.get("page_title") or "").strip():
+                        reasons.append("artifact_markdown_and_machine_payload_evidence_page_title_mismatch")
+                    for field in (
+                        "section_headings", "key_paragraphs", "bullet_lists",
+                        "quoted_passages", "links_found", "named_entities_or_programs",
+                        "evidence_snippets", "excerpt_windows",
+                    ):
+                        machine_items = machine_evidence.get(field, [])
+                        markdown_items = markdown_evidence.get(field, [])
+                        if not isinstance(machine_items, list) or not isinstance(markdown_items, list):
+                            reasons.append(f"artifact_evidence_bundle_{field}_invalid")
+                            continue
+                        if [str(item).strip() for item in machine_items] != [str(item).strip() for item in markdown_items]:
+                            reasons.append(f"artifact_markdown_and_machine_payload_evidence_{field}_mismatch")
                 if str(shared_header.get("agent_name") or "").strip() != agent:
                     reasons.append("artifact_agent_name_header_missing_or_mismatched")
                 if str(shared_header.get("run_id") or "").strip() != run_id:
