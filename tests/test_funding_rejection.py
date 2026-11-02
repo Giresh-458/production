@@ -20,7 +20,7 @@ def run_pipeline_mocks():
         
         mock_run_stage.return_value = {"outputs": [], "status": "success", "outputs_count": 1}
         def fake_execute_batch(**kwargs):
-            from batch2_test_helpers import write_test_collector_artifacts
+            from tests.batch2_test_helpers import write_test_collector_artifacts
             write_test_collector_artifacts(
                 Path(kwargs["base_input_data"]["pipeline_run_dir"]),
                 kwargs["base_input_data"]["run_id"],
@@ -74,7 +74,7 @@ def run_pipeline_mocks():
             (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
             (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
             (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-            from batch2_test_helpers import write_test_evidence_ledger
+            from tests.batch2_test_helpers import write_test_evidence_ledger
             write_test_evidence_ledger(norm_dir / "evidence_ledger.db", [record])
             return {
                 "records": norm_dir / "records.json",
