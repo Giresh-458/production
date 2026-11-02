@@ -108,17 +108,24 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
             records_path = call_root / "normalized" / "records.json"
             records_path.parent.mkdir(parents=True, exist_ok=True)
 
+            import hashlib
+            source_url = "https://example.org/evidence"
             record = {
-                "record_id": f"record-{call_id}",
-                "evidence_id": f"evidence-{call_id}",
-                "source_id": f"source-{call_id}",
-                "content_hash": f"content-{call_id}",
+                "record_id": hashlib.sha1(f"record-{call_id}".encode()).hexdigest()[:16],
+                "evidence_id": hashlib.sha256(f"evidence-{call_id}".encode()).hexdigest()[:16],
+                "source_id": f"url:{source_url}",
+                "content_hash": hashlib.sha256(f"content-{call_id}".encode()).hexdigest(),
                 "title": "Controlled shared-collection evidence",
                 "agent_name": "literature",
+                "layer": "Literature",
+                "source_type": "web_page",
+                "evidence_type": "web_source",
+                "evidence_strength": 0.7,
                 "run_id": kwargs["target_run_id"],
                 "funding_call_id": call_id,
                 "funding_call_ids": [call_id],
-                "source_url": "https://example.org/evidence",
+                "source_funding_call_ids": [call_id],
+                "source_url": source_url,
                 "normalization_status": "NORMALIZED",
                 "collected_at": "2026-11-01T10:00:00+00:00",
                 "problem_statement": "A controlled source-grounded technical limitation.",
@@ -144,7 +151,8 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
             (call_root / "normalized" / "input_manifest.json").write_text("{}", encoding="utf-8")
             (call_root / "normalized" / "errors.json").write_text("[]", encoding="utf-8")
             (call_root / "normalized" / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-            (call_root / "normalized" / "evidence_ledger.db").touch()
+            from _batch2_helpers import write_test_evidence_ledger
+            write_test_evidence_ledger(call_root / "normalized" / "evidence_ledger.db", [record])
             return {
                 "records": records_path,
                 "by_area": call_root / "normalized" / "by_area.json",
