@@ -90,6 +90,25 @@ def test_shared_programme_name_and_application_portal_do_not_cross_assign_calls(
     assert assign_funding_calls(first.call_title, first.call_title, [first, second]) == [first.funding_call_id]
 
 
+def test_parent_programme_name_and_generic_portal_are_not_call_identity():
+    context = _context("CALL-PARENT-PROGRAMME")
+    payload = context.to_dict()
+    payload["program_name"] = "European Innovation Council"
+    payload["application_url"] = "https://apply.example.org/submit"
+    context = FundingCallContext.from_dict(payload)
+
+    assert assign_funding_calls(
+        "General programme overview",
+        "European Innovation Council publishes a general programme overview.",
+        [context],
+    ) == []
+    assert assign_funding_calls(
+        "Application portal",
+        "Submit applications at https://apply.example.org/submit",
+        [context],
+    ) == []
+
+
 def test_normalized_shared_evidence_is_scoped_to_one_call_at_a_time(tmp_path):
     root = tmp_path / "intermediate"
     artifact_dir = root / "literature"
