@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.file_lock import atomic_write_json
-from core.batch2 import evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_normalized_handoff
+from core.batch2 import evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_evidence_ledger, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -637,13 +637,23 @@ def main() -> int:
         )
     print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
 
-    # Pre-sync registry ONCE before parallel operations
+    # Pre-sync the source registry before parallel Batch-2 collection. Continuing
+    # with a stale registry can silently omit configured sources marked inactive
+    # in an old registry snapshot, so this is a fail-closed preparation gate.
     try:
         from core.source_registry import sync_source_registry, build_source_refresh_plan
         sync_source_registry()
         build_source_refresh_plan()
     except Exception as exc:
-        print(f"   ⚠️ Source registry pre-sync warning: {exc}")
+        report = {
+            "run_id": run_id,
+            "status": "source_registry_sync_failed",
+            "batch3_started": False,
+            "error": str(exc),
+        }
+        atomic_write_json(root / "workflow" / "pipeline_report.json", report)
+        print(f"❌ Source registry pre-sync failed; stopping before Batch-2 collection: {exc}")
+        return 4
 
     downstream_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
     if len(downstream_agents) != 11:
@@ -875,6 +885,13 @@ def main() -> int:
             run_id=run_id,
             expected_agents=expected_downstream_agents,
         )
+        ledger_errors = validate_evidence_ledger(
+            required_normalized_outputs["evidence_ledger"],
+            records,
+            funding_call_id=context.funding_call_id,
+            run_id=run_id,
+        )
+        normalization_errors.extend(ledger_errors)
 
         normalization_audit = {
             "input_records": input_count,
@@ -885,6 +902,7 @@ def main() -> int:
             "error_count": len(normalization_errors),
             "handoff_errors": handoff_errors,
             "handoff_error_count": len(handoff_errors),
+            "evidence_ledger_errors": ledger_errors,
             "skipped_artifacts": skipped_artifacts,
             "skipped_artifact_count": len(skipped_artifacts),
         }
