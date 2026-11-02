@@ -816,6 +816,25 @@ jobs:
                   "Batch 1 acceptance blocked: "
                   + json.dumps(summary["batch_acceptance"]["blockers"], ensure_ascii=False)
               )
+          # Only mint the Batch-1 acceptance attestation after every strict
+          # selector, source-coverage, accounting, and context gate above passed.
+          handoff_path = output_dir / "funding_contexts.json"
+          if not handoff_path.is_file():
+              raise SystemExit("Validated Batch-1 funding-context handoff is missing")
+          handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+          if handoff_payload.get("batch1_run_id") != run_id:
+              raise SystemExit("Batch-1 handoff run ID does not match the accepted audit run")
+          handoff_payload["batch1_acceptance"] = {
+              "accepted": True,
+              "status": "ACCEPTED",
+              "batch1_run_id": run_id,
+              "source_coverage_verified": True,
+              "acceptance": summary["batch_acceptance"],
+          }
+          handoff_path.write_text(
+              json.dumps(handoff_payload, indent=2, ensure_ascii=False),
+              encoding="utf-8",
+          )
           PY
 
       - name: Run required bounded live Batch 2 smoke from the validated Batch 1 handoff
