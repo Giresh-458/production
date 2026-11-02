@@ -700,12 +700,31 @@ def main() -> int:
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
     expected_downstream_agents = set(downstream_agents)
-    collection_tasks, collector_artifact_audit = audit_collector_artifacts(
-        root,
-        collection_tasks,
-        expected_agents=expected_downstream_agents,
-        run_id=run_id,
-    )
+    try:
+        collection_tasks, collector_artifact_audit = audit_collector_artifacts(
+            root,
+            collection_tasks,
+            expected_agents=expected_downstream_agents,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        collector_artifact_audit = {
+            "status": "error",
+            "run_id": run_id,
+            "error": str(exc),
+        }
+        atomic_write_json(global_workflow / "collector_artifact_audit.json", collector_artifact_audit)
+        atomic_write_json(
+            global_workflow / "pipeline_report.json",
+            {
+                "run_id": run_id,
+                "status": "collector_artifact_audit_failed",
+                "batch3_started": False,
+                "collector_artifact_audit": collector_artifact_audit,
+            },
+        )
+        print(f"❌ Collector artifact audit failed; stopping before normalization and Batch-3: {exc}")
+        return 4
     if isinstance(downstream_plan, dict):
         downstream_plan["tasks"] = collection_tasks
         atomic_write_json(global_workflow / "shared_downstream_collection_plan.json", downstream_plan)
