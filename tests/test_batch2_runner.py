@@ -668,13 +668,13 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 ## Machine Metadata
 - source_hints: {{"published_at": "2026-10-01"}}
 
-## Raw Content
-{raw_content}
-
 ## Machine-Readable Payload
 ```json
 {machine_payload_json}
 ```
+
+## Raw Content
+{raw_content}
 """
 
 
