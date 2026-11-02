@@ -68,6 +68,7 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
         artifact_dir = run_root / "intermediate" / agent
         artifact_dir.mkdir(parents=True, exist_ok=True)
         import hashlib
+        import json
 
         safe_agent = "".join(character if character.isalnum() else "-" for character in agent)
         title = f"Unassigned test evidence from {agent}"
@@ -75,6 +76,27 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
         raw_content = "This fixture verifies the collector artifact contract without claiming ownership by a funding call."
         document_identity = hashlib.sha256(f"{source_url}|{title}".encode("utf-8")).hexdigest()
         content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
+        collected_at = "2026-11-01T10:00:00+00:00"
+        machine_payload = {
+            "shared_header": {
+                "title": title,
+                "source": source_url,
+                "layer": agent.replace("_", " ").title(),
+                "agent_name": agent,
+                "run_id": run_id,
+                "research_area": "Unscoped",
+                "collected_at": collected_at,
+            },
+            "provenance": {
+                "source_url": source_url,
+                "collected_at": collected_at,
+                "agent_name": agent,
+                "document_identity": document_identity,
+                "content_hash": content_hash,
+            },
+            "raw_content": raw_content,
+        }
+        machine_payload_json = json.dumps(machine_payload, ensure_ascii=False)
         artifact = artifact_dir / f"unassigned-{safe_agent}.md"
         artifact.write_text(
             "\n".join([
@@ -105,6 +127,11 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
                 "",
                 "## Raw Content",
                 raw_content,
+                "",
+                "## Machine-Readable Payload",
+                "```json",
+                machine_payload_json,
+                "```",
                 "",
             ]),
             encoding="utf-8",
