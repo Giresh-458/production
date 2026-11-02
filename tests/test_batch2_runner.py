@@ -405,8 +405,8 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 - source_url: {source_url}
 - collected_at: 2026-11-01T10:00:00+00:00
 - agent_name: {agent_name}
-- document_identity: fixture-document-identity
-- content_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+- document_identity: {document_identity}
+- content_hash: {provenance_content_hash}
 
 ## Evidence Bundle
 ### Page Title
@@ -435,7 +435,7 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 - source_hints: {{"published_at": "2026-10-01"}}
 
 ## Raw Content
-Zero knowledge verification latency increases under high transaction volume and limits settlement throughput. The source reports measurable verification bottlenecks and scalability constraints.
+{raw_content}
 """
 
 
