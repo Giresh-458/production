@@ -9,11 +9,12 @@ The execution path is:
 1. Load one or more validated Batch-1 FundingCallContext objects.
 2. Schedule the 11 downstream collection agents in bounded parallel or sequential mode.
 3. Collect source evidence and write provenance-rich intermediate Markdown artifacts.
-4. Evaluate collection health. At least 6 of the 11 agents must produce usable evidence; a successful HTTP response without usable evidence does not count.
-5. Normalize the current-run artifacts separately for each funding call.
-6. Enforce explicit funding-call ownership, run identity, source provenance, and mission relevance.
-7. Write structured normalized JSON, indexes, an input manifest, a skip audit, and the SQLite evidence ledger.
-8. Validate the Batch-3 handoff and stop. The standalone runner never starts tagging, clustering, trends, synthesis, idea generation, or proposal generation.
+4. Audit persisted Markdown artifacts against the collector response manifest, expected agent directory, current run ID, and matching source/provenance URLs. Invalid artifacts are quarantined, not silently normalized.
+5. Evaluate collection health from verified persisted artifacts. At least 6 of the 11 agents must produce usable evidence; a successful HTTP response or an inflated response counter without a valid artifact does not count.
+6. Normalize the current-run artifacts separately for each funding call.
+7. Enforce explicit funding-call ownership, call-scoped funding_call_ids, original attribution trace, run identity, source provenance, and mission relevance.
+8. Write structured normalized JSON, indexes, an input manifest, a skip audit, and the SQLite evidence ledger. Verify SQLite integrity and exact record/run/call/provenance correspondence.
+9. Validate the Batch-3 handoff and stop. The standalone runner never starts tagging, clustering, trends, synthesis, idea generation, or proposal generation.
 
 ### The 11 downstream collectors
 
@@ -39,7 +40,7 @@ A normal full-pipeline run writes validated contexts to:
 
     outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json
 
-The JSON object contains the Batch-1 run ID and a funding_contexts array. The standalone runner reads this file directly and does not rerun Batch-1.
+The JSON object contains the Batch-1 run ID and a funding_contexts array. The standalone runner reads this file directly and does not rerun Batch-1. The file must be an auditable Batch-1 envelope containing a non-empty `batch1_run_id` or `run_id`; a bare FundingCallContext object or list is not accepted by the CLI.
 
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
@@ -79,7 +80,7 @@ Focused Batch-2, agent-contract, and normalization checks:
 
     python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_agent_normalization_refresh.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
 
-These tests use controlled fixtures and mocks where appropriate. The PR's RIF funding and collection quality-gates workflow also runs a bounded live Batch-1-to-Batch-2 smoke when Batch-1 produces validated funding contexts. That live smoke is non-blocking for external-source variability; inspect the batch2_report.json and source artifacts in the batch1-full-live-audit workflow artifact for the actual result.
+These tests use controlled fixtures and mocks where appropriate. The PR's RIF funding and collection quality-gates workflow runs a bounded live Batch-1-to-Batch-2 smoke only after the existing Batch-1 acceptance gate passes. The Batch-2 smoke is required when reached: its failure fails the quality workflow. If Batch-1 is blocked, Batch-2 is skipped and must be reported as unverified; do not bypass Batch-1 source-coverage qualification to force the smoke.
 
 ## Run Batch-2 independently
 
@@ -129,18 +130,26 @@ Every run receives a new output directory. The runner refuses to reuse any exist
         funding_contexts.json
         shared_downstream_collection_plan.json
         batch2_report.json
+        quarantined_intermediate/
+          <agent>/
+            *.md
 
 The workflow/funding_contexts.json copy preserves both the Batch-1 run ID and Batch-2 run ID, together with the validated contexts. batch2_report.json records collector health, per-call normalization status, skipped artifacts, normalization errors, and handoff validation errors.
 
-The standalone runner and full pipeline share the same normalized-record validator; a weaker duplicate handoff check must not be introduced in either path.
+The standalone runner and full pipeline share the same normalized-record validator and persisted-artifact audit; a weaker duplicate handoff check must not be introduced in either path.
+
+Before collection, the coordinator synchronizes the configured source registry and builds its refresh plan once. Workers defer registry synchronization so they do not race on the shared registry. If registry preparation fails, collection stops instead of running against stale source lifecycle state.
+
+The batch timeout is cooperative because Python cannot safely kill a running worker thread. A worker that finishes after the deadline is marked `timeout_budget_exceeded`; its output directory is removed. Any late or invalid artifact that remains is quarantined and excluded from normalization. A quarantine failure blocks the handoff.
 
 A call is marked ready_for_batch3 only when:
-- The collection health gate passes.
+- The collection health gate passes using verified persisted artifacts.
 - Normalized records exist.
-- Required normalized outputs and the evidence ledger exist.
-- No normalization errors were reported.
+- Required normalized outputs exist.
+- The SQLite evidence ledger passes `PRAGMA quick_check`, contains exactly the normalized records for this run/call, and its row fields and stored provenance match the JSON records.
+- No normalization or ledger-integrity errors were reported.
 - Every handoff record has the current Batch-2 run ID and selected funding-call ID, and belongs to one of the expected 11 collection agents.
-- Every record has a usable HTTP(S) source URL, NORMALIZED status, a recognized collector identity, stable record/evidence/source/content IDs, a parseable collection timestamp, non-empty evidence text, and a passed mission-relevance decision.
+- Every record has a usable HTTP(S) source URL, NORMALIZED status, a recognized collector identity, stable record/evidence/source/content IDs, a timezone-aware collection timestamp, non-empty evidence text, exactly one funding_call_id equal to the output call, a preserved source_funding_call_ids attribution trace, and a passed mission-relevance decision.
 
 A successful HTTP request alone is not evidence of successful collection. Both the standalone runner and the full pipeline require all 11 expected collector tasks to be present and reject unexpected task names. The live evidence-health gate retains the existing policy: at least 6 of the 11 collectors must produce usable artifacts. Each of the 11 agents must still pass its deterministic contract and regression tests.
 
@@ -154,7 +163,7 @@ The normalization audit distinguishes:
 
 An explicit funding_call_id is authoritative. A conflicting explicit owner cannot be overridden by a secondary funding_call_ids list. Shared unassigned evidence may be attributed only through the existing bounded multi-call rules. Each funding call receives its own mission-relevance evaluation and normalized output.
 
-The input manifest fingerprints the relevant Markdown inputs and selected funding context. Cache refresh checks detect additions, deletions, content changes, timestamp-preserving edits, context changes, and older caches that do not contain the skip audit. Intermediate Markdown and normalized JSON outputs use atomic file writes.
+The input manifest fingerprints the relevant Markdown inputs and selected funding context. Cache refresh checks detect additions, deletions, content changes, timestamp-preserving edits, context changes, and older caches that do not contain the skip audit. Intermediate Markdown and normalized JSON outputs use atomic file writes. Shared evidence may appear in multiple call outputs only as separate call-scoped records with distinct evidence IDs; the original multi-call attribution is retained in source_funding_call_ids and ledger provenance.
 
 A call with malformed evidence, invalid provenance, missing run/call identity, normalization errors, or no relevant records is not marked ready_for_batch3. Inspect batch2_report.json, normalization/errors.json, normalization/skipped_artifacts.json, and workflow/mission_relevance_gate.json for the exact reason.
 
