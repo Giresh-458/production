@@ -357,7 +357,13 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
             ],
         }
 
-    with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
+    with patch(
+        "core.batch2.sync_source_registry",
+        return_value=SimpleNamespace(total_entries=11, active_entries=11, deprecated_entries=0),
+    ), patch(
+        "core.batch2.build_source_refresh_plan",
+        return_value=SimpleNamespace(total_entries=11, due_entries=11, skipped_entries=0),
+    ), patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
             funding_contexts=loaded_contexts,
             output_root=tmp_path / "batch2",
