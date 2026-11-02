@@ -194,7 +194,7 @@ def test_full_pipeline_can_validate_supplemental_adaptive_research_records():
         expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS) | {"adaptive_research"},
     ) == []
     assert any(
-        "unrecognized agent_name" in error
+        "unknown collection agent" in error
         for error in validate_normalized_handoff(
             records,
             funding_call_id=context.funding_call_id,
