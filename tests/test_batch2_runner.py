@@ -773,7 +773,7 @@ def test_normalized_handoff_rejects_invalid_records_and_provenance():
     assert any("mismatched funding_call_id" in error for error in errors)
     assert any("usable HTTP(S)" in error for error in errors)
     assert any("unknown collection agent" in error for error in errors)
-    assert any("invalid collected_at" in error for error in errors)
+    assert any("invalid or timezone-naive collected_at" in error for error in errors)
     assert any("no usable evidence text" in error for error in errors)
     assert any("field 'evidence_snippets' must be a list" in error for error in errors)
     assert any("mission-relevance" in error for error in errors)
