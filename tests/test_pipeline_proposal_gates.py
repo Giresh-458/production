@@ -109,12 +109,21 @@ def mock_pipeline_deps():
          patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
 
-        mock_exec_batch.return_value = {
-            "tasks": [
-                {"agent_name": agent, "status": "success", "outputs_count": 1}
-                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
-            ]
-        }
+        def fake_execute_batch(**kwargs):
+            from _batch2_helpers import write_test_collector_artifacts
+            write_test_collector_artifacts(
+                Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+                kwargs["base_input_data"]["run_id"],
+                kwargs["agent_names"],
+            )
+            return {
+                "tasks": [
+                    {"agent_name": agent, "status": "success", "outputs_count": 1}
+                    for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+                ]
+            }
+
+        mock_exec_batch.side_effect = fake_execute_batch
 
         yield {
             "run_stage": mock_run_stage,
