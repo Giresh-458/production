@@ -113,6 +113,8 @@ Classic
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
         run_id = kwargs["base_input_data"]["run_id"]
+        from _batch2_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
             marker = f"- funding_call_id: {call_id}\n"
