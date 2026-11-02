@@ -1687,8 +1687,17 @@ def crawl_funding_source(
         # source HTML. Empty-state verification must inspect both representations;
         # classification/extraction continues to use the preferred Markdown
         # representation to avoid duplicating the same page content.
+        html_text = ""
+        if page_html:
+            try:
+                from bs4 import BeautifulSoup
+
+                html_text = BeautifulSoup(page_html, "html.parser").get_text(" ", strip=True)
+            except Exception:
+                # Keep a conservative fallback if optional HTML parsing fails.
+                html_text = re.sub(r"<[^>]+>", " ", page_html)
         empty_state_content = "\n".join(
-            part for part in (page_markdown, page_html) if part
+            part for part in (page_markdown, html_text) if part
         )
         if _reports_no_active_funding(page_url, page_title, empty_state_content):
             result.no_active_opportunities_confirmed = True
