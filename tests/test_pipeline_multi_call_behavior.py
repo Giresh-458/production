@@ -221,10 +221,12 @@ def test_shared_evidence_isolation(tmp_path):
     assert "Shared A and B" in titles_a
     assert "Only B" not in titles_a
     
-    # Verify funding_call_ids is propagated
+    # Each normalized handoff is owned by exactly one call, while the
+    # collector's original shared attribution remains available for audit.
     shared_record_a = next(r for r in records_a if r["title"] == "Shared A and B")
-    assert "CALL-A" in shared_record_a["funding_call_ids"]
-    assert "CALL-B" in shared_record_a["funding_call_ids"]
+    assert shared_record_a["funding_call_id"] == "CALL-A"
+    assert shared_record_a["funding_call_ids"] == ["CALL-A"]
+    assert shared_record_a["source_funding_call_ids"] == ["CALL-A", "CALL-B"]
     
     # Process CALL-B
     call_b_root = tmp_path / "calls" / "CALL-B"
@@ -237,6 +239,10 @@ def test_shared_evidence_isolation(tmp_path):
     assert "Only B" in titles_b
     assert "Shared A and B" in titles_b
     assert "Only A" not in titles_b
+    shared_record_b = next(r for r in records_b if r["title"] == "Shared A and B")
+    assert shared_record_b["funding_call_id"] == "CALL-B"
+    assert shared_record_b["funding_call_ids"] == ["CALL-B"]
+    assert shared_record_b["source_funding_call_ids"] == ["CALL-A", "CALL-B"]
 
     # Verify shared evidence doesn't cause duplicate network collection.
     # Since there's only one intermediate file `evidence_shared.md`, it was collected once, but correctly distributed to both calls.
