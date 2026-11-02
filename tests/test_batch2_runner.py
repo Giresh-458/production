@@ -380,8 +380,13 @@ def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
 
 
 def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
+    import hashlib
+
     title = f"Zero-knowledge verification evidence from {agent_name}"
     source_url = f"https://example.org/research/{agent_name}"
+    raw_content = "Zero knowledge verification latency increases under high transaction volume and limits settlement throughput. The source reports measurable verification bottlenecks and scalability constraints."
+    document_identity = hashlib.sha256(f"{source_url}|{title}".encode("utf-8")).hexdigest()
+    provenance_content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
     return f"""# {title}
 
 ## Shared Metadata
