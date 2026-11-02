@@ -1101,7 +1101,7 @@ def test_xrpl_application_manager_confirms_no_open_calls():
         },
         manager: {
             "html": f"<html><body>{no_calls}</body></html>",
-            "markdown": f"RippleX Ecosystem Programs. {no_calls}",
+            "markdown": "RippleX Ecosystem Programs.",
             "success": True,
             "error_message": None,
             "status_code": 200,
