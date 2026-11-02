@@ -353,7 +353,7 @@ def audit_collector_artifacts(
         task_items = tasks_by_agent.get(agent, [])
         task = task_items[0] if len(task_items) == 1 else None
         files = (
-            sorted(path for path in agent_root.rglob("*.md") if path.name.casefold() != "insights.md")
+            sorted(path for path in agent_root.glob("**/*.md") if path.name.casefold() != "insights.md")
             if agent_root.is_dir()
             else []
         )
