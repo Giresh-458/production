@@ -142,6 +142,41 @@ def test_normalized_shared_evidence_is_scoped_to_one_call_at_a_time(tmp_path):
     assert first_records[0]["evidence_id"] != second_records[0]["evidence_id"]
 
 
+def test_evidence_ids_use_problem_text_when_source_has_no_excerpt_snippets(tmp_path):
+    root = tmp_path / "intermediate"
+    agent_dir = root / "literature"
+    agent_dir.mkdir(parents=True)
+    first = _artifact("fallback-id-run", "CALL-001")
+    second = first.replace(
+        "A source-grounded technical limitation that can be measured.",
+        "A different source-grounded limitation requiring longitudinal validation.",
+    )
+    for artifact in (first, second):
+        artifact = artifact.replace(
+            "### Evidence Snippets\n- A source-grounded excerpt from the paper.\n",
+            "### Evidence Snippets\n",
+        )
+        artifact = artifact.replace(
+            "### Excerpt Windows\n- A source-grounded excerpt from the paper.\n",
+            "### Excerpt Windows\n",
+        )
+        if artifact is first:
+            (agent_dir / "first.md").write_text(artifact, encoding="utf-8")
+        else:
+            (agent_dir / "second.md").write_text(artifact, encoding="utf-8")
+
+    records = build_normalized_collection_records(
+        root,
+        target_funding_call_id="CALL-001",
+        target_run_id="fallback-id-run",
+    )
+
+    assert len(records) == 2
+    assert records[0]["evidence_snippets"] == []
+    assert records[1]["evidence_snippets"] == []
+    assert records[0]["evidence_id"] != records[1]["evidence_id"]
+
+
 def test_normalized_handoff_rejects_cross_call_ids_and_timezone_naive_dates():
     context = _context()
     record = build_normalized_collection_records(
