@@ -400,6 +400,48 @@ def test_collector_artifact_audit_quarantines_conflicting_source_provenance(tmp_
     )
 
 
+def test_collector_artifact_audit_quarantines_markdown_raw_content_tampering(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    agent_dir = run_root / "intermediate" / "literature"
+    agent_dir.mkdir(parents=True)
+    artifact_path = agent_dir / "tampered.md"
+    original = (
+        "Zero knowledge verification latency increases under high transaction volume "
+        "and limits settlement throughput. The source reports measurable verification "
+        "bottlenecks and scalability constraints."
+    )
+    artifact_path.write_text(
+        _artifact("current-run", "CALL-001").replace(
+            original,
+            "Tampered Markdown evidence that is not covered by the machine payload hash.",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    tasks = [{
+        "agent_name": "literature",
+        "status": "success",
+        "outputs_count": 1,
+        "output_paths": [str(artifact_path.resolve())],
+        "errors": [],
+        "warnings": [],
+    }]
+    updated, audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents={"literature"},
+        run_id="current-run",
+    )
+
+    assert updated[0]["status"] == "error"
+    assert not artifact_path.exists()
+    assert len(audit["quarantined_artifacts"]) == 1
+    assert "artifact_markdown_and_machine_payload_raw_content_mismatch" in (
+        audit["quarantined_artifacts"][0]["reasons"]
+    )
+
+
 def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
     events = []
     captured = {}
