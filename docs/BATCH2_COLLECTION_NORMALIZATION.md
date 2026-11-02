@@ -63,6 +63,9 @@ Use Python 3.11 or newer; the project declares Python >=3.11. From PowerShell:
     cd production
     git checkout main
     git pull origin main
+    # To test the unmerged Batch-2 PR branch:
+    git fetch origin feat/batch2-collection-normalization-20261101
+    git checkout feat/batch2-collection-normalization-20261101
     py -3.11 -m venv .venv
     .\.venv\Scripts\Activate.ps1
     python --version
