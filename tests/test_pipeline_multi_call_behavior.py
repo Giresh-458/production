@@ -76,6 +76,12 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         assert kwargs["base_input_data"]["allow_llm_refinement"] is False
         assert ctxs is not None, "execute_batch_run must receive funding_contexts"
         assert len(ctxs) == 3, "must pass all contexts"
+        from _batch2_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            kwargs["base_input_data"]["run_id"],
+            kwargs["agent_names"],
+        )
 
         return {
             "status": "success",
