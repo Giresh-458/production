@@ -707,6 +707,11 @@ def main() -> int:
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
     expected_downstream_agents = set(downstream_agents)
+    # The full pipeline may add one per-call supplemental adaptive-research
+    # artifact after the shared 11-agent collection. It is not counted toward
+    # shared collector health, but its provenance is allowed in that call's
+    # normalized handoff.
+    expected_handoff_agents = expected_downstream_agents | {"adaptive_research"}
     try:
         collection_tasks, collector_artifact_audit = audit_collector_artifacts(
             root,
@@ -938,7 +943,7 @@ def main() -> int:
             records,
             funding_call_id=context.funding_call_id,
             run_id=run_id,
-            expected_agents=expected_downstream_agents,
+            expected_agents=expected_handoff_agents,
         )
         ledger_errors = validate_evidence_ledger(
             required_normalized_outputs["evidence_ledger"],
@@ -951,6 +956,7 @@ def main() -> int:
         normalization_audit = {
             "input_records": input_count,
             "normalized_records": len(records),
+            "allowed_handoff_agents": sorted(expected_handoff_agents),
             "accepted_records": accepted_count,
             "rejected_records": rejected_count,
             "errors": normalization_errors,
