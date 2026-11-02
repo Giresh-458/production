@@ -139,6 +139,12 @@ def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[
         "items_processed": int(response.get("items_processed", 0) or 0),
         "items_saved": int(response.get("items_saved", 0) or 0),
         "outputs_count": len(outputs),
+        "output_paths": sorted({
+            str(item.get("markdown_path") or item.get("path") or "").strip()
+            for item in outputs
+            if isinstance(item, dict)
+            and str(item.get("markdown_path") or item.get("path") or "").strip()
+        }),
         "errors": list(response.get("errors", []) or []),
         "warnings": list(response.get("warnings", []) or []),
         "duration_seconds": metadata.get("duration_seconds", 0),
