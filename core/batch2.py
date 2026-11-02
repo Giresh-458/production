@@ -414,6 +414,14 @@ def audit_collector_artifacts(
                     provenance_canonical = canonicalize_url(provenance_source)
                     if header_canonical != provenance_canonical:
                         reasons.append("artifact_header_and_provenance_source_url_conflict")
+                if str(provenance.get("agent_name") or "").strip() != agent:
+                    reasons.append("artifact_provenance_agent_name_missing_or_mismatched")
+                if str(provenance.get("collected_at") or "").strip() != str(shared_header.get("collected_at") or "").strip():
+                    reasons.append("artifact_header_and_provenance_timestamp_conflict")
+                if not str(provenance.get("document_identity") or "").strip():
+                    reasons.append("artifact_provenance_document_identity_missing")
+                if not str(provenance.get("content_hash") or "").strip():
+                    reasons.append("artifact_provenance_content_hash_missing")
 
                 record = normalize_intermediate_artifact(path)
                 if str(record.get("agent_name") or "").strip() != agent:
