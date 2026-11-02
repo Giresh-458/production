@@ -516,7 +516,8 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     batch1_handoff.write_text(
         json.dumps(
             {
-                "run_id": "batch1-test-run",
+                "batch1_run_id": "batch1-test-run",
+                "batch1_acceptance": _batch1_acceptance("batch1-test-run"),
                 "funding_contexts": [context.to_dict()],
             },
             indent=2,
