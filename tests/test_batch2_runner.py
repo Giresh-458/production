@@ -752,24 +752,13 @@ def test_normalized_handoff_rejects_invalid_records_and_provenance():
 
 def test_normalized_handoff_accepts_valid_evidence_record():
     agent = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)[0]
-    record = {
-        "record_id": "r1",
-        "evidence_id": "e1",
-        "source_id": "s1",
-        "content_hash": "h1",
-        "title": "Evidence",
-        "agent_name": agent,
-        "run_id": "batch2-run",
-        "funding_call_id": "CALL-BATCH2-001",
-        "source_url": "https://example.org/evidence",
-        "normalization_status": "NORMALIZED",
-        "collected_at": "2026-11-01T10:00:00+00:00",
-        "problem_statement": "A source-grounded technical limitation.",
-        "context_summary": "A source-grounded technical limitation.",
-        "evidence_snippets": ["A measurable limitation."],
-        "excerpt_windows": [],
-        "mission_relevance": {"passed": True},
-    }
+    record = build_normalized_collection_records(
+        _single_artifact_root("CALL-BATCH2-001", agent),
+        target_funding_call_id="CALL-BATCH2-001",
+        target_run_id="batch2-validation-run",
+    )[0]
+    record["mission_relevance"] = {"passed": True}
+    record["run_id"] = "batch2-run"
     assert validate_normalized_handoff(
         [record],
         funding_call_id="CALL-BATCH2-001",
@@ -787,11 +776,16 @@ def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
     ]
     tasks.append({"agent_name": "unexpected_agent", "status": "success", "outputs_count": 1})
 
+    from batch2_test_helpers import write_test_collector_artifacts
+    run_id = "unexpected-agent-run"
+    run_root = tmp_path / run_id
+    write_test_collector_artifacts(run_root, run_id, DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+
     with patch("core.batch2.execute_batch_run", return_value={"status": "completed", "tasks": tasks}):
         report = execute_batch2(
             funding_contexts=[context],
             output_root=tmp_path,
-            run_id="unexpected-agent-run",
+            run_id=run_id,
         )
 
     assert report["status"] == "blocked_collection_health"
