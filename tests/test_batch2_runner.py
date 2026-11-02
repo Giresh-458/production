@@ -299,6 +299,35 @@ def test_collector_health_uses_persisted_artifacts_and_quarantines_bad_provenanc
     assert "artifact_run_id_mismatch" in audit["quarantined_artifacts"][0]["reasons"]
 
 
+def test_collector_artifact_audit_marks_escaping_output_manifest_as_critical(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    agent_dir = run_root / "intermediate" / "literature"
+    agent_dir.mkdir(parents=True)
+    artifact_path = agent_dir / "valid.md"
+    artifact_path.write_text(_artifact("current-run", "CALL-001"), encoding="utf-8")
+
+    tasks = [{
+        "agent_name": "literature",
+        "status": "success",
+        "outputs_count": 1,
+        "output_paths": [str((tmp_path / "outside.md").resolve())],
+        "errors": [],
+        "warnings": [],
+    }]
+    _, audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents={"literature"},
+        run_id="current-run",
+    )
+
+    assert audit["manifest_issues"]
+    assert any(
+        "reported_output_path_escapes_agent_output_directory" in item["reasons"]
+        for item in audit["manifest_issues"]
+    )
+
+
 def test_collector_artifact_audit_quarantines_conflicting_source_provenance(tmp_path):
     run_root = tmp_path / "batch2-run"
     agent_dir = run_root / "intermediate" / "literature"
