@@ -71,7 +71,7 @@ def _batch1_acceptance(run_id: str = "batch1-test-run") -> dict:
         "status": "ACCEPTED",
         "batch1_run_id": run_id,
         "source_coverage_verified": True,
-        "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": []},
+        "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": [], "blocker_count": 0},
     }
 
 
@@ -784,7 +784,7 @@ def test_batch1_funding_context_handoff_file_loads_without_reconstructing_batch1
                     "status": "ACCEPTED",
                     "batch1_run_id": "batch1-fixture-run",
                     "source_coverage_verified": True,
-                    "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": []},
+                    "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": [], "blocker_count": 0},
                 },
                 "funding_contexts": [context.to_dict()],
             },
