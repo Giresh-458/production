@@ -396,12 +396,27 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     assert records[0]["funding_call_id"] == context.funding_call_id
     assert records[0]["run_id"] == "batch2-test-run"
     assert records[0]["normalization_status"] == "NORMALIZED"
+    ledger_path = call_root / "normalized" / "evidence_ledger.db"
     assert validate_evidence_ledger(
-        call_root / "normalized" / "evidence_ledger.db",
+        ledger_path,
         records,
         funding_call_id=context.funding_call_id,
         run_id="batch2-test-run",
     ) == []
+    with sqlite3.connect(ledger_path) as ledger_connection:
+        ledger_connection.execute(
+            "DELETE FROM canonical_evidence WHERE evidence_id = ?",
+            (records[0]["evidence_id"],),
+        )
+        ledger_connection.commit()
+    corrupted_ledger_errors = validate_evidence_ledger(
+        ledger_path,
+        records,
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-test-run",
+    )
+    assert any("row count" in error for error in corrupted_ledger_errors)
+    assert any("evidence_id set" in error for error in corrupted_ledger_errors)
 
     # The persisted selected-call shape must remain compatible with Batch-3 refresh.
     roots, target_call_id, gate = resolve_refresh_context(call_root)
