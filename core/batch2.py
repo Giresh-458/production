@@ -15,7 +15,12 @@ from core.batch_runner import execute_batch_run
 from core.file_lock import atomic_write_json
 from core.funding_selection import FundingCallContext, has_substantive_eligibility_evidence
 from core.mission_gate import relevance as mission_relevance
-from core.normalization import normalize_intermediate_artifact, save_normalized_collection_records
+from core.normalization import (
+    _normalize_intermediate_sections,
+    canonicalize_url,
+    normalize_intermediate_artifact,
+    save_normalized_collection_records,
+)
 from core.source_registry import build_source_refresh_plan, sync_source_registry
 
 
@@ -369,6 +374,22 @@ def audit_collector_artifacts(
                 resolved = path.resolve()
                 if not resolved.is_relative_to(agent_root.resolve()):
                     reasons.append("artifact_path_escapes_agent_output_directory")
+                parsed_artifact = _normalize_intermediate_sections(path)
+                shared_header = parsed_artifact.get("shared_header", {})
+                provenance = parsed_artifact.get("provenance", {})
+                if str(shared_header.get("agent_name") or "").strip() != agent:
+                    reasons.append("artifact_agent_name_header_missing_or_mismatched")
+                if str(shared_header.get("run_id") or "").strip() != run_id:
+                    reasons.append("artifact_run_id_header_missing_or_mismatched")
+
+                header_source = str(shared_header.get("source") or "").strip()
+                provenance_source = str(provenance.get("source_url") or "").strip()
+                if header_source and provenance_source:
+                    header_canonical = canonicalize_url(header_source)
+                    provenance_canonical = canonicalize_url(provenance_source)
+                    if header_canonical and provenance_canonical and header_canonical != provenance_canonical:
+                        reasons.append("artifact_header_and_provenance_source_url_conflict")
+
                 record = normalize_intermediate_artifact(path)
                 if str(record.get("agent_name") or "").strip() != agent:
                     reasons.append("artifact_agent_name_mismatch")
