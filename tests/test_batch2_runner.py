@@ -400,6 +400,42 @@ def test_collector_artifact_audit_quarantines_conflicting_source_provenance(tmp_
     )
 
 
+def test_collector_artifact_audit_quarantines_markdown_call_attribution_tampering(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    agent_dir = run_root / "intermediate" / "literature"
+    agent_dir.mkdir(parents=True)
+    artifact_path = agent_dir / "wrong-call.md"
+    artifact_path.write_text(
+        _artifact("current-run", "CALL-001").replace(
+            "- funding_call_id: CALL-001",
+            "- funding_call_id: CALL-OTHER",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    tasks = [{
+        "agent_name": "literature",
+        "status": "success",
+        "outputs_count": 1,
+        "output_paths": [str(artifact_path.resolve())],
+        "errors": [],
+        "warnings": [],
+    }]
+
+    updated, audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents={"literature"},
+        run_id="current-run",
+    )
+
+    assert updated[0]["status"] == "error"
+    assert len(audit["quarantined_artifacts"]) == 1
+    assert "artifact_markdown_and_machine_payload_funding_call_id_mismatch" in (
+        audit["quarantined_artifacts"][0]["reasons"]
+    )
+
+
 def test_collector_artifact_audit_quarantines_markdown_raw_content_tampering(tmp_path):
     run_root = tmp_path / "batch2-run"
     agent_dir = run_root / "intermediate" / "literature"
