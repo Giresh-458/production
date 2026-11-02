@@ -363,6 +363,12 @@ def audit_collector_artifacts(
 
     intermediate_root = run_root / "intermediate"
     quarantine_root = run_root / "workflow" / "quarantined_intermediate"
+    resolved_run_root = run_root.resolve()
+    if intermediate_root.exists() and not intermediate_root.resolve().is_relative_to(resolved_run_root):
+        raise ValueError("intermediate output root resolves outside the Batch-2 run directory")
+    quarantine_root.mkdir(parents=True, exist_ok=True)
+    if not quarantine_root.resolve().is_relative_to(resolved_run_root):
+        raise ValueError("artifact quarantine root resolves outside the Batch-2 run directory")
     agent_audits: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
@@ -372,13 +378,23 @@ def audit_collector_artifacts(
         agent_root = intermediate_root / agent
         task_items = tasks_by_agent.get(agent, [])
         task = task_items[0] if len(task_items) == 1 else None
+        agent_root_escapes = (
+            agent_root.exists()
+            and not agent_root.resolve().is_relative_to(intermediate_root.resolve())
+        )
         files = (
             sorted(path for path in agent_root.glob("**/*.md") if path.name.casefold() != "insights.md")
-            if agent_root.is_dir()
+            if agent_root.is_dir() and not agent_root_escapes
             else []
         )
         valid_files: list[Path] = []
         agent_issues: list[dict[str, Any]] = []
+        if agent_root_escapes:
+            agent_issues.append({
+                "agent_name": agent,
+                "reasons": ["agent_output_directory_escapes_intermediate_root"],
+                "output_directory": str(agent_root.resolve()),
+            })
         task_status = str(task.get("status") or "").strip().lower() if task is not None else ""
 
         for path in files:
@@ -611,6 +627,7 @@ def audit_collector_artifacts(
         })
 
     critical_manifest_reasons = {
+        "agent_output_directory_escapes_intermediate_root",
         "collector_output_paths_must_be_a_list",
         "reported_output_path_escapes_agent_output_directory",
         "reported_output_path_does_not_exist",
