@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_normalized_handoff
+from core.batch2 import execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
-from core.normalization import resolve_refresh_context
+from core.normalization import build_normalized_collection_records, resolve_refresh_context
+from core.agent_interface import assign_funding_calls
 
 
 def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
@@ -60,6 +63,167 @@ def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
             domain_relevance=(),
         ),
     )
+
+
+def test_shared_programme_name_and_application_portal_do_not_cross_assign_calls():
+    first = _context("CALL-SHARED-A")
+    second = _context("CALL-SHARED-B")
+    first_payload = first.to_dict()
+    second_payload = second.to_dict()
+    for payload in (first_payload, second_payload):
+        payload["program_name"] = "European Research Programme"
+        payload["application_url"] = "https://example.org/shared-application-portal"
+    first_payload["call_title"] = "Privacy-preserving settlement verification research"
+    second_payload["call_title"] = "Quantum sensing for resilient coastal infrastructure"
+    second_payload["research_priorities"] = ["quantum sensing", "coastal resilience"]
+    second_rc = second_payload["research_context"]
+    second_rc["technology_themes"] = ["quantum sensing", "coastal resilience"]
+    second_rc["funding_priorities"] = ["quantum sensing", "coastal resilience"]
+    second_rc["target_outcomes"] = ["resilient coastal monitoring"]
+    second_rc["investigation_questions"] = ["How can quantum sensors improve coastal monitoring?"]
+    first = FundingCallContext.from_dict(first_payload)
+    second = FundingCallContext.from_dict(second_payload)
+
+    shared_programme_text = "European Research Programme announces a general information session."
+
+    assert assign_funding_calls("Programme overview", shared_programme_text, [first, second]) == []
+    assert assign_funding_calls(first.call_title, first.call_title, [first, second]) == [first.funding_call_id]
+
+
+def test_normalized_shared_evidence_is_scoped_to_one_call_at_a_time(tmp_path):
+    root = tmp_path / "intermediate"
+    artifact_dir = root / "literature"
+    artifact_dir.mkdir(parents=True)
+    shared_artifact = _artifact("batch2-shared-run", "CALL-SHARED-A")
+    shared_artifact = shared_artifact.replace("- funding_call_id: CALL-SHARED-A\n", "")
+    shared_artifact = shared_artifact.replace(
+        "- funding_call_ids: CALL-SHARED-A\n",
+        "- funding_call_ids: CALL-SHARED-A, CALL-SHARED-B\n",
+    )
+    (artifact_dir / "shared-evidence.md").write_text(shared_artifact, encoding="utf-8")
+
+    first_records = build_normalized_collection_records(
+        root,
+        target_funding_call_id="CALL-SHARED-A",
+        target_run_id="batch2-shared-run",
+    )
+    second_records = build_normalized_collection_records(
+        root,
+        target_funding_call_id="CALL-SHARED-B",
+        target_run_id="batch2-shared-run",
+    )
+
+    assert len(first_records) == len(second_records) == 1
+    assert first_records[0]["funding_call_id"] == "CALL-SHARED-A"
+    assert first_records[0]["funding_call_ids"] == ["CALL-SHARED-A"]
+    assert first_records[0]["source_funding_call_ids"] == ["CALL-SHARED-A", "CALL-SHARED-B"]
+    assert second_records[0]["funding_call_id"] == "CALL-SHARED-B"
+    assert second_records[0]["funding_call_ids"] == ["CALL-SHARED-B"]
+    assert second_records[0]["source_funding_call_ids"] == ["CALL-SHARED-A", "CALL-SHARED-B"]
+
+
+def test_normalized_handoff_rejects_cross_call_ids_and_timezone_naive_dates():
+    context = _context()
+    record = build_normalized_collection_records(
+        _single_artifact_root(context.funding_call_id),
+        target_funding_call_id=context.funding_call_id,
+        target_run_id="batch2-validation-run",
+    )[0]
+    record["mission_relevance"] = {"passed": True}
+    expected = set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+
+    assert validate_normalized_handoff(
+        [record],
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-validation-run",
+        expected_agents=expected,
+    ) == []
+
+    record["funding_call_ids"] = [context.funding_call_id, "OTHER-CALL"]
+    errors = validate_normalized_handoff(
+        [record],
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-validation-run",
+        expected_agents=expected,
+    )
+    assert any("exactly one funding_call_id" in error for error in errors)
+
+    record["funding_call_ids"] = [context.funding_call_id]
+    record["collected_at"] = "2026-11-01T10:00:00"
+    errors = validate_normalized_handoff(
+        [record],
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-validation-run",
+        expected_agents=expected,
+    )
+    assert any("timezone-naive" in error for error in errors)
+
+
+def _single_artifact_root(call_id: str) -> Path:
+    import tempfile
+
+    root = Path(tempfile.mkdtemp()) / "intermediate"
+    artifact_dir = root / "literature"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "signal.md").write_text(
+        _artifact("batch2-validation-run", call_id),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
+    events = []
+    captured = {}
+
+    def fake_sync():
+        events.append("sync")
+        return SimpleNamespace(total_entries=12, active_entries=11, deprecated_entries=1)
+
+    def fake_plan(*, force=False):
+        events.append("plan")
+        assert force is True
+        return SimpleNamespace(total_entries=11, due_entries=11, skipped_entries=0)
+
+    def fake_execute(**kwargs):
+        events.append("execute")
+        captured.update(kwargs)
+        return {
+            "status": "completed",
+            "tasks": [
+                {"agent_name": agent, "status": "error", "outputs_count": 0, "errors": ["fixture failure"]}
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ],
+        }
+
+    with patch("core.batch2.sync_source_registry", side_effect=fake_sync), \
+         patch("core.batch2.build_source_refresh_plan", side_effect=fake_plan), \
+         patch("core.batch2.execute_batch_run", side_effect=fake_execute):
+        report = execute_batch2(
+            funding_contexts=[_context()],
+            output_root=tmp_path,
+            run_id="registry-sync-test",
+            execution_mode="parallel",
+        )
+
+    assert events == ["sync", "plan", "execute"]
+    assert captured["base_input_data"]["defer_registry_sync"] is True
+    assert report["source_registry"]["status"] == "ready"
+
+
+def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
+    with patch("core.batch2.sync_source_registry", side_effect=OSError("registry unavailable")), \
+         patch("core.batch2.execute_batch_run") as execute:
+        report = execute_batch2(
+            funding_contexts=[_context()],
+            output_root=tmp_path,
+            run_id="registry-failure-test",
+        )
+
+    assert report["status"] == "blocked_source_registry"
+    assert report["batch3_started"] is False
+    assert report["source_registry"]["status"] == "error"
+    execute.assert_not_called()
 
 
 def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
@@ -190,6 +354,12 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     assert records[0]["funding_call_id"] == context.funding_call_id
     assert records[0]["run_id"] == "batch2-test-run"
     assert records[0]["normalization_status"] == "NORMALIZED"
+    assert validate_evidence_ledger(
+        call_root / "normalized" / "evidence_ledger.db",
+        records,
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-test-run",
+    ) == []
 
     # The persisted selected-call shape must remain compatible with Batch-3 refresh.
     roots, target_call_id, gate = resolve_refresh_context(call_root)
