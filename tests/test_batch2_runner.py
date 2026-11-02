@@ -510,6 +510,8 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 ## Agent-Specific Body
 ### Source Type
 - Research paper
+### Evidence Type
+- Scholarly publication record
 
 ## Machine Metadata
 - source_hints: {{"published_at": "2026-10-01"}}
