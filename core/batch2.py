@@ -578,13 +578,18 @@ def audit_collector_artifacts(
                             "output_path": str(raw_output_path),
                             "reasons": [f"reported_output_path_invalid:{exc}"],
                         })
-                persisted_paths = {path.resolve() for path in valid_files}
-                if resolved_reported_paths != persisted_paths:
+                observed_paths = {
+                    Path(item["original_path"])
+                    for item in quarantined
+                    if item.get("agent_name") == agent and item.get("original_path")
+                }
+                observed_paths.update(path.resolve() for path in valid_files)
+                if resolved_reported_paths != observed_paths:
                     agent_issues.append({
                         "agent_name": agent,
-                        "reasons": ["reported_output_paths_do_not_match_persisted_markdown_artifacts"],
+                        "reasons": ["reported_output_paths_do_not_match_observed_markdown_artifacts"],
                         "reported_paths": sorted(str(path) for path in resolved_reported_paths),
-                        "persisted_paths": sorted(str(path) for path in persisted_paths),
+                        "observed_paths": sorted(str(path) for path in observed_paths),
                     })
             try:
                 reported_count = int(task.get("outputs_count", 0) or 0)
@@ -638,10 +643,11 @@ def audit_collector_artifacts(
         if reasons & critical_manifest_reasons:
             manifest_issues.append(issue)
             continue
-        if "reported_output_paths_do_not_match_persisted_markdown_artifacts" in reasons:
+        if "reported_output_paths_do_not_match_observed_markdown_artifacts" in reasons:
             # A collector may fail after persisting valid artifacts and therefore
             # return no output paths. That is a partial-success case, not a
-            # manifest escape. A non-empty but conflicting manifest is critical.
+            # manifest escape. Quarantined files remain part of the observed set;
+            # a non-empty manifest that omits or invents paths is critical.
             if issue.get("reported_paths"):
                 manifest_issues.append(issue)
 
