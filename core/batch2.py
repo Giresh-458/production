@@ -321,8 +321,20 @@ def validate_evidence_ledger(
             if not isinstance(provenance, dict):
                 errors.append(f"evidence ledger provenance is invalid for evidence_id {evidence_id}")
             else:
-                if provenance.get("funding_call_id") != funding_call_id:
-                    errors.append(f"evidence ledger provenance funding_call_id mismatch for evidence_id {evidence_id}")
+                provenance_comparisons = {
+                    "source_url": (provenance.get("source_url"), record.get("source_url")),
+                    "source_id": (provenance.get("source_id"), record.get("source_id")),
+                    "agent": (provenance.get("agent"), record.get("agent_name")),
+                    "funding_call_id": (provenance.get("funding_call_id"), funding_call_id),
+                    "run_id": (provenance.get("run_id"), run_id),
+                    "retrieved_at": (provenance.get("retrieved_at"), record.get("collected_at")),
+                    "raw_record_id": (provenance.get("raw_record_id"), record.get("file_path")),
+                }
+                for field, (actual, wanted) in provenance_comparisons.items():
+                    if actual != wanted:
+                        errors.append(
+                            f"evidence ledger provenance {field} mismatch for evidence_id {evidence_id}"
+                        )
                 if provenance.get("funding_call_ids") != [funding_call_id]:
                     errors.append(f"evidence ledger provenance funding_call_ids are not call-scoped for evidence_id {evidence_id}")
                 source_call_ids = provenance.get("source_funding_call_ids")
