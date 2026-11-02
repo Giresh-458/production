@@ -1100,7 +1100,7 @@ def test_xrpl_application_manager_confirms_no_open_calls():
             "pagination_links": [],
         },
         manager: {
-            "html": f"<html><body>{no_calls}</body></html>",
+            "html": "<html><body><span>There are presently</span> <strong>no open calls for applications.</strong></body></html>",
             "markdown": "RippleX Ecosystem Programs.",
             "success": True,
             "error_message": None,
