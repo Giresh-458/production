@@ -16,6 +16,8 @@ The execution path is:
 8. Write structured normalized JSON, indexes, an input manifest, a skip audit, and the SQLite evidence ledger. Verify SQLite integrity and exact record/run/call/provenance correspondence.
 9. Validate the Batch-3 handoff and stop. The standalone runner never starts tagging, clustering, trends, synthesis, idea generation, or proposal generation.
 
+The integrated full pipeline has one additional, per-call supplemental `adaptive_research` stage when canonical research-area coverage is insufficient. It is not one of the 11 shared collectors and does not count toward the 11-agent collection-health threshold. Its current-run artifacts may be included in the full pipeline's call-scoped normalized handoff under the explicit supplemental identity `adaptive_research`; the standalone Batch-2 runner does not execute that stage.
+
 ### The 11 downstream collectors
 
 | Agent | Collection responsibility |
