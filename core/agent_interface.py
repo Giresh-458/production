@@ -458,6 +458,9 @@ def build_intermediate_artifact_payload(
     agent_version: str = INTERMEDIATE_ARTIFACT_VERSION,
     allow_llm_refinement: bool = False,
 ) -> tuple[Dict[str, Any], list[str]]:
+    # Normalize line endings once so the raw-content hash can be verified after
+    # Markdown serialization on Windows and POSIX without changing source text.
+    content = str(content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     normalized_area, area_warnings, area_scores = resolve_research_area(
         explicit_area=area,
         title=title,
