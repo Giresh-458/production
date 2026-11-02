@@ -86,7 +86,7 @@ def mock_save(*args, **kwargs):
     (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
     (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
     (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-    from batch2_test_helpers import write_test_evidence_ledger
+    from tests.batch2_test_helpers import write_test_evidence_ledger
     write_test_evidence_ledger(norm_dir / "evidence_ledger.db", [record])
     return {
         "records": norm_dir / "records.json",
@@ -110,7 +110,7 @@ def mock_pipeline_deps():
          patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
 
         def fake_execute_batch(**kwargs):
-            from batch2_test_helpers import write_test_collector_artifacts
+            from tests.batch2_test_helpers import write_test_collector_artifacts
             write_test_collector_artifacts(
                 Path(kwargs["base_input_data"]["pipeline_run_dir"]),
                 kwargs["base_input_data"]["run_id"],
