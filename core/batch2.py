@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from core.batch_runner import execute_batch_run
 from core.file_lock import atomic_write_json
 from core.funding_selection import FundingCallContext, has_substantive_eligibility_evidence
 from core.mission_gate import relevance as mission_relevance
-from core.normalization import save_normalized_collection_records
+from core.normalization import normalize_intermediate_artifact, save_normalized_collection_records
 from core.source_registry import build_source_refresh_plan, sync_source_registry
 
 
@@ -290,6 +291,159 @@ def validate_evidence_ledger(
             connection.close()
 
     return errors
+
+
+def audit_collector_artifacts(
+    run_root: Path,
+    collection_tasks: list[dict[str, Any]],
+    *,
+    expected_agents: set[str],
+    run_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Audit persisted current-run artifacts rather than trusting response counters.
+
+    Invalid artifacts are moved into workflow/quarantined_intermediate (never
+    deleted) and cannot enter normalization or the evidence ledger.
+    """
+    tasks_by_agent: dict[str, list[dict[str, Any]]] = {}
+    unexpected_tasks: list[str] = []
+    for task in collection_tasks:
+        if not isinstance(task, dict):
+            continue
+        agent = str(task.get("agent_name") or "").strip()
+        if agent not in expected_agents:
+            if agent:
+                unexpected_tasks.append(agent)
+            continue
+        tasks_by_agent.setdefault(agent, []).append(task)
+
+    intermediate_root = run_root / "intermediate"
+    quarantine_root = run_root / "workflow" / "quarantined_intermediate"
+    agent_audits: list[dict[str, Any]] = []
+    quarantined: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+    duplicate_tasks = sorted(agent for agent, items in tasks_by_agent.items() if len(items) != 1)
+
+    for agent in sorted(expected_agents):
+        agent_root = intermediate_root / agent
+        task_items = tasks_by_agent.get(agent, [])
+        task = task_items[0] if len(task_items) == 1 else None
+        files = (
+            sorted(path for path in agent_root.rglob("*.md") if path.name.casefold() != "insights.md")
+            if agent_root.is_dir()
+            else []
+        )
+        valid_files: list[Path] = []
+        agent_issues: list[dict[str, Any]] = []
+
+        for path in files:
+            reasons: list[str] = []
+            try:
+                resolved = path.resolve()
+                if not resolved.is_relative_to(agent_root.resolve()):
+                    reasons.append("artifact_path_escapes_agent_output_directory")
+                record = normalize_intermediate_artifact(path)
+                if str(record.get("agent_name") or "").strip() != agent:
+                    reasons.append("artifact_agent_name_mismatch")
+                if str(record.get("run_id") or "").strip() != run_id:
+                    reasons.append("artifact_run_id_mismatch")
+                source_url = str(record.get("source_url") or "").strip()
+                parsed_source = urlparse(source_url)
+                if parsed_source.scheme not in {"http", "https"} or not parsed_source.netloc:
+                    reasons.append("artifact_source_url_invalid")
+                collected_at = datetime.fromisoformat(
+                    str(record.get("collected_at") or "").replace("Z", "+00:00")
+                )
+                if collected_at.tzinfo is None or collected_at.utcoffset() is None:
+                    reasons.append("artifact_collected_at_timezone_missing")
+                evidence_values = [
+                    record.get("problem_statement"),
+                    record.get("context_summary"),
+                    *(record.get("evidence_snippets") or []),
+                    *(record.get("excerpt_windows") or []),
+                ]
+                if not any(str(value or "").strip() for value in evidence_values):
+                    reasons.append("artifact_has_no_evidence_text")
+            except Exception as exc:
+                reasons.append(f"artifact_parse_failed:{type(exc).__name__}:{exc}")
+
+            if reasons:
+                relative = path.relative_to(agent_root)
+                destination = quarantine_root / agent / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    destination = destination.with_name(
+                        f"{destination.stem}-{len(quarantined) + 1}{destination.suffix}"
+                    )
+                shutil.move(str(path), str(destination))
+                item = {
+                    "agent_name": agent,
+                    "original_path": str(path.resolve()),
+                    "quarantined_path": str(destination.resolve()),
+                    "reasons": reasons,
+                }
+                quarantined.append(item)
+                agent_issues.append(item)
+                continue
+
+            valid_files.append(path)
+
+        if len(task_items) > 1:
+            agent_issues.append({
+                "agent_name": agent,
+                "reasons": ["duplicate_collector_task_entries"],
+                "task_count": len(task_items),
+            })
+        if task is not None:
+            try:
+                reported_count = int(task.get("outputs_count", 0) or 0)
+            except (TypeError, ValueError):
+                reported_count = 0
+            if reported_count != len(valid_files):
+                mismatch = {
+                    "agent_name": agent,
+                    "reasons": ["collector_output_count_does_not_match_persisted_artifacts"],
+                    "reported_outputs_count": reported_count,
+                    "persisted_valid_artifact_count": len(valid_files),
+                }
+                agent_issues.append(mismatch)
+            task["reported_outputs_count"] = reported_count
+            task["persisted_artifact_count"] = len(valid_files)
+            task["outputs_count"] = len(valid_files)
+            task["artifact_audit_issues"] = agent_issues
+            status = str(task.get("status") or "").strip().lower()
+            if valid_files and status not in {"success", "partial_success", "partial_limit"}:
+                task["status"] = "partial_success"
+                task.setdefault("warnings", []).append(
+                    "Valid current-run intermediate artifacts were persisted despite a non-success task status."
+                )
+            elif not valid_files and status in {"success", "partial_success", "partial_limit"}:
+                task["status"] = "error"
+                task.setdefault("errors", []).append(
+                    "Collector reported usable outputs but no valid current-run intermediate artifacts were persisted."
+                )
+
+        if agent_issues:
+            issues.extend(agent_issues)
+        agent_audits.append({
+            "agent_name": agent,
+            "task_entries": len(task_items),
+            "persisted_valid_artifacts": len(valid_files),
+            "quarantined_artifacts": sum(1 for item in agent_issues if "quarantined_path" in item),
+            "issues": agent_issues,
+        })
+
+    audit = {
+        "status": "passed" if not issues and not unexpected_tasks else "completed_with_issues",
+        "run_id": run_id,
+        "expected_agents": sorted(expected_agents),
+        "agents": agent_audits,
+        "duplicate_task_agents": duplicate_tasks,
+        "unexpected_task_agents": sorted(set(unexpected_tasks)),
+        "quarantined_artifacts": quarantined,
+        "issues": issues,
+    }
+    return collection_tasks, audit
 
 
 def execute_batch2(
