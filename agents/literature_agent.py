@@ -90,6 +90,8 @@ class Paper:
     recency_score: float = 0.0
     problem_clarity_score: float = 0.0
     semantic_score: float = 0.0
+    source_type: str = "Research publication"
+    evidence_type: str = "Scholarly publication record"
 
 
 @dataclass(slots=True)
