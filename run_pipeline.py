@@ -708,6 +708,7 @@ def main() -> int:
     )
     if isinstance(downstream_plan, dict):
         downstream_plan["tasks"] = collection_tasks
+        atomic_write_json(global_workflow / "shared_downstream_collection_plan.json", downstream_plan)
     atomic_write_json(global_workflow / "collector_artifact_audit.json", collector_artifact_audit)
     task_agent_names = {
         str(task.get("agent_name") or "").strip()
