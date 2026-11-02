@@ -695,6 +695,13 @@ def main() -> int:
             funding_contexts=all_contexts, # PASS ALL CONTEXTS!
         )
     except Exception as exc:
+        failure_report = {
+            "run_id": run_id,
+            "status": "shared_collection_execution_failed",
+            "batch3_started": False,
+            "error": str(exc),
+        }
+        atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
         print(f"❌ Shared collection failed with exception: {exc}")
         return 4
 
@@ -758,6 +765,15 @@ def main() -> int:
         or collector_artifact_audit["duplicate_task_agents"]
         or collector_artifact_audit["quarantine_failures"]
     ):
+        failure_report = {
+            "run_id": run_id,
+            "status": "blocked_collection_health",
+            "batch3_started": False,
+            "collector_health": collector_health,
+            "collector_artifact_audit": collector_artifact_audit,
+            "collection_report": downstream_plan,
+        }
+        atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
         print(
             f"❌ Shared collection quality gate failed: {healthy_count}/{len(expected_downstream_agents)} "
             f"expected collectors produced evidence; missing={missing_collectors}; "
