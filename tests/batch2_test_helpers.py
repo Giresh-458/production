@@ -95,6 +95,19 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
                 "document_identity": document_identity,
                 "content_hash": content_hash,
             },
+            "evidence_bundle": {
+                "page_title": title,
+                "section_headings": [],
+                "key_paragraphs": [],
+                "bullet_lists": [],
+                "quoted_passages": [],
+                "links_found": [],
+                "named_entities_or_programs": [],
+                "evidence_snippets": [
+                    "The fixture contains a source-grounded evidence excerpt for artifact-contract testing."
+                ],
+                "excerpt_windows": [],
+            },
             "raw_content": raw_content,
         }
         machine_payload_json = json.dumps(machine_payload, ensure_ascii=False)
