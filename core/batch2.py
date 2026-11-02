@@ -654,7 +654,10 @@ def audit_collector_artifacts(
     manifest_issues = []
     for issue in issues:
         reasons = set(issue.get("reasons") or [])
-        if reasons & critical_manifest_reasons:
+        if reasons & critical_manifest_reasons or any(
+            reason.startswith("reported_output_path_invalid:")
+            for reason in reasons
+        ):
             manifest_issues.append(issue)
             continue
         if "reported_output_paths_do_not_match_observed_markdown_artifacts" in reasons:
