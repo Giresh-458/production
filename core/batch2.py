@@ -278,7 +278,7 @@ def validate_evidence_ledger(
         rows = connection.execute(
             """
             SELECT evidence_id, record_id, funding_call_id, run_id, agent,
-                   source_url, retrieved_at, content_hash, normalization_status
+                   source_url, retrieved_at, content_hash, normalization_status, provenance
             FROM canonical_evidence
             WHERE funding_call_id = ? AND run_id = ?
             """,
@@ -294,7 +294,7 @@ def validate_evidence_ledger(
             errors.append("evidence ledger evidence_id set does not match normalized records")
 
         for row in rows:
-            evidence_id, record_id, call_id, row_run_id, agent, source_url, retrieved_at, content_hash, status = row
+            evidence_id, record_id, call_id, row_run_id, agent, source_url, retrieved_at, content_hash, status, provenance_json = row
             record = expected.get(str(evidence_id))
             if record is None:
                 continue
@@ -313,6 +313,20 @@ def validate_evidence_ledger(
                     errors.append(
                         f"evidence ledger {field} mismatch for evidence_id {evidence_id}"
                     )
+            try:
+                provenance = json.loads(provenance_json)
+            except (TypeError, ValueError):
+                provenance = None
+            if not isinstance(provenance, dict):
+                errors.append(f"evidence ledger provenance is invalid for evidence_id {evidence_id}")
+            else:
+                if provenance.get("funding_call_id") != funding_call_id:
+                    errors.append(f"evidence ledger provenance funding_call_id mismatch for evidence_id {evidence_id}")
+                if provenance.get("funding_call_ids") != [funding_call_id]:
+                    errors.append(f"evidence ledger provenance funding_call_ids are not call-scoped for evidence_id {evidence_id}")
+                source_call_ids = provenance.get("source_funding_call_ids")
+                if not isinstance(source_call_ids, list) or funding_call_id not in source_call_ids:
+                    errors.append(f"evidence ledger original funding-call attribution is missing for evidence_id {evidence_id}")
     except (sqlite3.Error, OSError, TypeError, ValueError) as exc:
         errors.append(f"could not validate evidence ledger {ledger_path}: {exc}")
     finally:
