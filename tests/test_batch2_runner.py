@@ -299,6 +299,21 @@ def test_collector_health_uses_persisted_artifacts_and_quarantines_bad_provenanc
     assert "artifact_run_id_mismatch" in audit["quarantined_artifacts"][0]["reasons"]
 
 
+def test_collector_artifact_audit_rejects_malformed_task_entries(tmp_path):
+    _, audit = audit_collector_artifacts(
+        tmp_path / "batch2-run",
+        [None, {"status": "success", "outputs_count": 1}],
+        expected_agents={"literature"},
+        run_id="current-run",
+    )
+
+    assert len(audit["malformed_task_entries"]) == 2
+    assert {item["reason"] for item in audit["malformed_task_entries"]} == {
+        "collector_task_entry_is_not_an_object",
+        "collector_task_agent_name_missing",
+    }
+
+
 def test_collector_artifact_audit_marks_escaping_output_manifest_as_critical(tmp_path):
     run_root = tmp_path / "batch2-run"
     agent_dir = run_root / "intermediate" / "literature"
