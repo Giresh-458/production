@@ -463,15 +463,17 @@ def audit_collector_artifacts(
             task["persisted_artifact_count"] = len(valid_files)
             task["outputs_count"] = len(valid_files)
             task["artifact_audit_issues"] = agent_issues
+            task["warnings"] = list(task.get("warnings") or [])
+            task["errors"] = list(task.get("errors") or [])
             status = str(task.get("status") or "").strip().lower()
             if valid_files and status not in {"success", "partial_success", "partial_limit"}:
                 task["status"] = "partial_success"
-                task.setdefault("warnings", []).append(
+                task["warnings"].append(
                     "Valid current-run intermediate artifacts were persisted despite a non-success task status."
                 )
             elif not valid_files and status in {"success", "partial_success", "partial_limit"}:
                 task["status"] = "error"
-                task.setdefault("errors", []).append(
+                task["errors"].append(
                     "Collector reported usable outputs but no valid current-run intermediate artifacts were persisted."
                 )
 
