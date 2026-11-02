@@ -48,6 +48,7 @@ def write_test_evidence_ledger(path: Path, records: list[dict[str, Any]]) -> Non
                     "source_id": source_id,
                     "agent": str(record.get("agent_name") or "literature"),
                     "funding_call_id": str(record["funding_call_id"]),
+                    "funding_call_ids": record.get("funding_call_ids", [str(record["funding_call_id"])]),
                     "run_id": str(record["run_id"]),
                     "retrieved_at": str(record["collected_at"]),
                     "source_funding_call_ids": record.get("source_funding_call_ids", []),
