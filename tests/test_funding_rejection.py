@@ -285,7 +285,7 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
     parser.add_argument("--funding-sources", default="dummy")
     parser.add_argument("--max-open-calls", type=int, default=None)
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
-    with patch("run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS", ["dummy"] * 11):
+    with patch("run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS", ["literature", "company", "regulation", "opensource", "hackathon", "lab", "practitioner", "investment", "failure", "data_availability", "expert"]):
         exit_code = run_pipeline.main()
     assert exit_code == 0
     run_pipeline_mocks["sync_registry"].assert_called_once()
@@ -323,7 +323,7 @@ def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkey
     parser.add_argument("--funding-sources", default="dummy")
     parser.add_argument("--max-open-calls", type=int, default=None)
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
-    with patch("run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS", ["dummy"] * 11):
+    with patch("run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS", ["literature", "company", "regulation", "opensource", "hackathon", "lab", "practitioner", "investment", "failure", "data_availability", "expert"]):
         exit_code = run_pipeline.main()
     
     # Prove it didn't crash
