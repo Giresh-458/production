@@ -98,6 +98,11 @@ def main() -> int:
 
     try:
         contexts, batch1_run_id = load_funding_context_handoff(Path(args.funding_context_file))
+        if not batch1_run_id:
+            raise ValueError(
+                "Batch-2 requires a saved Batch-1 handoff with a non-empty batch1_run_id or run_id. "
+                "A bare FundingCallContext/list is not an auditable Batch-1 handoff."
+            )
         report = execute_batch2(
             funding_contexts=contexts,
             output_root=Path(args.output_root),
