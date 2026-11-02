@@ -381,12 +381,36 @@ def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
 
 def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
     import hashlib
+    import json
 
     title = f"Zero-knowledge verification evidence from {agent_name}"
     source_url = f"https://example.org/research/{agent_name}"
     raw_content = "Zero knowledge verification latency increases under high transaction volume and limits settlement throughput. The source reports measurable verification bottlenecks and scalability constraints."
     document_identity = hashlib.sha256(f"{source_url}|{title}".encode("utf-8")).hexdigest()
     provenance_content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
+    machine_payload = {
+        "shared_header": {
+            "title": title,
+            "source": source_url,
+            "layer": "Literature",
+            "research_area": "RWA",
+            "collected_at": "2026-11-01T10:00:00+00:00",
+            "agent_name": agent_name,
+            "run_id": run_id,
+            "funding_call_id": call_id,
+            "funding_call_ids": call_id,
+            "collection_mode": "configured_scan",
+        },
+        "provenance": {
+            "source_url": source_url,
+            "collected_at": "2026-11-01T10:00:00+00:00",
+            "agent_name": agent_name,
+            "document_identity": document_identity,
+            "content_hash": provenance_content_hash,
+        },
+        "raw_content": raw_content,
+    }
+    machine_payload_json = json.dumps(machine_payload, ensure_ascii=False)
     return f"""# {title}
 
 ## Shared Metadata
@@ -436,6 +460,11 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 
 ## Raw Content
 {raw_content}
+
+## Machine-Readable Payload
+```json
+{machine_payload_json}
+```
 """
 
 
