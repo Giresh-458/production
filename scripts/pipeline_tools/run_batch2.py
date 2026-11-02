@@ -113,17 +113,18 @@ def main() -> int:
     profile = profiles[args.profile]
 
     try:
-        contexts, batch1_run_id = load_funding_context_handoff(Path(args.funding_context_file))
+        handoff_path = Path(args.funding_context_file)
+        contexts, batch1_run_id = load_funding_context_handoff(handoff_path)
         if not batch1_run_id:
-            raise ValueError(
-                "Batch-2 requires a saved Batch-1 handoff with a non-empty batch1_run_id or run_id. "
-                "A bare FundingCallContext/list is not an auditable Batch-1 handoff."
-            )
+            raise ValueError("Accepted Batch-1 handoff is missing batch1_run_id.")
+        handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+        batch1_acceptance = handoff_payload["batch1_acceptance"]
         report = execute_batch2(
             funding_contexts=contexts,
             output_root=Path(args.output_root),
             run_id=args.run_id,
             batch1_run_id=batch1_run_id,
+            batch1_acceptance=batch1_acceptance,
             execution_mode=args.execution_mode,
             max_workers=args.max_workers,
             timeout_budget_seconds=profile["timeout_budget_seconds"],
