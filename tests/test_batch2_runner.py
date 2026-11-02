@@ -178,6 +178,32 @@ def test_evidence_ids_use_problem_text_when_source_has_no_excerpt_snippets(tmp_p
     assert records[0]["evidence_id"] != records[1]["evidence_id"]
 
 
+def test_full_pipeline_can_validate_supplemental_adaptive_research_records():
+    context = _context()
+    records = build_normalized_collection_records(
+        _single_artifact_root(context.funding_call_id, "adaptive_research"),
+        target_funding_call_id=context.funding_call_id,
+        target_run_id="batch2-validation-run",
+    )
+    records[0]["mission_relevance"] = {"passed": True}
+
+    assert validate_normalized_handoff(
+        records,
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-validation-run",
+        expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS) | {"adaptive_research"},
+    ) == []
+    assert any(
+        "unrecognized agent_name" in error
+        for error in validate_normalized_handoff(
+            records,
+            funding_call_id=context.funding_call_id,
+            run_id="batch2-validation-run",
+            expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+        )
+    )
+
+
 def test_normalized_handoff_rejects_cross_call_ids_and_timezone_naive_dates():
     context = _context()
     record = build_normalized_collection_records(
@@ -215,14 +241,14 @@ def test_normalized_handoff_rejects_cross_call_ids_and_timezone_naive_dates():
     assert any("timezone-naive" in error for error in errors)
 
 
-def _single_artifact_root(call_id: str) -> Path:
+def _single_artifact_root(call_id: str, agent_name: str = "literature") -> Path:
     import tempfile
 
     root = Path(tempfile.mkdtemp()) / "intermediate"
-    artifact_dir = root / "literature"
+    artifact_dir = root / agent_name
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "signal.md").write_text(
-        _artifact("batch2-validation-run", call_id),
+        _artifact("batch2-validation-run", call_id, agent_name),
         encoding="utf-8",
     )
     return root
