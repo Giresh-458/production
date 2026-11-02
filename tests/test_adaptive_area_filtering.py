@@ -55,22 +55,31 @@ def run_pipeline_with_mocked_areas(
     def fake_save_normalized(roots, call_root, call_id, **kwargs):
         run_id = kwargs.get("target_run_id")
         normalized_records = []
+        import hashlib
         for index, original in enumerate(accepted_records):
             record = dict(original)
-            record.setdefault("evidence_id", f"adaptive-{index}")
-            record.setdefault("source_id", f"adaptive-source-{index}")
-            record.setdefault("content_hash", f"adaptive-content-{index}")
-            record.setdefault("title", "Adaptive area test evidence")
-            record.setdefault("agent_name", "literature")
-            record.setdefault("collected_at", "2026-11-01T10:00:00+00:00")
-            record.setdefault("problem_statement", "A controlled source-grounded research limitation.")
-            record.setdefault("context_summary", "A controlled source-grounded research limitation.")
-            record.setdefault("evidence_snippets", ["A measurable source-grounded limitation."])
-            record.setdefault("excerpt_windows", [])
+            source_url = f"https://example.com/adaptive-evidence/{index}"
             record.update({
+                "record_id": hashlib.sha1(f"adaptive-record-{index}".encode()).hexdigest()[:16],
+                "evidence_id": hashlib.sha256(f"adaptive-evidence-{index}".encode()).hexdigest()[:16],
+                "source_id": f"url:{source_url}",
+                "content_hash": hashlib.sha256(f"adaptive-content-{index}".encode()).hexdigest(),
+                "title": "Adaptive area test evidence",
+                "agent_name": "literature",
+                "layer": "Literature",
+                "source_type": "web_page",
+                "evidence_type": "web_source",
+                "evidence_strength": 0.7,
+                "collected_at": "2026-11-01T10:00:00+00:00",
+                "problem_statement": "A controlled source-grounded research limitation.",
+                "context_summary": "A controlled source-grounded research limitation.",
+                "evidence_snippets": ["A measurable source-grounded limitation."],
+                "excerpt_windows": [],
                 "run_id": run_id,
                 "funding_call_id": call_id,
-                "source_url": "https://example.com/adaptive-evidence",
+                "funding_call_ids": [call_id],
+                "source_funding_call_ids": [call_id],
+                "source_url": source_url,
                 "normalization_status": "NORMALIZED",
             })
             normalized_records.append(record)
@@ -85,7 +94,8 @@ def run_pipeline_with_mocked_areas(
         (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
         (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
         (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-        (norm_dir / "evidence_ledger.db").touch()
+        from _batch2_helpers import write_test_evidence_ledger
+        write_test_evidence_ledger(norm_dir / "evidence_ledger.db", normalized_records)
         return {
             "records": norm_dir / "records.json",
             "by_area": norm_dir / "by_area.json",
