@@ -513,7 +513,11 @@ def audit_collector_artifacts(
                     reasons.append("artifact_provenance_document_identity_mismatch")
 
                 provenance_content_hash = str(provenance.get("content_hash") or "").strip()
-                raw_content = str(machine_payload.get("raw_content") or "").strip()
+                raw_content = str(machine_payload.get("raw_content") or "")
+                markdown_raw_content = str(parsed_artifact.get("raw_content") or "")
+                normalize_source_text = lambda value: str(value or "").replace("\\r\\n", "\\n").replace("\\r", "\\n").strip()
+                if normalize_source_text(markdown_raw_content) != normalize_source_text(raw_content):
+                    reasons.append("artifact_markdown_and_machine_payload_raw_content_mismatch")
                 if not provenance_content_hash:
                     reasons.append("artifact_provenance_content_hash_missing")
                 elif not raw_content:
