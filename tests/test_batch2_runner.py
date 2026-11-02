@@ -778,10 +778,16 @@ def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
 
     from batch2_test_helpers import write_test_collector_artifacts
     run_id = "unexpected-agent-run"
-    run_root = tmp_path / run_id
-    write_test_collector_artifacts(run_root, run_id, DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
 
-    with patch("core.batch2.execute_batch_run", return_value={"status": "completed", "tasks": tasks}):
+    def fake_execute_batch_run(**kwargs):
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            run_id,
+            DOWNSTREAM_FUNDING_CONTEXT_AGENTS,
+        )
+        return {"status": "completed", "tasks": tasks}
+
+    with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
             funding_contexts=[context],
             output_root=tmp_path,
