@@ -741,7 +741,9 @@ def execute_batch2(
         or not isinstance(nested_acceptance, dict)
         or nested_acceptance.get("accepted") is not True
         or str(nested_acceptance.get("status") or "").upper() != "ACCEPTED"
-        or bool(nested_acceptance.get("blockers"))
+        or not isinstance(nested_acceptance.get("blockers"), list)
+        or nested_acceptance.get("blockers") != []
+        or nested_acceptance.get("blocker_count") != 0
     ):
         raise ValueError(
             "Batch-2 requires an ACCEPTED Batch-1 global source-coverage attestation."
