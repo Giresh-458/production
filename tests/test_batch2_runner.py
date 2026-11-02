@@ -674,7 +674,14 @@ def test_batch1_funding_context_handoff_file_loads_without_reconstructing_batch1
     handoff.write_text(
         json.dumps(
             {
-                "run_id": "batch1-fixture-run",
+                "batch1_run_id": "batch1-fixture-run",
+                "batch1_acceptance": {
+                    "accepted": True,
+                    "status": "ACCEPTED",
+                    "batch1_run_id": "batch1-fixture-run",
+                    "source_coverage_verified": True,
+                    "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": []},
+                },
                 "funding_contexts": [context.to_dict()],
             },
             indent=2,
@@ -688,6 +695,47 @@ def test_batch1_funding_context_handoff_file_loads_without_reconstructing_batch1
     assert len(loaded) == 1
     assert loaded[0].funding_call_id == context.funding_call_id
     assert loaded[0].research_priorities == context.research_priorities
+
+
+def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_path):
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff
+
+    context = _context()
+    handoff = tmp_path / "funding_contexts.json"
+    base = {
+        "batch1_run_id": "batch1-run",
+        "funding_contexts": [context.to_dict()],
+    }
+
+    handoff.write_text(json.dumps(base), encoding="utf-8")
+    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+        load_funding_context_handoff(handoff)
+
+    blocked = {
+        **base,
+        "batch1_acceptance": {
+            "accepted": False,
+            "status": "BLOCKED",
+            "batch1_run_id": "batch1-run",
+            "source_coverage_verified": False,
+        },
+    }
+    handoff.write_text(json.dumps(blocked), encoding="utf-8")
+    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+        load_funding_context_handoff(handoff)
+
+    mismatched = {
+        **base,
+        "batch1_acceptance": {
+            "accepted": True,
+            "status": "ACCEPTED",
+            "batch1_run_id": "different-run",
+            "source_coverage_verified": True,
+        },
+    }
+    handoff.write_text(json.dumps(mismatched), encoding="utf-8")
+    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+        load_funding_context_handoff(handoff)
 
 
 def test_batch2_rejects_context_that_does_not_pass_batch1_handoff_gates(tmp_path):
