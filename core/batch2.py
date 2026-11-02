@@ -386,6 +386,7 @@ def audit_collector_artifacts(
     quarantined: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
     duplicate_tasks = sorted(agent for agent, items in tasks_by_agent.items() if len(items) != 1)
+    missing_task_agents = sorted(expected_agents - set(tasks_by_agent))
 
     for agent in sorted(expected_agents):
         agent_root = intermediate_root / agent
@@ -665,10 +666,11 @@ def audit_collector_artifacts(
                 manifest_issues.append(issue)
 
     audit = {
-        "status": "passed" if not issues and not unexpected_tasks and not malformed_tasks else "completed_with_issues",
+        "status": "passed" if not issues and not unexpected_tasks and not malformed_tasks and not missing_task_agents else "completed_with_issues",
         "run_id": run_id,
         "expected_agents": sorted(expected_agents),
         "agents": agent_audits,
+        "missing_task_agents": missing_task_agents,
         "duplicate_task_agents": duplicate_tasks,
         "malformed_task_entries": malformed_tasks,
         "unexpected_task_agents": sorted(set(unexpected_tasks)),
