@@ -818,9 +818,8 @@ jobs:
               )
           PY
 
-      - name: Run bounded live Batch 2 smoke from the validated Batch 1 handoff
+      - name: Run required bounded live Batch 2 smoke from the validated Batch 1 handoff
         if: success()
-        continue-on-error: true
         timeout-minutes: 15
         run: |
           python scripts/pipeline_tools/run_batch2.py \
