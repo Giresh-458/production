@@ -58,3 +58,36 @@ def write_test_evidence_ledger(path: Path, records: list[dict[str, Any]]) -> Non
         connection.commit()
     finally:
         connection.close()
+
+
+
+def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str] | set[str]) -> None:
+    """Create current-run, unassigned artifacts for orchestration-only pipeline tests."""
+    for agent in sorted(set(agents)):
+        artifact_dir = run_root / "intermediate" / agent
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        safe_agent = "".join(character if character.isalnum() else "-" for character in agent)
+        artifact = artifact_dir / f"unassigned-{safe_agent}.md"
+        artifact.write_text(
+            "\n".join([
+                f"# Test collection artifact: {agent}",
+                "",
+                "## Shared Metadata",
+                f"- title: Unassigned test evidence from {agent}",
+                f"- source: https://example.org/collector-fixtures/{safe_agent}",
+                f"- layer: {agent.replace('_', ' ').title()}",
+                f"- agent_name: {agent}",
+                f"- run_id: {run_id}",
+                "- research_area: Unscoped",
+                "- collected_at: 2026-11-01T10:00:00+00:00",
+                "",
+                "## Problem Preview",
+                "This fixture verifies the collector artifact contract without claiming ownership by a funding call.",
+                "",
+                "## Evidence Bundle",
+                "### Evidence Snippets",
+                "- The fixture contains a source-grounded evidence excerpt for artifact-contract testing.",
+                "",
+            ]),
+            encoding="utf-8",
+        )
