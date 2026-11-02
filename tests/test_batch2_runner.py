@@ -909,6 +909,38 @@ def test_normalized_handoff_rejects_invalid_records_and_provenance():
     assert any("mission-relevance" in error for error in errors)
 
 
+def test_literature_and_lab_records_supply_required_evidence_classification():
+    from agents.literature_agent import Paper
+    from agents.lab_agent import LabDocument
+    from core.agent_interface import _document_metadata
+
+    paper = Paper(
+        title="Research paper",
+        summary="A measurable research result.",
+        url="https://example.org/paper",
+        published=None,
+        authors=["Researcher"],
+        source="OpenAlex",
+        source_id="url:https://example.org/paper",
+        doi=None,
+        venue=None,
+        retrieval_timestamp="2026-11-02T10:00:00+00:00",
+    )
+    lab = LabDocument(
+        name="Research Lab",
+        institution="Example University",
+        base_url="https://example.org/lab",
+        source_type="Institutional profile",
+        pages=[],
+    )
+
+    paper_metadata = _document_metadata(paper)
+    lab_metadata = _document_metadata(lab)
+    assert paper_metadata["source_type"] == "Research publication"
+    assert paper_metadata["evidence_type"] == "Scholarly publication record"
+    assert lab_metadata["evidence_type"] == "Research laboratory profile"
+
+
 def test_normalized_handoff_accepts_valid_evidence_record():
     agent = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)[0]
     record = build_normalized_collection_records(
