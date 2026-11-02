@@ -65,6 +65,16 @@ def _context(call_id: str = "CALL-BATCH2-001") -> FundingCallContext:
     )
 
 
+def _batch1_acceptance(run_id: str = "batch1-test-run") -> dict:
+    return {
+        "accepted": True,
+        "status": "ACCEPTED",
+        "batch1_run_id": run_id,
+        "source_coverage_verified": True,
+        "acceptance": {"status": "ACCEPTED", "accepted": True, "blockers": []},
+    }
+
+
 def test_shared_programme_name_and_application_portal_do_not_cross_assign_calls():
     first = _context("CALL-SHARED-A")
     second = _context("CALL-SHARED-B")
@@ -353,6 +363,7 @@ def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
          patch("core.batch2.build_source_refresh_plan", side_effect=fake_plan), \
          patch("core.batch2.execute_batch_run", side_effect=fake_execute):
         report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[_context()],
             output_root=tmp_path,
             run_id="registry-sync-test",
@@ -368,6 +379,7 @@ def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
     with patch("core.batch2.sync_source_registry", side_effect=OSError("registry unavailable")), \
          patch("core.batch2.execute_batch_run") as execute:
         report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[_context()],
             output_root=tmp_path,
             run_id="registry-failure-test",
@@ -519,6 +531,7 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
         return_value=SimpleNamespace(total_entries=11, due_entries=11, skipped_entries=0),
     ), patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=loaded_contexts,
             output_root=tmp_path / "batch2",
             run_id="batch2-test-run",
@@ -615,6 +628,7 @@ def test_batch2_rejects_duplicate_call_ids(tmp_path):
     context = _context()
     with pytest.raises(ValueError, match="must be unique"):
         execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context, context],
             output_root=tmp_path,
             run_id="duplicate-test",
@@ -629,6 +643,7 @@ def test_batch2_does_not_reuse_nonempty_run_directory(tmp_path):
 
     with pytest.raises(FileExistsError, match="Use a new --run-id"):
         execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context],
             output_root=tmp_path,
             run_id="existing-run",
@@ -651,6 +666,7 @@ def test_batch2_dry_run_plans_all_collectors_without_normalizing(tmp_path):
 
     with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context],
             output_root=tmp_path / "dry-run",
             run_id="batch2-dry-run",
@@ -744,6 +760,7 @@ def test_batch2_rejects_context_that_does_not_pass_batch1_handoff_gates(tmp_path
 
     with pytest.raises(ValueError, match="not confirmed currently open"):
         execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[invalid],
             output_root=tmp_path,
             run_id="invalid-context-run",
@@ -769,6 +786,7 @@ def test_batch2_refuses_to_reuse_even_an_empty_run_directory(tmp_path):
 
     with pytest.raises(FileExistsError, match="already exists"):
         execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context],
             output_root=tmp_path,
             run_id="empty-existing-run",
@@ -866,6 +884,7 @@ def test_batch2_blocks_unexpected_collector_tasks(tmp_path):
 
     with patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context],
             output_root=tmp_path,
             run_id=run_id,
@@ -894,6 +913,7 @@ def test_batch2_rejects_path_traversal_run_id(tmp_path):
     context = _context()
     with pytest.raises(ValueError, match="run_id must be a safe path component"):
         execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
             funding_contexts=[context],
             output_root=tmp_path,
             run_id="../outside",
