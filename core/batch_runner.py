@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import shutil
 import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
@@ -209,6 +211,63 @@ def execute_batch_run(
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
     run_id = started_at.isoformat()
+    tasks_per_agent: dict[str, int] = {}
+    for task in tasks:
+        agent_name = str(task.get("agent_name") or "")
+        tasks_per_agent[agent_name] = tasks_per_agent.get(agent_name, 0) + 1
+
+    def task_output_dir(task: Dict[str, Any]) -> Path | None:
+        pipeline_run_dir = (task.get("input_data") or {}).get("pipeline_run_dir")
+        if not pipeline_run_dir:
+            return None
+        output_dir = Path(pipeline_run_dir) / "intermediate" / task["agent_name"]
+        if tasks_per_agent.get(task["agent_name"], 0) > 1:
+            area_segment = re.sub(
+                r"[^A-Za-z0-9._-]+",
+                "-",
+                str(task.get("area") or "none"),
+            ).strip("-") or "none"
+            output_dir = output_dir / area_segment
+        return output_dir
+
+    task_output_dirs = {task["task_id"]: task_output_dir(task) for task in tasks}
+
+    def timeout_result(
+        task: Dict[str, Any],
+        *,
+        reason: str,
+        result: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        output_dir = task_output_dirs.get(task["task_id"])
+        cleanup_error = None
+        if output_dir is not None and output_dir.exists():
+            try:
+                shutil.rmtree(output_dir)
+            except OSError as exc:
+                cleanup_error = str(exc)
+        timed_out = dict(result or {})
+        timed_out.update({
+            "task_id": task["task_id"],
+            "agent_name": task["agent_name"],
+            "mode": task["mode"],
+            "area": task["area"],
+            "status": "timeout_budget_exceeded",
+            "items_processed": 0,
+            "items_saved": 0,
+            "outputs_count": 0,
+            "output_paths": [],
+            "errors": list(timed_out.get("errors") or []) + [reason],
+            "warnings": list(timed_out.get("warnings") or []),
+            "duration_seconds": timed_out.get("duration_seconds", 0),
+            "finished_at": timed_out.get("finished_at") or datetime.now(UTC).isoformat(),
+            "output_dir": str(output_dir.resolve()) if output_dir is not None else None,
+        })
+        if cleanup_error:
+            timed_out["artifact_cleanup_error"] = cleanup_error
+            timed_out["errors"].append(
+                f"timed-out task artifacts could not be removed and must be quarantined: {cleanup_error}"
+            )
+        return timed_out
 
     if dry_run:
         report = {
@@ -251,8 +310,9 @@ def execute_batch_run(
             inp["defer_registry_sync"] = True
         
         pipeline_run_dir = inp.get("pipeline_run_dir")
-        if pipeline_run_dir:
-            inp["output_dir"] = str(Path(pipeline_run_dir) / "intermediate" / task["agent_name"])
+        output_dir = task_output_dirs.get(task["task_id"])
+        if pipeline_run_dir and output_dir is not None:
+            inp["output_dir"] = str(output_dir)
 
         from core.source_registry import current_force_source_refresh, current_source_area
         token_refresh = current_force_source_refresh.set(bool(inp.get("force_refresh", False)))
@@ -319,7 +379,10 @@ def execute_batch_run(
             current_force_source_refresh.reset(token_refresh)
             current_source_area.reset(token_area)
 
-        return _summarize_response(task, response)
+        summary = _summarize_response(task, response)
+        summary["finished_at"] = datetime.now(UTC).isoformat()
+        summary["output_dir"] = str(output_dir.resolve()) if output_dir is not None else None
+        return summary
 
     _wl_started = 0
     _wl_completed = 0
@@ -331,21 +394,20 @@ def execute_batch_run(
         for index, task in enumerate(tasks):
             if deadline and datetime.now(UTC) >= deadline:
                 for pending_task in tasks[index:]:
-                    task_results.append({
-                        "task_id": pending_task["task_id"],
-                        "agent_name": pending_task["agent_name"],
-                        "mode": pending_task["mode"],
-                        "area": pending_task["area"],
-                        "status": "timeout_budget_exceeded",
-                        "items_processed": 0,
-                        "items_saved": 0,
-                        "outputs_count": 0,
-                        "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start"],
-                        "warnings": [],
-                        "duration_seconds": 0,
-                    })
+                    task_results.append(timeout_result(
+                        pending_task,
+                        reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+                    ))
                 break
-            task_results.append(run_task(task))
+            result = run_task(task)
+            finished_at = datetime.fromisoformat(result["finished_at"].replace("Z", "+00:00"))
+            if deadline and finished_at > deadline:
+                result = timeout_result(
+                    task,
+                    result=result,
+                    reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                )
+            task_results.append(result)
     else:
         workers = max_workers or min(max(len(tasks), 1), 8)
         _wl_lock = threading.Lock()
@@ -370,39 +432,52 @@ def execute_batch_run(
             future_to_task = {executor.submit(tracked_run_task, task): task for task in tasks}
             pending = set(future_to_task.keys())
             while pending:
-                timeout = None
                 if deadline:
                     remaining = (deadline - datetime.now(UTC)).total_seconds()
                     if remaining <= 0:
+                        cancelled = set()
                         for future in list(pending):
-                            task = future_to_task[future]
-                            future.cancel()
-                            task_results.append({
-                                "task_id": task["task_id"],
-                                "agent_name": task["agent_name"],
-                                "mode": task["mode"],
-                                "area": task["area"],
-                                "status": "timeout_budget_exceeded",
-                                "items_processed": 0,
-                                "items_saved": 0,
-                                "outputs_count": 0,
-                                "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before completion"],
-                                "warnings": [],
-                                "duration_seconds": 0,
-                            })
-                        pending.clear()
-                        break
-                    timeout = remaining
+                            if future.cancel():
+                                task = future_to_task[future]
+                                task_results.append(timeout_result(
+                                    task,
+                                    reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+                                ))
+                                cancelled.add(future)
+                        pending.difference_update(cancelled)
+                        if not pending:
+                            break
+                        # Running threads cannot be force-killed safely. Their
+                        # CrawlContext deadline asks them to stop; wait for their
+                        # actual completion so late artifacts can be removed.
+                        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    else:
+                        done, pending = wait(
+                            pending,
+                            timeout=remaining,
+                            return_when=FIRST_COMPLETED,
+                        )
+                        if not done:
+                            continue
+                else:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
 
-                done, pending = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
-                if not done and pending and deadline and datetime.now(UTC) >= deadline:
-                    continue
                 for future in done:
+                    task = future_to_task[future]
                     try:
-                        task_results.append(future.result())
+                        result = future.result()
+                        finished_at = datetime.fromisoformat(
+                            result["finished_at"].replace("Z", "+00:00")
+                        )
+                        if deadline and finished_at > deadline:
+                            result = timeout_result(
+                                task,
+                                result=result,
+                                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                            )
+                        task_results.append(result)
                     except Exception as exc:
-                        task = future_to_task[future]
-                        task_results.append({
+                        error_result = {
                             "task_id": task["task_id"],
                             "agent_name": task["agent_name"],
                             "mode": task["mode"],
@@ -411,10 +486,23 @@ def execute_batch_run(
                             "items_processed": 0,
                             "items_saved": 0,
                             "outputs_count": 0,
+                            "output_paths": [],
                             "errors": [f"batch runner exception: {exc}"],
                             "warnings": [],
                             "duration_seconds": 0,
-                        })
+                            "finished_at": datetime.now(UTC).isoformat(),
+                            "output_dir": (
+                                str(task_output_dirs[task["task_id"]].resolve())
+                                if task_output_dirs.get(task["task_id"]) is not None else None
+                            ),
+                        }
+                        if deadline and datetime.fromisoformat(error_result["finished_at"]) > deadline:
+                            error_result = timeout_result(
+                                task,
+                                result=error_result,
+                                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                            )
+                        task_results.append(error_result)
             with _wl_lock:
                 _worker_active_after = _wl_started - _wl_completed
 
