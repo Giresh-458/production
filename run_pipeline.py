@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.file_lock import atomic_write_json
-from core.batch2 import evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_evidence_ledger, validate_normalized_handoff
+from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_evidence_ledger, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -700,6 +700,15 @@ def main() -> int:
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
     expected_downstream_agents = set(downstream_agents)
+    collection_tasks, collector_artifact_audit = audit_collector_artifacts(
+        root,
+        collection_tasks,
+        expected_agents=expected_downstream_agents,
+        run_id=run_id,
+    )
+    if isinstance(downstream_plan, dict):
+        downstream_plan["tasks"] = collection_tasks
+    atomic_write_json(global_workflow / "collector_artifact_audit.json", collector_artifact_audit)
     task_agent_names = {
         str(task.get("agent_name") or "").strip()
         for task in collection_tasks if isinstance(task, dict)
@@ -717,8 +726,18 @@ def main() -> int:
         "required": min_required,
         "missing_agents": missing_collectors,
         "unexpected_agents": unexpected_collectors,
+        "artifact_audit_status": collector_artifact_audit["status"],
+        "artifact_audit_issues": len(collector_artifact_audit["issues"]),
+        "quarantined_artifacts": len(collector_artifact_audit["quarantined_artifacts"]),
+        "duplicate_task_agents": collector_artifact_audit["duplicate_task_agents"],
     }
-    if not is_healthy or missing_collectors or unexpected_collectors:
+    if (
+        not is_healthy
+        or missing_collectors
+        or unexpected_collectors
+        or collector_artifact_audit["duplicate_task_agents"]
+        or collector_artifact_audit["quarantine_failures"]
+    ):
         print(
             f"❌ Shared collection quality gate failed: {healthy_count}/{len(expected_downstream_agents)} "
             f"expected collectors produced evidence; missing={missing_collectors}; "
