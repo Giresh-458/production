@@ -432,9 +432,11 @@ def audit_collector_artifacts(
                     "reasons": ["collector_output_paths_must_be_a_list"],
                 })
             elif isinstance(reported_paths, list):
+                resolved_reported_paths: set[Path] = set()
                 for raw_output_path in reported_paths:
                     try:
                         output_path = Path(str(raw_output_path)).resolve()
+                        resolved_reported_paths.add(output_path)
                         if not output_path.is_relative_to(agent_root.resolve()):
                             agent_issues.append({
                                 "agent_name": agent,
@@ -453,6 +455,14 @@ def audit_collector_artifacts(
                             "output_path": str(raw_output_path),
                             "reasons": [f"reported_output_path_invalid:{exc}"],
                         })
+                persisted_paths = {path.resolve() for path in valid_files}
+                if resolved_reported_paths != persisted_paths:
+                    agent_issues.append({
+                        "agent_name": agent,
+                        "reasons": ["reported_output_paths_do_not_match_persisted_markdown_artifacts"],
+                        "reported_paths": sorted(str(path) for path in resolved_reported_paths),
+                        "persisted_paths": sorted(str(path) for path in persisted_paths),
+                    })
             try:
                 reported_count = int(task.get("outputs_count", 0) or 0)
             except (TypeError, ValueError):
