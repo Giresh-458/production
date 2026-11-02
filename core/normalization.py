@@ -678,6 +678,12 @@ def build_normalized_collection_records(
                         })
                         continue
 
+                    # The normalized artifact is a call-scoped handoff. Preserve the
+                    # collector's original multi-call claim for audit, but never expose
+                    # another call ID as an owner of this call's normalized record.
+                    record["source_funding_call_ids"] = list(call_ids)
+                    record["funding_call_ids"] = [target_funding_call_id]
+
                 records.append(record)
             except Exception as exc:
                 if errors is not None:
