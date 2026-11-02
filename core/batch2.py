@@ -384,10 +384,21 @@ def audit_collector_artifacts(
 
                 header_source = str(shared_header.get("source") or "").strip()
                 provenance_source = str(provenance.get("source_url") or "").strip()
-                if header_source and provenance_source:
+                header_parsed = urlparse(header_source)
+                provenance_parsed = urlparse(provenance_source)
+                if header_parsed.scheme not in {"http", "https"} or not header_parsed.netloc:
+                    reasons.append("artifact_header_source_url_invalid")
+                if provenance_parsed.scheme not in {"http", "https"} or not provenance_parsed.netloc:
+                    reasons.append("artifact_provenance_source_url_missing_or_invalid")
+                if (
+                    header_parsed.scheme in {"http", "https"}
+                    and header_parsed.netloc
+                    and provenance_parsed.scheme in {"http", "https"}
+                    and provenance_parsed.netloc
+                ):
                     header_canonical = canonicalize_url(header_source)
                     provenance_canonical = canonicalize_url(provenance_source)
-                    if header_canonical and provenance_canonical and header_canonical != provenance_canonical:
+                    if header_canonical != provenance_canonical:
                         reasons.append("artifact_header_and_provenance_source_url_conflict")
 
                 record = normalize_intermediate_artifact(path)
