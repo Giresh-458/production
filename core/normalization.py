@@ -904,6 +904,8 @@ def save_normalized_collection_records(
                     "source_id": record["source_id"],
                     "agent": record["agent_name"],
                     "funding_call_id": record["funding_call_id"],
+                    "funding_call_ids": record.get("funding_call_ids", []),
+                    "source_funding_call_ids": record.get("source_funding_call_ids", []),
                     "run_id": record["run_id"],
                     "retrieved_at": record["collected_at"],
                     "raw_record_id": record["file_path"]
