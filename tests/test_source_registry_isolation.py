@@ -182,15 +182,23 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
     def fake_save(roots, call_root, call_id, **kwargs):
         norm = call_root / "normalized"
         norm.mkdir(parents=True, exist_ok=True)
+        import hashlib
+        source_url = "https://example.com/evidence"
         record = {
-            "evidence_id": "e1",
-            "record_id": "r1",
-            "source_id": "source-1",
-            "content_hash": "content-1",
+            "evidence_id": hashlib.sha256(f"evidence-{call_id}".encode()).hexdigest()[:16],
+            "record_id": hashlib.sha1(f"record-{call_id}".encode()).hexdigest()[:16],
+            "source_id": f"url:{source_url}",
+            "content_hash": hashlib.sha256(f"content-{call_id}".encode()).hexdigest(),
             "agent_name": "literature",
+            "layer": "Literature",
+            "source_type": "web_page",
+            "evidence_type": "web_source",
+            "evidence_strength": 0.7,
             "run_id": kwargs.get("target_run_id"),
             "funding_call_id": call_id,
-            "source_url": "https://example.com/evidence",
+            "funding_call_ids": [call_id],
+            "source_funding_call_ids": [call_id],
+            "source_url": source_url,
             "normalization_status": "NORMALIZED",
             "research_area": "DePIN",
             "title": "Test evidence",
@@ -208,7 +216,8 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
         (norm / "input_manifest.json").write_text("{}", encoding="utf-8")
         (norm / "errors.json").write_text("[]", encoding="utf-8")
         (norm / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-        (norm / "evidence_ledger.db").touch()
+        from _batch2_helpers import write_test_evidence_ledger
+        write_test_evidence_ledger(norm / "evidence_ledger.db", [record])
         prop_dir = call_root / "proposals"
         prop_dir.mkdir(parents=True, exist_ok=True)
         (prop_dir / "proposal_1.md").write_text("# Proposal", encoding="utf-8")
