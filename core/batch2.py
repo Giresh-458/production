@@ -399,11 +399,17 @@ def audit_collector_artifacts(
                     destination = destination.with_name(
                         f"{destination.stem}-{len(quarantined) + 1}{destination.suffix}"
                     )
-                shutil.move(str(path), str(destination))
+                quarantine_error = None
+                try:
+                    shutil.move(str(path), str(destination))
+                except OSError as exc:
+                    quarantine_error = str(exc)
+                    reasons.append("artifact_quarantine_failed")
                 item = {
                     "agent_name": agent,
                     "original_path": str(path.resolve()),
-                    "quarantined_path": str(destination.resolve()),
+                    "quarantined_path": str(destination.resolve()) if quarantine_error is None else None,
+                    "quarantine_error": quarantine_error,
                     "reasons": reasons,
                 }
                 quarantined.append(item)
@@ -495,6 +501,9 @@ def audit_collector_artifacts(
         "duplicate_task_agents": duplicate_tasks,
         "unexpected_task_agents": sorted(set(unexpected_tasks)),
         "quarantined_artifacts": quarantined,
+        "quarantine_failures": [
+            item for item in quarantined if item.get("quarantine_error")
+        ],
         "issues": issues,
     }
     return collection_tasks, audit
@@ -720,7 +729,13 @@ def execute_batch2(
         "funding_calls": [],
     }
 
-    if missing_agents or unexpected_agents or artifact_audit["duplicate_task_agents"] or not healthy:
+    if (
+        missing_agents
+        or unexpected_agents
+        or artifact_audit["duplicate_task_agents"]
+        or artifact_audit["quarantine_failures"]
+        or not healthy
+    ):
         report["status"] = "blocked_collection_health"
         report["blockers"] = []
         if missing_agents:
@@ -734,6 +749,10 @@ def execute_batch2(
         if artifact_audit["duplicate_task_agents"]:
             report["blockers"].append(
                 {"code": "DUPLICATE_COLLECTOR_TASKS", "agents": artifact_audit["duplicate_task_agents"]}
+            )
+        if artifact_audit["quarantine_failures"]:
+            report["blockers"].append(
+                {"code": "ARTIFACT_QUARANTINE_FAILED", "artifacts": artifact_audit["quarantine_failures"]}
             )
         if not healthy:
             report["blockers"].append(
