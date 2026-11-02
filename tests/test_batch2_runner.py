@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
+from core.batch2 import audit_collector_artifacts, execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
 from core.normalization import build_normalized_collection_records, resolve_refresh_context
@@ -171,6 +171,41 @@ def _single_artifact_root(call_id: str) -> Path:
         encoding="utf-8",
     )
     return root
+
+
+def test_collector_health_uses_persisted_artifacts_and_quarantines_bad_provenance(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    literature_dir = run_root / "intermediate" / "literature"
+    lab_dir = run_root / "intermediate" / "lab"
+    literature_dir.mkdir(parents=True)
+    lab_dir.mkdir(parents=True)
+    valid_path = literature_dir / "valid.md"
+    invalid_path = lab_dir / "stale.md"
+    valid_path.write_text(_artifact("current-run", "CALL-001", "literature"), encoding="utf-8")
+    invalid_path.write_text(_artifact("previous-run", "CALL-001", "lab"), encoding="utf-8")
+
+    tasks = [
+        {"agent_name": "literature", "status": "error", "outputs_count": 0, "errors": ["late wrapper error"], "warnings": []},
+        {"agent_name": "lab", "status": "success", "outputs_count": 1, "errors": [], "warnings": []},
+    ]
+    updated, audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents={"literature", "lab"},
+        run_id="current-run",
+    )
+
+    by_agent = {item["agent_name"]: item for item in updated}
+    assert by_agent["literature"]["status"] == "partial_success"
+    assert by_agent["literature"]["outputs_count"] == 1
+    assert by_agent["literature"]["persisted_artifact_count"] == 1
+    assert by_agent["lab"]["status"] == "error"
+    assert by_agent["lab"]["outputs_count"] == 0
+    assert not invalid_path.exists()
+    assert len(audit["quarantined_artifacts"]) == 1
+    quarantined_path = Path(audit["quarantined_artifacts"][0]["quarantined_path"])
+    assert quarantined_path.is_file()
+    assert "artifact_run_id_mismatch" in audit["quarantined_artifacts"][0]["reasons"]
 
 
 def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
