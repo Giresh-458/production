@@ -385,10 +385,14 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
             "", "/", "/apply", "/application", "/applications", "/submit",
             "/funding", "/grants", "/opportunities",
         }
+        normalized_application_path = (
+            parsed_application_url.path.casefold().rstrip("/") or "/"
+            if parsed_application_url else ""
+        )
         application_path_is_specific = bool(
             parsed_application_url
             and (
-                parsed_application_url.path.casefold() not in generic_application_paths
+                normalized_application_path not in generic_application_paths
                 or bool(parsed_application_url.query)
             )
         )
