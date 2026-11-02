@@ -1687,7 +1687,7 @@ def crawl_funding_source(
         # source HTML. Empty-state verification must inspect both representations;
         # classification/extraction continues to use the preferred Markdown
         # representation to avoid duplicating the same page content.
-        empty_state_content = "\\n".join(
+        empty_state_content = "\n".join(
             part for part in (page_markdown, page_html) if part
         )
         if _reports_no_active_funding(page_url, page_title, empty_state_content):
