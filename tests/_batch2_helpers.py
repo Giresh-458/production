@@ -67,15 +67,22 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
     for agent in sorted(set(agents)):
         artifact_dir = run_root / "intermediate" / agent
         artifact_dir.mkdir(parents=True, exist_ok=True)
+        import hashlib
+
         safe_agent = "".join(character if character.isalnum() else "-" for character in agent)
+        title = f"Unassigned test evidence from {agent}"
+        source_url = f"https://example.org/collector-fixtures/{safe_agent}"
+        raw_content = "This fixture verifies the collector artifact contract without claiming ownership by a funding call."
+        document_identity = hashlib.sha256(f"{source_url}|{title}".encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
         artifact = artifact_dir / f"unassigned-{safe_agent}.md"
         artifact.write_text(
             "\n".join([
                 f"# Test collection artifact: {agent}",
                 "",
                 "## Shared Metadata",
-                f"- title: Unassigned test evidence from {agent}",
-                f"- source: https://example.org/collector-fixtures/{safe_agent}",
+                f"- title: {title}",
+                f"- source: {source_url}",
                 f"- layer: {agent.replace('_', ' ').title()}",
                 f"- agent_name: {agent}",
                 f"- run_id: {run_id}",
@@ -83,18 +90,21 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
                 "- collected_at: 2026-11-01T10:00:00+00:00",
                 "",
                 "## Provenance",
-                f"- source_url: https://example.org/collector-fixtures/{safe_agent}",
+                f"- source_url: {source_url}",
                 "- collected_at: 2026-11-01T10:00:00+00:00",
                 f"- agent_name: {agent}",
-                "- document_identity: fixture-document-identity",
-                "- content_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                f"- document_identity: {document_identity}",
+                f"- content_hash: {content_hash}",
                 "",
                 "## Problem Preview",
-                "This fixture verifies the collector artifact contract without claiming ownership by a funding call.",
+                raw_content,
                 "",
                 "## Evidence Bundle",
                 "### Evidence Snippets",
                 "- The fixture contains a source-grounded evidence excerpt for artifact-contract testing.",
+                "",
+                "## Raw Content",
+                raw_content,
                 "",
             ]),
             encoding="utf-8",
