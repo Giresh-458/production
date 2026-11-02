@@ -231,8 +231,20 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
 
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 
+    def fake_execute_batch(**kwargs):
+        from _batch2_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            kwargs["base_input_data"]["run_id"],
+            kwargs["agent_names"],
+        )
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
+
     with patch("run_pipeline.run_stage", side_effect=fake_run_stage), \
-         patch("run_pipeline.execute_batch_run", return_value={"tasks": [{"agent_name": agent, "status": "success", "outputs_count": 1} for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))]}), \
+         patch("run_pipeline.execute_batch_run", side_effect=fake_execute_batch), \
          patch("run_pipeline.evaluate_collection_health", return_value=(True, 11)), \
          patch("run_pipeline.save_normalized_collection_records", side_effect=fake_save), \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}), \
