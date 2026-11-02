@@ -769,6 +769,7 @@ def main() -> int:
         or unexpected_collectors
         or collector_artifact_audit["duplicate_task_agents"]
         or collector_artifact_audit["quarantine_failures"]
+        or collector_artifact_audit["manifest_issues"]
     ):
         failure_report = {
             "run_id": run_id,
@@ -776,6 +777,7 @@ def main() -> int:
             "batch3_started": False,
             "collector_health": collector_health,
             "collector_artifact_audit": collector_artifact_audit,
+            "collector_manifest_issues": collector_artifact_audit["manifest_issues"],
             "collection_report": downstream_plan,
         }
         atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
