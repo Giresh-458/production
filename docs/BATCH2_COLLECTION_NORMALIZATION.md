@@ -91,11 +91,13 @@ These tests use controlled fixtures and mocks where appropriate. The PR's RIF fu
 
 Plan the run without fetching sources or normalizing evidence:
 
-    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json" --profile smoke --dry-run
+    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile smoke --dry-run
 
 Run a complete refresh profile:
 
-    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
+    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
+
+The standalone runner accepts only a handoff emitted by the strict Batch-1 quality audit after global source coverage and accounting have been accepted. The ordinary full-pipeline runtime handoff contains selected contexts but does not attest to that global audit, so it is deliberately not accepted by this standalone entry point.
 
 Available profiles:
 - smoke: one item per configured source and a short bounded timeout.
