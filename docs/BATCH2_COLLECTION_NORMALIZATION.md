@@ -9,7 +9,7 @@ The execution path is:
 1. Load one or more validated Batch-1 FundingCallContext objects.
 2. Schedule the 11 downstream collection agents in bounded parallel or sequential mode.
 3. Collect source evidence and write provenance-rich intermediate Markdown artifacts.
-4. Audit persisted Markdown artifacts against the collector response manifest, expected agent directory, current run ID, and matching source/provenance URLs. Invalid artifacts are quarantined, not silently normalized.
+4. Audit persisted Markdown artifacts against the collector response manifest, expected agent directory, current run ID, and matching source/provenance URLs. Invalid artifacts are quarantined, not silently normalized. Collector output manifests that point outside the agent directory, point to missing files, or conflict with a non-empty persisted-file manifest are critical blockers. A collector that reports an error after persisting a valid artifact may still count as partial success; the persisted artifact is authoritative, while the count discrepancy remains visible in the audit.
 5. Evaluate collection health from verified persisted artifacts. At least 6 of the 11 agents must produce usable evidence; a successful HTTP response or an inflated response counter without a valid artifact does not count.
 6. Normalize the current-run artifacts separately for each funding call.
 7. Enforce explicit funding-call ownership, call-scoped funding_call_ids, original attribution trace, run identity, source provenance, and mission relevance.
