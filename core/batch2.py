@@ -468,10 +468,31 @@ def audit_collector_artifacts(
                 if not isinstance(machine_provenance, dict):
                     machine_provenance = {}
                     reasons.append("artifact_machine_payload_provenance_invalid")
-                for field in ("title", "source", "agent_name", "run_id", "collected_at"):
+                for field in (
+                    "title", "source", "layer", "research_area", "agent_name",
+                    "agent_version", "collection_mode", "funding_call_id", "run_id",
+                    "collected_at",
+                ):
                     if str(machine_header.get(field) or "").strip() != str(shared_header.get(field) or "").strip():
                         reasons.append(f"artifact_markdown_and_machine_payload_{field}_mismatch")
-                for field in ("source_url", "collected_at", "agent_name", "document_identity", "content_hash"):
+                machine_call_ids = machine_header.get("funding_call_ids", [])
+                markdown_call_ids = shared_header.get("funding_call_ids", "")
+                if isinstance(machine_call_ids, str):
+                    machine_call_ids = [item.strip() for item in machine_call_ids.split(",") if item.strip()]
+                if isinstance(markdown_call_ids, str):
+                    markdown_call_ids = [item.strip() for item in markdown_call_ids.split(",") if item.strip()]
+                if not isinstance(machine_call_ids, list):
+                    machine_call_ids = []
+                    reasons.append("artifact_machine_payload_funding_call_ids_invalid")
+                if not isinstance(markdown_call_ids, list):
+                    markdown_call_ids = []
+                    reasons.append("artifact_markdown_funding_call_ids_invalid")
+                if [str(item).strip() for item in machine_call_ids] != [str(item).strip() for item in markdown_call_ids]:
+                    reasons.append("artifact_markdown_and_machine_payload_funding_call_ids_mismatch")
+                for field in (
+                    "source_url", "collected_at", "agent_name", "agent_version",
+                    "collection_mode", "document_identity", "content_hash",
+                ):
                     if str(machine_provenance.get(field) or "").strip() != str(provenance.get(field) or "").strip():
                         reasons.append(f"artifact_markdown_and_machine_payload_provenance_{field}_mismatch")
                 if str(shared_header.get("agent_name") or "").strip() != agent:
