@@ -349,15 +349,28 @@ def audit_collector_artifacts(
     Invalid artifacts are moved into workflow/quarantined_intermediate (never
     deleted) and cannot enter normalization or the evidence ledger.
     """
+    if not isinstance(collection_tasks, list):
+        raise TypeError("collector task report must be a list")
     tasks_by_agent: dict[str, list[dict[str, Any]]] = {}
     unexpected_tasks: list[str] = []
-    for task in collection_tasks:
+    malformed_tasks: list[dict[str, Any]] = []
+    for index, task in enumerate(collection_tasks):
         if not isinstance(task, dict):
+            malformed_tasks.append({
+                "task_index": index,
+                "reason": "collector_task_entry_is_not_an_object",
+                "actual_type": type(task).__name__,
+            })
             continue
         agent = str(task.get("agent_name") or "").strip()
+        if not agent:
+            malformed_tasks.append({
+                "task_index": index,
+                "reason": "collector_task_agent_name_missing",
+            })
+            continue
         if agent not in expected_agents:
-            if agent:
-                unexpected_tasks.append(agent)
+            unexpected_tasks.append(agent)
             continue
         tasks_by_agent.setdefault(agent, []).append(task)
 
@@ -652,11 +665,12 @@ def audit_collector_artifacts(
                 manifest_issues.append(issue)
 
     audit = {
-        "status": "passed" if not issues and not unexpected_tasks else "completed_with_issues",
+        "status": "passed" if not issues and not unexpected_tasks and not malformed_tasks else "completed_with_issues",
         "run_id": run_id,
         "expected_agents": sorted(expected_agents),
         "agents": agent_audits,
         "duplicate_task_agents": duplicate_tasks,
+        "malformed_task_entries": malformed_tasks,
         "unexpected_task_agents": sorted(set(unexpected_tasks)),
         "quarantined_artifacts": quarantined,
         "quarantine_failures": [
@@ -945,6 +959,7 @@ def execute_batch2(
         missing_agents
         or unexpected_agents
         or artifact_audit["duplicate_task_agents"]
+        or artifact_audit["malformed_task_entries"]
         or artifact_audit["quarantine_failures"]
         or artifact_audit["manifest_issues"]
         or not healthy
@@ -962,6 +977,10 @@ def execute_batch2(
         if artifact_audit["duplicate_task_agents"]:
             report["blockers"].append(
                 {"code": "DUPLICATE_COLLECTOR_TASKS", "agents": artifact_audit["duplicate_task_agents"]}
+            )
+        if artifact_audit["malformed_task_entries"]:
+            report["blockers"].append(
+                {"code": "MALFORMED_COLLECTOR_TASKS", "tasks": artifact_audit["malformed_task_entries"]}
             )
         if artifact_audit["quarantine_failures"]:
             report["blockers"].append(
