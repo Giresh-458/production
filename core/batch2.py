@@ -632,6 +632,7 @@ def execute_batch2(
     output_root: Path | str = Path("outputs/batch2_runs"),
     run_id: str | None = None,
     batch1_run_id: str | None = None,
+    batch1_acceptance: dict[str, Any] | None = None,
     execution_mode: str = "parallel",
     max_workers: int = 6,
     timeout_budget_seconds: int = 1500,
@@ -647,6 +648,21 @@ def execute_batch2(
     contexts = list(funding_contexts or [])
     if not contexts:
         raise ValueError("At least one validated Batch-1 FundingCallContext is required.")
+    if (
+        not isinstance(batch1_acceptance, dict)
+        or batch1_acceptance.get("accepted") is not True
+        or str(batch1_acceptance.get("status") or "").upper() != "ACCEPTED"
+        or batch1_acceptance.get("source_coverage_verified") is not True
+    ):
+        raise ValueError(
+            "Batch-2 requires an ACCEPTED Batch-1 global source-coverage attestation."
+        )
+    attested_batch1_run_id = str(batch1_acceptance.get("batch1_run_id") or "").strip()
+    if not attested_batch1_run_id:
+        raise ValueError("Batch-1 acceptance attestation is missing batch1_run_id.")
+    if batch1_run_id and str(batch1_run_id).strip() != attested_batch1_run_id:
+        raise ValueError("Batch-1 acceptance attestation run ID does not match batch1_run_id.")
+    batch1_run_id = attested_batch1_run_id
     for index, context in enumerate(contexts, start=1):
         context_issues = validate_batch1_context(context)
         if context_issues:
