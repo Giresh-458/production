@@ -353,25 +353,47 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
 
     raw = (str(content) + " " + str(title)).lower()
 
+    def normalized_identity(value: Any) -> str:
+        return " ".join(str(value or "").strip().casefold().split())
+
+    # A parent programme name or common application portal is not unique call
+    # ownership evidence when several selected calls share it. Only use these
+    # weaker identity signals when they identify exactly one active context.
+    identity_counts: dict[str, dict[str, int]] = {
+        "application_url": {},
+        "call_id": {},
+        "call_title": {},
+        "program_name": {},
+    }
+    for ctx in funding_contexts:
+        for field in identity_counts:
+            value = normalized_identity(getattr(ctx, field, ""))
+            if value:
+                identity_counts[field][value] = identity_counts[field].get(value, 0) + 1
+
+    def unique_identity(field: str, value: Any) -> bool:
+        key = normalized_identity(value)
+        return bool(key) and identity_counts[field].get(key, 0) == 1
+
     def has_explicit_identity(ctx: FundingCallContext) -> bool:
         funding_call_id = str(ctx.funding_call_id or "").strip()
         if funding_call_id and re.search(rf"\b{re.escape(funding_call_id.lower())}\b", raw):
             return True
 
         application_url = str(ctx.application_url or "").strip().lower()
-        if application_url and application_url in raw:
+        if unique_identity("application_url", application_url) and application_url in raw:
             return True
 
         call_id = str(ctx.call_id or "").strip()
-        if len(call_id) > 4 and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
+        if len(call_id) > 4 and unique_identity("call_id", call_id) and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
             return True
 
         call_title = str(ctx.call_title or "").strip().lower()
-        if len(call_title) > 15 and call_title in raw:
+        if len(call_title) > 15 and unique_identity("call_title", call_title) and call_title in raw:
             return True
 
         program_name = str(ctx.program_name or "").strip().lower()
-        if len(program_name) > 15 and program_name in raw:
+        if len(program_name) > 15 and unique_identity("program_name", program_name) and program_name in raw:
             return True
 
         return False
@@ -687,20 +709,20 @@ def _rescue_required_agent_body(agent: str, document: Any, body: Dict[str, Any],
 
     defaults = {
         "source_type": value_map.get("source_type") or value_map.get("type") or "web_page",
-        "focus": value_map.get("focus") or area or "configured research domain",
+        "focus": value_map.get("focus") or area or "Not extracted from source",
         "evidence_type": value_map.get("evidence_type") or "web_source",
-        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "External practitioner / industry source",
-        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Named expert not extracted",
-        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Source affiliation",
-        "role_hint": value_map.get("role_hint") or "Research / technical contributor",
+        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "Not identified in source",
+        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Not identified in source",
+        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Not identified in source",
+        "role_hint": value_map.get("role_hint") or "Not stated in source",
     }
     for field in schema.fields:
         if not field.required or field.name in result:
             continue
-        result[field.name] = defaults.get(field.name, area or "Preserved live source evidence")
+        result[field.name] = defaults.get(field.name, area or "Not extracted from source")
     return result
 
 
