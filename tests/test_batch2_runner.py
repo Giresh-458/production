@@ -146,19 +146,23 @@ def test_evidence_ids_use_problem_text_when_source_has_no_excerpt_snippets(tmp_p
     root = tmp_path / "intermediate"
     agent_dir = root / "literature"
     agent_dir.mkdir(parents=True)
-    first = _artifact("fallback-id-run", "CALL-001")
-    second = first.replace(
-        "A source-grounded technical limitation that can be measured.",
-        "A different source-grounded limitation requiring longitudinal validation.",
+    base = _artifact("fallback-id-run", "CALL-001")
+    first = base.replace(
+        "**Selected Problem**: Zero knowledge verification throughput degrades under high transaction volume, limiting secure settlement.",
+        "**Selected Problem**: Verification latency increases sharply under high transaction volume.",
+    )
+    second = base.replace(
+        "**Selected Problem**: Zero knowledge verification throughput degrades under high transaction volume, limiting secure settlement.",
+        "**Selected Problem**: Evidence provenance becomes incomplete across multi-source settlement workflows.",
     )
     for name, artifact in (("first", first), ("second", second)):
         artifact = artifact.replace(
-            "### Evidence Snippets\n- A source-grounded excerpt from the paper.\n",
-            "### Evidence Snippets\n",
+            "- Zero knowledge verification throughput degrades under high transaction volume.\n",
+            "",
         )
         artifact = artifact.replace(
-            "### Excerpt Windows\n- A source-grounded excerpt from the paper.\n",
-            "### Excerpt Windows\n",
+            "- The benchmark reports verification latency and throughput constraints.\n",
+            "",
         )
         (agent_dir / f"{name}.md").write_text(artifact, encoding="utf-8")
 
