@@ -754,6 +754,7 @@ def execute_batch2(
         run_id=resolved_run_id,
     )
     collection_report["tasks"] = tasks
+    atomic_write_json(workflow_root / "shared_downstream_collection_plan.json", collection_report)
 
     task_agent_names = {
         str(task.get("agent_name") or "").strip()
