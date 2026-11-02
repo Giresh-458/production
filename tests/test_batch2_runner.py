@@ -373,6 +373,9 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 ## Provenance
 - source_url: {source_url}
 - collected_at: 2026-11-01T10:00:00+00:00
+- agent_name: {agent_name}
+- document_identity: fixture-document-identity
+- content_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 ## Evidence Bundle
 ### Page Title
