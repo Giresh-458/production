@@ -1679,12 +1679,18 @@ def crawl_funding_source(
         if ctx:
             ctx.add_page()
 
-        page_content = res["markdown"] or res["html"] or ""
+        page_markdown = str(res.get("markdown") or "")
+        page_html = str(res.get("html") or "")
+        page_content = page_markdown or page_html
         page_title = res.get("title", "")
-        # The empty-state detector is tightly scoped to known listing routes,
-        # including the nested Solana Airtable view. It is safe to apply at any
-        # depth because it cannot match arbitrary detail pages on the same host.
-        if _reports_no_active_funding(page_url, page_title, page_content):
+        # Crawl4AI can return non-empty Markdown that omits text present in the
+        # source HTML. Empty-state verification must inspect both representations;
+        # classification/extraction continues to use the preferred Markdown
+        # representation to avoid duplicating the same page content.
+        empty_state_content = "\\n".join(
+            part for part in (page_markdown, page_html) if part
+        )
+        if _reports_no_active_funding(page_url, page_title, empty_state_content):
             result.no_active_opportunities_confirmed = True
 
         # Stage B: classify this page
