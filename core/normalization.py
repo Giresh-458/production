@@ -668,6 +668,15 @@ def build_normalized_collection_records(
                             continue
                         # Legitimate shared evidence (e.g. 1-3 specific calls).
                         record["funding_call_id"] = target_funding_call_id
+                        # The first-pass evidence ID was generated before ownership
+                        # was resolved. Recompute it now so each call-scoped copy has
+                        # a distinct canonical identity in its own evidence ledger.
+                        evidence_snippets_str = "\n".join(record.get("evidence_snippets", []) or [])
+                        record["evidence_id"] = hashlib.sha256(
+                            f"{record.get('source_id', '')}|{target_funding_call_id}|"
+                            f"{str(record.get('agent_name', '')).casefold()}|"
+                            f"{str(record.get('layer', '')).casefold()}|{evidence_snippets_str}".encode("utf-8")
+                        ).hexdigest()[:16]
                     else:
                         skipped.append({
                             "path": str(path.resolve()),
