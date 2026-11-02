@@ -484,8 +484,8 @@ def test_collector_artifact_audit_quarantines_markdown_raw_content_tampering(tmp
     )
     artifact_path.write_text(
         _artifact("current-run", "CALL-001").replace(
-            "## Raw Content\\n" + original,
-            "## Raw Content\\nTampered Markdown evidence that is not covered by the machine payload hash.",
+            "## Raw Content\n" + original,
+            "## Raw Content\nTampered Markdown evidence that is not covered by the machine payload hash.",
             1,
         ),
         encoding="utf-8",
