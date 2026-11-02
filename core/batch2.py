@@ -328,7 +328,7 @@ def validate_evidence_ledger(
                     "funding_call_id": (provenance.get("funding_call_id"), funding_call_id),
                     "run_id": (provenance.get("run_id"), run_id),
                     "retrieved_at": (provenance.get("retrieved_at"), record.get("collected_at")),
-                    "raw_record_id": (provenance.get("raw_record_id"), record.get("file_path")),
+                    "raw_record_id": (provenance.get("raw_record_id"), record.get("file_path") or record.get("record_id")),
                 }
                 for field, (actual, wanted) in provenance_comparisons.items():
                     if actual != wanted:
