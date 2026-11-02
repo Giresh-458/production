@@ -106,10 +106,19 @@ def run_pipeline_with_mocked_areas(
 
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}
-    mock_execute_batch.return_value = {"tasks": [
+    def fake_execute_batch(**kwargs):
+        from _batch2_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            kwargs["base_input_data"]["run_id"],
+            kwargs["agent_names"],
+        )
+        return {"tasks": [
             {"agent_name": agent, "status": "success", "outputs_count": 1}
             for agent in sorted(set(run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
         ]}
+
+    mock_execute_batch.side_effect = fake_execute_batch
     mock_run_stage.return_value = {"status": "success", "outputs_count": 1, "outputs": [{}]}
 
     exit_code = main()
