@@ -395,6 +395,34 @@ def audit_collector_artifacts(
                 "task_count": len(task_items),
             })
         if task is not None:
+            reported_paths = task.get("output_paths")
+            if reported_paths is not None and not isinstance(reported_paths, list):
+                agent_issues.append({
+                    "agent_name": agent,
+                    "reasons": ["collector_output_paths_must_be_a_list"],
+                })
+            elif isinstance(reported_paths, list):
+                for raw_output_path in reported_paths:
+                    try:
+                        output_path = Path(str(raw_output_path)).resolve()
+                        if not output_path.is_relative_to(agent_root.resolve()):
+                            agent_issues.append({
+                                "agent_name": agent,
+                                "output_path": str(raw_output_path),
+                                "reasons": ["reported_output_path_escapes_agent_output_directory"],
+                            })
+                        elif not output_path.is_file():
+                            agent_issues.append({
+                                "agent_name": agent,
+                                "output_path": str(raw_output_path),
+                                "reasons": ["reported_output_path_does_not_exist"],
+                            })
+                    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                        agent_issues.append({
+                            "agent_name": agent,
+                            "output_path": str(raw_output_path),
+                            "reasons": [f"reported_output_path_invalid:{exc}"],
+                        })
             try:
                 reported_count = int(task.get("outputs_count", 0) or 0)
             except (TypeError, ValueError):
