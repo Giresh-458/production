@@ -9,12 +9,41 @@ from core.source_registry import (
     REFRESH_PLAN_PATH,
     SOURCE_REGISTRY_PATH,
     SOURCES_DIR,
+    add_candidate_source,
     build_source_refresh_plan,
+    pause_source,
+    promote_candidate_source,
     record_source_check_result,
     sync_source_registry,
 )
 import run_pipeline
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+
+
+def test_nested_registry_lifecycle_operations_are_reentrant(tmp_path):
+    registry_path = tmp_path / "source_registry.json"
+    candidate = add_candidate_source(
+        agent_name="company",
+        name="Reentrant lock fixture",
+        url="https://example.org/reentrant-lock-fixture",
+        notes="Test nested registry lock operations.",
+        registry_path=registry_path,
+    )
+
+    promoted = promote_candidate_source(
+        source_id=candidate.source_id,
+        activate=True,
+        notes="Promote the fixture through both lifecycle transitions.",
+        registry_path=registry_path,
+    )
+    assert promoted.new_status == "active"
+
+    paused = pause_source(
+        source_id=candidate.source_id,
+        notes="Pause the fixture.",
+        registry_path=registry_path,
+    )
+    assert paused.new_status == "paused"
 
 
 def _sample_registry_payload() -> dict:
