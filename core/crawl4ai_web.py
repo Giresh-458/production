@@ -389,6 +389,21 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     ):
         return True
 
+    # XRPL's application manager is the authoritative live status endpoint.
+    # The public directory can retain stale accelerator announcements, while
+    # /submit explicitly reports when no applications are being accepted.
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() == "submit.xrplgrants.org"
+        and path == "/submit"
+        and re.search(
+            r"\bthere are presently no open calls for applications\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
+
     # Solana's public Airtable RFP view deliberately displays a non-call
     # "RFP CONTEXT" placeholder when no active RFPs exist. Treat it as an
     # explicit empty state only on that exact shared-view route and only when
