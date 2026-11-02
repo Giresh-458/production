@@ -52,6 +52,7 @@ def write_test_evidence_ledger(path: Path, records: list[dict[str, Any]]) -> Non
                     "run_id": str(record["run_id"]),
                     "retrieved_at": str(record["collected_at"]),
                     "source_funding_call_ids": record.get("source_funding_call_ids", []),
+                    "raw_record_id": str(record.get("file_path") or record["record_id"]),
                 },
                 "raw_record_id": str(record.get("file_path") or record["record_id"]),
             }
