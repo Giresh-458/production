@@ -31,13 +31,19 @@ def run_pipeline_mocks():
             import json
             norm_dir = call_root / "normalized"
             norm_dir.mkdir(parents=True, exist_ok=True)
+            import hashlib
+            source_url = "https://example.org/evidence"
             record = {
-                "record_id": "1",
-                "evidence_id": "evidence-1",
-                "source_id": "source-1",
-                "content_hash": "content-1",
+                "record_id": hashlib.sha1(f"record-{call_id}".encode()).hexdigest()[:16],
+                "evidence_id": hashlib.sha256(f"evidence-{call_id}".encode()).hexdigest()[:16],
+                "source_id": f"url:{source_url}",
+                "content_hash": hashlib.sha256(f"content-{call_id}".encode()).hexdigest(),
                 "title": "Controlled Batch-2 fixture evidence",
-                "agent_name": run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS[0],
+                "agent_name": "literature",
+                "layer": "Literature",
+                "source_type": "web_page",
+                "evidence_type": "web_source",
+                "evidence_strength": 0.7,
                 "research_area": "Unscoped",
                 "collected_at": "2026-11-01T10:00:00+00:00",
                 "problem_statement": "A source-grounded research limitation.",
@@ -46,7 +52,9 @@ def run_pipeline_mocks():
                 "excerpt_windows": [],
                 "run_id": kwargs.get("target_run_id"),
                 "funding_call_id": call_id,
-                "source_url": "https://example.org/evidence",
+                "funding_call_ids": [call_id],
+                "source_funding_call_ids": [call_id],
+                "source_url": source_url,
                 "normalization_status": "NORMALIZED",
             }
             if kwargs.get("filter_func"):
@@ -57,7 +65,8 @@ def run_pipeline_mocks():
             (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
             (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
             (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-            (norm_dir / "evidence_ledger.db").touch()
+            from _batch2_helpers import write_test_evidence_ledger
+            write_test_evidence_ledger(norm_dir / "evidence_ledger.db", [record])
             return {
                 "records": norm_dir / "records.json",
                 "by_area": norm_dir / "by_area.json",
