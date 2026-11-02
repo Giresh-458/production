@@ -768,6 +768,7 @@ def main() -> int:
         or missing_collectors
         or unexpected_collectors
         or collector_artifact_audit["duplicate_task_agents"]
+        or collector_artifact_audit["malformed_task_entries"]
         or collector_artifact_audit["quarantine_failures"]
         or collector_artifact_audit["manifest_issues"]
     ):
@@ -778,6 +779,7 @@ def main() -> int:
             "collector_health": collector_health,
             "collector_artifact_audit": collector_artifact_audit,
             "collector_manifest_issues": collector_artifact_audit["manifest_issues"],
+            "malformed_collector_tasks": collector_artifact_audit["malformed_task_entries"],
             "collection_report": downstream_plan,
         }
         atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
