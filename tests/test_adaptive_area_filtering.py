@@ -94,7 +94,7 @@ def run_pipeline_with_mocked_areas(
         (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
         (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
         (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-        from batch2_test_helpers import write_test_evidence_ledger
+        from tests.batch2_test_helpers import write_test_evidence_ledger
         write_test_evidence_ledger(norm_dir / "evidence_ledger.db", normalized_records)
         return {
             "records": norm_dir / "records.json",
@@ -107,7 +107,7 @@ def run_pipeline_with_mocked_areas(
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}
     def fake_execute_batch(**kwargs):
-        from batch2_test_helpers import write_test_collector_artifacts
+        from tests.batch2_test_helpers import write_test_collector_artifacts
         write_test_collector_artifacts(
             Path(kwargs["base_input_data"]["pipeline_run_dir"]),
             kwargs["base_input_data"]["run_id"],
