@@ -363,7 +363,6 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
         "application_url": {},
         "call_id": {},
         "call_title": {},
-        "program_name": {},
     }
     for ctx in funding_contexts:
         for field in identity_counts:
@@ -381,7 +380,23 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
             return True
 
         application_url = str(ctx.application_url or "").strip().lower()
-        if unique_identity("application_url", application_url) and application_url in raw:
+        parsed_application_url = urlparse(application_url) if application_url else None
+        generic_application_paths = {
+            "", "/", "/apply", "/application", "/applications", "/submit",
+            "/funding", "/grants", "/opportunities",
+        }
+        application_path_is_specific = bool(
+            parsed_application_url
+            and (
+                parsed_application_url.path.casefold() not in generic_application_paths
+                or bool(parsed_application_url.query)
+            )
+        )
+        if (
+            application_path_is_specific
+            and unique_identity("application_url", application_url)
+            and application_url in raw
+        ):
             return True
 
         call_id = str(ctx.call_id or "").strip()
@@ -390,10 +405,6 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
 
         call_title = str(ctx.call_title or "").strip().lower()
         if len(call_title) > 15 and unique_identity("call_title", call_title) and call_title in raw:
-            return True
-
-        program_name = str(ctx.program_name or "").strip().lower()
-        if len(program_name) > 15 and unique_identity("program_name", program_name) and program_name in raw:
             return True
 
         return False
