@@ -299,6 +299,27 @@ def test_collector_health_uses_persisted_artifacts_and_quarantines_bad_provenanc
     assert "artifact_run_id_mismatch" in audit["quarantined_artifacts"][0]["reasons"]
 
 
+def test_collector_artifact_audit_rejects_external_workflow_symlink_before_quarantine_creation(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    run_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (run_root / "workflow").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are not available on this platform")
+
+    with pytest.raises(ValueError, match="workflow root resolves outside"):
+        audit_collector_artifacts(
+            run_root,
+            [],
+            expected_agents={"literature"},
+            run_id="current-run",
+        )
+
+    assert not (outside / "quarantined_intermediate").exists()
+
+
 def test_collector_artifact_audit_rejects_malformed_task_entries(tmp_path):
     _, audit = audit_collector_artifacts(
         tmp_path / "batch2-run",
