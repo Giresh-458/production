@@ -879,6 +879,7 @@ def save_normalized_collection_records(
     atomic_write_json(by_layer_path, by_layer)
 
     # DB Insertion Layer for Evidence Ledger
+    conn = None
     try:
         db_path = normalized_root / "evidence_ledger.db"
         conn = get_ledger_connection(db_path)
@@ -976,9 +977,14 @@ def save_normalized_collection_records(
                 errors.append(f"DB Error for {record['record_id']}: {e}")
 
         conn.commit()
-        conn.close()
     except Exception as e:
         errors.append(f"Ledger DB Init Error: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as close_error:
+                errors.append(f"Ledger DB Close Error: {close_error}")
 
     errors_path = normalized_root / "errors.json"
     atomic_write_json(errors_path, errors)
