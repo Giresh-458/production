@@ -359,9 +359,12 @@ def audit_collector_artifacts(
         )
         valid_files: list[Path] = []
         agent_issues: list[dict[str, Any]] = []
+        task_status = str(task.get("status") or "").strip().lower() if task is not None else ""
 
         for path in files:
             reasons: list[str] = []
+            if task_status == "timeout_budget_exceeded":
+                reasons.append("collector_exceeded_batch_timeout")
             try:
                 resolved = path.resolve()
                 if not resolved.is_relative_to(agent_root.resolve()):
