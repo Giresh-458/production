@@ -625,6 +625,14 @@ def execute_batch2(
         report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
         return report
 
+    tasks, artifact_audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents=expected_agents,
+        run_id=resolved_run_id,
+    )
+    collection_report["tasks"] = tasks
+
     task_agent_names = {
         str(task.get("agent_name") or "").strip()
         for task in tasks if isinstance(task, dict)
@@ -652,12 +660,13 @@ def execute_batch2(
         "batch3_started": False,
         "next_stage": "Batch-3 NLP processing (not executed by this runner)",
         "collector_health": collector_health,
+        "collector_artifact_audit": artifact_audit,
         "source_registry": source_registry_report,
         "collection": collection_report,
         "funding_calls": [],
     }
 
-    if missing_agents or unexpected_agents or not healthy:
+    if missing_agents or unexpected_agents or artifact_audit["duplicate_task_agents"] or not healthy:
         report["status"] = "blocked_collection_health"
         report["blockers"] = []
         if missing_agents:
@@ -667,6 +676,10 @@ def execute_batch2(
         if unexpected_agents:
             report["blockers"].append(
                 {"code": "UNEXPECTED_COLLECTOR_TASKS", "agents": unexpected_agents}
+            )
+        if artifact_audit["duplicate_task_agents"]:
+            report["blockers"].append(
+                {"code": "DUPLICATE_COLLECTOR_TASKS", "agents": artifact_audit["duplicate_task_agents"]}
             )
         if not healthy:
             report["blockers"].append(
