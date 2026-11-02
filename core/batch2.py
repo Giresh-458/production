@@ -610,6 +610,24 @@ def audit_collector_artifacts(
             "issues": agent_issues,
         })
 
+    critical_manifest_reasons = {
+        "collector_output_paths_must_be_a_list",
+        "reported_output_path_escapes_agent_output_directory",
+        "reported_output_path_does_not_exist",
+    }
+    manifest_issues = []
+    for issue in issues:
+        reasons = set(issue.get("reasons") or [])
+        if reasons & critical_manifest_reasons:
+            manifest_issues.append(issue)
+            continue
+        if "reported_output_paths_do_not_match_persisted_markdown_artifacts" in reasons:
+            # A collector may fail after persisting valid artifacts and therefore
+            # return no output paths. That is a partial-success case, not a
+            # manifest escape. A non-empty but conflicting manifest is critical.
+            if issue.get("reported_paths"):
+                manifest_issues.append(issue)
+
     audit = {
         "status": "passed" if not issues and not unexpected_tasks else "completed_with_issues",
         "run_id": run_id,
@@ -621,6 +639,7 @@ def audit_collector_artifacts(
         "quarantine_failures": [
             item for item in quarantined if item.get("quarantine_error")
         ],
+        "manifest_issues": manifest_issues,
         "issues": issues,
     }
     return collection_tasks, audit
@@ -896,6 +915,7 @@ def execute_batch2(
         or unexpected_agents
         or artifact_audit["duplicate_task_agents"]
         or artifact_audit["quarantine_failures"]
+        or artifact_audit["manifest_issues"]
         or not healthy
     ):
         report["status"] = "blocked_collection_health"
@@ -915,6 +935,10 @@ def execute_batch2(
         if artifact_audit["quarantine_failures"]:
             report["blockers"].append(
                 {"code": "ARTIFACT_QUARANTINE_FAILED", "artifacts": artifact_audit["quarantine_failures"]}
+            )
+        if artifact_audit["manifest_issues"]:
+            report["blockers"].append(
+                {"code": "COLLECTOR_OUTPUT_MANIFEST_MISMATCH", "issues": artifact_audit["manifest_issues"]}
             )
         if not healthy:
             report["blockers"].append(
