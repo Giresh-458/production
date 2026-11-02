@@ -77,7 +77,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         assert kwargs["base_input_data"]["allow_llm_refinement"] is False
         assert ctxs is not None, "execute_batch_run must receive funding_contexts"
         assert len(ctxs) == 3, "must pass all contexts"
-        from _batch2_helpers import write_test_collector_artifacts
+        from batch2_test_helpers import write_test_collector_artifacts
         write_test_collector_artifacts(
             Path(kwargs["base_input_data"]["pipeline_run_dir"]),
             kwargs["base_input_data"]["run_id"],
@@ -158,7 +158,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
             (call_root / "normalized" / "input_manifest.json").write_text("{}", encoding="utf-8")
             (call_root / "normalized" / "errors.json").write_text("[]", encoding="utf-8")
             (call_root / "normalized" / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
-            from _batch2_helpers import write_test_evidence_ledger
+            from batch2_test_helpers import write_test_evidence_ledger
             write_test_evidence_ledger(call_root / "normalized" / "evidence_ledger.db", [record])
             return {
                 "records": records_path,
