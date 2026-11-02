@@ -747,12 +747,40 @@ def execute_batch2(
         report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
         return report
 
-    tasks, artifact_audit = audit_collector_artifacts(
-        run_root,
-        tasks,
-        expected_agents=expected_agents,
-        run_id=resolved_run_id,
-    )
+    try:
+        tasks, artifact_audit = audit_collector_artifacts(
+            run_root,
+            tasks,
+            expected_agents=expected_agents,
+            run_id=resolved_run_id,
+        )
+    except Exception as exc:
+        audit_error = {
+            "status": "error",
+            "run_id": resolved_run_id,
+            "error": str(exc),
+        }
+        atomic_write_json(workflow_root / "collector_artifact_audit.json", audit_error)
+        report = {
+            "run_id": resolved_run_id,
+            "batch1_run_id": batch1_run_id,
+            "status": "blocked_artifact_audit",
+            "output_root": str(run_root.resolve()),
+            "scope": "Batch-2 collection and normalization only",
+            "batch3_started": False,
+            "source_registry": source_registry_report,
+            "collection": collection_report,
+            "collector_artifact_audit": audit_error,
+            "blockers": [{"code": "COLLECTOR_ARTIFACT_AUDIT_FAILED", "message": str(exc)}],
+            "funding_calls": [
+                {"funding_call_id": context.funding_call_id, "status": "not_started"}
+                for context in contexts
+            ],
+        }
+        atomic_write_json(workflow_root / "batch2_report.json", report)
+        report["report_path"] = str((workflow_root / "batch2_report.json").resolve())
+        return report
+
     collection_report["tasks"] = tasks
     atomic_write_json(workflow_root / "shared_downstream_collection_plan.json", collection_report)
 
