@@ -754,6 +754,25 @@ def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_p
         load_funding_context_handoff(handoff)
 
 
+def test_batch2_api_rejects_missing_or_mismatched_global_acceptance(tmp_path):
+    context = _context()
+    with pytest.raises(ValueError, match="ACCEPTED Batch-1 global source-coverage attestation"):
+        execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path / "missing-attestation",
+            run_id="missing-attestation-run",
+        )
+
+    with pytest.raises(ValueError, match="does not match batch1_run_id"):
+        execute_batch2(
+            funding_contexts=[context],
+            output_root=tmp_path / "mismatched-attestation",
+            run_id="mismatched-attestation-run",
+            batch1_run_id="batch1-run-a",
+            batch1_acceptance=_batch1_acceptance("batch1-run-b"),
+        )
+
+
 def test_batch2_rejects_context_that_does_not_pass_batch1_handoff_gates(tmp_path):
     context = _context()
     invalid = FundingCallContext.from_dict({**context.to_dict(), "status": "CLOSED_CALL"})
