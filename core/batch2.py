@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import sqlite3
@@ -183,9 +184,32 @@ def validate_normalized_handoff(
         if agent_name not in expected_agents:
             errors.append(f"{label} ({record.get('record_id')}) has an unknown collection agent: {agent_name!r}")
 
-        for field in ("record_id", "evidence_id", "source_id", "content_hash", "title"):
+        for field in ("record_id", "evidence_id", "source_id", "content_hash", "title", "layer", "source_type", "evidence_type"):
             if not str(record.get(field) or "").strip():
                 errors.append(f"{label} is missing required normalized field {field!r}")
+
+        if not re.fullmatch(r"[0-9a-f]{16}", str(record.get("record_id") or "").lower()):
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid record_id format")
+        if not re.fullmatch(r"[0-9a-f]{16}", str(record.get("evidence_id") or "").lower()):
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid evidence_id format")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(record.get("content_hash") or "").lower()):
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid content_hash format")
+        source_id = str(record.get("source_id") or "")
+        if not source_id.startswith(("doi:", "url:", "hash:")):
+            errors.append(f"{label} ({record.get('record_id')}) has an unsupported source_id format")
+
+        source_call_ids = record.get("source_funding_call_ids")
+        if not isinstance(source_call_ids, list) or funding_call_id not in source_call_ids:
+            errors.append(
+                f"{label} ({record.get('record_id')}) is missing the original funding-call attribution trace"
+            )
+
+        try:
+            evidence_strength = float(record.get("evidence_strength"))
+            if not math.isfinite(evidence_strength) or not 0.0 <= evidence_strength <= 1.0:
+                raise ValueError("outside [0, 1]")
+        except (TypeError, ValueError):
+            errors.append(f"{label} ({record.get('record_id')}) has an invalid evidence_strength")
 
         collected_at = str(record.get("collected_at") or "").strip()
         try:
