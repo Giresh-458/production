@@ -563,6 +563,23 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
             "document_identity": document_identity,
             "content_hash": provenance_content_hash,
         },
+        "evidence_bundle": {
+            "page_title": title,
+            "section_headings": [],
+            "key_paragraphs": [
+                "Zero knowledge verification latency increases under high transaction volume and limits settlement throughput."
+            ],
+            "bullet_lists": [],
+            "quoted_passages": [],
+            "links_found": [],
+            "named_entities_or_programs": [],
+            "evidence_snippets": [
+                "Zero knowledge verification throughput degrades under high transaction volume."
+            ],
+            "excerpt_windows": [
+                "The benchmark reports verification latency and throughput constraints."
+            ],
+        },
         "raw_content": raw_content,
     }
     machine_payload_json = json.dumps(machine_payload, ensure_ascii=False)
