@@ -397,7 +397,21 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
         (parsed.hostname or "").casefold() == "submit.xrplgrants.org"
         and path == "/submit"
         and re.search(
-            r"\bthere are presently no open calls for applications\b",
+            r"\bthere are (?:presently|currently) no open calls? for applications\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
+
+    # The official XRPL grants directory currently states that applications
+    # are by invitation only. Scope this status to the canonical root page;
+    # historical subpages must not make the whole source appear closed.
+    if (
+        (parsed.hostname or "").casefold() in {"xrplgrants.org", "www.xrplgrants.org"}
+        and path == ""
+        and re.search(
+            r"\bapplications? (?:are )?(?:currently )?available by invitation only\b",
             combined,
             flags=re.IGNORECASE,
         )
@@ -814,8 +828,8 @@ def _xrpl_application_manager_wait_options(url: str) -> dict[str, Any]:
     return {
         "wait_for": (
             "js:() => { "
-            "const text = (document.body?.innerText || '').toLowerCase(); "
-            "const empty = text.includes('there are presently no open calls for applications'); "
+            "const text = (document.body?.innerText || '').toLowerCase().replace(/\\s+/g, ' '); "
+            "const empty = /there are (presently|currently) no open calls? for applications/.test(text); "
             "const active = text.includes('open call') || text.includes('apply now') "
             "|| text.includes('applications are open') || text.includes('accepting applications'); "
             "return empty || (text.includes('ripplex ecosystem programs') && active); "
