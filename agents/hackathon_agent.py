@@ -505,7 +505,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
