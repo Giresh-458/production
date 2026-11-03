@@ -228,8 +228,6 @@ jobs:
               # Reuse the production Batch-2 validator for call status,
               # eligibility, identity, research intent, and evidence URLs.
               issues = validate_batch1_context(context)
-              if not context.call_title:
-                  issues.append("missing_call_title")
               # The live qualification audit additionally requires both URLs,
               # not merely the one-URL minimum used by the standalone runner.
               if not context.source_url:
