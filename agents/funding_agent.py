@@ -256,8 +256,14 @@ def _update_source_verification_flags(result: Any) -> Any:
             and bool(getattr(result, "no_active_opportunities_confirmed", False))
             and str(getattr(result, "final_status", "") or "").upper() == "NO_ACTIVE_OPPORTUNITIES"
         )
-        result.evidence_verified = confirmed_empty
-        result.currentness_verified = confirmed_empty
+        confirmed_active_program = (
+            complete
+            and bool(getattr(result, "active_program_confirmed", False))
+            and str(getattr(result, "final_status", "") or "").upper() == "VERIFIED"
+        )
+        source_verified = confirmed_empty or confirmed_active_program
+        result.evidence_verified = source_verified
+        result.currentness_verified = source_verified
         return result
 
     qualified_opportunities = []
