@@ -425,6 +425,34 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     return False
 
 
+def _reports_active_funding_program(url: str, title: str, content: str) -> bool:
+    """Recognize Solana Foundation's official evergreen, rolling grant programme.
+
+    This is source-level availability evidence, not a dated call. Keep the rule
+    pinned to the canonical publisher route and require both the application
+    requirement and rolling-review statement; a generic funding mention is not
+    enough to mark a source current.
+    """
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() not in {"solana.org", "www.solana.org"}
+        or parsed.path.rstrip("/").casefold() != "/grants-funding"
+    ):
+        return False
+    combined = re.sub(r"s+", " ", f"{title} {content}".casefold())
+    has_application_requirement = bool(re.search(
+        r"all funding applicants.{0,300}required to fill out the application",
+        combined,
+        flags=re.IGNORECASE,
+    ))
+    has_rolling_review = bool(re.search(
+        r"all applications are reviewed on a rolling basis",
+        combined,
+        flags=re.IGNORECASE,
+    ))
+    return has_application_requirement and has_rolling_review
+
+
 def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
     """Keep funding directories as traversal roots, not individual grant records."""
     path = urlparse(url).path.rstrip("/").lower()
