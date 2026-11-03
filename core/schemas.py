@@ -58,6 +58,8 @@ class CollectionResult:
     currentness_verified: bool = False
     # Empty status is valid only when the source explicitly confirms no active calls.
     no_active_opportunities_confirmed: bool = False
+    # Publisher-confirmed evergreen programme with explicit rolling applications.
+    active_program_confirmed: bool = False
     # Some publishers run evergreen programmes with explicit rolling applications,
     # but no single dated call record. Keep that source-level positive evidence
     # separate from an individual funding opportunity.
