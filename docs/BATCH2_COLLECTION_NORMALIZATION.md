@@ -222,3 +222,10 @@ The Literature Agent also calls semantic_scores during collection. By default, R
 - FileExistsError for a run directory: choose a new --run-id or let the runner generate one.
 - Exit code 2: inspect workflow/batch2_report.json and the per-call errors/skipped-artifact and mission-relevance reports before retrying.
 - A live source that is unavailable is recorded as a collection failure/coverage gap; do not interpret it as proof that the source has no evidence.
+
+
+## Design references used for the handoff and provenance fixes
+
+- [Python documentation: initialization of `sys.path`](https://docs.python.org/3/library/sys_path_init.html). When a script is run by file path, Python places the script's directory—not necessarily the repository root—at the first search-path entry. The standalone CLI now resolves and inserts the repository root from `__file__`, and a regression test launches it from an unrelated working directory without relying on `PYTHONPATH`.
+- [W3C PROV-O Recommendation](https://www.w3.org/TR/prov-o/). PROV-O models provenance using entities, activities, agents, and their relationships. The funding-context boundary therefore does not silently discard a mismatched source research-context ID: it reconciles the ID only when a research evidence reference identifies the selected call's source/application URL, and persists the prior ID as `research_context_original_funding_call_id`.
+- Khan et al., [“Sharing interoperable workflow provenance: A review of best practices and their practical application in CWLProv”](https://doi.org/10.1093/gigascience/giz095), *GigaScience* (2019). The paper motivates preserving workflow inputs, outputs, execution context, and retrospective provenance together so results can be inspected and reproduced. Batch-2's per-run artifacts, input manifest, collector metadata, evidence ledger, and call-scoped handoff checks implement that principle within this repository's existing format.
