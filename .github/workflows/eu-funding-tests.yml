@@ -262,7 +262,7 @@ jobs:
                   })
               else:
                   validated_contexts.append(context)
-          if validated_contexts and not handoff_context_issues:
+          if validated_contexts:
               selected_context_ids = sorted(context.funding_call_id for context in validated_contexts)
               (output_dir / "funding_contexts.json").write_text(
                   json.dumps(
