@@ -11,7 +11,9 @@ def test_xrpl_application_manager_waits_for_rendered_status_text():
     options = crawl4ai_web._xrpl_application_manager_wait_options(XRPL_SUBMIT_URL)
 
     assert "wait_for" in options
-    assert "there are presently no open calls for applications" in options["wait_for"]
+    assert "presently|currently" in options["wait_for"]
+    assert "no open calls?" in options["wait_for"]
+    assert "replace(/\\s+/g, ' ')" in options["wait_for"]
     assert "open call" in options["wait_for"]
     assert options["delay_before_return_html"] == 0.75
     assert crawl4ai_web._xrpl_application_manager_wait_options(
