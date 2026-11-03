@@ -41,6 +41,7 @@ on:
       - "tests/test_funding_quality.py"
       - "scripts/pipeline_tools/audit_batch1_live.py"
       - "tests/test_xrpl_application_manager.py"
+      - "tests/test_funding_source_availability_states.py"
       - "core/funding_quality.py"
       - "core/mission_gate.py"
       - "core/recursive_collection.py"
