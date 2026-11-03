@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.file_lock import atomic_write_json
-from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_evidence_ledger, validate_normalized_handoff
+from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -564,10 +564,12 @@ def main() -> int:
             continue
 
         context_issues = _research_context_quality_reasons(ctx.research_context)
+        context_issues.extend(validate_batch1_context(ctx))
+        context_issues = list(dict.fromkeys(context_issues))
         if context_issues:
             rejected_unverified_research_context.append({
                 "call": call,
-                "reason": "research_context_unverified",
+                "reason": "batch2_context_handoff_invalid",
                 "reasons": context_issues,
             })
             continue
@@ -627,6 +629,15 @@ def main() -> int:
             context_handoff_path,
             {
                 "run_id": run_id,
+                "batch1_run_id": run_id,
+                "context_validation": {
+                    "status": "VALIDATED",
+                    "scope": "selected_contexts_only",
+                    "batch1_run_id": run_id,
+                    "validated_funding_call_ids": sorted(
+                        str(context.funding_call_id).strip() for context in all_contexts
+                    ),
+                },
                 "funding_contexts": serialized_contexts,
             },
         )
