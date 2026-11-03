@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
 from core.file_lock import atomic_write_json
-from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
+from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, prepare_batch2_source_registry, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -655,9 +655,15 @@ def main() -> int:
     # with a stale registry can silently omit configured sources marked inactive
     # in an old registry snapshot, so this is a fail-closed preparation gate.
     try:
-        from core.source_registry import sync_source_registry, build_source_refresh_plan
-        sync_source_registry()
-        build_source_refresh_plan()
+        source_registry_report = prepare_batch2_source_registry(
+            root / "workflow",
+            force=True,
+        )
+        print(
+            f"Batch-2 source registry: {len(source_registry_report['agents_synced'])} "
+            f"downstream agents synced, {source_registry_report['refresh_due_entries']} "
+            "sources due for refresh. Batch-1 funding-source entries were preserved."
+        )
     except Exception as exc:
         report = {
             "run_id": run_id,
@@ -666,7 +672,7 @@ def main() -> int:
             "error": str(exc),
         }
         atomic_write_json(root / "workflow" / "pipeline_report.json", report)
-        print(f"❌ Source registry pre-sync failed; stopping before Batch-2 collection: {exc}")
+        print(f"❌ Batch-2 source registry preparation failed; stopping before collection: {exc}")
         return 4
 
     downstream_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
