@@ -250,6 +250,8 @@ jobs:
               report.get("status") == "ready_for_batch3" or valid_no_evidence_stop,
               f"Batch-2 reached an invalid outcome: {report.get('status')} / {sorted(str(value) for value in call_statuses)}",
           )
+          if report.get("status") == "ready_for_batch3":
+              require(call_statuses == {"ready_for_batch3"}, "Batch-2 claimed readiness while one or more calls were not ready")
 
           health = report.get("collector_health") or {}
           require(health.get("scheduled_agents") == expected_agents, "Batch-2 did not schedule exactly the 11 expected collectors")
