@@ -835,6 +835,79 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     assert handoff_copy["funding_contexts"][0]["funding_call_id"] == context.funding_call_id
 
 
+def test_batch2_never_marks_empty_mission_relevance_as_ready(tmp_path):
+    context = _context()
+
+    def fake_execute_batch_run(**kwargs):
+        run_root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
+        for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
+            artifact_dir = run_root / "intermediate" / agent
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / f"{agent}-signal.md").write_text(
+                _artifact(kwargs["base_input_data"]["run_id"], context.funding_call_id, agent),
+                encoding="utf-8",
+            )
+        return {
+            "status": "completed",
+            "tasks": [
+                {
+                    "agent_name": agent,
+                    "status": "success",
+                    "outputs_count": 1,
+                    "items_processed": 1,
+                    "items_saved": 1,
+                }
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ],
+        }
+
+    with patch(
+        "core.batch2.prepare_batch2_source_registry",
+        return_value={
+            "status": "ready",
+            "agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            "refresh_plan_entries": 11,
+            "refresh_due_entries": 11,
+            "refresh_skipped_entries": 0,
+            "refresh_plan_path": str(tmp_path / "batch2" / "empty-mission-run" / "workflow" / "source_refresh_plan.json"),
+        },
+    ), patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run), patch(
+        "core.batch2.mission_relevance",
+        return_value={
+            "passed": False,
+            "score": 0.0,
+            "matched_terms": [],
+            "matched_phrases": [],
+            "reason": "insufficient substantive mission overlap",
+        },
+    ):
+        report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
+            funding_contexts=[context],
+            output_root=tmp_path / "batch2",
+            run_id="empty-mission-run",
+            batch1_run_id="batch1-test-run",
+            execution_mode="sequential",
+            max_workers=1,
+            timeout_budget_seconds=60,
+        )
+
+    call_report = report["funding_calls"][0]
+    assert report["status"] == "incomplete_no_handoff"
+    assert report["batch3_started"] is False
+    assert call_report["status"] == "no_relevant_evidence"
+    assert call_report["normalized_records"] == 0
+    assert call_report["mission_relevance_gate"]["input_records"] == 11
+    assert call_report["mission_relevance_gate"]["accepted_records"] == 0
+    assert call_report["mission_relevance_gate"]["rejected_records"] == 11
+    assert len(call_report["mission_relevance_gate"]["details"]) == 11
+
+    call_root = tmp_path / "batch2" / "empty-mission-run" / "calls" / context.funding_call_id
+    assert json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8")) == []
+    assert (call_root / "normalized" / "input_manifest.json").is_file()
+    assert (call_root / "normalized" / "evidence_ledger.db").is_file()
+
+
 def test_batch2_rejects_duplicate_call_ids(tmp_path):
     context = _context()
     with pytest.raises(ValueError, match="must be unique"):
