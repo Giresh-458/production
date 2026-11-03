@@ -14,20 +14,27 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     mock_run_stage = MagicMock()
     def side_effect_run_stage(agent, mode, area, payload, funding_context=None, funding_contexts=None):
         if agent == "funding":
-            rc = {
-                "funding_call_id": "test",
-                "domain": "test",
-                "technology_themes": (),
-                "funding_priorities": (),
-                "target_outcomes": (),
-                "investigation_questions": (),
-                "inferred_challenges": ("The source identifies a concrete research gap.",),
-                "evidence_refs": ("https://v1.org",),
-                "inference_provenance": ("source_grounded_problem_extraction",),
-                "confidence": "Medium",
-                "research_intent": "research",
-                "research_intent_evidence": ["Research funding supports technology validation."]
-            }
+            import hashlib
+
+            def research_context_for(title, application_url):
+                canonical_id = "CALL-" + hashlib.sha256(
+                    f"{application_url.lower()}|{title.lower()}|".encode("utf-8")
+                ).hexdigest()[:10].upper()
+                return {
+                    "funding_call_id": canonical_id,
+                    "domain": "test",
+                    "technology_themes": (),
+                    "funding_priorities": (),
+                    "target_outcomes": (),
+                    "investigation_questions": (),
+                    "inferred_challenges": ("The source identifies a concrete research gap.",),
+                    "evidence_refs": (application_url,),
+                    "inference_provenance": ("source_grounded_problem_extraction",),
+                    "confidence": "Medium",
+                    "research_intent": "research",
+                    "research_intent_evidence": ["Research funding supports technology validation."]
+                }
+
             domain_evidence = [{"domain": "DePIN", "score": 0.8, "raw_score": 3.0, "matched_terms": ["depin"]}]
             return {
                 "outputs": [
@@ -39,7 +46,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "application_url": "https://v1.org",
                         "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
-                        "research_context": rc
+                        "research_context": research_context_for("Call Valid 1", "https://v1.org")
                     },
                     {
                         "title": "Call Bad",
@@ -49,7 +56,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "application_url": "https://bad.org",
                         "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
-                        "research_context": rc
+                        "research_context": research_context_for("Call Bad", "https://bad.org")
                     },
                     {
                         "title": "Call Valid 2",
@@ -59,7 +66,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
                         "application_url": "https://v2.org",
                         "eligibility": "Eligible applicants must be legal entities established in an EU Member State.",
                         "domain_relevance": domain_evidence,
-                        "research_context": rc
+                        "research_context": research_context_for("Call Valid 2", "https://v2.org")
                     }
                 ]
             }
