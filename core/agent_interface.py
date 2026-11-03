@@ -199,6 +199,23 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
+
+    # Several collectors model a source as a document with a base_url and
+    # fetched page objects rather than a top-level url/source field. Preserve
+    # the actual fetched HTTP(S) page as provenance instead of silently
+    # labelling these records "Manual".
+    for field_name in ("base_url",):
+        value = str(_document_value(document, field_name, "")).strip()
+        parsed = urlparse(value)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return value
+    pages = _document_value(document, "pages", [])
+    if isinstance(pages, (list, tuple)):
+        for page in pages:
+            value = str(_document_value(page, "url", "")).strip()
+            parsed = urlparse(value)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                return value
     return default_source or "Manual"
 
 
@@ -216,6 +233,29 @@ def _document_content(document: Any) -> str:
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
+
+    # Lab and similar crawlers retain fetched pages as structured objects.
+    # Serialize the page evidence itself, not Python's dataclass/list repr,
+    # so the raw-content field remains useful and reproducible.
+    pages = _document_value(document, "pages", [])
+    if isinstance(pages, (list, tuple)) and pages:
+        page_blocks: list[str] = []
+        for page in pages:
+            title = str(_document_value(page, "title", "")).strip()
+            url = str(_document_value(page, "url", "")).strip()
+            content = str(_document_value(page, "content", "")).strip()
+            if not (title or url or content):
+                continue
+            block = []
+            if title:
+                block.append(f"Page title: {title}")
+            if url:
+                block.append(f"Source URL: {url}")
+            if content:
+                block.append(content)
+            page_blocks.append("\\n".join(block))
+        if page_blocks:
+            return "\\n\\n".join(page_blocks)
 
     parts: list[str] = []
     if isinstance(document, dict):
