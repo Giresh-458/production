@@ -487,6 +487,15 @@ def test_batch2_prepares_source_registry_only_for_downstream_agents_before_colle
         assert force is True
         assert agent_filter in DOWNSTREAM_FUNDING_CONTEXT_AGENTS
         assert output_path is not None
+        Path(output_path).write_text(
+            json.dumps({
+                "generated_at": "2026-11-03T00:00:00+00:00",
+                "filters": {"agent_filter": agent_filter, "due_only": False, "force": True},
+                "stats": {"total_entries": 1, "due_entries": 1, "skipped_entries": 0},
+                "entries": [{"agent_name": agent_filter, "source_id": f"url:https://{agent_filter}.example.org"}],
+            }),
+            encoding="utf-8",
+        )
         return SimpleNamespace(
             total_entries=1,
             due_entries=1,
@@ -529,6 +538,8 @@ def test_batch2_prepares_source_registry_only_for_downstream_agents_before_colle
     assert combined_plan.exists()
     plan_payload = json.loads(combined_plan.read_text(encoding="utf-8"))
     assert set(plan_payload["agents"]) == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+    assert len(plan_payload["entries"]) == 11
+    assert {entry["agent_name"] for entry in plan_payload["entries"]} == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 
 def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
