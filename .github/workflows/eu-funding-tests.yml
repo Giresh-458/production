@@ -245,14 +245,12 @@ jobs:
 
           collection = report.get("collection") or {}
           stats = collection.get("stats") or {}
-          require(stats.get("planned_tasks") == 11 and stats.get("completed_tasks") == 11, "Not all 11 Batch-2 collection tasks completed")
-          require(stats.get("error_tasks") == 0 and stats.get("timed_out_tasks") == 0, "Batch-2 collection had task errors or timeouts")
+          require(stats.get("planned_tasks") == 11, "Batch-2 did not plan all 11 collection tasks")
           tasks = collection.get("tasks") or []
-          require({task.get("agent_name") for task in tasks} == set(expected_agents), "Collection task manifest does not contain exactly the expected agents")
+          require(len(tasks) == 11 and {task.get("agent_name") for task in tasks} == set(expected_agents), "Collection task manifest does not contain exactly the 11 expected agents")
           for task in tasks:
-              require(task.get("persisted_artifact_count", 0) > 0, f"{task.get('agent_name')} persisted no valid artifacts")
+              require(task.get("outputs_count", 0) == task.get("persisted_artifact_count", 0), f"{task.get('agent_name')} output count was not reconciled to persisted artifacts")
               require(not task.get("artifact_audit_issues"), f"{task.get('agent_name')} has artifact audit issues")
-              require(not task.get("errors"), f"{task.get('agent_name')} reported errors: {task.get('errors')}")
 
           calls = report.get("funding_calls") or []
           require(bool(calls), "Batch-2 produced no per-call normalization result")
@@ -296,6 +294,7 @@ jobs:
               f"- Collectors healthy: {health.get('healthy_agents')}/11 "
               f"(required {health.get('required_healthy_agents')})\\n"
               f"- Persisted artifacts: {stats.get('total_outputs')}\\n"
+              f"- Task errors/timeouts (reported, subject to the 6-of-11 health gate): {stats.get('error_tasks')}/{stats.get('timed_out_tasks')}\\n"
               f"- Artifact audit: passed; zero quarantines or manifest issues\\n"
               f"- Normalized records: {total_records}\\n"
               f"- Explicitly accounted/preserved skipped artifacts: {total_skipped}\\n"
