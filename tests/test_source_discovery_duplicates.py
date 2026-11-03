@@ -36,6 +36,9 @@ def test_source_discovery_duplicate_preservation(
             "call_id": call_id,
             "title": "Blockchain Networking",
             "organization": "TestOrg",
+            "source_url": f"https://funding.example.org/calls/{call_id}",
+            "application_url": f"https://funding.example.org/calls/{call_id}",
+            "eligibility": "Eligible applicants: research universities and technology organizations may apply.",
             "research_area": "DePIN", "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {
                 "funding_call_id": call_id, "research_intent": "research",
@@ -54,6 +57,13 @@ def test_source_discovery_duplicate_preservation(
         "rejected_alternatives": []
     }
     mock_get_calls.return_value = ([selected_call["selected"]], [])
+
+    def fake_run_stage(agent, *args, **kwargs):
+        if agent == "funding":
+            return {"status": "success", "outputs": [selected_call["selected"]], "errors": []}
+        return {"status": "success", "outputs_count": 1, "outputs": []}
+
+    mock_run_stage.side_effect = fake_run_stage
 
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
