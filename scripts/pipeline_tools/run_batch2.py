@@ -17,24 +17,36 @@ def load_funding_context_handoff(path: Path) -> tuple[list[FundingCallContext], 
         raise ValueError(f"Could not read funding-context JSON from {path}: {exc}") from exc
 
     batch1_run_id = None
+    context_validation = None
     if isinstance(payload, dict):
         batch1_run_id = payload.get("batch1_run_id") or payload.get("run_id")
         acceptance = payload.get("batch1_acceptance")
         nested_acceptance = acceptance.get("acceptance") if isinstance(acceptance, dict) else None
-        if (
-            not isinstance(acceptance, dict)
-            or acceptance.get("accepted") is not True
-            or str(acceptance.get("status") or "").upper() != "ACCEPTED"
-            or acceptance.get("source_coverage_verified") is not True
-            or str(acceptance.get("batch1_run_id") or "") != str(batch1_run_id or "")
-            or not isinstance(nested_acceptance, dict)
-            or nested_acceptance.get("accepted") is not True
-            or str(nested_acceptance.get("status") or "").upper() != "ACCEPTED"
-            or bool(nested_acceptance.get("blockers"))
-        ):
+        global_acceptance_valid = (
+            isinstance(acceptance, dict)
+            and acceptance.get("accepted") is True
+            and str(acceptance.get("status") or "").upper() == "ACCEPTED"
+            and acceptance.get("source_coverage_verified") is True
+            and str(acceptance.get("batch1_run_id") or "") == str(batch1_run_id or "")
+            and isinstance(nested_acceptance, dict)
+            and nested_acceptance.get("accepted") is True
+            and str(nested_acceptance.get("status") or "").upper() == "ACCEPTED"
+            and nested_acceptance.get("blockers") == []
+            and nested_acceptance.get("blocker_count") == 0
+        )
+        candidate_validation = payload.get("context_validation")
+        if not global_acceptance_valid and isinstance(candidate_validation, dict):
+            if (
+                str(candidate_validation.get("status") or "").upper() == "VALIDATED"
+                and candidate_validation.get("scope") == "selected_contexts_only"
+                and str(candidate_validation.get("batch1_run_id") or "") == str(batch1_run_id or "")
+                and isinstance(candidate_validation.get("validated_funding_call_ids"), list)
+            ):
+                context_validation = candidate_validation
+        if not global_acceptance_valid and context_validation is None:
             raise ValueError(
-                "Batch-2 requires a Batch-1 handoff carrying an ACCEPTED global "
-                "source-coverage attestation for the same batch1_run_id."
+                "Batch-2 requires either an ACCEPTED global Batch-1 source-coverage "
+                "attestation or a selected-context validation for the same batch1_run_id."
             )
     else:
         raise ValueError(
@@ -67,6 +79,13 @@ def load_funding_context_handoff(path: Path) -> tuple[list[FundingCallContext], 
             "Funding-context JSON does not match the validated FundingCallContext schema. "
             f"Details: {exc}"
         ) from exc
+    if context_validation is not None:
+        actual_ids = sorted(context.funding_call_id for context in contexts)
+        validated_ids = sorted(str(value).strip() for value in context_validation["validated_funding_call_ids"])
+        if actual_ids != validated_ids or len(set(actual_ids)) != len(actual_ids):
+            raise ValueError(
+                "Selected-context validation IDs do not exactly match the FundingCallContext objects."
+            )
     return contexts, str(batch1_run_id) if batch1_run_id else None
 
 
@@ -123,13 +142,15 @@ def main() -> int:
         if not batch1_run_id:
             raise ValueError("Accepted Batch-1 handoff is missing batch1_run_id.")
         handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
-        batch1_acceptance = handoff_payload["batch1_acceptance"]
+        batch1_acceptance = handoff_payload.get("batch1_acceptance")
+        context_validation = handoff_payload.get("context_validation")
         report = execute_batch2(
             funding_contexts=contexts,
             output_root=Path(args.output_root),
             run_id=args.run_id,
             batch1_run_id=batch1_run_id,
             batch1_acceptance=batch1_acceptance,
+            context_validation=context_validation,
             execution_mode=args.execution_mode,
             max_workers=args.max_workers,
             timeout_budget_seconds=profile["timeout_budget_seconds"],
