@@ -63,6 +63,7 @@ def prepare_batch2_source_registry(workflow_root: Path, *, force: bool = True) -
     total_plan_entries = 0
     total_due_entries = 0
     total_skipped_entries = 0
+    combined_entries: list[dict[str, Any]] = []
 
     # Filtered sync preserves all other agents' registry entries. An unfiltered
     # sync here would rewrite/deprecate Batch-1 funding-source entries.
@@ -74,11 +75,17 @@ def prepare_batch2_source_registry(workflow_root: Path, *, force: bool = True) -
             agent_filter=agent,
             output_path=plan_path,
         )
+        per_agent_plan_path = Path(refresh_plan.refresh_plan_path)
+        per_agent_payload = json.loads(per_agent_plan_path.read_text(encoding="utf-8"))
+        entries = per_agent_payload.get("entries")
+        if not isinstance(entries, list):
+            raise ValueError(f"Refresh plan for {agent} does not contain an entries list.")
+        combined_entries.extend(entries)
         per_agent_plans[agent] = {
             "total_entries": int(refresh_plan.total_entries),
             "due_entries": int(refresh_plan.due_entries),
             "skipped_entries": int(refresh_plan.skipped_entries),
-            "path": str(Path(refresh_plan.refresh_plan_path).resolve()),
+            "path": str(per_agent_plan_path.resolve()),
         }
         total_plan_entries += int(refresh_plan.total_entries)
         total_due_entries += int(refresh_plan.due_entries)
@@ -90,12 +97,25 @@ def prepare_batch2_source_registry(workflow_root: Path, *, force: bool = True) -
         {
             "generated_at": datetime.now(UTC).isoformat(),
             "scope": "Batch-2 downstream collection agents only",
-            "agents": expected_agents,
-            "summary": {
+            "filters": {
+                "agent_filter": None,
+                "agent_filters": expected_agents,
+                "due_only": False,
+                "force": bool(force),
+            },
+            "stats": {
                 "total_entries": total_plan_entries,
                 "due_entries": total_due_entries,
                 "skipped_entries": total_skipped_entries,
             },
+            "entries": sorted(
+                combined_entries,
+                key=lambda entry: (
+                    str(entry.get("agent_name") or ""),
+                    str(entry.get("source_id") or ""),
+                ),
+            ),
+            "agents": expected_agents,
             "agent_plans": per_agent_plans,
         },
     )
