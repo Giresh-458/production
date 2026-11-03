@@ -2,6 +2,8 @@
 
 Batch-2 is the evidence-acquisition and normalization boundary between validated Batch-1 funding-call selection and Batch-3 NLP processing. The standalone runner and the full pipeline use the same collection and normalization implementations.
 
+- Batch-2 source-registry synchronization is filtered to the 11 downstream collector agents. It does not perform an unfiltered registry sync that could rewrite or deprecate Batch-1 funding-source entries.
+
 ## Architecture and scope
 
 The execution path is:
