@@ -267,15 +267,12 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
-    mock_ctx = MagicMock()
-    mock_ctx.research_context.research_intent = "research"
-    mock_ctx.research_context.research_intent_evidence = "Basic research"
-    mock_ctx.research_context.confidence = "Medium"
-    mock_ctx.research_context.inferred_challenges = ["The call identifies a source-supported research gap."]
-    mock_ctx.research_context.evidence_refs = ["http://test"]
-    mock_ctx.research_context.inference_provenance = ["source_grounded_problem_extraction"]
-    mock_ctx.funding_call_id = "call3"
-    run_pipeline_mocks["build_ctx"].return_value = mock_ctx
+    from tests.batch2_test_helpers import build_valid_funding_context
+    run_pipeline_mocks["build_ctx"].return_value = build_valid_funding_context(
+        "call3",
+        source_url="http://test",
+        application_url="http://test/apply",
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--scheduled-refresh", action="store_true")
@@ -299,14 +296,12 @@ def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkey
         return {"status": "success", "outputs_count": 1, "outputs": []}
     run_pipeline_mocks["run_stage"].side_effect = mock_run_stage_func
 
-    good_ctx = MagicMock()
-    good_ctx.research_context.research_intent = "research"
-    good_ctx.research_context.research_intent_evidence = "Research"
-    good_ctx.research_context.confidence = "Medium"
-    good_ctx.research_context.inferred_challenges = ["The call identifies a source-supported research gap."]
-    good_ctx.research_context.evidence_refs = ["http://test"]
-    good_ctx.research_context.inference_provenance = ["source_grounded_problem_extraction"]
-    good_ctx.funding_call_id = "call_good"
+    from tests.batch2_test_helpers import build_valid_funding_context
+    good_ctx = build_valid_funding_context(
+        "call_good",
+        source_url="http://test",
+        application_url="http://test/apply",
+    )
     bad_ctx = MagicMock()
     bad_ctx.research_context.research_intent = "non_research"
     bad_ctx.research_context.research_intent_evidence = "Not research"
