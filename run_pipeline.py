@@ -569,7 +569,10 @@ def main() -> int:
         if context_issues:
             rejected_unverified_research_context.append({
                 "call": call,
-                "reason": "batch2_context_handoff_invalid",
+                # Preserve the existing report classification for callers;
+                # identify the additional Batch-2 boundary check separately.
+                "reason": "research_context_unverified",
+                "validation_scope": "batch2_handoff",
                 "reasons": context_issues,
             })
             continue
