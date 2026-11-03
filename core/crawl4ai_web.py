@@ -1764,6 +1764,8 @@ def crawl_funding_source(
         )
         if is_explicit_empty_state:
             result.no_active_opportunities_confirmed = True
+        if _reports_active_funding_program(page_url, page_title, empty_state_content):
+            result.active_program_confirmed = True
 
         # An explicit publisher empty-state listing is evidence about source
         # availability, never an opportunity record. Apply this exclusion before
