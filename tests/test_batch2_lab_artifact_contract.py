@@ -21,6 +21,12 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
         "## Research capabilities\n"
         "The second line is retained as source evidence."
     )
+    secondary_url = "https://www.nist.gov/cps"
+    secondary_content = (
+        "The working group coordinates CPS research.
+"
+        "Its public materials describe standards and testbed activities."
+    )
     document = LabDocument(
         name="NIST CPS / IoT Testbed",
         institution="National Institute of Standards and Technology",
@@ -31,7 +37,12 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
                 url=source_url,
                 title="NIST CPS / IoT Testbed",
                 content=page_content,
-            )
+            ),
+            LabPage(
+                url=secondary_url,
+                title="NIST CPS Public Working Group",
+                content=secondary_content,
+            ),
         ],
     )
 
@@ -39,7 +50,10 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
     raw_content = _document_content(document)
     assert "Page title: NIST CPS / IoT Testbed" in raw_content
     assert f"Source URL: {source_url}" in raw_content
+    assert "Page title: NIST CPS Public Working Group" in raw_content
+    assert f"Source URL: {secondary_url}" in raw_content
     assert page_content in raw_content
+    assert secondary_content in raw_content
     assert "LabPage(" not in raw_content
 
     payload, warnings = build_intermediate_artifact_payload(
