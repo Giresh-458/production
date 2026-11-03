@@ -37,10 +37,8 @@ def run_pipeline_with_mocked_areas(
 ):
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 
-    mock_ctx = MagicMock()
-    mock_ctx.research_context.research_intent = "research"
-    mock_ctx.funding_call_id = "CALL-TEST"
-    mock_build_ctx.return_value = mock_ctx
+    from tests.batch2_test_helpers import build_valid_funding_context
+    mock_build_ctx.return_value = build_valid_funding_context("CALL-TEST")
 
 
     mock_get_calls.return_value = ([{
