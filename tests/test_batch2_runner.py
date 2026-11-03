@@ -1264,3 +1264,9 @@ def test_batch2_context_accepts_source_grounded_http_evidence_reference():
     )
     assert validate_batch1_context(context) == []
 
+
+
+def test_batch2_context_rejects_missing_call_title():
+    context = _context()
+    context.call_title = "   "
+    assert "funding call title is missing" in validate_batch1_context(context)
