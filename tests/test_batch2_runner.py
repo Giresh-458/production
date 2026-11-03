@@ -1288,3 +1288,22 @@ def test_batch2_cli_imports_project_when_launched_outside_repository_root(tmp_pa
 
     assert result.returncode == 0, result.stderr
     assert "Run RIF Batch-2 collection and normalization" in result.stdout
+
+
+def test_batch2_context_rejects_non_url_research_evidence_reference():
+    context = _context()
+    context.research_context.evidence_refs = ("not-a-source-reference",)
+    issues = validate_batch1_context(context)
+    assert (
+        "research context must contain at least one usable HTTP(S) evidence reference"
+        in issues
+    )
+
+
+def test_batch2_context_accepts_source_grounded_http_evidence_reference():
+    context = _context()
+    context.research_context.evidence_refs = (
+        "https://example.org/funding-call#eligibility",
+    )
+    assert validate_batch1_context(context) == []
+
