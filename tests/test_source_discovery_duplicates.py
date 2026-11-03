@@ -34,6 +34,7 @@ def test_source_discovery_duplicate_preservation(
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Blockchain Networking",
             "organization": "TestOrg",
             "source_url": f"https://funding.example.org/calls/{call_id}",
