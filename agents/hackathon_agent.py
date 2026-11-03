@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -580,7 +581,7 @@ def build_manual_url_document(
             max_depth=limits.get('max_depth', RECURSIVE_CONFIG.max_depth),
             max_pages=limits.get('max_pages', RECURSIVE_CONFIG.max_pages),
             allowed_domains=default_allowed_domains(url),
-            link_keywords=RECURSIVE_CONFIG.link_keywords,
+            link_keywords=source_focus_link_keywords(source.name, source.focus),
             relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
