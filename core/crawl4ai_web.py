@@ -766,6 +766,37 @@ def _ethereum_esp_wait_options(url: str) -> dict[str, Any]:
     }
 
 
+
+def _xrpl_application_manager_wait_options(url: str) -> dict[str, Any]:
+    """Wait for the XRPL application manager's rendered status before extraction.
+
+    The manager is a JavaScript-rendered status page. A successful navigation
+    alone is not evidence that its current application state has been rendered.
+    Wait for either the publisher's explicit no-open-calls notice or an
+    application-state cue on the same programme page. If neither appears before
+    Crawl4AI's page timeout, the fetch remains incomplete rather than being
+    interpreted as an empty source.
+    """
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() != "submit.xrplgrants.org"
+        or parsed.path.rstrip("/").casefold() != "/submit"
+    ):
+        return {}
+    return {
+        "wait_for": (
+            "js:() => { "
+            "const text = (document.body?.innerText || '').toLowerCase(); "
+            "const empty = text.includes('there are presently no open calls for applications'); "
+            "const active = text.includes('open call') || text.includes('apply now') "
+            "|| text.includes('applications are open') || text.includes('accepting applications'); "
+            "return empty || (text.includes('ripplex ecosystem programs') && active); "
+            "}"
+        ),
+        "delay_before_return_html": 0.75,
+    }
+
+
 def _raw_markdown_text(result: Any) -> str:
     """Read the generated Markdown across Crawl4AI result API variants."""
     for attribute in ("markdown", "markdown_v2"):
@@ -847,6 +878,7 @@ async def _fetch_url(url: str) -> dict:
         "page_timeout": int(timeout * 1000),
         **_superteam_directory_wait_options(url),
         **_ethereum_esp_wait_options(url),
+        **_xrpl_application_manager_wait_options(url),
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
