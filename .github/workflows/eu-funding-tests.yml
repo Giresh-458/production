@@ -188,6 +188,7 @@ jobs:
           python scripts/pipeline_tools/audit_batch1_live.py
 
       - name: Run required bounded live Batch 2 smoke from individually validated Batch 1 contexts
+        id: batch2_live_smoke
         # Exercise independent Batch-2 even if an unrelated Batch-1 source blocks
         # global acceptance. The full pipeline's global Batch-1 gate is unchanged.
         if: always() && steps.batch1_full_scan.outputs.context_handoff_ready == 'true'
@@ -199,6 +200,111 @@ jobs:
             --execution-mode parallel \
             --max-workers 6 \
             --output-root outputs/ci_batch1_full_live/batch2_live_smoke
+
+      - name: Verify persisted Batch 2 smoke contract
+        if: always() && steps.batch1_full_scan.outputs.context_handoff_ready == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from core.batch2 import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+
+          root = Path("outputs/ci_batch1_full_live/batch2_live_smoke")
+          reports = sorted(root.glob("*/workflow/batch2_report.json"))
+          if len(reports) != 1:
+              raise SystemExit(
+                  f"Expected exactly one Batch-2 report, found {len(reports)}: "
+                  + ", ".join(str(path) for path in reports)
+              )
+
+          report_path = reports[0]
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          run_root = report_path.parents[1]
+          expected_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          require(report.get("status") == "ready_for_batch3", "Batch-2 did not reach ready_for_batch3")
+          require(report.get("batch3_started") is False, "Batch-3 must remain unstarted")
+          require(report.get("run_id") == run_root.name, "Batch-2 report run_id does not match its output directory")
+
+          health = report.get("collector_health") or {}
+          require(health.get("scheduled_agents") == expected_agents, "Batch-2 did not schedule exactly the 11 expected collectors")
+          require(health.get("total_agents") == 11, "Batch-2 expected collector count is not 11")
+          require(health.get("healthy_agents", 0) >= health.get("required_healthy_agents", 1), "Batch-2 healthy collector threshold was not met")
+
+          audit = report.get("collector_artifact_audit") or {}
+          require(audit.get("status") == "passed", "Persisted collector artifact audit did not pass")
+          require(audit.get("expected_agents") == expected_agents, "Artifact audit expected-agent set does not match the 11 collectors")
+          for field in ("missing_task_agents", "duplicate_task_agents", "malformed_task_entries", "unexpected_task_agents", "quarantined_artifacts", "quarantine_failures", "manifest_issues", "issues"):
+              require(not audit.get(field), f"Artifact audit has non-empty {field}: {audit.get(field)}")
+
+          collection = report.get("collection") or {}
+          stats = collection.get("stats") or {}
+          require(stats.get("planned_tasks") == 11 and stats.get("completed_tasks") == 11, "Not all 11 Batch-2 collection tasks completed")
+          require(stats.get("error_tasks") == 0 and stats.get("timed_out_tasks") == 0, "Batch-2 collection had task errors or timeouts")
+          tasks = collection.get("tasks") or []
+          require({task.get("agent_name") for task in tasks} == set(expected_agents), "Collection task manifest does not contain exactly the expected agents")
+          for task in tasks:
+              require(task.get("persisted_artifact_count", 0) > 0, f"{task.get('agent_name')} persisted no valid artifacts")
+              require(not task.get("artifact_audit_issues"), f"{task.get('agent_name')} has artifact audit issues")
+              require(not task.get("errors"), f"{task.get('agent_name')} reported errors: {task.get('errors')}")
+
+          calls = report.get("funding_calls") or []
+          require(bool(calls), "Batch-2 produced no per-call normalization result")
+          total_records = 0
+          total_skipped = 0
+          for call in calls:
+              call_id = call.get("funding_call_id")
+              require(call.get("status") == "ready_for_batch3", f"Funding call {call_id} is not ready for Batch-3")
+              require(not call.get("normalization_errors"), f"Funding call {call_id} has normalization errors")
+              require(not call.get("handoff_errors"), f"Funding call {call_id} has normalized handoff errors")
+              require(not call.get("evidence_ledger_errors"), f"Funding call {call_id} has evidence-ledger errors")
+
+              paths = call.get("normalized_paths") or {}
+              records_path = Path(paths.get("records", ""))
+              manifest_path = Path(call.get("input_manifest", ""))
+              ledger_path = Path(call.get("evidence_ledger", ""))
+              for path in (records_path, manifest_path, ledger_path):
+                  require(path.is_file() and path.resolve().is_relative_to(run_root.resolve()), f"Missing or out-of-run normalized output: {path}")
+
+              records = json.loads(records_path.read_text(encoding="utf-8"))
+              require(len(records) == call.get("normalized_records"), f"Normalized record count mismatch for {call_id}")
+              for record in records:
+                  require(record.get("run_id") == report.get("run_id"), f"Stale run_id in normalized record {record.get('record_id')}")
+                  require(record.get("funding_call_ids") == [call_id], f"Cross-call or missing attribution in normalized record {record.get('record_id')}")
+                  require(call_id in (record.get("source_funding_call_ids") or []), f"Original attribution trace missing in normalized record {record.get('record_id')}")
+                  require(record.get("normalization_status") == "NORMALIZED", f"Non-normalized record reached handoff: {record.get('record_id')}")
+              total_records += len(records)
+
+              skipped = call.get("skipped_artifacts") or []
+              require(len(skipped) == call.get("skipped_artifact_count"), f"Skipped artifact count mismatch for {call_id}")
+              for item in skipped:
+                  skipped_path = Path(item.get("path", ""))
+                  require(bool(item.get("reason")), f"Skipped artifact has no recorded reason: {item}")
+                  require(skipped_path.is_file() and skipped_path.resolve().is_relative_to(run_root.resolve()), f"Skipped evidence was not preserved inside this run: {skipped_path}")
+              total_skipped += len(skipped)
+
+          require(total_records > 0, "Live Batch-2 smoke produced no normalized records")
+          summary = (
+              f"## Batch-2 live smoke passed\\n"
+              f"- Run: `{report.get('run_id')}`\\n"
+              f"- Collectors healthy: {health.get('healthy_agents')}/11 "
+              f"(required {health.get('required_healthy_agents')})\\n"
+              f"- Persisted artifacts: {stats.get('total_outputs')}\\n"
+              f"- Artifact audit: passed; zero quarantines or manifest issues\\n"
+              f"- Normalized records: {total_records}\\n"
+              f"- Explicitly accounted/preserved skipped artifacts: {total_skipped}\\n"
+              f"- Batch-3 started: false\\n"
+          )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write(summary)
+          print(summary)
+          PY
 
       - name: Upload full Batch 1 audit artifacts
         if: always()
