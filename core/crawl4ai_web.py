@@ -453,7 +453,7 @@ def _reports_active_funding_program(url: str, title: str, content: str) -> bool:
         or parsed.path.rstrip("/").casefold() != "/grants-funding"
     ):
         return False
-    combined = re.sub(r"s+", " ", f"{title} {content}".casefold())
+    combined = re.sub(r"\s+", " ", f"{title} {content}".casefold())
     has_application_requirement = bool(re.search(
         r"all funding applicants.{0,300}required to fill out the application",
         combined,
