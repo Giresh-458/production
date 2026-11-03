@@ -319,6 +319,7 @@ def test_funding_context_rebinds_legacy_research_context_id_only_when_source_evi
         "source_url": source_url,
         "application_url": source_url,
         "status": "OPEN_CALL",
+        "eligibility": "Eligible applicants: universities and research organisations may apply.",
         "research_context": {
             "funding_call_id": legacy_context_id,
             "domain": "ESG",
@@ -349,6 +350,8 @@ def test_funding_context_rebinds_legacy_research_context_id_only_when_source_evi
     assert context.research_context_original_funding_call_id == legacy_context_id
     assert restored.research_context.funding_call_id == canonical_id
     assert restored.research_context_original_funding_call_id == legacy_context_id
+    from core.batch2 import validate_batch1_context
+    assert validate_batch1_context(context) == []
 
 
 def test_funding_context_refuses_research_context_id_rebind_without_matching_source_evidence():
