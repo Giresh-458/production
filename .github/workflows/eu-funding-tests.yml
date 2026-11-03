@@ -197,6 +197,7 @@ jobs:
         # global acceptance. The full pipeline's global Batch-1 gate is unchanged.
         if: always() && steps.batch1_full_scan.outputs.context_handoff_ready == 'true'
         timeout-minutes: 15
+        continue-on-error: true
         run: |
           python scripts/pipeline_tools/run_batch2.py \
             --funding-context-file outputs/ci_batch1_full_live/funding_contexts.json \
@@ -232,9 +233,23 @@ jobs:
               if not condition:
                   raise SystemExit(message)
 
-          require(report.get("status") == "ready_for_batch3", "Batch-2 did not reach ready_for_batch3")
           require(report.get("batch3_started") is False, "Batch-3 must remain unstarted")
           require(report.get("run_id") == run_root.name, "Batch-2 report run_id does not match its output directory")
+
+          calls = report.get("funding_calls") or []
+          call_statuses = {call.get("status") for call in calls}
+          ready_calls = [call for call in calls if call.get("status") == "ready_for_batch3"]
+          no_evidence_calls = [call for call in calls if call.get("status") == "no_relevant_evidence"]
+          valid_no_evidence_stop = (
+              report.get("status") == "incomplete_no_handoff"
+              and bool(calls)
+              and call_statuses.issubset({"ready_for_batch3", "no_relevant_evidence"})
+              and bool(no_evidence_calls)
+          )
+          require(
+              report.get("status") == "ready_for_batch3" or valid_no_evidence_stop,
+              f"Batch-2 reached an invalid outcome: {report.get('status')} / {sorted(str(value) for value in call_statuses)}",
+          )
 
           health = report.get("collector_health") or {}
           require(health.get("scheduled_agents") == expected_agents, "Batch-2 did not schedule exactly the 11 expected collectors")
@@ -256,13 +271,12 @@ jobs:
               require(task.get("outputs_count", 0) == task.get("persisted_artifact_count", 0), f"{task.get('agent_name')} output count was not reconciled to persisted artifacts")
               require(not task.get("artifact_audit_issues"), f"{task.get('agent_name')} has artifact audit issues")
 
-          calls = report.get("funding_calls") or []
           require(bool(calls), "Batch-2 produced no per-call normalization result")
           total_records = 0
           total_skipped = 0
           for call in calls:
               call_id = call.get("funding_call_id")
-              require(call.get("status") == "ready_for_batch3", f"Funding call {call_id} is not ready for Batch-3")
+              require(call.get("status") in {"ready_for_batch3", "no_relevant_evidence"}, f"Funding call {call_id} has an invalid status: {call.get('status')}")
               require(not call.get("normalization_errors"), f"Funding call {call_id} has normalization errors")
               require(not call.get("handoff_errors"), f"Funding call {call_id} has normalized handoff errors")
               require(not call.get("evidence_ledger_errors"), f"Funding call {call_id} has evidence-ledger errors")
@@ -276,11 +290,20 @@ jobs:
 
               records = json.loads(records_path.read_text(encoding="utf-8"))
               require(len(records) == call.get("normalized_records"), f"Normalized record count mismatch for {call_id}")
-              for record in records:
-                  require(record.get("run_id") == report.get("run_id"), f"Stale run_id in normalized record {record.get('record_id')}")
-                  require(record.get("funding_call_ids") == [call_id], f"Cross-call or missing attribution in normalized record {record.get('record_id')}")
-                  require(call_id in (record.get("source_funding_call_ids") or []), f"Original attribution trace missing in normalized record {record.get('record_id')}")
-                  require(record.get("normalization_status") == "NORMALIZED", f"Non-normalized record reached handoff: {record.get('record_id')}")
+              gate = call.get("mission_relevance_gate") or {}
+              if call.get("status") == "ready_for_batch3":
+                  require(bool(records), f"Ready funding call {call_id} has no normalized records")
+                  for record in records:
+                      require(record.get("run_id") == report.get("run_id"), f"Stale run_id in normalized record {record.get('record_id')}")
+                      require(record.get("funding_call_ids") == [call_id], f"Cross-call or missing attribution in normalized record {record.get('record_id')}")
+                      require(call_id in (record.get("source_funding_call_ids") or []), f"Original attribution trace missing in normalized record {record.get('record_id')}")
+                      require(record.get("normalization_status") == "NORMALIZED", f"Non-normalized record reached handoff: {record.get('record_id')}")
+              else:
+                  require(not records, f"No-relevant-evidence call {call_id} unexpectedly emitted normalized records")
+                  require(gate.get("input_records", 0) > 0, f"No-relevant-evidence call {call_id} had no normalization inputs")
+                  require(gate.get("accepted_records") == 0, f"No-relevant-evidence call {call_id} accepted records")
+                  require(gate.get("rejected_records") == gate.get("input_records"), f"No-relevant-evidence call {call_id} did not account for every input")
+                  require(len(gate.get("details") or []) == gate.get("rejected_records"), f"No-relevant-evidence call {call_id} did not record every rejection decision")
               total_records += len(records)
 
               skipped = call.get("skipped_artifacts") or []
@@ -291,15 +314,24 @@ jobs:
                   require(skipped_path.is_file() and skipped_path.resolve().is_relative_to(run_root.resolve()), f"Skipped evidence was not preserved inside this run: {skipped_path}")
               total_skipped += len(skipped)
 
-          require(total_records > 0, "Live Batch-2 smoke produced no normalized records")
+          if ready_calls:
+              require(total_records > 0, "Ready Batch-2 smoke produced no normalized records")
+          else:
+              require(bool(no_evidence_calls) and total_records == 0, "Batch-2 did not produce a valid no-evidence stop")
+          outcome = (
+              "ready for Batch-3"
+              if ready_calls and not no_evidence_calls
+              else "safely stopped: no relevant evidence for at least one selected call"
+          )
           summary = (
-              f"## Batch-2 live smoke passed\\n"
+              f"## Batch-2 live smoke completed: {outcome}\\n"
               f"- Run: `{report.get('run_id')}`\\n"
               f"- Collectors healthy: {health.get('healthy_agents')}/11 "
               f"(required {health.get('required_healthy_agents')})\\n"
               f"- Persisted artifacts: {stats.get('total_outputs')}\\n"
               f"- Task errors/timeouts (reported, subject to the 6-of-11 health gate): {stats.get('error_tasks')}/{stats.get('timed_out_tasks')}\\n"
               f"- Artifact audit: passed; zero quarantines or manifest issues\\n"
+              f"- Calls ready for Batch-3: {len(ready_calls)}; calls stopped for no relevant evidence: {len(no_evidence_calls)}\\n"
               f"- Normalized records: {total_records}\\n"
               f"- Explicitly accounted/preserved skipped artifacts: {total_skipped}\\n"
               f"- Batch-3 started: false\\n"
