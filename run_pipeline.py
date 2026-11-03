@@ -657,7 +657,7 @@ def main() -> int:
     try:
         source_registry_report = prepare_batch2_source_registry(
             root / "workflow",
-            force=True,
+            force=False,
         )
         print(
             f"Batch-2 source registry: {len(source_registry_report['agents_synced'])} "
