@@ -119,6 +119,7 @@ class RegulationSource:
     focus: str
     source_type: str
     evidence_type: str
+    area: str | None = None
 
 
 @dataclass(slots=True)
@@ -348,6 +349,7 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             focus = cleaned_text(str(entry.get("focus", "")))
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
+            source_area = cleaned_text(str(entry.get("area", "")) or "") or None
             if name and url:
                 sources.append(
                     RegulationSource(
@@ -356,6 +358,7 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
                         focus=focus,
                         source_type=source_type,
                         evidence_type=evidence_type,
+                        area=source_area,
                     )
                 )
     if not sources:
@@ -439,7 +442,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         structured = collect_structured_source(source.url, source.source_type, area)
         if structured:
             full_text = cleaned_text(f"{source.name} {source.focus} {structured.text}")
-            area_hint = area or infer_area(full_text, "Unscoped")
+            area_hint = area or source.area or infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped") or infer_area(full_text, "Unscoped")
             if is_relevant(full_text, area_hint):
                 documents.append(RegulationDocument(name=source.name, issuing_body=source.name, source_type=source.source_type, evidence_type=source.evidence_type, area_hint=area_hint, focus=source.focus, url=structured.url, title=structured.title, content=full_text, source_mode="Automatic"))
             continue
@@ -489,7 +492,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         )
         save_recursive_review(review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        area_hint = area or infer_area(cleaned_text(f"{source.focus} {title} {content}"), "Unscoped")
+        area_hint = area or source.area or infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped") or infer_area(cleaned_text(f"{title} {content}"), "Unscoped")
         full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not technically relevant.", source.name)
