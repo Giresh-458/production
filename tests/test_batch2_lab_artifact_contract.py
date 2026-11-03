@@ -23,8 +23,7 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
     )
     secondary_url = "https://www.nist.gov/cps"
     secondary_content = (
-        "The working group coordinates CPS research.
-"
+        "The working group coordinates CPS research.\n"
         "Its public materials describe standards and testbed activities."
     )
     document = LabDocument(
