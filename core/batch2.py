@@ -137,6 +137,7 @@ def _selected_call_record(context: FundingCallContext) -> dict[str, Any]:
         "last_verified_at": data.get("last_updated"),
         "focus_area": data.get("research_area"),
         "research_context": data.get("research_context"),
+        "research_context_original_funding_call_id": data.get("research_context_original_funding_call_id"),
     }
 
 
