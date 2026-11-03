@@ -222,7 +222,9 @@ def _update_source_verification_flags(result: Any) -> Any:
     content, and at least one extracted source-grounded evidence field. Currentness
     verification additionally requires complete source acquisition and explicit
     status/date evidence for every emitted record. A confirmed, fully exhausted
-    empty-state page can verify that no active opportunities were found.
+    empty-state page can verify that no active opportunities were found; a
+    publisher-confirmed evergreen programme can verify source availability without
+    fabricating a dated opportunity record.
     """
     opportunities = list(getattr(result, "opportunities", None) or [])
     errors = list(getattr(result, "errors", None) or [])
