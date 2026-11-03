@@ -122,6 +122,44 @@ def _is_crawlable_url(url: str) -> bool:
         return False
 
 
+def source_focus_link_keywords(source_name: str, focus: str | None) -> tuple[str, ...]:
+    """Build a narrow recursive-link vocabulary for one configured source.
+
+    The global recursive vocabulary is intentionally broad for discovery, but
+    using it for every configured source can merge unrelated sibling pages
+    (for example, a MiCA page and a corporate-sustainability page on the same
+    publisher domain). Source names and focus phrases provide a safer boundary.
+    """
+    focus_text = str(focus or "").strip()
+    if not focus_text:
+        return ()
+
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "in", "into", "is", "it", "of", "on", "or", "the", "their", "to",
+        "with", "within", "via", "using", "used", "use", "that", "this",
+        "these", "those", "which", "what", "where", "when", "how",
+    }
+    phrases: list[str] = []
+    tokens: list[str] = []
+    fragments = [str(source_name or "").strip()]
+    fragments.extend(
+        fragment.strip()
+        for fragment in re.split(r"[,;|]+", focus_text)
+        if fragment.strip()
+    )
+    for fragment in fragments:
+        normalized = " ".join(fragment.casefold().split())
+        if len(normalized) >= 3:
+            phrases.append(normalized)
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", normalized):
+            if token not in stop_words:
+                tokens.append(token)
+
+    # Preserve phrase priority and stable order while removing duplicates.
+    return tuple(dict.fromkeys([*phrases, *tokens]))
+
+
 def _score_link(url: str, anchor_text: str, keywords: tuple[str, ...]) -> int:
     lowered = f"{url} {anchor_text}".lower()
     score = 0
