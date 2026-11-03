@@ -10,6 +10,8 @@ on:
     paths:
       - "agents/**"
       - "core/agent_interface.py"
+      - "core/recursive_collection.py"
+      - "tests/test_regulation_source_scoping.py"
       - "core/file_lock.py"
       - "core/batch2.py"
       - "core/agent_registry.py"
@@ -46,4 +48,4 @@ jobs:
 
       - name: Verify all collection-agent contracts and funding routing
         run: |
-          python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_funding_routing_golden.py -q
+          python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_funding_routing_golden.py tests/test_regulation_source_scoping.py -q
