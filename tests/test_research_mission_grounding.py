@@ -170,6 +170,46 @@ def test_weak_secondary_domain_and_market_adoption_do_not_admit_depin_evidence()
     assert result["matched_phrases"] == []
 
 
+def test_verified_esg_domain_terms_allow_substantive_sustainability_evidence():
+    ctx = build_context(
+        themes=("ESG", "Carbon and MRV"),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG", "DePIN"),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.7143,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability", "emissions"],
+            },
+            {
+                "domain": "DePIN",
+                "score": 0.2857,
+                "raw_score": 2.4,
+                "matched_terms": ["iot"],
+            },
+        ),
+    )
+    record = {
+        "title": "Corporate sustainability reporting and emissions assurance",
+        "problem_statement": (
+            "The report describes ESG disclosure controls, emissions data quality, "
+            "and independent assurance of sustainability information."
+        ),
+        "context_summary": (
+            "It identifies gaps in traceable carbon and emissions reporting."
+        ),
+    }
+
+    result = relevance(record, ctx)
+
+    assert result["passed"] is True
+    assert {"sustainability", "emissions"}.issubset(set(result["matched_terms"]))
+
+
 def test_strongly_supported_selected_secondary_domain_remains_eligible():
     ctx = build_context(
         themes=("decentralized physical infrastructure", "compute network"),
