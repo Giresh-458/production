@@ -42,7 +42,7 @@ A normal full-pipeline run writes validated contexts to:
 
     outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json
 
-The JSON object contains the Batch-1 run ID and a funding_contexts array. The standalone runner reads this file directly and does not rerun Batch-1. The file must be an auditable Batch-1 envelope containing a non-empty `batch1_run_id`, the serialized contexts, and a `batch1_acceptance` attestation with `accepted=true`, `status=ACCEPTED`, `source_coverage_verified=true`, and the same Batch-1 run ID. The strict Batch-1 quality workflow writes this attestation only after source coverage, accounting, selector, and context gates all pass. A bare FundingCallContext object/list, a per-context-ready-only handoff, or a blocked/mismatched acceptance attestation is rejected by the standalone CLI.
+The JSON object contains the Batch-1 run ID and a `funding_contexts` array. The standalone runner reads this file directly and does not rerun Batch-1. It accepts either (a) a global `batch1_acceptance` attestation with `accepted=true`, `status=ACCEPTED`, `source_coverage_verified=true`, zero blockers, and the same Batch-1 run ID, or (b) a `context_validation` envelope with `status=VALIDATED`, `scope=selected_contexts_only`, the same Batch-1 run ID, and an exact list of validated funding-call IDs. In both cases, the runner independently revalidates every serialized FundingCallContext before starting collection. The selected-context form permits independent Batch-2 execution when an unrelated configured Batch-1 source blocks global source coverage; it does not mark Batch-1 globally accepted and does not bypass the full pipeline's global Batch-1 acceptance gate. Bare context objects/lists and mismatched context IDs are rejected.
 
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
@@ -97,7 +97,7 @@ Run a complete refresh profile:
 
     python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
 
-The standalone runner accepts only a handoff emitted by the strict Batch-1 quality audit after global source coverage and accounting have been accepted. The ordinary full-pipeline runtime handoff contains selected contexts but does not attest to that global audit, so it is deliberately not accepted by this standalone entry point.
+The standalone runner accepts either a globally accepted Batch-1 quality-audit handoff or a selected-context validation envelope. The latter is intended for independent Batch-2 execution: each context must pass the downstream contract (current OPEN_CALL status, usable official source/application URL, substantive eligibility, research intent, confidence, source-grounded challenges, evidence references, and inference provenance). This selected-context validation is not a global Batch-1 acceptance and cannot authorize the full pipeline to proceed when its global Batch-1 quality gate is blocked.
 
 Available profiles:
 - smoke: one item per configured source and a short bounded timeout.
