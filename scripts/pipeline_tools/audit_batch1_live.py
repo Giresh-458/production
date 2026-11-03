@@ -1,0 +1,670 @@
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+os.chdir(REPO_ROOT)
+
+from agents.funding_agent import _is_generic_funding_title, load_sources, run_agent
+from core.funding_quality import assess_batch_acceptance
+from core.batch2 import validate_batch1_context
+from core.funding_selection import has_substantive_eligibility_evidence
+from core.problem_extraction import _is_objective_or_task_statement
+from core.schemas import normalize_area
+from run_pipeline import get_all_open_funding_calls, build__selected_call_context, _research_context_quality_reasons
+
+output_dir = Path("outputs/ci_batch1_full_live")
+output_dir.mkdir(parents=True, exist_ok=True)
+run_id = "ci-batch1-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+response = run_agent(
+    "configured_scan",
+    None,
+    {
+        "sources_path": "sources/funding_sources.yaml",
+        "posts_per_source": 10,
+        "output_dir": str(output_dir / "markdown"),
+        "db_path": str(output_dir / "funding_memory.db"),
+        "analysis_mode": "analyze",
+        "is_test_mode": False,
+        "force_refresh": True,
+        "run_id": run_id,
+        "log_level": "INFO",
+    },
+)
+records = response.get("outputs", []) or []
+collection_results = response.get("collection_results", []) or []
+selected, rejected = get_all_open_funding_calls(
+    {"outputs": records},
+    require_domain_match=True,
+    require_research_context=True,
+)
+handoff_contexts = []
+handoff_context_issues = []
+validated_contexts = []
+for record in selected:
+    context = build__selected_call_context(record)
+    # Reuse the production Batch-2 validator for call status,
+    # eligibility, identity, research intent, and evidence URLs.
+    issues = validate_batch1_context(context)
+    # The live qualification audit additionally requires both URLs,
+    # not merely the one-URL minimum used by the standalone runner.
+    if not context.source_url:
+        issues.append("missing_source_url")
+    if not context.application_url:
+        issues.append("missing_application_url")
+    if not record.get("matched_rif_domains"):
+        issues.append("missing_verified_rif_domain")
+    research_context = context.research_context
+    if research_context is not None:
+        issues.extend(_research_context_quality_reasons(research_context))
+    handoff_contexts.append({
+        "funding_call_id": context.funding_call_id,
+        "title": context.call_title,
+        "status": context.status,
+        "source_url": context.source_url,
+        "application_url": context.application_url,
+        "research_area": context.research_area,
+        "research_intent": (
+            research_context.research_intent if research_context else None
+        ),
+        "ready": not issues,
+        "issues": list(dict.fromkeys(issues)),
+    })
+    if issues:
+        handoff_context_issues.append({
+            "title": context.call_title,
+            "source_url": context.source_url,
+            "issues": list(dict.fromkeys(issues)),
+        })
+    else:
+        validated_contexts.append(context)
+if validated_contexts:
+    selected_context_ids = sorted(context.funding_call_id for context in validated_contexts)
+    (output_dir / "funding_contexts.json").write_text(
+        json.dumps(
+            {
+                "batch1_run_id": run_id,
+                "context_validation": {
+                    "status": "VALIDATED",
+                    "scope": "selected_contexts_only",
+                    "batch1_run_id": run_id,
+                    "validated_funding_call_ids": selected_context_ids,
+                },
+                "funding_contexts": [context.to_dict() for context in validated_contexts],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as output:
+            output.write("context_handoff_ready=true\n")
+today = datetime.now(timezone.utc).date()
+generic_title = re.compile(
+    r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
+    r"open grants?|grants? and funding|funding opportunities?|open calls?|"
+    r"calls? for proposals?|topic|home|overview)$",
+    re.IGNORECASE,
+)
+
+def as_date(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date() if value else None
+    except ValueError:
+        return None
+
+quality_flags = []
+review_flags = []
+selected_summary = []
+for record in selected:
+    title = str(record.get("title") or record.get("program_name") or "").strip()
+    status = str(record.get("status") or "").upper()
+    deadline = as_date(record.get("deadline"))
+    matched_domains = [
+        normalize_area(str(domain))
+        for domain in record.get("matched_rif_domains", []) or []
+    ]
+    focus_area = normalize_area(str(record.get("focus_area") or ""))
+    issues = []
+    manual_review = []
+    if not record.get("application_url"):
+        manual_review.append("direct_application_url_missing_manual_review")
+    source_url = str(record.get("source_url") or "").casefold()
+    if "sme-market-expansion-open-call-2027" in source_url:
+        evidence = record.get("evidence") or {}
+        if evidence.get("eligibility_supplemental_context_status") != "verified":
+            manual_review.append("eligibility_completeness_unverified")
+    research_context = record.get("research_context")
+    if not isinstance(research_context, dict):
+        manual_review.append("research_context_missing")
+    else:
+        confidence = str(research_context.get("confidence") or "").strip().casefold()
+        if confidence in {"", "unknown", "none", "n/a"}:
+            manual_review.append("research_context_confidence_unknown")
+        challenges = research_context.get("inferred_challenges") or []
+        if not challenges:
+            manual_review.append("research_problem_signal_missing")
+    if manual_review:
+        review_flags.append({
+            "title": title,
+            "source_url": record.get("source_url"),
+            "flags": manual_review,
+        })
+    if not title or generic_title.fullmatch(title) or _is_generic_funding_title(title):
+        issues.append("missing_or_generic_title")
+    opening_date = as_date(record.get("opening_date"))
+    if opening_date and opening_date > today:
+        issues.append("not_yet_open")
+    if status != "OPEN_CALL":
+        issues.append("not_currently_open")
+    if deadline and deadline < today:
+        issues.append("expired_deadline")
+    if not (record.get("source_url") or record.get("application_url")):
+        issues.append("missing_source_or_application_url")
+    if not has_substantive_eligibility_evidence(record.get("eligibility")):
+        issues.append("missing_substantive_applicant_eligibility")
+    eligibility_evidence = (record.get("evidence") or {}).get("eligibility")
+    if not has_substantive_eligibility_evidence(eligibility_evidence):
+        issues.append("missing_source_grounded_eligibility_evidence")
+    if not matched_domains:
+        issues.append("missing_proven_canonical_domain")
+    if matched_domains and focus_area not in matched_domains:
+        issues.append("focus_area_conflicts_with_proven_domain")
+    if issues:
+        quality_flags.append({
+            "title": title,
+            "status": status,
+            "deadline": record.get("deadline"),
+            "issues": issues,
+            "source_url": record.get("source_url"),
+        })
+    selected_summary.append({
+        "title": title,
+        "status": status,
+        "opening_date": record.get("opening_date"),
+        "deadline": record.get("deadline"),
+        "funding_amount": record.get("funding_amount"),
+        "eligibility": record.get("eligibility"),
+        "application_url": record.get("application_url"),
+        "source_url": record.get("source_url"),
+        "focus_area": record.get("focus_area"),
+        "matched_rif_domains": matched_domains,
+        "selection_score": record.get("selection_score"),
+        "source_status": (record.get("evidence") or {}).get("source_status"),
+        "manual_review_flags": manual_review,
+    })
+
+# Currentness is tested against live source status and the current date above.
+# The EIT call's stable extraction contract belongs in deterministic fixture tests;
+# do not require an individual real-world call to remain selected after it expires.
+supporting_docs_as_calls = [
+    record for record in selected
+    if re.search(
+        r"sample application form|info.?session.*presentation|info.?session presentation",
+        str(record.get("title") or record.get("program_name") or ""),
+        re.IGNORECASE,
+    )
+]
+if supporting_docs_as_calls:
+    raise SystemExit(
+        "Supporting EIT documents were emitted as independent funding calls: "
+        + json.dumps([
+            {"title": item.get("title"), "source_url": item.get("source_url")}
+            for item in supporting_docs_as_calls
+        ], ensure_ascii=False)
+    )
+
+problem_quality_violations = []
+for record in records:
+    problem = str(record.get("problem") or record.get("problem_signal") or "").strip()
+    if not problem:
+        continue
+    issues = []
+    if len(problem) > 320:
+        issues.append("problem_signal_too_long")
+    if re.search(r"!\[[^\]]*\]\(|\[[^\]]+\]\(https?://|https?://\S+", problem):
+        issues.append("markdown_or_url_boilerplate_in_problem_signal")
+    if re.search(r"\b(?:cookie policy|all rights reserved|log in to read more|click here to subscribe|example implementation)\b", problem, re.IGNORECASE):
+        issues.append("webpage_boilerplate_or_instruction_in_problem_signal")
+    if issues:
+        problem_quality_violations.append({
+            "title": record.get("title") or record.get("program_name"),
+            "source_url": record.get("source_url"),
+            "issues": issues,
+            "problem_preview": problem[:180],
+        })
+
+problem_semantic_violations = []
+for record in records:
+    problem = str(record.get("problem") or record.get("problem_signal") or "").strip()
+    if problem and _is_objective_or_task_statement(problem):
+        problem_semantic_violations.append({
+            "title": record.get("title") or record.get("program_name"),
+            "source_url": record.get("source_url"),
+            "issue": "objective_or_required_activity_misclassified_as_problem",
+            "problem_preview": problem[:180],
+        })
+
+blocking_review_flags = [
+    {"title": item.get("title"), "source_url": item.get("source_url"),
+     "flags": [flag for flag in item.get("flags", []) if flag in {
+         "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing",
+         "eligibility_completeness_unverified", "direct_application_url_missing_manual_review"
+     }]}
+    for item in review_flags
+    if any(flag in {
+        "research_context_missing", "research_context_confidence_unknown", "research_problem_signal_missing",
+        "eligibility_completeness_unverified", "direct_application_url_missing_manual_review"
+    } for flag in item.get("flags", []))
+]
+
+def summarize_audit_error(error):
+    if isinstance(error, dict):
+        operation = error.get("operation")
+        url = error.get("url")
+        message = str(error.get("error") or "")
+    else:
+        operation = None
+        url = None
+        message = str(error)
+    return {
+        "operation": operation,
+        "url": url,
+        "error": message[:2000],
+        "error_truncated": len(message) > 2000,
+    }
+
+source_summary = []
+for item in collection_results:
+    source_summary.append({
+        key: item.get(key) for key in (
+            "source_id", "method", "final_status", "pages_discovered",
+            "pages_fetched", "pages_failed", "detail_pages_discovered",
+            "detail_pages_fetched", "detail_pages_failed", "documents_discovered",
+            "documents_fetched", "documents_failed", "api_pages_fetched",
+            "api_expected_records", "api_records_received", "records_discovered",
+            "records_valid", "records_failed", "records_filtered",
+            "records_filtered_by_reason", "duplicates_removed", "truncated",
+            "pagination_detected", "pagination_complete", "discovery_exhausted",
+            "max_depth", "max_depth_reached", "urls_skipped",
+            "relevant_urls_skipped", "coverage_gaps", "failed_urls", "truncation_details",
+            "evidence_verified", "currentness_verified",
+            "no_active_opportunities_confirmed",
+        )
+    })
+    source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
+    source_summary[-1]["coverage_gaps"] = item.get("coverage_gaps") or []
+    failed_urls = item.get("failed_urls") or []
+    errors = item.get("errors") or []
+    source_summary[-1]["failed_urls"] = failed_urls
+    source_summary[-1]["failed_urls_count"] = len(failed_urls)
+    source_summary[-1]["errors"] = [summarize_audit_error(error) for error in errors]
+    source_summary[-1]["errors_count"] = len(errors)
+
+rejection_counts = {}
+for candidate in rejected:
+    for reason in candidate.get("reasons", []):
+        rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+summary = {
+    "run_status": response.get("status"),
+    "run_id": run_id,
+    "raw_records_count": len(records),
+    "raw_current_status_candidates": sum(
+        str(row.get("status") or "").upper() in {"OPEN_CALL", "UPCOMING_CALL"}
+        for row in records
+    ),
+    "selected_actionable_count": len(selected),
+    "selected_actionable_calls": selected_summary,
+    "funding_context_handoff": {
+        "ready": bool(selected) and not handoff_context_issues,
+        "selected_context_count": len(handoff_contexts),
+        "ready_context_count": sum(1 for item in handoff_contexts if item["ready"]),
+        "contexts": handoff_contexts,
+        "issues": handoff_context_issues,
+    },
+    "selected_quality_flags_count": len(quality_flags),
+    "selected_quality_flags": quality_flags,
+    "selected_manual_review_flags_count": len(review_flags),
+    "selected_manual_review_flags": review_flags,
+    "blocking_manual_review_flags": blocking_review_flags,
+    "problem_quality_violations_count": len(problem_quality_violations),
+    "problem_quality_violations": problem_quality_violations[:20],
+    "problem_semantic_violations_count": len(problem_semantic_violations),
+    "problem_semantic_violations": problem_semantic_violations[:20],
+    "rejected_candidates_count": len(rejected),
+    "rejection_reason_counts": rejection_counts,
+    "rejected_candidate_details": [
+        {
+            "title": candidate.get("title"),
+            "status": candidate.get("status"),
+            "source_url": candidate.get("source_url"),
+            "reasons": list(candidate.get("reasons") or []),
+        }
+        for candidate in rejected
+    ],
+    "source_summary": source_summary,
+    "warnings": response.get("warnings", []),
+}
+(output_dir / "records.json").write_text(
+    json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8"
+)
+(output_dir / "selected.json").write_text(
+    json.dumps(selected_summary, indent=2, ensure_ascii=False), encoding="utf-8"
+)
+coverage_status_violations = [
+    {
+        "source_id": item.get("source_id"),
+        "final_status": item.get("final_status"),
+        "discovery_exhausted": item.get("discovery_exhausted"),
+        "pagination_complete": item.get("pagination_complete"),
+        "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+    }
+    for item in source_summary
+    if (
+        item.get("coverage_gaps_count", 0) > 0
+        and item.get("final_status") in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"}
+    ) or (
+        item.get("final_status") in {"NO_ACTIVE_OPPORTUNITIES", "VERIFIED"}
+        and (
+            item.get("truncated")
+            or not item.get("discovery_exhausted")
+            or (
+                item.get("pagination_detected")
+                and not item.get("pagination_complete")
+            )
+        )
+    ) or (
+        item.get("final_status") == "NO_ACTIVE_OPPORTUNITIES"
+        and item.get("no_active_opportunities_confirmed") is not True
+    )
+]
+summary["coverage_status_invariant_violations"] = coverage_status_violations
+(output_dir / "summary.json").write_text(
+    json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+)
+print(json.dumps(summary, indent=2, ensure_ascii=False))
+if coverage_status_violations:
+    raise SystemExit(
+        "Source status contradicts incomplete discovery/coverage gaps: "
+        + json.dumps(coverage_status_violations, ensure_ascii=False)
+    )
+priority_sources = {
+    "Ethereum ESP RFPs", "Ethereum ESP Open Rounds",
+    "Solana Grants and Funding", "Superteam Development Grants",
+    "NEAR Ecosystem Funding", "XRPL Grants Program",
+    "Climate KIC Open Calls", "Open SBIR Funding Topics",
+    "Filecoin Grants and Funding",
+}
+configured_sources = {
+    item.name: item
+    for item in load_sources(Path("sources/funding_sources.yaml"))
+}
+
+def is_intentionally_excluded_gap(source_id, gap):
+    configured = configured_sources.get(source_id)
+    if configured is None:
+        return False
+    discovery = (configured.collection or {}).get("discovery", {}) or {}
+    patterns = discovery.get("exclude_url_patterns", []) or []
+    url = str(gap.get("url") or "")
+    return any(
+        re.search(pattern, url, flags=re.IGNORECASE)
+        for pattern in patterns
+        if isinstance(pattern, str) and pattern
+    )
+
+def normalized_url_path(value):
+    parsed = urlsplit(str(value or ""))
+    return (parsed.scheme.casefold(), parsed.netloc.casefold(), parsed.path.rstrip("/").casefold())
+
+def is_relevant_failed_url(value):
+    path = urlsplit(str(value or "")).path.casefold()
+    return bool(re.search(
+        r"(?:funding|grants?|calls?|rfp|proposals?|opportunities|open[-_/]?rounds?|applications?|awards?|topics?)",
+        path,
+    ))
+
+def is_documented_access_limited_url(item, failed_url):
+    key = normalized_url_path(failed_url)
+    access_failure = re.compile(
+        r"robots(?:\.txt)?|cloudflare|javascript challenge|http\s*(?:403|429)|"
+        r"forbidden|rate.?limit|access denied|blocked by (?:the )?(?:site|server|policy)|"
+        r"anti.?bot|captcha|datadome|script_heavy_shell|minimal_text|"
+        r"name.?resolution|failed to resolve|dns|readtimeout|connectionerror",
+        re.IGNORECASE,
+    )
+    matching_errors = [
+        error for error in (item.get("errors") or [])
+        if normalized_url_path(error.get("url")) == key
+    ]
+    return (
+        item.get("final_status") == "PARTIAL"
+        and any(access_failure.search(str(error.get("error") or "")) for error in matching_errors)
+    )
+
+priority_source_coverage_violations = []
+documented_access_limited_urls = []
+for item in source_summary:
+    if item.get("source_id") not in priority_sources:
+        continue
+    unhandled_gaps = [
+        gap for gap in (item.get("coverage_gaps") or [])
+        if not is_intentionally_excluded_gap(item.get("source_id"), gap)
+        # Robots denials and unverifiable robots policies are not silently
+        # ignored: the exact URL/reason is recorded and the source remains
+        # PARTIAL. Treat these as documented external access limitations,
+        # not crawler-budget truncation or evidence of complete coverage.
+        and not (
+            gap.get("reason") in {
+                "robots_policy_restriction",  # legacy audit label
+                "robots_policy_disallowed",
+                "robots_policy_unverified",
+            }
+            and item.get("final_status") == "PARTIAL"
+        )
+    ]
+    # A browser-triggered download must be handled by the document
+    # fetch path. If it leaks through as a page_fetch failure, the live
+    # audit must fail rather than passing with a hidden collector bug.
+    unhandled_download_failures = [
+        error for error in (item.get("errors") or [])
+        if error.get("operation") == "page_fetch"
+        and re.search(
+            r"download\s+(?:is\s+starting|started|is\s+being\s+handled)",
+            str(error.get("error") or ""),
+            re.IGNORECASE,
+        )
+    ]
+    relevant_failed_urls = [
+        url for url in (item.get("failed_urls") or [])
+        if is_relevant_failed_url(url)
+        and not is_intentionally_excluded_gap(item.get("source_id"), {"url": url})
+    ]
+    # Climate KIC links a large historical document archive from its live
+    # discovery pages. Keep failed attachments visible, but do not let a
+    # 404 for dated 2021–2025 archive attachments or the known retired
+    # download/72240 asset masquerade as a missed current call page.
+    # Current-year attachments and call/detail HTML pages remain blocking.
+    def is_stale_climate_kic_attachment(source_item, failed_url):
+        if source_item.get("source_id") != "Climate KIC Open Calls":
+            return False
+        key = normalized_url_path(failed_url)
+        matching_errors = [
+            error for error in (source_item.get("errors") or [])
+            if normalized_url_path(error.get("url")) == key
+        ]
+        is_not_found = any(
+            re.search(r"404|not found", str(error.get("error") or ""), re.IGNORECASE)
+            and error.get("operation") in {"pdf_fetch", "docx_fetch"}
+            for error in matching_errors
+        )
+        if not is_not_found:
+            return False
+        parsed = urlsplit(str(failed_url or ""))
+        if parsed.netloc.casefold() not in {"climate-kic.org", "www.climate-kic.org"}:
+            return False
+        dated_upload = re.match(
+            r"^/wp-content/uploads/(20[0-9]{2})/(0[1-9]|1[0-2])/",
+            parsed.path,
+            re.IGNORECASE,
+        )
+        if dated_upload:
+            uploaded = datetime(
+                int(dated_upload.group(1)),
+                int(dated_upload.group(2)),
+                1,
+                tzinfo=timezone.utc,
+            ).date()
+            # A missing attachment older than 180 days is treated as a
+            # stale archive reference, not evidence that the current call
+            # page itself was missed. The failed URL remains in the audit.
+            if (datetime.now(timezone.utc).date() - uploaded).days > 180:
+                return True
+        return re.match(r"^/download/72240/?$", parsed.path, re.IGNORECASE) is not None
+
+    stale_attachment_404s = [
+        url for url in relevant_failed_urls
+        if is_stale_climate_kic_attachment(item, url)
+    ]
+    documented_limited = [
+        url for url in relevant_failed_urls
+        if url not in stale_attachment_404s
+        and is_documented_access_limited_url(item, url)
+    ]
+    unhandled_relevant_failed_urls = [
+        url for url in relevant_failed_urls
+        if url not in documented_limited and url not in stale_attachment_404s
+    ]
+    if documented_limited:
+        documented_access_limited_urls.append({
+            "source_id": item.get("source_id"),
+            "urls": documented_limited,
+            "source_status": item.get("final_status"),
+        })
+    if stale_attachment_404s:
+        summary.setdefault("stale_historical_attachment_404s", []).append({
+            "source_id": item.get("source_id"),
+            "urls": stale_attachment_404s,
+            "source_status": item.get("final_status"),
+        })
+    if (
+        item.get("truncated")
+        or unhandled_gaps
+        or unhandled_download_failures
+        or unhandled_relevant_failed_urls
+    ):
+        priority_source_coverage_violations.append({
+            "source_id": item.get("source_id"),
+            "final_status": item.get("final_status"),
+            "truncated": item.get("truncated"),
+            "relevant_urls_skipped": item.get("relevant_urls_skipped"),
+            "coverage_gaps_count": item.get("coverage_gaps_count", 0),
+            "truncation_details": (item.get("truncation_details") or [])[:20],
+            "unhandled_coverage_gaps": unhandled_gaps[:10],
+            "unhandled_download_failures": unhandled_download_failures[:10],
+            "unhandled_relevant_failed_urls": unhandled_relevant_failed_urls[:20],
+        })
+summary["documented_access_limited_urls"] = documented_access_limited_urls
+summary["priority_source_coverage_violations"] = priority_source_coverage_violations
+
+# Keep process success distinct from data acceptance. The configured
+# inventory is read independently so a missing collector summary cannot
+# disappear from the denominator.
+source_config = yaml.safe_load(
+    Path("sources/funding_sources.yaml").read_text(encoding="utf-8")
+) or {}
+source_sections = source_config.get("sources", {})
+expected_source_ids = [
+    str(source["name"]).strip()
+    for entries in source_sections.values()
+    if isinstance(entries, list)
+    for source in entries
+    if isinstance(source, dict) and source.get("name")
+]
+summary["record_accounting"] = response.get("record_accounting")
+summary["batch_acceptance"] = assess_batch_acceptance(
+    run_status=response.get("status"),
+    raw_records_count=len(records),
+    selected_actionable_count=len(selected),
+    selected_quality_flags=quality_flags,
+    selected_manual_review_flags=review_flags,
+    source_summary=source_summary,
+    expected_source_ids=expected_source_ids,
+    record_accounting=summary["record_accounting"],
+)
+if handoff_context_issues:
+    acceptance = summary["batch_acceptance"]
+    blockers = acceptance.setdefault("blockers", [])
+    blockers.append({
+        "code": "funding_context_handoff_not_ready",
+        "message": "Selected funding context failed downstream handoff validation.",
+        "details": handoff_context_issues,
+    })
+    acceptance["status"] = "BLOCKED"
+    acceptance["accepted"] = False
+    acceptance["blocker_count"] = len(blockers)
+(output_dir / "summary.json").write_text(
+    json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+)
+print("BATCH ACCEPTANCE: " + json.dumps(summary["batch_acceptance"], ensure_ascii=False))
+if priority_source_coverage_violations:
+    raise SystemExit(
+        "Priority Batch 1 sources still have truncation or unhandled relevant links: "
+        + json.dumps(priority_source_coverage_violations, ensure_ascii=False)
+    )
+if problem_quality_violations:
+    raise SystemExit(
+        "Funding problem fields contain raw page boilerplate/links: "
+        + json.dumps(problem_quality_violations[:10], ensure_ascii=False)
+    )
+if problem_semantic_violations:
+    raise SystemExit(
+        "Funding problem fields contain objectives or required activities rather than problems: "
+        + json.dumps(problem_semantic_violations[:10], ensure_ascii=False)
+    )
+if blocking_review_flags:
+    raise SystemExit(
+        "Selected actionable calls still have unresolved research-context/problem evidence: "
+        + json.dumps(blocking_review_flags, ensure_ascii=False)
+    )
+if response.get("status") == "error":
+    raise SystemExit("Full configured funding scan returned error status")
+if not records:
+    raise SystemExit("Full configured Batch 1 scan discovered no funding records")
+if not selected:
+    raise SystemExit("Strict production selector found no eligible, current, domain-matched funding call")
+if quality_flags:
+    raise SystemExit("Strict production selector emitted invalid actionable calls")
+if summary["batch_acceptance"]["status"] != "ACCEPTED":
+    raise SystemExit(
+        "Batch 1 acceptance blocked: "
+        + json.dumps(summary["batch_acceptance"]["blockers"], ensure_ascii=False)
+    )
+# Only mint the Batch-1 acceptance attestation after every strict
+# selector, source-coverage, accounting, and context gate above passed.
+handoff_path = output_dir / "funding_contexts.json"
+if not handoff_path.is_file():
+    raise SystemExit("Validated Batch-1 funding-context handoff is missing")
+handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+if handoff_payload.get("batch1_run_id") != run_id:
+    raise SystemExit("Batch-1 handoff run ID does not match the accepted audit run")
+handoff_payload["batch1_acceptance"] = {
+    "accepted": True,
+    "status": "ACCEPTED",
+    "batch1_run_id": run_id,
+    "source_coverage_verified": True,
+    "acceptance": summary["batch_acceptance"],
+}
+handoff_path.write_text(
+    json.dumps(handoff_payload, indent=2, ensure_ascii=False),
+    encoding="utf-8",
+)
