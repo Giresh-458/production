@@ -1731,11 +1731,21 @@ def crawl_funding_source(
         empty_state_content = "\n".join(
             part for part in (page_markdown, html_text) if part
         )
-        if _reports_no_active_funding(page_url, page_title, empty_state_content):
+        is_explicit_empty_state = _reports_no_active_funding(
+            page_url, page_title, empty_state_content
+        )
+        if is_explicit_empty_state:
             result.no_active_opportunities_confirmed = True
 
-        # Stage B: classify this page
-        is_funding_page = _classify_page_stage_b(page_url, page_title, page_content)
+        # An explicit publisher empty-state listing is evidence about source
+        # availability, never an opportunity record. Apply this exclusion before
+        # the general funding-page classifier so generic "grant/application"
+        # language on the page cannot turn the empty-state notice into a call.
+        is_funding_page = (
+            False
+            if is_explicit_empty_state
+            else _classify_page_stage_b(page_url, page_title, page_content)
+        )
         # direct_page explicitly identifies the configured starting URL as a
         # programme-level record, even when its page title looks like a hub.
         # Known empty-state listings remain excluded.
