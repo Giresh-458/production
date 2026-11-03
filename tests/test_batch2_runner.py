@@ -474,21 +474,28 @@ def test_collector_artifact_audit_quarantines_markdown_raw_content_tampering(tmp
     )
 
 
-def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
+def test_batch2_prepares_source_registry_only_for_downstream_agents_before_collectors(tmp_path):
     events = []
     captured = {}
 
-    def fake_sync():
-        events.append("sync")
-        return SimpleNamespace(total_entries=12, active_entries=11, deprecated_entries=1)
+    def fake_sync(*, agent_filter):
+        events.append(("sync", agent_filter))
+        return SimpleNamespace(total_entries=20, active_entries=18, deprecated_entries=2)
 
-    def fake_plan(*, force=False):
-        events.append("plan")
+    def fake_plan(*, force=False, agent_filter=None, output_path=None):
+        events.append(("plan", agent_filter))
         assert force is True
-        return SimpleNamespace(total_entries=11, due_entries=11, skipped_entries=0)
+        assert agent_filter in DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+        assert output_path is not None
+        return SimpleNamespace(
+            total_entries=1,
+            due_entries=1,
+            skipped_entries=0,
+            refresh_plan_path=str(output_path),
+        )
 
     def fake_execute(**kwargs):
-        events.append("execute")
+        events.append(("execute", None))
         captured.update(kwargs)
         return {
             "status": "completed",
@@ -509,9 +516,19 @@ def test_batch2_prepares_source_registry_once_before_collectors(tmp_path):
             execution_mode="parallel",
         )
 
-    assert events == ["sync", "plan", "execute"]
+    expected_events = []
+    for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
+        expected_events.extend([("sync", agent), ("plan", agent)])
+    expected_events.append(("execute", None))
+    assert events == expected_events
     assert captured["base_input_data"]["defer_registry_sync"] is True
     assert report["source_registry"]["status"] == "ready"
+    assert set(report["source_registry"]["agents_synced"]) == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+    assert report["source_registry"]["refresh_plan_entries"] == 11
+    combined_plan = Path(report["source_registry"]["refresh_plan_path"])
+    assert combined_plan.exists()
+    plan_payload = json.loads(combined_plan.read_text(encoding="utf-8"))
+    assert set(plan_payload["agents"]) == DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 
 def test_batch2_stops_if_source_registry_preparation_fails(tmp_path):
@@ -683,11 +700,15 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
         }
 
     with patch(
-        "core.batch2.sync_source_registry",
-        return_value=SimpleNamespace(total_entries=11, active_entries=11, deprecated_entries=0),
-    ), patch(
-        "core.batch2.build_source_refresh_plan",
-        return_value=SimpleNamespace(total_entries=11, due_entries=11, skipped_entries=0),
+        "core.batch2.prepare_batch2_source_registry",
+        return_value={
+            "status": "ready",
+            "agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            "refresh_plan_entries": 11,
+            "refresh_due_entries": 11,
+            "refresh_skipped_entries": 0,
+            "refresh_plan_path": str(tmp_path / "batch2" / "batch2-test-run" / "workflow" / "source_refresh_plan.json"),
+        },
     ), patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run):
         report = execute_batch2(
             batch1_acceptance=_batch1_acceptance(),
