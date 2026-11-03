@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 from agents import regulation_agent
 from core.recursive_collection import _score_link, source_focus_link_keywords
 
@@ -67,3 +70,62 @@ def test_regulation_configured_scan_uses_the_source_focus_for_recursive_links(mo
     assert "stablecoins" in keywords
     assert "casps" in keywords
     assert "reporting" not in keywords
+
+
+def test_regulation_source_config_loads_explicit_esg_area(monkeypatch, tmp_path):
+    sources_path = tmp_path / "regulation_sources.yaml"
+    sources_path.write_text(
+        "regulation_sources:\n"
+        "  eu:\n"
+        "    - name: CSRD\n"
+        "      url: https://finance.example.org/csrd\n"
+        "      area: ESG\n"
+        "      focus: sustainability disclosure, auditability, ESG reporting\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(regulation_agent, "apply_refresh_policy", lambda _agent, sources: sources)
+
+    sources = regulation_agent.load_sources(sources_path)
+
+    assert len(sources) == 1
+    assert sources[0].name == "CSRD"
+    assert sources[0].area == "ESG"
+
+
+def test_explicit_regulation_source_area_beats_incidental_asset_words(monkeypatch, tmp_path):
+    source = regulation_agent.RegulationSource(
+        name="CSRD",
+        url="https://finance.example.org/csrd",
+        focus="sustainability disclosure, auditability, ESG reporting",
+        source_type="Regulation",
+        evidence_type="Official Regulation",
+        area="ESG",
+    )
+    captured = {}
+    monkeypatch.setattr(regulation_agent, "load_sources", lambda _path: [source])
+    monkeypatch.setattr(
+        regulation_agent,
+        "collect_structured_source",
+        lambda *_args: SimpleNamespace(
+            url=source.url,
+            title="Corporate sustainability reporting",
+            text=(
+                "The standard requires sustainability disclosures, emissions "
+                "assurance, and reporting about tokenized assets."
+            ),
+        ),
+    )
+
+    def fake_is_relevant(_text, area_hint):
+        captured["area_hint"] = area_hint
+        return True
+
+    monkeypatch.setattr(regulation_agent, "is_relevant", fake_is_relevant)
+    sources_path = tmp_path / "sources.yaml"
+    sources_path.write_text("{}\n", encoding="utf-8")
+
+    documents = regulation_agent.build_auto_documents(sources_path)
+
+    assert len(documents) == 1
+    assert captured["area_hint"] == "ESG"
+    assert documents[0].area_hint == "ESG"
