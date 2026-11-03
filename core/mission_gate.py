@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from core.funding_selection import FundingCallContext
+from core.schemas import DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 
 STOP = {
     "the", "and", "for", "with", "that", "this", "from", "into", "their",
@@ -15,6 +16,8 @@ STOP = {
     "evaluation", "adoption", "existing", "solutions", "address", "problems",
     "gaps", "gap", "technical", "transition", "commercialization", "tcup", "nsf",
     "investigate", "affecting", "unresolved", "limitations", "improving",
+    # Generic funding priorities must not count as substantive technical overlap.
+    "market", "markets", "adoption",
 }
 
 
@@ -31,31 +34,106 @@ def _specific_area(value: Any) -> str:
     return "" if rendered.lower() in {"", "general", "unscoped", "unknown", "none", "null"} else rendered
 
 
+def _supported_domain_names(research_context: Any) -> set[str] | None:
+    """Return canonical domains backed by the same strong evidence as Batch-1 routing.
+
+    Older persisted contexts may not contain domain_relevance. For those
+    contexts, return None and preserve their legacy selected-domain behavior.
+    When evidence is present, weak secondary domains must not become mission
+    anchors merely because they appear in selected_domains.
+    """
+    raw_ranking = getattr(research_context, "domain_relevance", None)
+    if not isinstance(raw_ranking, (list, tuple)) or not raw_ranking:
+        return None
+    if not any(
+        isinstance(item, dict) and ("raw_score" in item or "matched_terms" in item)
+        for item in raw_ranking
+    ):
+        return None
+
+    supported: set[str] = set()
+    for item in raw_ranking:
+        if not isinstance(item, dict):
+            continue
+        domain = normalize_area(str(item.get("domain") or item.get("area") or ""))
+        weights = DOMAIN_TERM_WEIGHTS.get(str(domain or ""))
+        if not weights:
+            continue
+        try:
+            raw_score = float(item.get("raw_score", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if raw_score < 2.5:
+            continue
+        matched_terms = item.get("matched_terms") or []
+        if not isinstance(matched_terms, (list, tuple, set)):
+            continue
+        strong_terms = {
+            term.casefold()
+            for term, weight in weights.items()
+            if float(weight) >= 2.0
+        }
+        supported_terms = {
+            str(term).casefold().strip()
+            for term in matched_terms
+            if str(term).casefold().strip() in strong_terms
+        }
+        if supported_terms and has_required_domain_anchor_groups(domain, supported_terms):
+            supported.add(str(domain))
+    return supported
+
+
 def _mission_anchor_values(ctx: FundingCallContext) -> list[str]:
     """Build relevance anchors only from comparatively specific mission fields.
 
     Generated investigation questions and inferred challenges are deliberately
     excluded: boilerplate such as "barriers to deployment and adoption" can
-    otherwise make unrelated pages look relevant to almost any grant.
+    otherwise make unrelated pages look relevant to almost any grant. Canonical
+    domain labels are included only when the persisted domain-ranking evidence
+    meets the same strong-anchor threshold used by the pipeline's domain router.
     """
     rc = ctx.research_context
     values: list[str] = []
+    supported_domains = _supported_domain_names(rc) if rc else None
+
+    def add_values(raw_values: Any) -> None:
+        if not isinstance(raw_values, (list, tuple, set)):
+            return
+        for raw_value in raw_values:
+            value = str(raw_value or "").strip()
+            if not value:
+                continue
+            canonical = normalize_area(value)
+            if (
+                supported_domains is not None
+                and canonical in DOMAIN_TERM_WEIGHTS
+                and canonical not in supported_domains
+            ):
+                continue
+            values.append(value)
+
+    def add_domain(raw_value: Any) -> None:
+        value = _specific_area(raw_value)
+        if not value:
+            return
+        canonical = normalize_area(value)
+        if (
+            supported_domains is not None
+            and canonical in DOMAIN_TERM_WEIGHTS
+            and canonical not in supported_domains
+        ):
+            return
+        values.append(value)
 
     if rc:
-        values.extend(str(v).strip() for v in (rc.technology_themes or ()) if str(v).strip())
-        values.extend(str(v).strip() for v in (rc.funding_priorities or ()) if str(v).strip())
-        values.extend(str(v).strip() for v in (rc.target_outcomes or ()) if str(v).strip())
-        values.extend(str(v).strip() for v in (rc.selected_domains or ()) if str(v).strip())
+        add_values(rc.technology_themes)
+        add_values(rc.funding_priorities)
+        add_values(rc.target_outcomes)
+        add_values(rc.selected_domains)
+        add_domain(getattr(rc, "domain", None))
 
-        rc_domain = _specific_area(getattr(rc, "domain", None))
-        if rc_domain:
-            values.append(rc_domain)
-
-    ctx_area = _specific_area(ctx.research_area)
-    if ctx_area:
-        values.append(ctx_area)
-
-    values.extend(str(v).strip() for v in (ctx.research_priorities or []) if str(v).strip())
+    add_domain(ctx.research_area)
+    add_values(ctx.research_priorities)
     return list(dict.fromkeys(values))
 
 
