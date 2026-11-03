@@ -47,12 +47,12 @@ The JSON object contains the Batch-1 run ID and a `funding_contexts` array. The 
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
 - Confirmed OPEN_CALL status.
-- At least one absolute HTTP(S) official source or application URL.
+- At least one absolute HTTP(S) source or application URL supplied by the Batch-1 selector.
 - Substantive applicant eligibility evidence.
-- Explicit research intent.
+- Explicit research intent and non-empty research-intent evidence.
 - Known research-context confidence.
-- Source-grounded challenge, evidence references, inference provenance, and research-intent evidence.
-- Consistent research-context and selected-call funding IDs.
+- At least one absolute HTTP(S) research evidence reference, source-grounded challenge, and inference provenance.
+- Consistent research-context and selected-call funding IDs. If the Batch-1 selector's canonical call ID differs from the research-context's earlier ID, the boundary factory rebinds it only when a research evidence reference identifies that same selected call's source or application URL, and retains the original ID in `research_context_original_funding_call_id`.
 
 Do not manually invent or edit funding-call context values. Invalid or incomplete contexts are rejected before collection begins.
 
@@ -85,7 +85,7 @@ Focused Batch-2, agent-contract, and normalization checks:
 
     python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_agent_normalization_refresh.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
 
-These tests use controlled fixtures and mocks where appropriate. The PR's RIF funding and collection quality-gates workflow runs a bounded live Batch-1-to-Batch-2 smoke only after the existing Batch-1 acceptance gate passes. The Batch-2 smoke is required when reached: its failure fails the quality workflow. If Batch-1 is blocked, Batch-2 is skipped and must be reported as unverified; do not bypass Batch-1 source-coverage qualification to force the smoke.
+These tests use controlled fixtures and mocks where appropriate. The RIF funding and collection quality-gates workflow keeps the full Batch-1 source-coverage acceptance decision strict. Separately, it writes a selected-context handoff only when every selected call passes the individual downstream-context checks; the bounded Batch-2 smoke runs against those real selected contexts even if an unrelated configured Batch-1 source blocks global coverage. This smoke verifies Batch-2 independently; it does not mark Batch-1 globally accepted or make the full pipeline eligible to proceed. A failed global Batch-1 gate still fails the full quality workflow and must be reported separately from the Batch-2 smoke result.
 
 ## Run Batch-2 independently
 
@@ -97,7 +97,7 @@ Run a complete refresh profile:
 
     python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
 
-The standalone runner accepts either a globally accepted Batch-1 quality-audit handoff or a selected-context validation envelope. The latter is intended for independent Batch-2 execution: each context must pass the downstream contract (current OPEN_CALL status, usable official source/application URL, substantive eligibility, research intent, confidence, source-grounded challenges, evidence references, and inference provenance). This selected-context validation is not a global Batch-1 acceptance and cannot authorize the full pipeline to proceed when its global Batch-1 quality gate is blocked.
+The standalone runner accepts either a globally accepted Batch-1 quality-audit handoff or a selected-context validation envelope emitted by the strict selector for real selected records. For the selected-context form, every context is revalidated by Batch-2: current OPEN_CALL status, absolute HTTP(S) source/application URL, substantive eligibility, matching call/research-context identity, research intent, confidence, source-grounded challenges, HTTP(S) evidence references, and inference provenance. The exact funding-call IDs and Batch-1 run ID must match the envelope. This selected-context validation is not a global Batch-1 acceptance and cannot authorize the full pipeline to proceed when its global Batch-1 quality gate is blocked. Do not hand-author this envelope or fabricate contexts.
 
 Available profiles:
 - smoke: one item per configured source and a short bounded timeout.
@@ -216,7 +216,7 @@ The Literature Agent also calls semantic_scores during collection. By default, R
 
 ## Troubleshooting
 
-- ModuleNotFoundError: activate .venv and reinstall requirements in that environment.
+- ModuleNotFoundError: activate .venv and reinstall requirements in that environment. The standalone CLI resolves the repository root from its own file path; invoke it from the repository checkout and do not rely on a globally configured `PYTHONPATH`.
 - Browser or Playwright errors: run python -m playwright install chromium from the active environment.
 - Ollama connection errors: they do not block the default Batch-2 path; they matter only for optional LLM-enabled stages.
 - FileExistsError for a run directory: choose a new --run-id or let the runner generate one.
