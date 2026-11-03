@@ -33,6 +33,7 @@ def test_duplicate_mission_gate_statistics(
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Quantum Networking",
             "organization": "QOrg",
             "source_url": f"https://funding.example.org/calls/{call_id}",
