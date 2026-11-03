@@ -410,6 +410,22 @@ def infer_area(text: str, default: str = "Unscoped") -> str:
     return default
 
 
+def infer_configured_source_area(
+    source: RegulationSource,
+    content: str,
+    explicit_area: str | None = None,
+) -> str:
+    """Prefer explicit source metadata over incidental terms in page bodies."""
+    if explicit_area:
+        return explicit_area
+    if source.area:
+        return source.area
+    metadata_area = infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped")
+    if metadata_area != "Unscoped":
+        return metadata_area
+    return infer_area(cleaned_text(content), "Unscoped")
+
+
 def infer_constraint(text: str) -> str:
     lowered = text.lower()
     for item in CONSTRAINT_VOCAB:
@@ -442,7 +458,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         structured = collect_structured_source(source.url, source.source_type, area)
         if structured:
             full_text = cleaned_text(f"{source.name} {source.focus} {structured.text}")
-            area_hint = area or source.area or infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped") or infer_area(full_text, "Unscoped")
+            area_hint = infer_configured_source_area(source, full_text, area)
             if is_relevant(full_text, area_hint):
                 documents.append(RegulationDocument(name=source.name, issuing_body=source.name, source_type=source.source_type, evidence_type=source.evidence_type, area_hint=area_hint, focus=source.focus, url=structured.url, title=structured.title, content=full_text, source_mode="Automatic"))
             continue
@@ -492,7 +508,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         )
         save_recursive_review(review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        area_hint = area or source.area or infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped") or infer_area(cleaned_text(f"{title} {content}"), "Unscoped")
+        area_hint = infer_configured_source_area(source, cleaned_text(f"{title} {content}"), area)
         full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not technically relevant.", source.name)
