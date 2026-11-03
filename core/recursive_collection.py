@@ -132,7 +132,8 @@ def source_focus_link_keywords(source_name: str, focus: str | None) -> tuple[str
     publisher domain). Source names and focus phrases provide a safer boundary.
     """
     focus_text = str(focus or "").strip()
-    if not focus_text:
+    source_name_text = str(source_name or "").strip()
+    if not focus_text and not source_name_text:
         return ()
 
     stop_words = {
@@ -143,7 +144,7 @@ def source_focus_link_keywords(source_name: str, focus: str | None) -> tuple[str
     }
     phrases: list[str] = []
     tokens: list[str] = []
-    fragments = [str(source_name or "").strip()]
+    fragments = [source_name_text]
     fragments.extend(
         fragment.strip()
         for fragment in re.split(r"[,;|]+", focus_text)
