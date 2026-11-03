@@ -130,8 +130,7 @@ def mock_pipeline_deps():
             "run_stage": mock_run_stage,
             "rglob": mock_rglob,
             "print": mock_print,
-            "sync_registry": mock_sync_registry,
-            "build_plan": mock_build_plan,
+            "prepare_registry": mock_prepare_registry,
         }
 
 def test_pipeline_completed_no_proposal(tmp_path, mock_pipeline_deps):
@@ -199,7 +198,6 @@ def test_pipeline_proposal_gates_does_not_mutate_default_registry(tmp_path, mock
         exit_code = run_pipeline.main()
 
     assert exit_code == 0
-    assert mock_pipeline_deps["sync_registry"].call_count == 1
-    assert mock_pipeline_deps["build_plan"].call_count == 1
+    mock_pipeline_deps["prepare_registry"].assert_called_once()
     assert SOURCE_REGISTRY_PATH.stat().st_mtime_ns == initial_mtime
     assert SOURCE_REGISTRY_PATH.read_bytes() == initial_bytes
