@@ -108,8 +108,7 @@ def mock_pipeline_deps():
          patch("run_pipeline.get_all_open_funding_calls", return_value=([{"funding_call_id": "test-123", "title": "Test", "program_name": "Test", "status": "OPEN_CALL", "source_url": "http://test", "application_url": "http://test/apply", "eligibility": "Eligible applicants: research universities and technology organizations may apply.", "domain_relevance": [{"area": "DePIN", "score": 1.0}], "research_context": {"funding_call_id": "test-123", "domain": "DePIN", "technology_themes": [], "funding_priorities": [], "target_outcomes": [], "investigation_questions": [], "inferred_challenges": ["The official call identifies a source-supported research challenge."], "evidence_refs": ["http://test"], "inference_provenance": ["source_grounded_problem_extraction"], "confidence": "Medium", "research_intent": "research", "research_intent_evidence": ["The call explicitly supports research and technical validation."]}}], [])) as mock_get_open, \
          patch("builtins.print") as mock_print, \
          patch("pathlib.Path.rglob") as mock_rglob, \
-         patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
-         patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
+         patch("run_pipeline.prepare_batch2_source_registry", return_value={"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}) as mock_prepare_registry:
 
         def fake_execute_batch(**kwargs):
             from tests.batch2_test_helpers import write_test_collector_artifacts
