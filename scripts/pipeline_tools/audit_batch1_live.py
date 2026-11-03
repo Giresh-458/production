@@ -298,7 +298,7 @@ for item in collection_results:
             "max_depth", "max_depth_reached", "urls_skipped",
             "relevant_urls_skipped", "coverage_gaps", "failed_urls", "truncation_details",
             "evidence_verified", "currentness_verified",
-            "no_active_opportunities_confirmed",
+            "no_active_opportunities_confirmed", "active_program_confirmed",
         )
     })
     source_summary[-1]["coverage_gaps_count"] = len(item.get("coverage_gaps") or [])
