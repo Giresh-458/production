@@ -287,7 +287,7 @@ jobs:
               github_output = os.environ.get("GITHUB_OUTPUT")
               if github_output:
                   with open(github_output, "a", encoding="utf-8") as output:
-                      output.write("context_handoff_ready=true\\n")
+                      output.write("context_handoff_ready=true\n")
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(
               r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
