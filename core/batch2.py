@@ -67,6 +67,8 @@ def validate_batch1_context(context: FundingCallContext) -> list[str]:
         return ["input is not a FundingCallContext"]
 
     issues: list[str] = []
+    if not str(context.call_title or "").strip():
+        issues.append("funding call title is missing")
     if not is_safe_path_component(context.funding_call_id):
         issues.append("funding_call_id is not a safe path component")
     if str(context.status or "").strip().upper() != "OPEN_CALL":
