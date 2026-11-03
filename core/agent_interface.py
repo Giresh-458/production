@@ -204,11 +204,6 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
     # fetched page objects rather than a top-level url/source field. Preserve
     # the actual fetched HTTP(S) page as provenance instead of silently
     # labelling these records "Manual".
-    for field_name in ("base_url",):
-        value = str(_document_value(document, field_name, "")).strip()
-        parsed = urlparse(value)
-        if parsed.scheme in {"http", "https"} and parsed.netloc:
-            return value
     pages = _document_value(document, "pages", [])
     if isinstance(pages, (list, tuple)):
         for page in pages:
@@ -216,6 +211,10 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
             parsed = urlparse(value)
             if parsed.scheme in {"http", "https"} and parsed.netloc:
                 return value
+    value = str(_document_value(document, "base_url", "")).strip()
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return value
     return default_source or "Manual"
 
 
