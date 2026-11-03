@@ -89,6 +89,7 @@ jobs:
           from agents.funding_collector import _collect_eu_funding_tenders
           from core.schemas import CollectionResult
           from core.funding_selection import has_substantive_eligibility_evidence
+          from core.batch2 import validate_batch1_context
 
           target = "EU Open and Forthcoming Funding Calls"
           sources = load_sources(Path("sources/funding_sources.yaml"))
@@ -244,6 +245,9 @@ jobs:
                   if str(research_context.research_intent or "").casefold() != "research":
                       issues.append("research_intent_not_verified")
                   issues.extend(_research_context_quality_reasons(research_context))
+              # Reuse the production Batch-2 validator instead of maintaining
+              # a separate, weaker CI-only handoff contract.
+              issues.extend(validate_batch1_context(context))
               handoff_contexts.append({
                   "funding_call_id": context.funding_call_id,
                   "title": context.call_title,
