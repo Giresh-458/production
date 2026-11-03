@@ -153,7 +153,12 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
 
 
 
-def build_valid_funding_context(call_id: str = "CALL-BATCH2-001"):
+def build_valid_funding_context(
+    call_id: str = "CALL-BATCH2-001",
+    *,
+    source_url: str = "https://example.org/funding-call",
+    application_url: str = "https://example.org/apply",
+):
     """Build a schema-valid, source-grounded Batch-1 context for deterministic tests."""
     from core.funding_selection import FundingCallContext
     from core.research_schemas import FundingResearchContext
@@ -178,8 +183,8 @@ def build_valid_funding_context(call_id: str = "CALL-BATCH2-001"):
         required_partners="Research and industry partners",
         deliverables="Prototype and benchmark report",
         evaluation_criteria="Excellence and implementation",
-        application_url="https://example.org/apply",
-        source_url="https://example.org/funding-call",
+        application_url=application_url,
+        source_url=source_url,
         source_name="Batch-1 Test Agency",
         publication_date="2026-01-01",
         last_updated="2026-01-01",
@@ -195,7 +200,7 @@ def build_valid_funding_context(call_id: str = "CALL-BATCH2-001"):
             target_outcomes=("scalable secure settlement",),
             investigation_questions=("How can verification throughput scale securely?",),
             inferred_challenges=("Verification throughput degrades under high transaction volume.",),
-            evidence_refs=("https://example.org/funding-call",),
+            evidence_refs=(source_url,),
             inference_provenance=("source_grounded_problem_extraction",),
             confidence="High",
             research_intent="research",
