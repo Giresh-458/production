@@ -12,13 +12,11 @@ from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 @patch('run_pipeline.get_all_open_funding_calls')
 @patch('run_pipeline.execute_batch_run')
 @patch('run_pipeline.evaluate_collection_health')
-@patch('core.source_registry.sync_source_registry')
-@patch('core.source_registry.build_source_refresh_plan')
+@patch('run_pipeline.prepare_batch2_source_registry')
 @patch('core.intelligence.save_source_discovery_candidates')
 def test_source_discovery_duplicate_preservation(
     mock_save_discovery,
-    mock_build_source_refresh,
-    mock_sync_registry,
+    mock_prepare_registry,
     mock_evaluate_health,
     mock_execute_batch,
     mock_get_calls,
@@ -30,6 +28,7 @@ def test_source_discovery_duplicate_preservation(
 
     call_id = "CALL-TEST-DISC"
     mock_evaluate_health.return_value = (True, 10)
+    mock_prepare_registry.return_value = {"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}
 
     selected_call = {
         "selected": {
