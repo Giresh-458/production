@@ -3,8 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any
+
+# `python scripts/pipeline_tools/run_batch2.py` places the script directory,
+# not the repository root, at sys.path[0]. Add the project root explicitly so
+# this supported CLI works from CI, VS Code terminals, and other working dirs.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from core.batch2 import execute_batch2
 from core.funding_selection import FundingCallContext
