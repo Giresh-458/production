@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
-from core.batch2 import audit_collector_artifacts, execute_batch2, evaluate_collection_health, is_safe_path_component, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
+from core.batch2 import audit_collector_artifacts, execute_batch2, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.funding_selection import FundingCallContext
 from core.research_schemas import FundingResearchContext
 from core.normalization import build_normalized_collection_records, resolve_refresh_context
@@ -1103,6 +1103,39 @@ def test_collection_health_ignores_unexpected_agent_names():
     )
     assert healthy is False
     assert count == 0
+
+
+def test_collection_health_preserves_six_of_eleven_live_threshold():
+    expected_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+    assert len(expected_agents) == 11
+    assert minimum_healthy_collectors(len(expected_agents)) == 6
+
+    tasks = [
+        {
+            "agent_name": agent,
+            "status": "success" if index < 6 else "error",
+            "outputs_count": 1 if index < 6 else 0,
+        }
+        for index, agent in enumerate(expected_agents)
+    ]
+
+    healthy, count = evaluate_collection_health(
+        tasks,
+        min_required_agents=minimum_healthy_collectors(len(expected_agents)),
+        expected_agents=set(expected_agents),
+    )
+    assert healthy is True
+    assert count == 6
+
+    tasks[5]["status"] = "error"
+    tasks[5]["outputs_count"] = 0
+    healthy, count = evaluate_collection_health(
+        tasks,
+        min_required_agents=minimum_healthy_collectors(len(expected_agents)),
+        expected_agents=set(expected_agents),
+    )
+    assert healthy is False
+    assert count == 5
 
 
 def test_normalized_handoff_rejects_invalid_records_and_provenance():
