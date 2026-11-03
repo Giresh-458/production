@@ -6,6 +6,7 @@ from agents.lab_agent import LabDocument, LabPage
 from core.agent_interface import (
     _document_content,
     _document_source,
+    _document_agent_specific_body,
     build_intermediate_artifact_payload,
     save_intermediate_markdown,
 )
@@ -54,6 +55,7 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
     assert not warnings
     payload["shared_header"]["run_id"] = "batch2-lab-contract-test"
 
+    payload["agent_specific_body"] = _document_agent_specific_body(document)
     artifact_path = save_intermediate_markdown(payload=payload, output_dir=tmp_path)
     parsed = _normalize_intermediate_sections(artifact_path)
     normalized = normalize_intermediate_artifact(artifact_path)
