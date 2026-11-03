@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -1265,3 +1268,23 @@ def test_batch1_context_rejects_unsafe_funding_call_id():
     context.research_context.funding_call_id = "../outside"
     issues = validate_batch1_context(context)
     assert "funding_call_id is not a safe path component" in issues
+
+
+def test_batch2_cli_imports_project_when_launched_outside_repository_root(tmp_path):
+    repository_root = Path(__file__).resolve().parents[1]
+    script = repository_root / "scripts" / "pipeline_tools" / "run_batch2.py"
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Run RIF Batch-2 collection and normalization" in result.stdout
