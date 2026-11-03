@@ -42,6 +42,10 @@ on:
       - "scripts/pipeline_tools/audit_batch1_live.py"
       - "tests/test_xrpl_application_manager.py"
       - "core/funding_quality.py"
+      - "core/mission_gate.py"
+      - "core/recursive_collection.py"
+      - "tests/test_research_mission_grounding.py"
+      - "tests/test_regulation_source_scoping.py"
       - ".github/workflows/eu-funding-tests.yml"
 
 concurrency:
