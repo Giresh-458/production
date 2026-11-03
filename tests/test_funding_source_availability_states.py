@@ -20,6 +20,13 @@ def test_solana_rolling_program_signal_is_scoped():
     assert crawl4ai_web._reports_active_funding_program(SOLANA_URL, "Grants and Funding", SOLANA_TEXT)
     assert not crawl4ai_web._reports_active_funding_program("https://example.org/grants-funding", "Grants and Funding", SOLANA_TEXT)
     assert not crawl4ai_web._reports_active_funding_program(SOLANA_URL, "Grants and Funding", "General funding information.")
+    assert not crawl4ai_web._reports_active_funding_program(
+        SOLANA_URL, "Grants and Funding", "All applications are reviewed on a rolling basis."
+    )
+    assert not crawl4ai_web._reports_active_funding_program(
+        SOLANA_URL, "Grants and Funding",
+        "All funding applicants are required to fill out the application here."
+    )
 
 
 def test_solana_rolling_program_is_verified_after_complete_crawl(monkeypatch):
