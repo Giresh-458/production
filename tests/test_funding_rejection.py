@@ -256,6 +256,7 @@ def test_open_call_with_unverified_research_context_is_not_handed_downstream(run
     report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "no_research_opportunity"
     assert report["rejected_unverified_research_context"][0]["reason"] == "research_context_unverified"
+    assert report["rejected_unverified_research_context"][0]["validation_scope"] == "batch2_handoff"
     assert "research-context confidence is unknown" in report["rejected_unverified_research_context"][0]["reasons"]
 
 
