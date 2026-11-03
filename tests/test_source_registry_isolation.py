@@ -277,14 +277,18 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
          patch("run_pipeline.evaluate_collection_health", return_value=(True, 11)), \
          patch("run_pipeline.save_normalized_collection_records", side_effect=fake_save), \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}), \
-         patch("core.source_registry.sync_source_registry") as mock_sync, \
-         patch("core.source_registry.build_source_refresh_plan") as mock_plan:
+         patch(
+             "run_pipeline.prepare_batch2_source_registry",
+             return_value={
+                 "agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+                 "refresh_due_entries": 0,
+             },
+         ) as mock_prepare_registry:
 
         exit_code = run_pipeline.main()
 
     assert exit_code == 0
-    assert mock_sync.call_count == 1
-    assert mock_plan.call_count == 1
+    mock_prepare_registry.assert_called_once()
 
     # Verify default registry was not mutated
     assert SOURCE_REGISTRY_PATH.stat().st_mtime_ns == initial_mtime
