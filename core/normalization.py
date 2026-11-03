@@ -365,7 +365,7 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
     # through _coalesce/_clean: collapsing whitespace destroys multiline source
     # text and can also truncate content containing Markdown-style headings.
     artifact_text = path.read_text(encoding="utf-8")
-    raw_content_match = re.search(r"(?m)^## Raw Content[ \\t]*\\n", artifact_text)
+    raw_content_match = re.search(r"(?m)^## Raw Content[ \t]*\n", artifact_text)
     raw_content = (
         artifact_text[raw_content_match.end():].strip()
         if raw_content_match
