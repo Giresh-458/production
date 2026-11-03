@@ -360,6 +360,18 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
                         return h3_body
         return ""
 
+    # Raw Content is serialized as the final section of shared intermediate
+    # artifacts. Read it from the original Markdown rather than passing it
+    # through _coalesce/_clean: collapsing whitespace destroys multiline source
+    # text and can also truncate content containing Markdown-style headings.
+    artifact_text = path.read_text(encoding="utf-8")
+    raw_content_match = re.search(r"(?m)^## Raw Content[ \\t]*\\n", artifact_text)
+    raw_content = (
+        artifact_text[raw_content_match.end():].strip()
+        if raw_content_match
+        else _coalesce(find_section("Problem Statement"), find_section("Problem"))
+    )
+
     return {
         "title": parsed["title"],
         "shared_header": shared_header,
@@ -375,7 +387,7 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
             find_section("Problem"),
         ),
         "original_candidate": extracted_original_candidate,
-        "raw_content": _coalesce(find_section("Raw Content"), find_section("Problem Statement"), find_section("Problem")),
+        "raw_content": raw_content,
         "focus_area": _coalesce(find_section("Focus Area"), shared_header.get("focus_area", "")),
     }
 
