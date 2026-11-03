@@ -15,8 +15,7 @@ def run_pipeline_mocks():
          patch("run_pipeline.execute_batch_run") as mock_execute_batch, \
          patch("run_pipeline.save_normalized_collection_records") as mock_save_normalized, \
          patch("run_pipeline.mission_relevance") as mock_mission_relevance, \
-         patch("core.source_registry.sync_source_registry") as mock_sync_registry, \
-         patch("core.source_registry.build_source_refresh_plan") as mock_build_plan:
+         patch("run_pipeline.prepare_batch2_source_registry") as mock_prepare_registry:
         
         mock_run_stage.return_value = {"outputs": [], "status": "success", "outputs_count": 1}
         def fake_execute_batch(**kwargs):
@@ -35,6 +34,7 @@ def run_pipeline_mocks():
 
         mock_execute_batch.side_effect = fake_execute_batch
         mock_mission_relevance.return_value = {"passed": True}
+        mock_prepare_registry.return_value = {"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}
         
         def fake_save(roots, call_root, call_id, **kwargs):
             import json
@@ -90,8 +90,7 @@ def run_pipeline_mocks():
             "run_stage": mock_run_stage,
             "build_ctx": mock_build_ctx,
             "execute_batch": mock_execute_batch,
-            "sync_registry": mock_sync_registry,
-            "build_plan": mock_build_plan,
+            "prepare_registry": mock_prepare_registry,
         }
 
 def test_manual_notice_unknown_status_rejected(run_pipeline_mocks, tmp_path, monkeypatch):
@@ -115,8 +114,8 @@ def test_manual_notice_unknown_status_rejected(run_pipeline_mocks, tmp_path, mon
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--input-file", str(input_file), "--output-root", str(tmp_path)])))
     exit_code = run_pipeline.main()
     assert exit_code == 3
-    run_pipeline_mocks["sync_registry"].assert_not_called()
-    run_pipeline_mocks["build_plan"].assert_not_called()
+    run_pipeline_mocks["prepare_registry"].assert_not_called()
+    run_pipeline_mocks["prepare_registry"].assert_not_called()
     workflow_dir = next(tmp_path.glob("*/workflow"))
     report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "no_open_call"
@@ -286,7 +285,7 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
     with patch("run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS", ["literature", "company", "regulation", "opensource", "hackathon", "lab", "practitioner", "investment", "failure", "data_availability", "expert"]):
         exit_code = run_pipeline.main()
     assert exit_code == 0
-    run_pipeline_mocks["sync_registry"].assert_called_once()
+    run_pipeline_mocks["prepare_registry"].assert_called_once()
     run_pipeline_mocks["build_plan"].assert_called_once()
     
 def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
@@ -325,16 +324,18 @@ def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkey
     # Prove it didn't crash
     assert exit_code == 0
     
-    # Prove shared collection / registry only received the good call
-    run_pipeline_mocks["sync_registry"].assert_called_once()
-    registry_calls = run_pipeline_mocks["sync_registry"].call_args_list
-    assert len(registry_calls) == 1
-    # Check that only good_ctx is in the list passed to sync_registry (which may be empty in mock but let's check args)
-    # Actually, in run_pipeline, it's called with NO args for some reason? Wait:
-    # sync_source_registry() is called with no args! Oh wait, sync_source_registry() syncs the registry globally!
-    # Wait, my run_pipeline.py calls sync_source_registry([c for c in all_contexts if c is not None])?
-    # No! In run_pipeline.py, it's just sync_source_registry()!
-    
+    # Registry preparation is scoped to the 11 downstream agents. Funding-call
+    # isolation is verified on the actual shared-collection payload instead.
+    run_pipeline_mocks["prepare_registry"].assert_called_once()
+    collection_calls = [
+        call for call in run_pipeline_mocks["execute_batch"].call_args_list
+        if "funding_contexts" in call.kwargs
+    ]
+    assert len(collection_calls) == 1
+    assert [
+        context.funding_call_id for context in collection_calls[0].kwargs["funding_contexts"]
+    ] == ["call_good"]
+
     # Prove context was only built once for each call, never rebuilt
     calls = run_pipeline_mocks["build_ctx"].call_args_list
     assert len(calls) == 2
