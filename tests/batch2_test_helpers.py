@@ -150,3 +150,57 @@ def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str
             ]),
             encoding="utf-8",
         )
+
+
+
+def build_valid_funding_context(call_id: str = "CALL-BATCH2-001"):
+    """Build a schema-valid, source-grounded Batch-1 context for deterministic tests."""
+    from core.funding_selection import FundingCallContext
+    from core.research_schemas import FundingResearchContext
+
+    return FundingCallContext(
+        funding_call_id=call_id,
+        funding_body="Batch-1 Test Agency",
+        program_name="Privacy-preserving settlement research",
+        call_id=call_id,
+        call_title="Privacy-preserving settlement research",
+        status="OPEN_CALL",
+        opening_date="2026-01-01",
+        deadline="2027-12-31",
+        funding_amount="1000000",
+        currency="EUR",
+        duration="24 months",
+        eligible_costs="Personnel and equipment",
+        eligibility="Universities and research organizations may apply.",
+        geography="EU",
+        trl="TRL3-TRL5",
+        research_priorities=["zero knowledge verification"],
+        required_partners="Research and industry partners",
+        deliverables="Prototype and benchmark report",
+        evaluation_criteria="Excellence and implementation",
+        application_url="https://example.org/apply",
+        source_url="https://example.org/funding-call",
+        source_name="Batch-1 Test Agency",
+        publication_date="2026-01-01",
+        last_updated="2026-01-01",
+        research_area="RWA",
+        selection_mode="autonomous",
+        selection_score=0.95,
+        selection_reasons=["Validated Batch-1 fixture"],
+        research_context=FundingResearchContext(
+            funding_call_id=call_id,
+            domain="RWA",
+            technology_themes=("zero knowledge verification",),
+            funding_priorities=("zero knowledge verification",),
+            target_outcomes=("scalable secure settlement",),
+            investigation_questions=("How can verification throughput scale securely?",),
+            inferred_challenges=("Verification throughput degrades under high transaction volume.",),
+            evidence_refs=("https://example.org/funding-call",),
+            inference_provenance=("source_grounded_problem_extraction",),
+            confidence="High",
+            research_intent="research",
+            research_intent_evidence=("The official call supports technical research and validation.",),
+            selected_domains=("RWA",),
+            domain_relevance=(),
+        ),
+    )
