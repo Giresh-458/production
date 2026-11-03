@@ -168,11 +168,9 @@ Classic
 @patch('run_pipeline.get_all_open_funding_calls')
 @patch('run_pipeline.execute_batch_run')
 @patch('run_pipeline.evaluate_collection_health')
-@patch('core.source_registry.sync_source_registry')
-@patch('core.source_registry.build_source_refresh_plan')
+@patch('run_pipeline.prepare_batch2_source_registry')
 def test_empty_evidence_aborts(
-    mock_build_source_refresh,
-    mock_sync_registry,
+    mock_prepare_registry,
     mock_evaluate_health,
     mock_execute_batch,
     mock_get_calls,
