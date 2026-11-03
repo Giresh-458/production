@@ -12,6 +12,7 @@ on:
       - "core/funding_selection.py"
       - "tests/batch2_test_helpers.py"
       - "tests/test_file_lock.py"
+      - "tests/test_source_registry_isolation.py"
       - "tests/test_funding_selection.py"
       - "tests/test_funding_rejection.py"
       - "core/batch2.py"
@@ -105,6 +106,7 @@ jobs:
         run: |
           python -m pytest `
             tests/test_file_lock.py `
+            tests/test_source_registry_isolation.py `
             tests/test_funding_selection.py `
             tests/test_funding_rejection.py `
             tests/test_batch2_runner.py `
