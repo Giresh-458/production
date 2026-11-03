@@ -189,8 +189,12 @@ def test_empty_evidence_aborts(
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Quantum Networking",
             "organization": "QOrg",
+            "source_url": f"https://funding.example.org/calls/{call_id}",
+            "application_url": f"https://funding.example.org/calls/{call_id}",
+            "eligibility": "Eligible applicants: research universities and technology organizations may apply.",
             "research_area": "DePIN", "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {
                 "funding_call_id": call_id, "research_intent": "research",
@@ -209,6 +213,7 @@ def test_empty_evidence_aborts(
         "rejected_alternatives": []
     }
     mock_get_calls.return_value = ([selected_call["selected"]], [])
+    mock_run_stage.return_value = {"status": "success", "outputs": [selected_call["selected"]], "errors": []}
 
     def fake_execute_batch(**kwargs):
         # Do not write any markdown files to intermediate_dir!
