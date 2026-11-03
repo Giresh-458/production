@@ -760,6 +760,7 @@ def execute_batch2(
     run_id: str | None = None,
     batch1_run_id: str | None = None,
     batch1_acceptance: dict[str, Any] | None = None,
+    context_validation: dict[str, Any] | None = None,
     execution_mode: str = "parallel",
     max_workers: int = 6,
     timeout_budget_seconds: int = 1500,
@@ -779,27 +780,50 @@ def execute_batch2(
         batch1_acceptance.get("acceptance")
         if isinstance(batch1_acceptance, dict) else None
     )
-    if (
-        not isinstance(batch1_acceptance, dict)
-        or batch1_acceptance.get("accepted") is not True
-        or str(batch1_acceptance.get("status") or "").upper() != "ACCEPTED"
-        or batch1_acceptance.get("source_coverage_verified") is not True
-        or not isinstance(nested_acceptance, dict)
-        or nested_acceptance.get("accepted") is not True
-        or str(nested_acceptance.get("status") or "").upper() != "ACCEPTED"
-        or not isinstance(nested_acceptance.get("blockers"), list)
-        or nested_acceptance.get("blockers") != []
-        or nested_acceptance.get("blocker_count") != 0
-    ):
-        raise ValueError(
-            "Batch-2 requires an ACCEPTED Batch-1 global source-coverage attestation."
-        )
-    attested_batch1_run_id = str(batch1_acceptance.get("batch1_run_id") or "").strip()
-    if not attested_batch1_run_id:
-        raise ValueError("Batch-1 acceptance attestation is missing batch1_run_id.")
-    if batch1_run_id and str(batch1_run_id).strip() != attested_batch1_run_id:
-        raise ValueError("Batch-1 acceptance attestation run ID does not match batch1_run_id.")
-    batch1_run_id = attested_batch1_run_id
+    global_acceptance_valid = (
+        isinstance(batch1_acceptance, dict)
+        and batch1_acceptance.get("accepted") is True
+        and str(batch1_acceptance.get("status") or "").upper() == "ACCEPTED"
+        and batch1_acceptance.get("source_coverage_verified") is True
+        and isinstance(nested_acceptance, dict)
+        and nested_acceptance.get("accepted") is True
+        and str(nested_acceptance.get("status") or "").upper() == "ACCEPTED"
+        and isinstance(nested_acceptance.get("blockers"), list)
+        and nested_acceptance.get("blockers") == []
+        and nested_acceptance.get("blocker_count") == 0
+    )
+    if global_acceptance_valid:
+        attested_batch1_run_id = str(batch1_acceptance.get("batch1_run_id") or "").strip()
+        if not attested_batch1_run_id:
+            raise ValueError("Batch-1 acceptance attestation is missing batch1_run_id.")
+        if batch1_run_id and str(batch1_run_id).strip() != attested_batch1_run_id:
+            raise ValueError("Batch-1 acceptance attestation run ID does not match batch1_run_id.")
+        batch1_run_id = attested_batch1_run_id
+    else:
+        # Independent Batch-2 execution may use individually validated Batch-1
+        # contexts even when an unrelated configured source blocks the global
+        # Batch-1 scan. This does not grant global Batch-1 acceptance and does
+        # not alter the full pipeline's global acceptance gate.
+        if not isinstance(context_validation, dict):
+            raise ValueError(
+                "Batch-2 requires either an ACCEPTED global Batch-1 attestation "
+                "or an independently validated selected-context handoff."
+            )
+        validated_ids = context_validation.get("validated_funding_call_ids")
+        actual_ids = sorted(str(context.funding_call_id or "").strip() for context in contexts)
+        if (
+            str(context_validation.get("status") or "").upper() != "VALIDATED"
+            or context_validation.get("scope") != "selected_contexts_only"
+            or not str(context_validation.get("batch1_run_id") or "").strip()
+            or not isinstance(validated_ids, list)
+            or sorted(str(value).strip() for value in validated_ids) != actual_ids
+            or len(set(actual_ids)) != len(actual_ids)
+            or (batch1_run_id and str(batch1_run_id).strip() != str(context_validation.get("batch1_run_id")).strip())
+        ):
+            raise ValueError(
+                "Batch-2 selected-context validation does not match the supplied Batch-1 run and funding-call IDs."
+            )
+        batch1_run_id = str(context_validation["batch1_run_id"]).strip()
     for index, context in enumerate(contexts, start=1):
         context_issues = validate_batch1_context(context)
         if context_issues:
