@@ -91,11 +91,11 @@ These tests use controlled fixtures and mocks where appropriate. The RIF funding
 
 Plan the run without fetching sources or normalizing evidence:
 
-    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile smoke --dry-run
+    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json" --profile smoke --dry-run
 
 Run a complete refresh profile:
 
-    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/ci_batch1_full_live/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
+    python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json" --profile refresh --execution-mode parallel --max-workers 6
 
 The standalone runner accepts either a globally accepted Batch-1 quality-audit handoff or a selected-context validation envelope emitted by the strict selector for real selected records. For the selected-context form, every context is revalidated by Batch-2: current OPEN_CALL status, absolute HTTP(S) source/application URL, substantive eligibility, matching call/research-context identity, research intent, confidence, source-grounded challenges, HTTP(S) evidence references, and inference provenance. The exact funding-call IDs and Batch-1 run ID must match the envelope. This selected-context validation is not a global Batch-1 acceptance and cannot authorize the full pipeline to proceed when its global Batch-1 quality gate is blocked. Do not hand-author this envelope or fabricate contexts.
 
