@@ -97,12 +97,32 @@ def validate_batch1_context(context: FundingCallContext) -> list[str]:
             issues.append("research-context confidence is unknown")
         for name, label in (
             ("inferred_challenges", "source-grounded research problem signal"),
-            ("evidence_refs", "research-context evidence references"),
             ("inference_provenance", "research-context inference provenance"),
             ("research_intent_evidence", "research-intent evidence"),
         ):
-            if not field(name):
+            value = field(name)
+            if not value or (
+                isinstance(value, (list, tuple, set))
+                and not any(str(item or "").strip() for item in value)
+            ):
                 issues.append(f"research context is missing {label}")
+
+        raw_evidence_refs = field("evidence_refs")
+        if isinstance(raw_evidence_refs, str):
+            evidence_refs = [raw_evidence_refs]
+        elif isinstance(raw_evidence_refs, (list, tuple, set)):
+            evidence_refs = list(raw_evidence_refs)
+        else:
+            evidence_refs = []
+        valid_evidence_refs = []
+        for reference in evidence_refs:
+            parsed_reference = urlparse(str(reference or "").strip())
+            if parsed_reference.scheme in {"http", "https"} and parsed_reference.netloc:
+                valid_evidence_refs.append(str(reference).strip())
+        if not valid_evidence_refs:
+            issues.append(
+                "research context must contain at least one usable HTTP(S) evidence reference"
+            )
 
     return issues
 
