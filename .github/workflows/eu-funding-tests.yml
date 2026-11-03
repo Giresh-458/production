@@ -237,6 +237,8 @@ jobs:
           require(report.get("run_id") == run_root.name, "Batch-2 report run_id does not match its output directory")
 
           calls = report.get("funding_calls") or []
+          call_ids = [call.get("funding_call_id") for call in calls]
+          require(len(set(call_ids)) == len(call_ids), "Batch-2 report contains duplicate funding-call outputs")
           call_statuses = {call.get("status") for call in calls}
           ready_calls = [call for call in calls if call.get("status") == "ready_for_batch3"]
           no_evidence_calls = [call for call in calls if call.get("status") == "no_relevant_evidence"]
@@ -293,8 +295,14 @@ jobs:
               records = json.loads(records_path.read_text(encoding="utf-8"))
               require(len(records) == call.get("normalized_records"), f"Normalized record count mismatch for {call_id}")
               gate = call.get("mission_relevance_gate") or {}
+              gate_input = gate.get("input_records", 0)
+              gate_accepted = gate.get("accepted_records", 0)
+              gate_rejected = gate.get("rejected_records", 0)
+              require(gate_input == gate_accepted + gate_rejected, f"Mission gate accounting does not reconcile for {call_id}")
+              require(len(gate.get("details") or []) == gate_rejected, f"Mission gate rejection details do not reconcile for {call_id}")
               if call.get("status") == "ready_for_batch3":
                   require(bool(records), f"Ready funding call {call_id} has no normalized records")
+                  require(gate_accepted == len(records), f"Accepted mission records do not match normalized records for {call_id}")
                   for record in records:
                       require(record.get("run_id") == report.get("run_id"), f"Stale run_id in normalized record {record.get('record_id')}")
                       require(record.get("funding_call_ids") == [call_id], f"Cross-call or missing attribution in normalized record {record.get('record_id')}")
@@ -302,10 +310,9 @@ jobs:
                       require(record.get("normalization_status") == "NORMALIZED", f"Non-normalized record reached handoff: {record.get('record_id')}")
               else:
                   require(not records, f"No-relevant-evidence call {call_id} unexpectedly emitted normalized records")
-                  require(gate.get("input_records", 0) > 0, f"No-relevant-evidence call {call_id} had no normalization inputs")
-                  require(gate.get("accepted_records") == 0, f"No-relevant-evidence call {call_id} accepted records")
-                  require(gate.get("rejected_records") == gate.get("input_records"), f"No-relevant-evidence call {call_id} did not account for every input")
-                  require(len(gate.get("details") or []) == gate.get("rejected_records"), f"No-relevant-evidence call {call_id} did not record every rejection decision")
+                  require(gate_input > 0, f"No-relevant-evidence call {call_id} had no normalization inputs")
+                  require(gate_accepted == 0, f"No-relevant-evidence call {call_id} accepted records")
+                  require(gate_rejected == gate_input, f"No-relevant-evidence call {call_id} did not account for every input")
               total_records += len(records)
 
               skipped = call.get("skipped_artifacts") or []
