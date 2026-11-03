@@ -12,6 +12,7 @@ on:
       - "core/agent_interface.py"
       - "core/recursive_collection.py"
       - "tests/test_regulation_source_scoping.py"
+      - "sources/regulation_sources.yaml"
       - "core/file_lock.py"
       - "core/batch2.py"
       - "core/agent_registry.py"
