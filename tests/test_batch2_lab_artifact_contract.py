@@ -10,6 +10,7 @@ from core.agent_interface import (
     build_intermediate_artifact_payload,
     save_intermediate_markdown,
 )
+from core.batch2 import audit_collector_artifacts
 from core.normalization import _normalize_intermediate_sections, normalize_intermediate_artifact
 
 
@@ -56,10 +57,30 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
     payload["shared_header"]["run_id"] = "batch2-lab-contract-test"
 
     payload["agent_specific_body"] = _document_agent_specific_body(document)
-    artifact_path = save_intermediate_markdown(payload=payload, output_dir=tmp_path)
+    artifact_path = save_intermediate_markdown(
+        payload=payload,
+        output_dir=tmp_path / "intermediate" / "lab",
+    )
     parsed = _normalize_intermediate_sections(artifact_path)
     normalized = normalize_intermediate_artifact(artifact_path)
 
     assert parsed["raw_content"] == payload["raw_content"]
     assert normalized["source_url"] == source_url
     assert normalized["run_id"] == "batch2-lab-contract-test"
+
+    audited_tasks, audit = audit_collector_artifacts(
+        tmp_path,
+        [
+            {
+                "agent_name": "lab",
+                "status": "success",
+                "outputs_count": 1,
+                "output_paths": [str(artifact_path.resolve())],
+            }
+        ],
+        expected_agents={"lab"},
+        run_id="batch2-lab-contract-test",
+    )
+    assert audit["status"] == "passed"
+    assert audit["agents"][0]["persisted_valid_artifacts"] == 1
+    assert audited_tasks[0]["artifact_audit_issues"] == []
