@@ -10,11 +10,11 @@ The execution path is:
 
 1. Load one or more validated Batch-1 FundingCallContext objects.
 2. Schedule the 11 downstream collection agents in bounded parallel or sequential mode.
-3. Collect source evidence and write provenance-rich intermediate Markdown artifacts.
+3. Collect source evidence and write provenance-rich intermediate Markdown artifacts. Configured recursive crawls in Company, Hackathon, Open Source, and Regulation use each source's name/focus vocabulary instead of one global cross-domain link vocabulary, reducing unrelated sibling-page capture.
 4. Audit persisted Markdown artifacts against the collector response manifest, expected agent directory, current run ID, and matching source/provenance URLs. Invalid artifacts are quarantined, not silently normalized. Collector output manifests that point outside the agent directory, point to missing files, or conflict with a non-empty persisted-file manifest are critical blockers. A collector that reports an error after persisting a valid artifact may still count as partial success; the persisted artifact is authoritative, while the count discrepancy remains visible in the audit.
 5. Evaluate collection health from verified persisted artifacts. At least 6 of the 11 agents must produce usable evidence; a successful HTTP response or an inflated response counter without a valid artifact does not count.
 6. Normalize the current-run artifacts separately for each funding call.
-7. Enforce explicit funding-call ownership, call-scoped funding_call_ids, original attribution trace, run identity, source provenance, and mission relevance.
+7. Enforce explicit funding-call ownership, call-scoped funding_call_ids, original attribution trace, run identity, source provenance, and mission relevance. Canonical domain anchors are retained only when their domain-ranking evidence meets the same raw-score and strong-term threshold as the domain router; verified matched terms remain available as anchors, while generic priorities such as market adoption cannot independently admit unrelated evidence.
 8. Write structured normalized JSON, indexes, an input manifest, a skip audit, and the SQLite evidence ledger. Verify SQLite integrity and exact record/run/call/provenance correspondence.
 9. Validate the Batch-3 handoff and stop. The standalone runner never starts tagging, clustering, trends, synthesis, idea generation, or proposal generation.
 
@@ -44,7 +44,7 @@ A normal full-pipeline run writes validated contexts to:
 
     outputs/pipeline_run/<batch1-run-id>/workflow/funding_contexts.json
 
-The JSON object contains the Batch-1 run ID and a `funding_contexts` array. The standalone runner reads this file directly and does not rerun Batch-1. It accepts either (a) a global `batch1_acceptance` attestation with `accepted=true`, `status=ACCEPTED`, `source_coverage_verified=true`, zero blockers, and the same Batch-1 run ID, or (b) a `context_validation` envelope with `status=VALIDATED`, `scope=selected_contexts_only`, the same Batch-1 run ID, and an exact list of validated funding-call IDs. In both cases, the runner independently revalidates every serialized FundingCallContext before starting collection. The selected-context form permits independent Batch-2 execution when an unrelated configured Batch-1 source blocks global source coverage; it does not mark Batch-1 globally accepted and does not bypass the full pipeline's global Batch-1 acceptance gate. Bare context objects/lists and mismatched context IDs are rejected.
+The JSON object contains the Batch-1 run ID and a `funding_contexts` array. The standalone runner reads this file directly and does not rerun Batch-1. It accepts either (a) a global `batch1_acceptance` attestation with `accepted=true`, `status=ACCEPTED`, `source_coverage_verified=true`, zero blockers, and the same Batch-1 run ID, or (b) a `context_validation` envelope with `status=VALIDATED`, `scope=selected_contexts_only`, the same Batch-1 run ID, and an exact list of validated funding-call IDs. In both cases, the runner independently revalidates every serialized FundingCallContext before starting collection. The selected-context form permits independent Batch-2 execution when an unrelated configured Batch-1 source blocks the separate full-source-coverage audit; it does not mark Batch-1 globally accepted. The normal `run_pipeline.py` flow continues to apply its own current-call qualification and selected-context validation; a Batch-2 smoke result is not evidence that every configured Batch-1 source was covered. Bare context objects/lists and mismatched context IDs are rejected.
 
 Before collection, the standalone runner validates:
 - FundingCallContext schema and non-empty, unique funding_call_id values.
@@ -85,7 +85,7 @@ Open the repository folder in VS Code and select the interpreter at .venv\Script
 
 Focused Batch-2, agent-contract, and normalization checks:
 
-    python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_agent_normalization_refresh.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
+    python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_regulation_source_scoping.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_research_mission_grounding.py tests/test_agent_normalization_refresh.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
 
 These tests use controlled fixtures and mocks where appropriate. The RIF funding and collection quality-gates workflow keeps the full Batch-1 source-coverage acceptance decision strict. Separately, it writes a selected-context handoff for the subset of real Batch-1 selected calls that pass the individual downstream-context checks; invalid selected calls are excluded and recorded in the audit. The bounded Batch-2 smoke runs only against that validated subset, even if an unrelated configured Batch-1 source blocks global coverage. This smoke verifies Batch-2 independently; it does not mark Batch-1 globally accepted or make the full pipeline eligible to proceed. A failed global Batch-1 gate still fails the full quality workflow and must be reported separately from the Batch-2 smoke result.
 
