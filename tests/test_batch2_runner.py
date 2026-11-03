@@ -973,6 +973,74 @@ def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_p
         load_funding_context_handoff(handoff)
 
 
+
+
+def test_batch2_independent_execution_accepts_exactly_validated_contexts_without_global_source_attestation(tmp_path):
+    context = _context()
+    validation = {
+        "status": "VALIDATED",
+        "scope": "selected_contexts_only",
+        "batch1_run_id": "batch1-independent-run",
+        "validated_funding_call_ids": [context.funding_call_id],
+    }
+    with patch("core.batch2.execute_batch_run", return_value={
+        "status": "dry_run",
+        "tasks": [
+            {"agent_name": agent, "status": "planned", "outputs_count": 0}
+            for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+        ],
+    }):
+        report = execute_batch2(
+            funding_contexts=[context],
+            context_validation=validation,
+            batch1_run_id="batch1-independent-run",
+            output_root=tmp_path,
+            run_id="batch2-independent-dry-run",
+            dry_run=True,
+        )
+    assert report["status"] == "dry_run"
+    assert report["batch1_run_id"] == "batch1-independent-run"
+    assert report["batch3_started"] is False
+
+
+def test_batch2_independent_context_validation_rejects_call_id_mismatch(tmp_path):
+    context = _context()
+    validation = {
+        "status": "VALIDATED",
+        "scope": "selected_contexts_only",
+        "batch1_run_id": "batch1-independent-run",
+        "validated_funding_call_ids": ["A-DIFFERENT-CALL"],
+    }
+    with pytest.raises(ValueError, match="does not match the supplied Batch-1 run and funding-call IDs"):
+        execute_batch2(
+            funding_contexts=[context],
+            context_validation=validation,
+            batch1_run_id="batch1-independent-run",
+            output_root=tmp_path,
+            run_id="batch2-invalid-context-validation",
+            dry_run=True,
+        )
+
+
+def test_standalone_batch2_loads_selected_context_validation_without_global_acceptance(tmp_path):
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff
+
+    context = _context()
+    handoff = tmp_path / "funding_contexts.json"
+    handoff.write_text(json.dumps({
+        "batch1_run_id": "batch1-context-only-run",
+        "context_validation": {
+            "status": "VALIDATED",
+            "scope": "selected_contexts_only",
+            "batch1_run_id": "batch1-context-only-run",
+            "validated_funding_call_ids": [context.funding_call_id],
+        },
+        "funding_contexts": [context.to_dict()],
+    }), encoding="utf-8")
+    loaded, run_id = load_funding_context_handoff(handoff)
+    assert run_id == "batch1-context-only-run"
+    assert [item.funding_call_id for item in loaded] == [context.funding_call_id]
+
 def test_batch2_api_rejects_missing_or_mismatched_global_acceptance(tmp_path):
     context = _context()
     with pytest.raises(ValueError, match="ACCEPTED Batch-1 global source-coverage attestation"):
