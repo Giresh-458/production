@@ -225,29 +225,22 @@ jobs:
           validated_contexts = []
           for record in selected:
               context = build__selected_call_context(record)
-              issues = []
+              # Reuse the production Batch-2 validator for call status,
+              # eligibility, identity, research intent, and evidence URLs.
+              issues = validate_batch1_context(context)
               if not context.call_title:
                   issues.append("missing_call_title")
-              if context.status != "OPEN_CALL":
-                  issues.append("call_not_currently_open")
+              # The live qualification audit additionally requires both URLs,
+              # not merely the one-URL minimum used by the standalone runner.
               if not context.source_url:
                   issues.append("missing_source_url")
               if not context.application_url:
                   issues.append("missing_application_url")
-              if not has_substantive_eligibility_evidence(context.eligibility):
-                  issues.append("missing_substantive_eligibility")
               if not record.get("matched_rif_domains"):
                   issues.append("missing_verified_rif_domain")
               research_context = context.research_context
-              if research_context is None:
-                  issues.append("missing_research_context")
-              else:
-                  if str(research_context.research_intent or "").casefold() != "research":
-                      issues.append("research_intent_not_verified")
+              if research_context is not None:
                   issues.extend(_research_context_quality_reasons(research_context))
-              # Reuse the production Batch-2 validator instead of maintaining
-              # a separate, weaker CI-only handoff contract.
-              issues.extend(validate_batch1_context(context))
               handoff_contexts.append({
                   "funding_call_id": context.funding_call_id,
                   "title": context.call_title,
