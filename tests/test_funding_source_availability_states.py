@@ -9,7 +9,7 @@ from core.schemas import CollectionResult
 SOLANA_URL = "https://solana.org/grants-funding"
 SOLANA_TEXT = (
     "All funding applicants for Solana Foundation standard and convertible grants "
-    "are required to fill out the application here. "
+    "are required to fill out the application here.\n"
     "All applications are reviewed on a rolling basis."
 )
 XRPL_ROOT = "https://xrplgrants.org/"
