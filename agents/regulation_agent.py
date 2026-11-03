@@ -349,7 +349,8 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             focus = cleaned_text(str(entry.get("focus", "")))
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
-            source_area = cleaned_text(str(entry.get("area", "")) or "") or None
+            source_area_value = cleaned_text(str(entry.get("area") or ""))
+            source_area = source_area_value if source_area_value in AREA_KEYWORDS else None
             if name and url:
                 sources.append(
                     RegulationSource(
