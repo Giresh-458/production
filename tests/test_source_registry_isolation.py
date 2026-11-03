@@ -289,6 +289,7 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
 
     assert exit_code == 0
     mock_prepare_registry.assert_called_once()
+    assert mock_prepare_registry.call_args.kwargs["force"] is False
 
     # Verify default registry was not mutated
     assert SOURCE_REGISTRY_PATH.stat().st_mtime_ns == initial_mtime
