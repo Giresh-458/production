@@ -253,9 +253,9 @@ def _document_content(document: Any) -> str:
                 block.append(f"Source URL: {url}")
             if content:
                 block.append(content)
-            page_blocks.append("\\n".join(block))
+            page_blocks.append("\n".join(block))
         if page_blocks:
-            return "\\n\\n".join(page_blocks)
+            return "\n\n".join(page_blocks)
 
     parts: list[str] = []
     if isinstance(document, dict):
