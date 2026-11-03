@@ -46,6 +46,7 @@ on:
       - "core/recursive_collection.py"
       - "tests/test_research_mission_grounding.py"
       - "tests/test_regulation_source_scoping.py"
+      - "sources/regulation_sources.yaml"
       - ".github/workflows/eu-funding-tests.yml"
 
 concurrency:
