@@ -34,7 +34,7 @@ def _specific_area(value: Any) -> str:
     return "" if rendered.lower() in {"", "general", "unscoped", "unknown", "none", "null"} else rendered
 
 
-def _supported_domain_names(research_context: Any) -> set[str] | None:
+def _supported_domain_evidence(research_context: Any) -> dict[str, set[str]] | None:
     """Return canonical domains backed by the same strong evidence as Batch-1 routing.
 
     Older persisted contexts may not contain domain_relevance. For those
@@ -51,7 +51,7 @@ def _supported_domain_names(research_context: Any) -> set[str] | None:
     ):
         return None
 
-    supported: set[str] = set()
+    supported: dict[str, set[str]] = {}
     for item in raw_ranking:
         if not isinstance(item, dict):
             continue
@@ -79,7 +79,7 @@ def _supported_domain_names(research_context: Any) -> set[str] | None:
             if str(term).casefold().strip() in strong_terms
         }
         if supported_terms and has_required_domain_anchor_groups(domain, supported_terms):
-            supported.add(str(domain))
+            supported[str(domain)] = supported_terms
     return supported
 
 
@@ -94,7 +94,12 @@ def _mission_anchor_values(ctx: FundingCallContext) -> list[str]:
     """
     rc = ctx.research_context
     values: list[str] = []
-    supported_domains = _supported_domain_names(rc) if rc else None
+    supported_domain_evidence = _supported_domain_evidence(rc) if rc else None
+    supported_domains = (
+        set(supported_domain_evidence)
+        if supported_domain_evidence is not None
+        else None
+    )
 
     def add_values(raw_values: Any) -> None:
         if not isinstance(raw_values, (list, tuple, set)):
@@ -131,6 +136,9 @@ def _mission_anchor_values(ctx: FundingCallContext) -> list[str]:
         add_values(rc.target_outcomes)
         add_values(rc.selected_domains)
         add_domain(getattr(rc, "domain", None))
+        if supported_domain_evidence is not None:
+            for matched_terms in supported_domain_evidence.values():
+                add_values(matched_terms)
 
     add_domain(ctx.research_area)
     add_values(ctx.research_priorities)
