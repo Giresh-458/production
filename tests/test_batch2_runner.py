@@ -943,7 +943,7 @@ def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_p
     }
 
     handoff.write_text(json.dumps(base), encoding="utf-8")
-    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+    with pytest.raises(ValueError, match="ACCEPTED global Batch-1 source-coverage attestation"):
         load_funding_context_handoff(handoff)
 
     blocked = {
@@ -956,7 +956,7 @@ def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_p
         },
     }
     handoff.write_text(json.dumps(blocked), encoding="utf-8")
-    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+    with pytest.raises(ValueError, match="ACCEPTED global Batch-1 source-coverage attestation"):
         load_funding_context_handoff(handoff)
 
     mismatched = {
@@ -969,7 +969,7 @@ def test_standalone_batch2_rejects_unaccepted_or_mismatched_batch1_handoff(tmp_p
         },
     }
     handoff.write_text(json.dumps(mismatched), encoding="utf-8")
-    with pytest.raises(ValueError, match="ACCEPTED global source-coverage attestation"):
+    with pytest.raises(ValueError, match="ACCEPTED global Batch-1 source-coverage attestation"):
         load_funding_context_handoff(handoff)
 
 
@@ -1043,7 +1043,7 @@ def test_standalone_batch2_loads_selected_context_validation_without_global_acce
 
 def test_batch2_api_rejects_missing_or_mismatched_global_acceptance(tmp_path):
     context = _context()
-    with pytest.raises(ValueError, match="ACCEPTED Batch-1 global source-coverage attestation"):
+    with pytest.raises(ValueError, match="ACCEPTED global Batch-1 attestation"):
         execute_batch2(
             funding_contexts=[context],
             output_root=tmp_path / "missing-attestation",
