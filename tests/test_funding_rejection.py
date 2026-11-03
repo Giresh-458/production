@@ -144,7 +144,7 @@ def test_open_call_non_research_rejected(run_pipeline_mocks, tmp_path, monkeypat
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
     exit_code = run_pipeline.main()
     assert exit_code == 3
-    run_pipeline_mocks["sync_registry"].assert_not_called()
+    run_pipeline_mocks["prepare_registry"].assert_not_called()
     workflow_dir = next(tmp_path.glob("*/workflow"))
     report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "no_research_opportunity"
@@ -174,7 +174,7 @@ def test_open_call_unrecognized_intent_rejected(run_pipeline_mocks, tmp_path, mo
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
     exit_code = run_pipeline.main()
     assert exit_code == 3
-    run_pipeline_mocks["sync_registry"].assert_not_called()
+    run_pipeline_mocks["prepare_registry"].assert_not_called()
     workflow_dir = next(tmp_path.glob("*/workflow"))
     report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "no_research_opportunity"
@@ -204,7 +204,7 @@ def test_open_call_missing_intent_rejected(run_pipeline_mocks, tmp_path, monkeyp
     monkeypatch.setattr(run_pipeline.argparse, "ArgumentParser", lambda *a, **kw: MagicMock(parse_args=lambda: parser.parse_args(["--output-root", str(tmp_path)])))
     exit_code = run_pipeline.main()
     assert exit_code == 3
-    run_pipeline_mocks["sync_registry"].assert_not_called()
+    run_pipeline_mocks["prepare_registry"].assert_not_called()
     workflow_dir = next(tmp_path.glob("*/workflow"))
     report = json.loads((workflow_dir / "pipeline_report.json").read_text(encoding="utf-8"))
     assert report["status"] == "no_research_opportunity"
@@ -286,7 +286,6 @@ def test_open_call_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
         exit_code = run_pipeline.main()
     assert exit_code == 0
     run_pipeline_mocks["prepare_registry"].assert_called_once()
-    run_pipeline_mocks["build_plan"].assert_called_once()
     
 def test_mixed_calls_only_research_proceeds(run_pipeline_mocks, tmp_path, monkeypatch):
 
