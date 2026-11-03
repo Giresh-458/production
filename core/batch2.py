@@ -103,6 +103,10 @@ def prepare_batch2_source_registry(workflow_root: Path, *, force: bool = True) -
     return {
         "status": "ready",
         "agents_synced": expected_agents,
+        # Preserve the original report keys for existing consumers.
+        "total_entries": int(registry_sync.total_entries if registry_sync else 0),
+        "active_entries": int(registry_sync.active_entries if registry_sync else 0),
+        "deprecated_entries": int(registry_sync.deprecated_entries if registry_sync else 0),
         "registry_total_entries": int(registry_sync.total_entries if registry_sync else 0),
         "registry_active_entries": int(registry_sync.active_entries if registry_sync else 0),
         "registry_deprecated_entries": int(registry_sync.deprecated_entries if registry_sync else 0),
