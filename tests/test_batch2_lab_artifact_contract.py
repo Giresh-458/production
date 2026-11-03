@@ -23,7 +23,7 @@ def test_lab_pages_keep_real_source_url_and_exact_multiline_evidence(tmp_path):
     document = LabDocument(
         name="NIST CPS / IoT Testbed",
         institution="National Institute of Standards and Technology",
-        base_url=source_url,
+        base_url="https://www.nist.gov/",
         source_type="Automatic",
         pages=[
             LabPage(
