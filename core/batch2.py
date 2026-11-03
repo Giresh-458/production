@@ -48,6 +48,74 @@ def evaluate_collection_health(
     return len(healthy_agents) >= min_required_agents, len(healthy_agents)
 
 
+def prepare_batch2_source_registry(workflow_root: Path, *, force: bool = True) -> dict[str, Any]:
+    """Refresh only the 11 Batch-2 agents; leave Batch-1 registry entries untouched."""
+    expected_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+    if len(expected_agents) != 11:
+        raise RuntimeError(
+            f"Expected exactly 11 downstream collection agents, found {len(expected_agents)}."
+        )
+
+    plan_root = Path(workflow_root) / "source_refresh_plans"
+    plan_root.mkdir(parents=True, exist_ok=True)
+    per_agent_plans: dict[str, dict[str, Any]] = {}
+    registry_sync = None
+    total_plan_entries = 0
+    total_due_entries = 0
+    total_skipped_entries = 0
+
+    # Filtered sync preserves all other agents' registry entries. An unfiltered
+    # sync here would rewrite/deprecate Batch-1 funding-source entries.
+    for agent in expected_agents:
+        registry_sync = sync_source_registry(agent_filter=agent)
+        plan_path = plan_root / f"{agent}.json"
+        refresh_plan = build_source_refresh_plan(
+            force=bool(force),
+            agent_filter=agent,
+            output_path=plan_path,
+        )
+        per_agent_plans[agent] = {
+            "total_entries": int(refresh_plan.total_entries),
+            "due_entries": int(refresh_plan.due_entries),
+            "skipped_entries": int(refresh_plan.skipped_entries),
+            "path": str(Path(refresh_plan.refresh_plan_path).resolve()),
+        }
+        total_plan_entries += int(refresh_plan.total_entries)
+        total_due_entries += int(refresh_plan.due_entries)
+        total_skipped_entries += int(refresh_plan.skipped_entries)
+
+    combined_plan_path = Path(workflow_root) / "source_refresh_plan.json"
+    atomic_write_json(
+        combined_plan_path,
+        {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "scope": "Batch-2 downstream collection agents only",
+            "agents": expected_agents,
+            "summary": {
+                "total_entries": total_plan_entries,
+                "due_entries": total_due_entries,
+                "skipped_entries": total_skipped_entries,
+            },
+            "agent_plans": per_agent_plans,
+        },
+    )
+
+    return {
+        "status": "ready",
+        "agents_synced": expected_agents,
+        "registry_total_entries": int(registry_sync.total_entries if registry_sync else 0),
+        "registry_active_entries": int(registry_sync.active_entries if registry_sync else 0),
+        "registry_deprecated_entries": int(registry_sync.deprecated_entries if registry_sync else 0),
+        "refresh_plan_entries": total_plan_entries,
+        "refresh_due_entries": total_due_entries,
+        "refresh_skipped_entries": total_skipped_entries,
+        "refresh_plan_path": str(combined_plan_path.resolve()),
+        "per_agent_refresh_plan_paths": {
+            agent: values["path"] for agent, values in per_agent_plans.items()
+        },
+    }
+
+
 def minimum_healthy_collectors(total_agents: int) -> int:
     """Require a strict majority, with a three-agent floor for larger batches."""
     if total_agents <= 0:
@@ -904,17 +972,10 @@ def execute_batch2(
     source_registry_report: dict[str, Any] = {"status": "skipped_dry_run"}
     if not dry_run:
         try:
-            registry_sync = sync_source_registry()
-            refresh_plan = build_source_refresh_plan(force=bool(force_refresh))
-            source_registry_report = {
-                "status": "ready",
-                "total_entries": registry_sync.total_entries,
-                "active_entries": registry_sync.active_entries,
-                "deprecated_entries": registry_sync.deprecated_entries,
-                "refresh_plan_entries": refresh_plan.total_entries,
-                "refresh_due_entries": refresh_plan.due_entries,
-                "refresh_skipped_entries": refresh_plan.skipped_entries,
-            }
+            source_registry_report = prepare_batch2_source_registry(
+                workflow_root,
+                force=bool(force_refresh),
+            )
         except Exception as exc:
             report = {
                 "run_id": resolved_run_id,
