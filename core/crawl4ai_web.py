@@ -1274,7 +1274,13 @@ def _finalize_collection_status(result: CollectionResult, *, test_limits: bool =
     elif has_coverage_gaps:
         result.final_status = "PARTIAL" if successful_fetches else "FAIL"
     elif successful_fetches:
-        if result.opportunities:
+        if result.active_program_confirmed:
+            # A publisher-confirmed evergreen programme is positive source-level
+            # availability evidence even when it has no dated call cards.
+            # It is VERIFIED only after the configured discovery boundary ends.
+            result.no_active_opportunities_confirmed = False
+            result.final_status = "VERIFIED" if result.discovery_exhausted else "PARTIAL"
+        elif result.opportunities:
             complete = (
                 (result.pagination_detected and result.pagination_complete)
                 or (not result.pagination_detected and result.discovery_exhausted)
