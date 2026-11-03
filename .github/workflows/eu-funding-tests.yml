@@ -176,9 +176,11 @@ jobs:
           PY
 
       - name: Run full configured Batch 1 scan and strict production selector
+        id: batch1_full_scan
         run: |
           python - <<'PY'
           import json
+          import os
           import re
           from datetime import datetime, timezone
           from pathlib import Path
@@ -264,10 +266,17 @@ jobs:
               else:
                   validated_contexts.append(context)
           if validated_contexts and not handoff_context_issues:
+              selected_context_ids = sorted(context.funding_call_id for context in validated_contexts)
               (output_dir / "funding_contexts.json").write_text(
                   json.dumps(
                       {
                           "batch1_run_id": run_id,
+                          "context_validation": {
+                              "status": "VALIDATED",
+                              "scope": "selected_contexts_only",
+                              "batch1_run_id": run_id,
+                              "validated_funding_call_ids": selected_context_ids,
+                          },
                           "funding_contexts": [context.to_dict() for context in validated_contexts],
                       },
                       indent=2,
@@ -275,6 +284,10 @@ jobs:
                   ),
                   encoding="utf-8",
               )
+              github_output = os.environ.get("GITHUB_OUTPUT")
+              if github_output:
+                  with open(github_output, "a", encoding="utf-8") as output:
+                      output.write("context_handoff_ready=true\\n")
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(
               r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
@@ -837,8 +850,10 @@ jobs:
           )
           PY
 
-      - name: Run required bounded live Batch 2 smoke from the validated Batch 1 handoff
-        if: success()
+      - name: Run required bounded live Batch 2 smoke from individually validated Batch 1 contexts
+        # Exercise independent Batch-2 even if an unrelated Batch-1 source blocks
+        # global acceptance. The full pipeline's global Batch-1 gate is unchanged.
+        if: always() && steps.batch1_full_scan.outputs.context_handoff_ready == 'true'
         timeout-minutes: 15
         run: |
           python scripts/pipeline_tools/run_batch2.py \
