@@ -183,6 +183,34 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     # but the pipeline should still complete the other two calls.
     assert exit_code == 4
 
+    # The normal pipeline handoff must be directly reusable by the
+    # standalone Batch-2 runner without rerunning Batch-1 or fabricating a context.
+    handoff_paths = list(tmp_path.glob("*/workflow/funding_contexts.json"))
+    assert len(handoff_paths) == 1
+    handoff_payload = json.loads(handoff_paths[0].read_text(encoding="utf-8"))
+    assert handoff_payload["batch1_run_id"] == handoff_payload["run_id"]
+    assert handoff_payload["context_validation"]["status"] == "VALIDATED"
+    assert handoff_payload["context_validation"]["scope"] == "selected_contexts_only"
+    assert sorted(handoff_payload["context_validation"]["validated_funding_call_ids"]) == sorted(
+        context["funding_call_id"] for context in handoff_payload["funding_contexts"]
+    )
+
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff
+    from core.batch2 import execute_batch2
+    loaded_contexts, loaded_batch1_run_id = load_funding_context_handoff(handoff_paths[0])
+    assert loaded_batch1_run_id == handoff_payload["batch1_run_id"]
+    assert len(loaded_contexts) == 3
+    standalone_report = execute_batch2(
+        funding_contexts=loaded_contexts,
+        context_validation=handoff_payload["context_validation"],
+        batch1_run_id=loaded_batch1_run_id,
+        output_root=tmp_path / "standalone_batch2",
+        run_id="pipeline-handoff-dry-run",
+        dry_run=True,
+    )
+    assert standalone_report["status"] == "dry_run"
+    assert standalone_report["batch3_started"] is False
+
     # Check that execute_batch_run was called exactly 1 time (GLOBAL shared)
     assert mock_execute_batch.call_count == 1
 
