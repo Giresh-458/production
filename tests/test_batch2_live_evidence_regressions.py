@@ -109,6 +109,9 @@ def test_selected_call_title_anchors_accept_specific_energy_platform_evidence():
         "title": "AI platform for energy-system flexibility",
         "problem_statement": "An AI-driven digital platform coordinates energy system operators and grid flexibility.",
         "context_summary": "The platform evaluates digital control of energy assets and measurable grid response.",
+        "evidence_snippets": [
+            "An AI-driven digital platform coordinates energy system operators and grid flexibility."
+        ],
     }
     result = relevance(record, ctx)
     assert result["passed"] is True
