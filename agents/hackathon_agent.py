@@ -442,7 +442,7 @@ def has_specific_hackathon_details(title: str, content: str) -> bool:
             r"dec(?:ember)?)\s+\d{1,2}(?:[-–]\d{1,2})?,?\s+20\d{2}|"
             r"\d{1,2}\s*[-–]\s*\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
             r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
-            r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+20\d{2})\b",
+            r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*,?\s+20\d{2})\b",
             text,
         )
     )
