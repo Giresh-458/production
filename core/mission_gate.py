@@ -183,8 +183,10 @@ def _normalized_text(value: Any) -> str:
 ENERGY_SYSTEM_EVIDENCE_PATTERNS = (
     r"\benergy[\s-]+systems?\b",
     r"\belectricity[\s-]+systems?\b",
+    r"\b(?:power|transmission|distribution)\s+systems?\b",
+    r"\belectricity\s+markets?\b",
     r"\bgrid[\s-]+(?:operation|operations|flexibility|management)\b",
-    r"\b(?:smart|distribution|power|electricity)\s+grids?\b",
+    r"\b(?:smart|distribution|power|electricity)[\s-]+grids?\b",
     r"\brenewable[\s-]+energy\s+(?:integration|generation)\b",
     r"\benergy\s+storage\b",
     r"\benergy\s+platforms?\b",
