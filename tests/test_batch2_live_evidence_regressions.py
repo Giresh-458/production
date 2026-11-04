@@ -252,3 +252,46 @@ def test_hackathon_page_extraction_keeps_dates_and_registration_details(monkeypa
     title, content = hackathon_agent.extract_page_text("<html></html>")
     assert title == "Specific Hackathon"
     assert body in content
+
+
+def test_hackathon_auto_collection_splits_individual_event_pages_and_excludes_listing_metadata(monkeypatch, tmp_path):
+    from agents import hackathon_agent
+
+    source = SimpleNamespace(
+        name="Configured Organizer", type="Hackathon", url="https://example.org/events",
+        focus="CONFIGURED FOCUS MUST NOT APPEAR IN SOURCE EVIDENCE",
+    )
+    root = SimpleNamespace(
+        title="Starknet Events", content="General events calendar.",
+        url="https://example.org/events", depth=0,
+    )
+    event = SimpleNamespace(
+        title="Starknet Reignite Hackathon",
+        content=(
+            "12 - 26 May, 2025. This two-week online hackathon competition invites developers "
+            "to build projects. Registration and submission details are provided."
+        ),
+        url="https://example.org/events/reignite", depth=1,
+    )
+    path = tmp_path / "hackathon_sources.yaml"
+    path.write_text("sources: []\\n", encoding="utf-8")
+    review = {"review_id": "review-1"}
+    monkeypatch.setattr(hackathon_agent, "load_sources", lambda _path: [source])
+    monkeypatch.setattr(hackathon_agent, "fetch_html", lambda _url: "<html></html>")
+    monkeypatch.setattr(
+        hackathon_agent, "collect_recursive_pages_with_review",
+        lambda **_kwargs: ([root, event], review),
+    )
+    monkeypatch.setattr(hackathon_agent, "save_recursive_review", lambda _review: None)
+    monkeypatch.setattr(hackathon_agent, "update_recursive_review", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("core.source_registry.extract_yaml_limits", lambda _raw: {})
+    monkeypatch.setattr(hackathon_agent, "is_relevant", lambda *_args: True)
+
+    documents = hackathon_agent.build_auto_documents(path, area="DePIN")
+
+    assert len(documents) == 1
+    assert documents[0].challenge_name == "Starknet Reignite Hackathon"
+    assert documents[0].url == event.url
+    assert documents[0].recursive_page_count == 1
+    assert "CONFIGURED FOCUS MUST NOT APPEAR" not in documents[0].content
+    assert "Configured Organizer" not in documents[0].content
