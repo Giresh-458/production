@@ -61,3 +61,39 @@ def test_recursive_sitemap_discovery(monkeypatch):
 
     monkeypatch.setattr("core.http_client.get_response", fake_get)
     assert "https://example.org/rfp-2026.pdf" in recursive_collection._sitemap_links("https://example.org/")
+
+def test_collect_source_accepts_json_api_dataset_response(monkeypatch):
+    payload = {
+        "class": "dataset",
+        "label": "Electricity supply, transformation and consumption - monthly data",
+        "source": "Eurostat",
+        "updated": "2026-10-22T23:00:00+0200",
+        "dimension": {
+            "geo": {"label": "Geopolitical entity"},
+            "time": {"label": "Time"},
+        },
+        "value": {"0": 12.5, "1": 13.1},
+    }
+
+    class Response:
+        url = "https://api.example.org/nrg_cb_em.json"
+        text = __import__("json").dumps(payload)
+        content = text.encode("utf-8")
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+
+    monkeypatch.setattr(web_collection, "get_response", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(web_collection, "_robots_allowed", lambda *args, **kwargs: True)
+
+    result = web_collection.collect_source(
+        "https://api.example.org/nrg_cb_em.json",
+        keywords=("electricity", "dataset", "consumption"),
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert result.failed_urls == []
+    assert len(result.pages) == 1
+    assert "Electricity supply" in result.pages[0].title
+    assert '"class": "dataset"' in result.pages[0].text
+    assert "consumption" in result.pages[0].text.lower()
+
