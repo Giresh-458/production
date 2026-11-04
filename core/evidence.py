@@ -33,9 +33,10 @@ UNSCOPED_EVIDENCE_TERMS = (
     "parquet", "download", "time series", "data portal", "data catalog",
     "data catalogue", "electricity supply", "electricity generation",
     "electricity consumption", "electricity system", "energy system",
-    "power system", "grid operation", "grid flexibility", "smart grid",
+    "power system", "electricity market", "transmission system",
+    "cross-border electricity", "grid operation", "grid flexibility", "smart grid",
     "renewable energy", "energy storage", "generation", "consumption",
-    "load", "market prices", "measurements", "telemetry", "benchmark",
+    "load", "balancing", "market prices", "measurements", "telemetry", "benchmark",
     "registry", "dashboard", "explorer", "metadata", "data schema",
 )
 
