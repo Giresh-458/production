@@ -676,3 +676,22 @@ def test_eu_electricity_regulation_passes_energy_mission_gate():
     result = relevance(record, ctx)
     assert result["passed"] is True
 
+def test_unscoped_evidence_bundle_selects_energy_dataset_passages():
+    from core.evidence import build_evidence_bundle
+
+    raw = (
+        '{\n  "class": "dataset",\n'
+        '  "label": "Electricity supply, transformation and consumption - monthly data",\n'
+        '  "source": "Eurostat",\n'
+        '  "dimension": {"time": {"label": "Time"}, "geo": {"label": "Geopolitical entity"}},\n'
+        '  "value": {"0": 12.5, "1": 13.1}\n}'
+    )
+    bundle = build_evidence_bundle(
+        raw_content=raw,
+        title="Eurostat nrg_cb_em",
+        research_area="Unscoped",
+        metadata={"source_url": "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_cb_em"},
+    )
+    assert bundle["evidence_snippets"]
+    assert "electricity supply" in bundle["evidence_snippets"][0].casefold()
+
