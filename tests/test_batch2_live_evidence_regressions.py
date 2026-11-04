@@ -563,8 +563,12 @@ def test_eurostat_electricity_dataset_passes_data_availability_quality_gate():
     )
     evidence = {
         "key_paragraphs": [paragraph, "Dataset information: monthly electricity data."],
-        "evidence_snippets": [paragraph],
-        "excerpt_windows": [paragraph],
+        "evidence_snippets": [
+            paragraph,
+            "Data coverage: 2008-01 to 2026-08.",
+            "Time frequency: monthly; unit of measure: gigawatt-hour.",
+        ],
+        "excerpt_windows": [paragraph, "Monthly quantities of electricity in the energy balance."],
         "section_headings": ["Dataset information", "Electricity supply"],
         "bullet_lists": [],
     }
