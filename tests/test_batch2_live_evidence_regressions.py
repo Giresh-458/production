@@ -308,11 +308,11 @@ def test_entity_noise_filter_does_not_drop_legitimate_name_starting_with_one():
 def test_event_directory_split_keeps_only_specific_dated_hackathons():
     from agents.hackathon_agent import extract_hackathon_event_sections
     content = (
-        "12 - 26 May, 2025 · online\\n"
-        "#### Starknet Reignite Hackathon\\n"
-        "A two-week online hackathon competition for developers.\\n"
-        "20 February, 2026 · in person\\n"
-        "#### Liquidity & Liquors: Starknet’s Private Trader Meetup\\n"
+        "12 - 26 May, 2025 · online\n"
+        "#### Starknet Reignite Hackathon\n"
+        "A two-week online hackathon competition for developers.\n"
+        "20 February, 2026 · in person\n"
+        "#### Liquidity & Liquors: Starknet’s Private Trader Meetup\n"
         "Registration is open. The meetup discusses leaderboards and competitions."
     )
     sections = extract_hackathon_event_sections(content)
