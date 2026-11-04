@@ -355,3 +355,182 @@ def test_recursive_fetch_preserves_heading_structure_over_trafilatura_fallback(m
     assert extracted == content
     assert "#### Starknet Reignite Hackathon" in extracted
     assert html == "<html></html>"
+
+def test_energy_call_rejects_defillama_interview_as_unrelated_data_evidence():
+    ctx = _context("AI-driven digital platforms for a more affordable and secure European energy system")
+    record = {
+        "agent_name": "data_availability",
+        "title": "DeFiLlama",
+        "problem_statement": (
+            "Interview — DeFiLlama Research. The article discusses stablecoin revenue, "
+            "digital assets, a financial platform, and AI-agent security."
+        ),
+        "context_summary": "A DeFi interview and market commentary about stablecoins and tokenized assets.",
+        "evidence_snippets": ["The interview discusses digital assets and stablecoin market adoption."],
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is False
+    assert "energy-system/grid evidence" in result["reason"]
+
+
+def test_energy_call_rejects_world_bank_topic_navigation_as_regulation_evidence():
+    ctx = _context("AI-driven digital platforms for a more affordable and secure European energy system")
+    record = {
+        "agent_name": "regulation",
+        "title": "Development Topics",
+        "problem_statement": (
+            "Browse All Topics: Climate Change, Competitiveness, Digital and AI, "
+            "Energy, Environment, and Sustainable Infrastructure."
+        ),
+        "context_summary": "A general World Bank development topics landing page.",
+        "evidence_snippets": ["Browse all topics: Digital and AI; Energy; Environment."],
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is False
+    assert "energy-system/grid evidence" in result["reason"]
+
+
+def test_energy_system_dataset_evidence_can_pass_without_repeating_ai_platform_title():
+    ctx = _context("AI-driven digital platforms for a more affordable and secure European energy system")
+    record = {
+        "agent_name": "data_availability",
+        "title": "ENTSO-E Transparency Platform",
+        "problem_statement": (
+            "The platform publishes electricity-system data for generation, load, "
+            "transmission, balancing, and cross-border flows. Data are available through "
+            "a REST API and downloadable XML and CSV files."
+        ),
+        "context_summary": "The electricity system dataset supports grid operation and flexibility analysis.",
+        "evidence_snippets": [
+            "Generation, load, transmission and balancing data are published for the electricity system."
+        ],
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is True
+
+
+def test_data_availability_keeps_funding_driven_collection_unscoped(monkeypatch, tmp_path):
+    source = data_agent.DataSource(
+        name="Configured RWA Source", type="dataset",
+        url="https://example.org/rwa",
+        focus="stablecoin supply, tokenized assets, carbon registry and RWA metrics",
+    )
+    body = (
+        "This page describes stablecoin supply, tokenized real-world assets, carbon "
+        "registry records, and digital asset market information in detail."
+    )
+    page = SimpleNamespace(title="RWA market overview", text=body, url=source.url)
+    path = tmp_path / "data_sources.yaml"
+    path.write_text("data_sources: {}\n", encoding="utf-8")
+    seen = {}
+    token = data_agent.current_funding_queries.set(["AI-driven digital platforms energy system"])
+    try:
+        monkeypatch.setattr(data_agent, "load_sources", lambda _path: [source])
+        monkeypatch.setattr("core.source_registry.extract_yaml_limits", lambda _data: {})
+        monkeypatch.setattr(data_agent, "collect_structured_source", lambda *_args: None)
+        monkeypatch.setattr(data_agent, "collect_source", lambda *_args, **_kwargs: SimpleNamespace(pages=[page]))
+        monkeypatch.setattr(
+            data_agent, "is_relevant",
+            lambda _text, area_hint: seen.setdefault("area_hint", area_hint) is None,
+        )
+        assert data_agent.build_auto_documents(path, area=None) == []
+    finally:
+        data_agent.current_funding_queries.reset(token)
+    assert seen["area_hint"] == "Unscoped"
+
+
+def test_data_availability_quality_gate_rejects_research_interview_as_dataset():
+    from core.quality import evaluate_collection_quality
+
+    evidence = {
+        "key_paragraphs": [
+            "Interview — DeFiLlama Research. A conversation about stablecoin revenue and DeFi founders."
+        ],
+        "evidence_snippets": [
+            "The interview discusses tokenized assets, financial platforms and market adoption."
+        ],
+        "excerpt_windows": [],
+        "section_headings": [],
+        "bullet_lists": [],
+    }
+    result = evaluate_collection_quality(
+        agent_name="data_availability",
+        title="DeFiLlama",
+        source="https://defillama.com/",
+        research_area="RWA",
+        raw_content=("Interview about stablecoin revenue and digital assets. " * 20),
+        evidence_bundle=evidence,
+        area_scores={"RWA": 8},
+    )
+    assert result["passed"] is False
+    assert "data-availability evidence" in result["rejection_reason"]
+
+
+def test_regulation_quality_gate_rejects_generic_world_bank_topics_page():
+    from core.quality import evaluate_collection_quality
+
+    evidence = {
+        "key_paragraphs": [
+            "Browse All Topics: Climate Change, Digital and AI, Energy, Environment, and Development Topics."
+        ],
+        "evidence_snippets": [
+            "The World Bank addresses complex development challenges through knowledge and innovation."
+        ],
+        "excerpt_windows": [],
+        "section_headings": [],
+        "bullet_lists": [],
+    }
+    result = evaluate_collection_quality(
+        agent_name="regulation",
+        title="Development Topics",
+        source="https://www.worldbank.org/en/topic/climatechange/brief/carbon-markets",
+        research_area="ESG",
+        raw_content=("World Bank development topics and carbon markets. " * 30),
+        evidence_bundle=evidence,
+        area_scores={"ESG": 8},
+    )
+    assert result["passed"] is False
+    assert "legal/standards instrument" in result["rejection_reason"]
+
+
+def test_batch1_energy_ai_call_is_not_primary_esg_and_keeps_energy_themes(monkeypatch):
+    from agents import funding_agent
+
+    title = (
+        "Large-Scale piloting of next-generation AI-driven digital platforms "
+        "for a more affordable, secure and sustainable European energy system (IA) - Apply AI"
+    )
+    content = (
+        "This topic supports a large-scale cross-border pilot demonstrating AI-driven "
+        "digital platforms for the European energy system, optimizing electricity-system "
+        "operation and flexibility management. Expected outcomes include renewable energy "
+        "integration, energy storage, grid flexibility, and quantifiable reductions in "
+        "greenhouse gas emissions and energy costs. Participation is limited to legal "
+        "entities established in EU Member States and associated countries."
+    )
+    document = funding_agent.FundingDocument(
+        organization="European Commission",
+        title=title,
+        source="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-01-12",
+        source_type="Official Funding Portal",
+        content=content,
+        year=2026,
+    )
+    monkeypatch.setattr(funding_agent, "extract_funding_problem_intelligence", lambda *_args, **_kwargs: {})
+    result = funding_agent.analyze_document(document)
+    assert result.focus_area == "General"
+    assert "AI-Driven Digital Platforms" in result.research_context["technology_themes"]
+    assert "Energy Systems" in result.research_context["technology_themes"]
+    assert not result.research_context["inferred_challenges"]
+
+
+def test_batch1_strategic_autonomy_eligibility_rationale_is_not_a_technical_problem():
+    from core.problem_extraction import _is_administrative_or_financial_rule
+
+    passage = (
+        "In order to safeguard the Union's strategic assets and avoid technological "
+        "dependency on a non-EU source, the EU must carefully assess strategic weaknesses, "
+        "vulnerabilities and high-risk dependencies which put at risk the attainment of its ambitions."
+    )
+    assert _is_administrative_or_financial_rule(passage)
+
