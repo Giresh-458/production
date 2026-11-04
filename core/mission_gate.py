@@ -78,6 +78,12 @@ def _supported_domain_evidence(research_context: Any) -> dict[str, set[str]] | N
             for term in matched_terms
             if str(term).casefold().strip() in strong_terms
         }
+        if domain == "ESG":
+            context_domain = normalize_area(str(getattr(research_context, "domain", "") or ""))
+            # A single emissions/sustainability outcome is not enough to turn
+            # an otherwise energy/digital call into an ESG research mission.
+            if context_domain != "ESG" and len(supported_terms) < 2:
+                continue
         if supported_terms and has_required_domain_anchor_groups(domain, supported_terms):
             supported[str(domain)] = supported_terms
     return supported
