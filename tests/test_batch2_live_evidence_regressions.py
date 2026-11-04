@@ -198,3 +198,16 @@ def test_hackathon_agent_accepts_dated_challenge_with_operational_details():
         "Registration opens March 2, 2027. Teams submit projects by March 28, 2027. "
         "Tracks, judging criteria, and prizes are published in the challenge brief.",
     )
+
+
+def test_zero_knowledge_is_a_controlled_privacy_anchor_for_settlement_calls():
+    ctx = _context("Privacy-preserving settlement research")
+    record = {
+        "agent_name": "literature",
+        "title": "Zero-knowledge verification throughput benchmark",
+        "problem_statement": "Zero knowledge verification latency limits secure settlement throughput.",
+        "context_summary": "The benchmark measures zero knowledge proof verification and settlement performance.",
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is True
+    assert {"privacy", "settlement"}.issubset(set(result["matched_title_anchors"]))
