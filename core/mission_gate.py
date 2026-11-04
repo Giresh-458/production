@@ -242,12 +242,20 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     title_anchors = _call_title_anchor_terms(ctx)
     matched_title_set = set(title_anchors) & document_tokens
     document_phrases = _normalized_text(document_text)
+    # Normalize simple plurals for title anchors without fuzzy keyword matching.
+    for anchor in title_anchors:
+        if anchor.endswith("s") and anchor[:-1] in document_tokens:
+            matched_title_set.add(anchor)
+    # AI may be tokenized as a two-letter acronym; retain it only as an exact
+    # standalone token or the explicit phrase "artificial intelligence".
+    if "ai" in title_anchors and re.search(r"\bai\b|\bartificial intelligence\b", document_phrases):
+        matched_title_set.add("ai")
     # Zero-knowledge proofs are a specific privacy-preserving technique, not
     # a generic keyword coincidence. Treat the phrase as a controlled synonym.
     if "privacy" in title_anchors and re.search(r"\bzero knowledge\b|\bzkp\b", document_phrases):
         matched_title_set.add("privacy")
     matched_title_anchors = sorted(matched_title_set)
-    required_title_matches = min(2, len(title_anchors))
+    required_title_matches = min(3, len(title_anchors))
     title_anchor_match = bool(required_title_matches) and len(matched_title_anchors) >= required_title_matches
     if required_title_matches and not title_anchor_match:
         return {
