@@ -25,6 +25,7 @@ on:
       - "core/normalization.py"
       - "core/mission_gate.py"
       - "tests/test_research_mission_grounding.py"
+      - "tests/test_batch2_live_evidence_regressions.py"
       - "tests/test_mission_gate_semantics.py"
       - "core/intelligence.py"
       - "agents/literature_agent.py"
@@ -74,6 +75,7 @@ jobs:
             tests/test_batch2_runner.py \
             tests/test_normalization_skip_audit.py \
             tests/test_research_mission_grounding.py \
+            tests/test_batch2_live_evidence_regressions.py \
             tests/test_mission_gate_semantics.py \
             tests/test_batch2_lab_artifact_contract.py \
             tests/test_literature_run_provenance.py \
