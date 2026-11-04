@@ -175,15 +175,15 @@ def _normalized_text(value: Any) -> str:
 
 
 ENERGY_SYSTEM_EVIDENCE_PATTERNS = (
-    r"\\benergy[\\s-]+systems?\\b",
-    r"\\belectricity[\\s-]+systems?\\b",
-    r"\\bgrid[\\s-]+(?:operation|operations|flexibility|management)\\b",
-    r"\\b(?:smart|distribution|power|electricity)\\s+grids?\\b",
-    r"\\brenewable[\\s-]+energy\\s+(?:integration|generation)\\b",
-    r"\\benergy\\s+storage\\b",
-    r"\\benergy\\s+platforms?\\b",
-    r"\\bgrid\\s+integration\\b",
-    r"\\bflexibility\\s+management\\b",
+    r"\benergy[\s-]+systems?\b",
+    r"\belectricity[\s-]+systems?\b",
+    r"\bgrid[\s-]+(?:operation|operations|flexibility|management)\b",
+    r"\b(?:smart|distribution|power|electricity)\s+grids?\b",
+    r"\brenewable[\s-]+energy\s+(?:integration|generation)\b",
+    r"\benergy\s+storage\b",
+    r"\benergy\s+platforms?\b",
+    r"\bgrid\s+integration\b",
+    r"\bflexibility\s+management\b",
 )
 
 
@@ -198,7 +198,7 @@ def _energy_system_evidence(record: dict[str, Any]) -> str:
         raw = record.get(key)
         if isinstance(raw, (list, tuple)):
             values.extend(str(item) for item in raw if str(item).strip())
-    return "\\n".join(values)
+    return "\n".join(values)
 
 
 def _is_energy_system_call(ctx: FundingCallContext) -> bool:
