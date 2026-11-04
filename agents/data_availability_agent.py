@@ -616,7 +616,7 @@ def build_analysis_prompt(document: DataDocument) -> str:
 
         Rules:
         - source_type: Dataset, Benchmark, API, Simulator, Testnet, Explorer, Registry, Report, Dashboard, Documentation, or Manual
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, General, or Unscoped. Use General/Unscoped when the source does not clearly belong to a canonical domain; never force-fit a source.
         - access_type: Open, Restricted, Paid, Manual, or API
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
@@ -705,28 +705,25 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     
     usable_for = coalesce_text(parsed.get("usable_for"), "UNKNOWN")
     
-    access_type = infer_access_type(document.content, source_type).title()
+    access_type = infer_access_type(f"{document.url}\\n{document.content}", source_type).title()
     if access_type not in {"Open", "Restricted", "Paid", "Manual", "Api", "API"}:
         access_type = "Open"
     if access_type == "Api":
         access_type = "API"
     evaluation_possibility = coalesce_text(parsed.get("evaluation_possibility"), "UNKNOWN")
-    
     limitations = coalesce_text(parsed.get("limitations"), "UNKNOWN")
-    
     prototype_use = coalesce_text(parsed.get("prototype_use"), "UNKNOWN")
-    
     problem_signature = build_problem_signature(area, source_name, evaluation_possibility)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
+    confidence = coalesce_text(parsed.get("confidence"), "Medium").title()
     if confidence not in {"High", "Medium", "Low"}:
         confidence = "Medium"
-    dataset_scope = "Unknown"
-    coverage_period = "Unknown"
-    license_or_access_terms = "Unknown"
-    benchmark_metrics = "Unknown"
-    benchmark_gap = "None identified"
-    reproducibility = "Medium".title()
+    dataset_scope = coalesce_text(parsed.get("dataset_scope"), "Unknown")
+    coverage_period = coalesce_text(parsed.get("coverage_period"), "Unknown")
+    license_or_access_terms = coalesce_text(parsed.get("license_or_access_terms"), "Unknown")
+    benchmark_metrics = coalesce_text(parsed.get("benchmark_metrics"), "Unknown")
+    benchmark_gap = coalesce_text(parsed.get("benchmark_gap"), "None identified")
+    reproducibility = coalesce_text(parsed.get("reproducibility"), "Medium").title()
     if reproducibility not in {"High", "Medium", "Low"}:
         reproducibility = "Medium"
     return DataAnalysis(
