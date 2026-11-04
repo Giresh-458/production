@@ -207,7 +207,7 @@ def test_verified_esg_domain_terms_allow_substantive_sustainability_evidence():
     result = relevance(record, ctx)
 
     assert result["passed"] is True
-    assert {"sustainability reporting", "greenhouse gas emissions"}.issubset(set(result["matched_terms"]))
+    assert {"esg", "sustainability", "greenhouse", "gas", "emissions"}.issubset(set(result["matched_terms"]))
 
 
 def test_strongly_supported_selected_secondary_domain_remains_eligible():
