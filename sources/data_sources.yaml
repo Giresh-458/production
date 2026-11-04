@@ -363,7 +363,7 @@ data_sources:
   energy_systems:
   - name: Eurostat Electricity Supply, Transformation and Consumption Dataset
     type: dataset_or_api
-    url: https://ec.europa.eu/eurostat/databrowser/view/nrg_cb_em/default/table?lang=en
+    url: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_cb_em?lang=EN&geo=EU27_2020&lastTimePeriod=3
     focus: official monthly electricity supply, transformation, consumption, cross-border trade, pumped storage, distribution losses, and internal-market data; dataset code nrg_cb_em
     limits:
       max_pages: 4
@@ -371,7 +371,7 @@ data_sources:
       max_seconds: 90
   - name: Eurostat Net Electricity Generation by Fuel Dataset
     type: dataset_or_api
-    url: https://ec.europa.eu/eurostat/databrowser/view/nrg_cb_pem/default/table?lang=en
+    url: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_cb_pem?lang=EN&geo=EU27_2020&lastTimePeriod=3
     focus: official monthly net electricity generation by fuel type across EU countries; dataset code nrg_cb_pem, time series and GWh values
     limits:
       max_pages: 4
