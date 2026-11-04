@@ -209,6 +209,36 @@ def _body_field(body: dict[str, str], *names: str) -> str:
             return _clean(value)
     return ""
 
+def _safe_metadata_text(value: Any) -> str:
+    """Return scalar metadata only; never stringify nested dictionaries into prose."""
+    if isinstance(value, str):
+        return _clean(value)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _normalized_actor_and_focus(body: dict[str, str], source_hints: dict[str, Any], machine_metadata: dict[str, Any], research_area: str) -> tuple[str, str]:
+    authors = source_hints.get("authors")
+    author_text = ""
+    if isinstance(authors, (list, tuple)):
+        author_text = ", ".join(text for author in authors[:3] if (text := _safe_metadata_text(author)))
+    actor, focus = _normalized_actor_and_focus(
+        body, source_hints, machine_metadata, research_area
+    )
+    return actor or "Unknown", focus
+
+
+def _normalized_record_dedupe_key(record: dict[str, Any]) -> str:
+    """Collapse exact duplicate literature content across DOI/version aliases."""
+    if (
+        str(record.get("agent_name") or "").casefold() == "literature"
+        and str(record.get("source_id") or "").casefold().startswith("doi:")
+        and record.get("content_hash")
+    ):
+        return f"literature-content:{record['content_hash']}"
+    return str(record.get("evidence_id") or "")
+
 def generate_content_hash(title: str, source_type: str, problem_statement: str, context_summary: str) -> str:
     text = f"{_clean(title)}|{_clean(source_type)}|{_clean(problem_statement)}|{_clean(context_summary)}"
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -846,15 +876,23 @@ def save_normalized_collection_records(
     normalized_root = target_dir
     deduped_records = {}
     for r in records:
-        sid = r["evidence_id"]
+        sid = _normalized_record_dedupe_key(r)
         if sid not in deduped_records:
             r["observation_count"] = 1
             r["first_seen"] = r["collected_at"]
             r["last_seen"] = r["collected_at"]
             r["content_versions"] = [r["content_hash"]]
+            r["source_id_variants"] = [r["source_id"]] if r.get("source_id") else []
+            r["source_url_variants"] = [r["source_url"]] if r.get("source_url") else []
             deduped_records[sid] = r
         else:
             existing = deduped_records[sid]
+            for field, candidate in (
+                ("source_id_variants", r.get("source_id")),
+                ("source_url_variants", r.get("source_url")),
+            ):
+                if candidate and candidate not in existing.setdefault(field, []):
+                    existing[field].append(candidate)
             existing["observation_count"] += 1
             if r["collected_at"] < existing["first_seen"]:
                 existing["first_seen"] = r["collected_at"]
