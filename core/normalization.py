@@ -230,11 +230,32 @@ def _normalized_actor_and_focus(
         author_text = ", ".join(
             text for author in authors[:3] if (text := _safe_metadata_text(author))
         )
-    actor, focus = _normalized_actor_and_focus(
-        body, source_hints, machine_metadata, research_area
+    actor = _coalesce(
+        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
+        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
+        _safe_metadata_text(source_hints.get("organization")),
+        _safe_metadata_text(source_hints.get("company_name")),
+        _safe_metadata_text(source_hints.get("source_name")),
+        _safe_metadata_text(source_hints.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("investor_or_organization")),
+        author_text,
+        _safe_metadata_text(source_hints.get("venue")),
+        _safe_metadata_text(source_hints.get("publisher")),
+        _safe_metadata_text(machine_metadata.get("organization")),
+        _safe_metadata_text(machine_metadata.get("investor_or_organization")),
+        _safe_metadata_text(machine_metadata.get("source_name")),
+        _safe_metadata_text(machine_metadata.get("company_name")),
+        _safe_metadata_text(machine_metadata.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("source")),
+    )
+    focus = _coalesce(
+        _body_field(body, "Focus"),
+        _safe_metadata_text(source_hints.get("focus")),
+        _safe_metadata_text(machine_metadata.get("focus")),
+        _safe_metadata_text(source_hints.get("research_area")),
+        research_area,
     )
     return actor or "Unknown", focus
-
 
 def _normalized_record_dedupe_key(record: dict[str, Any]) -> str:
     """Collapse exact duplicate literature content across DOI/version aliases."""
@@ -514,26 +535,8 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         str(machine_metadata.get("evidence_type", "")),
         str(source_hints.get("evidence_type", "")),
     )
-    actor = _coalesce(
-        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
-        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
-        str(source_hints.get("organization", "")),
-        str(source_hints.get("company_name", "")),
-        str(source_hints.get("source_name", "")),
-        str(source_hints.get("issuing_body", "")),
-        str(source_hints.get("investor_or_organization", "")),
-        str(machine_metadata.get("organization", "")),
-        str(machine_metadata.get("investor_or_organization", "")),
-        str(machine_metadata.get("source_name", "")),
-        str(machine_metadata.get("company_name", "")),
-        str(machine_metadata.get("issuing_body", "")),
-        source_url,
-    )
-    focus = _coalesce(
-        _body_field(body, "Focus"),
-        str(source_hints.get("focus", "")),
-        str(machine_metadata.get("focus", "")),
-        str(machine_metadata.get("source_hints", "")),
+    actor, focus = _normalized_actor_and_focus(
+        body, source_hints, machine_metadata, research_area
     )
     keywords = _tokenize(
         " ".join(
