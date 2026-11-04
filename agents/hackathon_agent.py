@@ -427,6 +427,27 @@ def extract_problem_statement_text(blocks: list[str], title: str) -> str:
     return merged[:5000]
 
 
+def has_specific_hackathon_details(title: str, content: str) -> bool:
+    """Require an actual event/challenge and operational details, not a platform homepage."""
+    text = cleaned_text(f"{title} {content}").casefold()
+    if not any(term in text for term in ("hackathon", "challenge", "competition", "contest")):
+        return False
+    has_date = bool(
+        re.search(
+            r"\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|"
+            r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|"
+            r"dec(?:ember)?)\s+\d{1,2}(?:,?\s+20\d{2})?)\b",
+            text,
+        )
+    )
+    operational_terms = (
+        "registration", "register", "deadline", "submission", "submit",
+        "prize", "prizes", "tracks", "judging", "evaluation criteria",
+        "challenge brief", "rules", "team formation",
+    )
+    return has_date and any(term in text for term in operational_terms)
+
 def infer_area(text: str, default: str = "Unscoped") -> str:
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
@@ -518,6 +539,19 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
                 review["review_id"],
                 outcome="filtered_out_empty",
                 outcome_reason="no focused challenge/problem text was extracted",
+                artifact_title=title,
+                selected_area=area or "",
+            )
+            continue
+        if not has_specific_hackathon_details(title, content):
+            LOGGER.info(
+                "Skipping %s because the page lacks a dated, operationally specific hackathon/challenge.",
+                source.name,
+            )
+            update_recursive_review(
+                review["review_id"],
+                outcome="filtered_out_non_event_page",
+                outcome_reason="page lacked both a concrete event date and operational challenge details",
                 artifact_title=title,
                 selected_area=area or "",
             )
