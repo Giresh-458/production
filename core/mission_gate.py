@@ -149,6 +149,63 @@ def _mission_anchor_text(ctx: FundingCallContext) -> str:
     return " ".join(_mission_anchor_values(ctx))
 
 
+TECHNICAL_TITLE_ANCHORS = {
+    "ai", "artificial", "intelligence", "digital", "platform", "platforms",
+    "energy", "grid", "power", "carbon", "emissions", "mrv", "zero",
+    "knowledge", "cryptography", "stablecoin", "stablecoins", "tokenization",
+    "identity", "vehicle", "vehicles", "iot", "robotics", "quantum", "privacy",
+    "verification", "settlement", "storage", "compute", "wireless",
+    "decentralized", "infrastructure", "payments", "distributed",
+}
+
+
+def _call_title_anchor_terms(ctx: FundingCallContext) -> list[str]:
+    """Extract only technical terms explicitly present in the selected call title."""
+    title = str(getattr(ctx, "call_title", "") or getattr(ctx, "program_name", "") or "")
+    tokens = {
+        part
+        for token in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", title.casefold())
+        for part in token.split("-")
+    }
+    return sorted(tokens & TECHNICAL_TITLE_ANCHORS)
+
+
+def _normalized_text(value: Any) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
+
+def _is_data_availability_metadata_echo(record: dict[str, Any]) -> bool:
+    """Reject dataset artifacts whose only 'evidence' is the YAML name/focus hint."""
+    if str(record.get("agent_name") or "").casefold() != "data_availability":
+        return False
+    metadata = record.get("machine_metadata")
+    if not isinstance(metadata, dict):
+        return False
+    hints = metadata.get("source_hints")
+    if not isinstance(hints, dict):
+        return False
+    expected = _normalized_text(f"{hints.get('source_name', '')} {hints.get('focus', '')}")
+    if not expected:
+        return False
+    expected_tokens = set(expected.split())
+    observations: list[str] = []
+    for key in ("context_summary", "problem_statement"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            observations.append(value)
+    for key in ("evidence_snippets", "excerpt_windows"):
+        values = record.get(key)
+        if isinstance(values, (list, tuple)):
+            observations.extend(str(value) for value in values if str(value).strip())
+    for observation in observations:
+        normalized = _normalized_text(observation)
+        if normalized == expected:
+            return True
+        observed_tokens = set(normalized.split())
+        if len(observed_tokens) >= 3 and observed_tokens.issubset(expected_tokens):
+            return True
+    return False
+
 def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]:
     """Conservative post-retrieval relevance gate.
 
@@ -157,6 +214,21 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     document relevant because those fields may simply repeat the retrieval
     instructions rather than describe what the source actually says.
     """
+    metadata = record.get("machine_metadata")
+    quality_gate = metadata.get("quality_gate") if isinstance(metadata, dict) else None
+    if isinstance(quality_gate, dict) and quality_gate.get("passed") is False:
+        return {
+            "passed": False, "score": 0.0, "matched_terms": [],
+            "matched_phrases": [], "matched_title_anchors": [],
+            "reason": "collector quality gate failed; artifact retained for review only",
+        }
+    if _is_data_availability_metadata_echo(record):
+        return {
+            "passed": False, "score": 0.0, "matched_terms": [],
+            "matched_phrases": [], "matched_title_anchors": [],
+            "reason": "data-availability evidence contains only configured source metadata, not extracted page content",
+        }
+
     anchor_values = _mission_anchor_values(ctx)
     anchor_text = " ".join(anchor_values)
     document_text = " ".join(
@@ -167,12 +239,24 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
 
     mission_tokens = _tokens(anchor_text)
     document_tokens = _tokens(document_text)
-    if not mission_tokens or not document_tokens:
+    title_anchors = _call_title_anchor_terms(ctx)
+    matched_title_anchors = sorted(set(title_anchors) & document_tokens)
+    required_title_matches = min(2, len(title_anchors))
+    title_anchor_match = bool(required_title_matches) and len(matched_title_anchors) >= required_title_matches
+    if required_title_matches and not title_anchor_match:
         return {
-            "passed": False,
-            "score": 0.0,
-            "matched_terms": [],
-            "matched_phrases": [],
+            "passed": False, "score": 0.0,
+            "matched_terms": sorted(mission_tokens & document_tokens)[:20],
+            "matched_phrases": [], "matched_title_anchors": matched_title_anchors,
+            "reason": (
+                "source does not match enough technical anchors from the selected funding-call title "
+                f"({len(matched_title_anchors)}/{required_title_matches})"
+            ),
+        }
+    if not document_tokens or (not mission_tokens and not title_anchor_match):
+        return {
+            "passed": False, "score": 0.0, "matched_terms": [],
+            "matched_phrases": [], "matched_title_anchors": matched_title_anchors,
             "reason": "empty substantive mission/document vocabulary",
         }
 
@@ -194,12 +278,15 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     # One exact technical phrase or at least two non-boilerplate terms is
     # required. Funding-call identity and generated retrieval queries alone do
     # not satisfy this check.
-    passed = bool(phrases) or len(matches) >= 2
-    score = min(1.0, len(matches) / max(3, min(len(mission_tokens), 12)))
+    passed = bool(phrases) or len(matches) >= 2 or title_anchor_match
+    overlap_score = min(1.0, len(matches) / max(3, min(len(mission_tokens), 12))) if mission_tokens else 0.0
+    title_score = len(matched_title_anchors) / len(title_anchors) if title_anchors else 0.0
+    score = max(overlap_score, title_score)
     return {
         "passed": passed,
         "score": round(score, 3),
         "matched_terms": matches[:20],
         "matched_phrases": phrases[:5],
+        "matched_title_anchors": matched_title_anchors,
         "reason": "substantive mission overlap" if passed else "insufficient substantive mission overlap",
     }
