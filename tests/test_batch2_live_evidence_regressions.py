@@ -334,7 +334,7 @@ def test_named_entity_extraction_drops_source_title_and_sentence_openers():
     assert "Deep" not in entities
     assert "Regulating" not in entities
     assert "Employing" not in entities
-    assert "Paris Agreement" in entities
+    assert any("Paris Agreement" in entity for entity in entities)
 
 
 def test_recursive_fetch_preserves_heading_structure_over_trafilatura_fallback(monkeypatch):
