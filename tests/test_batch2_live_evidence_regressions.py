@@ -250,10 +250,11 @@ def test_hackathon_page_extraction_keeps_dates_and_registration_details(monkeypa
     body = "Registration closes March 28, 2027. The hackathon includes prizes and tracks."
     from bs4 import BeautifulSoup
     monkeypatch.setattr(hackathon_agent, "load_requests_and_bs4", lambda: (None, BeautifulSoup))
-    html = f"<html><head><title>Specific Hackathon</title></head><body><h1>Specific Hackathon</h1><p>{body}</p></body></html>"
+    html = f"<html><head><title>Specific Hackathon</title></head><body><h1>Specific Hackathon</h1><h4>Starknet Reignite Hackathon</h4><p>{body}</p></body></html>"
     title, content = hackathon_agent.extract_page_text(html)
     assert title == "Specific Hackathon"
     assert body in content
+    assert "#### Starknet Reignite Hackathon" in content
 
 
 def test_hackathon_auto_collection_splits_individual_event_pages_and_excludes_listing_metadata(monkeypatch, tmp_path):
