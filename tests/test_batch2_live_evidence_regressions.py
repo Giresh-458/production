@@ -248,8 +248,10 @@ def test_hackathon_manual_text_focus_cannot_make_unrelated_text_relevant(monkeyp
 def test_hackathon_page_extraction_keeps_dates_and_registration_details(monkeypatch):
     from agents import hackathon_agent
     body = "Registration closes March 28, 2027. The hackathon includes prizes and tracks."
-    monkeypatch.setattr(hackathon_agent, "extract_html_text", lambda _html: ("Specific Hackathon", body))
-    title, content = hackathon_agent.extract_page_text("<html></html>")
+    from bs4 import BeautifulSoup
+    monkeypatch.setattr(hackathon_agent, "load_requests_and_bs4", lambda: (None, BeautifulSoup))
+    html = f"<html><head><title>Specific Hackathon</title></head><body><h1>Specific Hackathon</h1><p>{body}</p></body></html>"
+    title, content = hackathon_agent.extract_page_text(html)
     assert title == "Specific Hackathon"
     assert body in content
 
@@ -274,7 +276,7 @@ def test_hackathon_auto_collection_splits_individual_event_pages_and_excludes_li
         url="https://example.org/events/reignite", depth=1,
     )
     path = tmp_path / "hackathon_sources.yaml"
-    path.write_text("sources: []\\n", encoding="utf-8")
+    path.write_text("sources: []\n", encoding="utf-8")
     review = {"review_id": "review-1"}
     monkeypatch.setattr(hackathon_agent, "load_sources", lambda _path: [source])
     monkeypatch.setattr(hackathon_agent, "fetch_html", lambda _url: "<html></html>")
