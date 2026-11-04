@@ -519,7 +519,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
-        area_hint = area or infer_area(full_text, "Unscoped")
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text did not pass relevance filters.", source.name)
             continue
@@ -539,7 +539,7 @@ def build_manual_url_document(
     title, content = extract_page_text(html)
     resolved_name = source_name or title or cleaned_text(urlparse(url).netloc)
     full_text = cleaned_text(content)
-    area_hint = area or infer_area(full_text, "Unscoped")
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
     if len(full_text) < 40 or not is_relevant(full_text, area_hint):
         raise DataAvailabilityAgentError("Manual URL content does not map to the selected research areas or evaluation signals.")
     return DataDocument(
@@ -563,7 +563,7 @@ def build_manual_text_document(
     focus: str | None,
 ) -> DataDocument:
     content = cleaned_text(text)
-    area_hint = area or infer_area(content, "Unscoped")
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(content, "Unscoped"))
     if len(content) < 20 or not is_relevant(content, area_hint):
         raise DataAvailabilityAgentError("Manual text does not map to the selected research areas or evaluation signals.")
     return DataDocument(
