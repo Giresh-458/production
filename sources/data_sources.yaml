@@ -361,14 +361,6 @@ data_sources:
       max_depth: 1
       max_seconds: 60
   energy_systems:
-  - name: ENTSO-E Transparency Platform
-    type: dataset_or_api
-    url: https://www.entsoe.eu/data/transparency-platform/
-    focus: European electricity generation, load, transmission, balancing, cross-border flows, and system-operation data; platform API and downloadable datasets
-    limits:
-      max_pages: 8
-      max_depth: 2
-      max_seconds: 120
   - name: Eurostat Electricity Supply, Transformation and Consumption Dataset
     type: dataset_or_api
     url: https://ec.europa.eu/eurostat/databrowser/view/nrg_cb_em/default/table?lang=en
