@@ -140,7 +140,7 @@ def test_weak_secondary_domain_and_market_adoption_do_not_admit_depin_evidence()
                 "domain": "ESG",
                 "score": 0.7143,
                 "raw_score": 6.0,
-                "matched_terms": ["sustainability", "emissions"],
+                "matched_terms": ["sustainability reporting", "greenhouse gas emissions"],
             },
             {
                 "domain": "DePIN",
@@ -196,18 +196,18 @@ def test_verified_esg_domain_terms_allow_substantive_sustainability_evidence():
     record = {
         "title": "Corporate sustainability reporting and emissions assurance",
         "problem_statement": (
-            "The report describes ESG disclosure controls, emissions data quality, "
-            "and independent assurance of sustainability information."
+            "The report describes ESG disclosure controls, sustainability reporting, "
+            "greenhouse gas emissions data quality, and independent assurance."
         ),
         "context_summary": (
-            "It identifies gaps in traceable carbon and emissions reporting."
+            "It identifies gaps in traceable carbon markets and greenhouse gas emissions reporting."
         ),
     }
 
     result = relevance(record, ctx)
 
     assert result["passed"] is True
-    assert {"sustainability", "emissions"}.issubset(set(result["matched_terms"]))
+    assert {"sustainability reporting", "greenhouse gas emissions"}.issubset(set(result["matched_terms"]))
 
 
 def test_strongly_supported_selected_secondary_domain_remains_eligible():
