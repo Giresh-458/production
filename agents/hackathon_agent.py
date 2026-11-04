@@ -375,10 +375,17 @@ def fetch_html(url: str) -> str:
         raise HackathonAgentError(f"Unable to fetch page {url}: {exc}") from exc
 
 def extract_page_text(html: str) -> tuple[str, str]:
-    title, content = extract_html_text(html)
-    # Keep the complete extracted page text so event dates, registration,
-    # deadlines, prizes, and tracks are not lost by problem-only filtering.
-    return title, content
+    _, BeautifulSoup = load_requests_and_bs4()
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "footer", "nav", "header"]):
+        tag.decompose()
+    title_node = soup.find("h1") or soup.title
+    title = cleaned_text(title_node.get_text(" ", strip=True)) if title_node else "Untitled"
+    blocks = extract_text_blocks(soup)
+    # Preserve complete source text for event dates, registration, deadlines, prizes, and tracks.
+    content = cleaned_text(" ".join(blocks))
+    return title, content[:7000]
+
 def _keyword_score(text: str, keywords: list[str]) -> int:
     lowered = text.lower()
     return sum(1 for keyword in keywords if keyword in lowered)
