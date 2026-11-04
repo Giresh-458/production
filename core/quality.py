@@ -208,7 +208,8 @@ def evaluate_collection_quality(
     schema = get_collection_schema(agent_name)
     is_lenient_agent = agent_name in LENIENT_COLLECTION_AGENTS
     is_manual_source = (source or "").startswith("manual://") or (source or "").strip().lower() == "manual"
-    research_area_match = _score_research_area_match(research_area, area_scores, explicit_area=research_area)
+    # The configured/inferred area is metadata, not evidence of a source-area match.
+    research_area_match = _score_research_area_match(research_area, area_scores)
     source_specificity = _score_source_specificity(title, source, evidence_bundle)
     problem_signal_density = _score_problem_signal_density(raw_content, research_area, evidence_bundle)
     evidence_richness = _score_evidence_richness(raw_content, evidence_bundle)
