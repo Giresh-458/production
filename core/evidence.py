@@ -110,10 +110,8 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
     seen: set[str] = set()
     generic_sentence_starters = {
         "such", "while", "meanwhile", "however", "therefore", "moreover",
-        "although", "each", "our", "one", "many", "already", "these",
-        "those", "this", "that", "when", "where", "what", "which",
-        "using", "based", "according", "for", "from", "after", "before",
-        "during", "within", "because", "despite", "deliberate", "also",
+        "although", "already", "these", "those", "this", "that",
+        "deliberate",
     }
     for candidate in candidates:
         cleaned = _clean_line(candidate)
