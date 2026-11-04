@@ -335,3 +335,23 @@ def test_named_entity_extraction_drops_source_title_and_sentence_openers():
     assert "Regulating" not in entities
     assert "Employing" not in entities
     assert "Paris Agreement" in entities
+
+
+def test_recursive_fetch_preserves_heading_structure_over_trafilatura_fallback(monkeypatch):
+    import trafilatura
+    from agents import hackathon_agent
+    from core.recursive_collection import _fetch_recursive_page
+
+    content = "## Events\\n#### Starknet Reignite Hackathon\\n" + ("event detail text " * 40)
+    monkeypatch.setattr(
+        trafilatura, "bare_extraction",
+        lambda *_args, **_kwargs: SimpleNamespace(text="fallback " * 300, title="Fallback title"),
+    )
+    title, extracted, html = _fetch_recursive_page(
+        "https://example.org/events", lambda _url: "<html></html>",
+        lambda _html: ("Events", content),
+    )
+    assert title == "Events"
+    assert extracted == content
+    assert "#### Starknet Reignite Hackathon" in extracted
+    assert html == "<html></html>"
