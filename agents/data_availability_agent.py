@@ -668,6 +668,14 @@ def sanitize_list(values: object, max_items: int = 6, lowercase: bool = False) -
     return items
 
 
+def coalesce_text(value: object, fallback: str = "UNKNOWN") -> str:
+    """Return a cleaned non-empty scalar or a safe fallback."""
+    if value is None:
+        return fallback
+    text = cleaned_text(str(value))
+    return text if text else fallback
+
+
 def infer_access_type(text: str, source_type: str = "") -> str:
     lowered = text.lower()
     if "api" in source_type.lower() or "api" in lowered:
