@@ -224,8 +224,10 @@ def _keyword_occurrences(text: str, keyword: str) -> int:
 DOMAIN_REQUIRED_ANCHOR_GROUPS = {
     "ESG": (
         frozenset({
-            "esg", "carbon", "carbon credit", "mrv", "emissions",
-            "sustainability reporting", "sustainability-linked",
+            "esg", "carbon", "carbon market", "carbon markets", "carbon credit",
+            "carbon accounting", "greenhouse gas emissions", "emissions trading",
+            "decarbonization", "decarbonisation", "mrv", "emissions",
+            "sustainability reporting", "sustainability disclosure", "sustainability-linked",
             "environmental social governance", "climate finance",
             "climate change adaptation", "climate change mitigation",
             "climate adaptation", "climate mitigation", "climate resilience",
