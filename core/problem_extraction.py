@@ -178,6 +178,12 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
     """
     value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
     patterns = (
+        # Strategic-autonomy language in Horizon eligibility sections explains
+        # the geographic/control restriction; it is not a technical research
+        # problem statement for the funded project.
+        r"\bsafeguard the (?:union|european union)'?s strategic assets\b",
+        r"\btechnological dependency on a non[- ]eu source\b",
+        r"\bstrategic weaknesses, vulnerabilities and high[- ]risk dependencies\b",
         r"\bsubcontracting\b.{0,180}\b(?:proportionate|limited|limit|cap|must not exceed)\b",
         r"\b(?:eligible costs?|funding rate|grant amount|maximum funding|total budget|budget ceiling|"
         r"co[- ]funding|indirect costs?|overheads?)\b.{0,180}\b"
