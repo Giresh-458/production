@@ -108,9 +108,21 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
             candidates.append(value.strip())
     unique: list[str] = []
     seen: set[str] = set()
+    generic_sentence_starters = {
+        "such", "while", "meanwhile", "however", "therefore", "moreover",
+        "although", "each", "our", "one", "many", "already", "these",
+        "those", "this", "that", "when", "where", "what", "which",
+        "using", "based", "according", "for", "from", "after", "before",
+        "during", "within", "because", "despite", "deliberate", "also",
+    }
     for candidate in candidates:
         cleaned = _clean_line(candidate)
-        if len(cleaned) < 3 or cleaned.lower() in {"manual", "source", "title"}:
+        first_word = cleaned.split(" ", 1)[0].casefold() if cleaned else ""
+        if (
+            len(cleaned) < 3
+            or cleaned.lower() in {"manual", "source", "title"}
+            or first_word in generic_sentence_starters
+        ):
             continue
         if cleaned not in seen:
             seen.add(cleaned)
