@@ -198,12 +198,8 @@ ENERGY_SYSTEM_EVIDENCE_PATTERNS = (
 
 
 def _energy_system_evidence(record: dict[str, Any]) -> str:
-    """Use source-derived body evidence, not configured focus or title metadata."""
+    """Use quoted source passages only; LLM summaries and metadata are not proof."""
     values: list[str] = []
-    for key in ("problem_statement", "context_summary"):
-        value = record.get(key)
-        if isinstance(value, str) and value.strip():
-            values.append(value)
     for key in ("evidence_snippets", "excerpt_windows"):
         raw = record.get(key)
         if isinstance(raw, (list, tuple)):
