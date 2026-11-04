@@ -459,7 +459,7 @@ def extract_hackathon_event_sections(content: str) -> list[tuple[str, str]]:
         re.IGNORECASE,
     )
     for position, (line_index, level, title) in enumerate(headings):
-        if level == 6 or month_heading.match(title) or is_generic_hackathon_listing_title(title):
+        if month_heading.match(title) or is_generic_hackathon_listing_title(title):
             continue
         end = headings[position + 1][0] if position + 1 < len(headings) else len(lines)
         start = line_index
