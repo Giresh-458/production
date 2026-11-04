@@ -2215,6 +2215,15 @@ def _extract_general_themes(content: str) -> list[str]:
     # Preserve canonical multi-word technical themes before token-based phrase
     # scoring. Hyphenated labels otherwise lose their domain meaning.
     canonical_patterns = (
+        (r"\bAI[ -]+driven[ -]+digital[ -]+platforms?\b", "AI-Driven Digital Platforms"),
+        (r"\bdigital[ -]+platforms?\b", "Digital Platforms"),
+        (r"\benergy[ -]+systems?\b", "Energy Systems"),
+        (r"\belectricity[ -]+systems?\b", "Electricity Systems"),
+        (r"\bgrid[ -]+flexibility\b", "Grid Flexibility"),
+        (r"\bgrid[ -]+operation\b", "Grid Operations"),
+        (r"\brenewable[ -]+energy[ -]+integration\b", "Renewable Energy Integration"),
+        (r"\benergy[ -]+storage\b", "Energy Storage"),
+        (r"\bdigital[ -]+twins?\b", "Digital Twins"),
         (r"\bcyber[\s-]+physical systems\b", "Cyber-Physical Systems"),
         (r"\bcps\b", "Cyber-Physical Systems"),
         (r"\bdigital healthcare\b", "Digital Healthcare"),
@@ -2360,6 +2369,35 @@ def _extract_general_themes(content: str) -> list[str]:
     return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
+def _has_primary_esg_anchor(title: str, content: str) -> bool:
+    """Require primary ESG evidence; sustainability outcomes alone are not a domain label."""
+    title_text = str(title or "").casefold()
+    body_text = str(content or "").casefold()
+    explicit_title_anchors = (
+        r"\besg\b", r"\bmrv\b", r"\bcarbon[ -]+(?:markets?|credits?|accounting|footprint)\b",
+        r"\bclimate[ -]+(?:change|mitigation|adaptation|resilience)\b",
+        r"\bemissions[ -]+trading\b", r"\bdecarboni[sz]ation\b",
+    )
+    if any(re.search(pattern, title_text) for pattern in explicit_title_anchors):
+        return True
+
+    # A secondary expected outcome (e.g. lower emissions) must not relabel an
+    # AI/energy-system call as ESG. Require evidence from two independent ESG
+    # concepts in the actual call text when the title itself is not ESG-specific.
+    concept_groups = (
+        (r"\besg\b", r"\bmrv\b"),
+        (r"\bcarbon[ -]+(?:markets?|credits?|accounting|footprint)\b",),
+        (r"\bclimate[ -]+(?:change|mitigation|adaptation|resilience)\b",),
+        (r"\b(?:greenhouse[ -]+gas[ -]+emissions|emissions[ -]+trading|emissions[ -]+reporting)\b",),
+        (r"\b(?:sustainability[ -]+reporting|sustainability[ -]+disclosure|sustainability[ -]+assurance)\b",),
+    )
+    matched_groups = sum(
+        1 for group in concept_groups
+        if any(re.search(pattern, body_text) for pattern in group)
+    )
+    return matched_groups >= 2
+
+
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
@@ -2384,6 +2422,8 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         and (len(top_matches) >= 2 or title_has_domain_anchor)
         else "General"
     )
+    if focus_area == "ESG" and not _has_primary_esg_anchor(document.title, document.content):
+        focus_area = "General"
     domain_themes = {
         "RWA": ["Real-World Assets", "Asset Tokenization"],
         "ESG": ["ESG", "Carbon and MRV"],
@@ -2395,7 +2435,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     }
     themes = list(domain_themes.get(focus_area, []))
     if focus_area == "General" or not themes:
-        extracted = _extract_general_themes(document.content)
+        extracted = _extract_general_themes(f"{document.title}\n{document.content}")
         if extracted:
             themes = extracted
 
