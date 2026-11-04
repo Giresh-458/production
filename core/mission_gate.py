@@ -286,11 +286,10 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     energy_call = _is_energy_system_call(ctx)
     energy_evidence = _has_energy_system_evidence(record) if energy_call else False
     agent_name = str(record.get("agent_name") or "").casefold()
-    # For energy-platform calls, data and regulation sources may support the
-    # energy-system workstream without repeating "AI/digital platform". They
-    # must nevertheless contain an explicit grid/electricity-system phrase in
-    # source-derived body evidence; navigation labels and metadata do not count.
-    if energy_call and agent_name in {"data_availability", "regulation"} and not energy_evidence:
+    # Every layer must connect to the selected energy-system mission. A
+    # collection page that merely contains scattered "AI", "digital" and
+    # "energy" navigation labels is not evidence of that connection.
+    if energy_call and not energy_evidence:
         return {
             "passed": False, "score": 0.0, "matched_terms": [],
             "matched_phrases": [], "matched_title_anchors": [],
@@ -313,7 +312,9 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     matched_title_anchors = sorted(matched_title_set)
     required_title_matches = min(3, len(title_anchors))
     title_anchor_match = bool(required_title_matches) and len(matched_title_anchors) >= required_title_matches
-    if energy_call and agent_name in {"data_availability", "regulation"} and energy_evidence:
+    if energy_call and energy_evidence:
+        # A concrete grid/electricity-system phrase is a stronger anchor than
+        # requiring every source layer to repeat the entire call title.
         title_anchor_match = True
     if required_title_matches and not title_anchor_match:
         return {
