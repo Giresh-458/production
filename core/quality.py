@@ -226,12 +226,15 @@ def _agent_specific_evidence_reasons(
             r"\bframework\b|\bstandard\b|\brecommendation\b|\bdecision\b)\b",
             lowered,
         )
-        normative_requirement = re.search(
-            r"\b(?:shall|must|is required to|are required to|prohibited|obligation|"
-            r"compliance requirement|mandatory requirement)\b",
+        named_instrument = re.search(
+            r"\b(?:regulation\s*\(?eu\)?\s*\d{4}/\d+|directive\s*\(?eu\)?\s*\d{4}/\d+|"
+            r"article\s+\d+|act\s+no\.?\s*\d+|law\s+no\.?\s*\d+|"
+            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|rfc\s+\d+|nist\s+(?:sp|special\s+publication)\s*\d+|"
+            r"w3c\s+recommendation|w3c\s+standard|decision\s+no\.?\s*\d+|"
+            r"directive\s+\d{4}/\d+|regulation\s+\d{4}/\d+)\b",
             lowered,
         )
-        if not legal_instrument or (generic_title and not normative_requirement):
+        if not legal_instrument or (generic_title and not named_instrument):
             reasons.append(
                 "regulation evidence lacks a specific legal/standards instrument or its normative requirements"
             )
