@@ -140,7 +140,7 @@ def test_weak_secondary_domain_and_market_adoption_do_not_admit_depin_evidence()
                 "domain": "ESG",
                 "score": 0.7143,
                 "raw_score": 6.0,
-                "matched_terms": ["sustainability reporting", "greenhouse gas emissions"],
+                "matched_terms": ["esg", "sustainability reporting", "greenhouse gas emissions"],
             },
             {
                 "domain": "DePIN",
