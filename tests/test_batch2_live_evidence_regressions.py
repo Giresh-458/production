@@ -295,3 +295,9 @@ def test_hackathon_auto_collection_splits_individual_event_pages_and_excludes_li
     assert documents[0].recursive_page_count == 1
     assert "CONFIGURED FOCUS MUST NOT APPEAR" not in documents[0].content
     assert "Configured Organizer" not in documents[0].content
+
+
+def test_entity_noise_filter_does_not_drop_legitimate_name_starting_with_one():
+    from core.evidence import _named_entities_or_programs
+    entities = _named_entities_or_programs("One Medical provides clinical services.", {})
+    assert "One Medical" in entities
