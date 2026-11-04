@@ -111,8 +111,18 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
     generic_sentence_starters = {
         "such", "while", "meanwhile", "however", "therefore", "moreover",
         "although", "already", "these", "those", "this", "that",
-        "deliberate",
+        "deliberate", "deep", "regulating", "employing",
     }
+    source_title_values = set()
+    if isinstance(machine_metadata, dict):
+        for value in (machine_metadata.get("title"),):
+            if isinstance(value, str) and value.strip():
+                source_title_values.add(value.strip().casefold())
+        hints = machine_metadata.get("source_hints")
+        if isinstance(hints, dict):
+            value = hints.get("title")
+            if isinstance(value, str) and value.strip():
+                source_title_values.add(value.strip().casefold())
     for candidate in candidates:
         cleaned = _clean_line(candidate)
         first_word = cleaned.split(" ", 1)[0].casefold() if cleaned else ""
@@ -120,6 +130,7 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
             len(cleaned) < 3
             or cleaned.lower() in {"manual", "source", "title"}
             or first_word in generic_sentence_starters
+            or cleaned.casefold() in source_title_values
         ):
             continue
         if cleaned not in seen:
