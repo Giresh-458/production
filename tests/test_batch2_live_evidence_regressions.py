@@ -534,3 +534,21 @@ def test_batch1_strategic_autonomy_eligibility_rationale_is_not_a_technical_prob
     )
     assert _is_administrative_or_financial_rule(passage)
 
+def test_funding_problem_extractor_does_not_select_eligibility_rationale():
+    from core.problem_extraction import extract_problem_intelligence
+
+    passage = (
+        "In order to safeguard the Union's strategic assets and avoid technological "
+        "dependency on a non-EU source, the EU must carefully assess strategic weaknesses, "
+        "vulnerabilities and high-risk dependencies which put at risk the attainment of its ambitions."
+    )
+    result = extract_problem_intelligence(
+        passage,
+        "AI-driven digital platforms for the European energy system",
+        {},
+        allow_llm_refinement=False,
+        research_area="General",
+        agent_name="funding",
+    )
+    assert result["selected_problem"] is None
+
