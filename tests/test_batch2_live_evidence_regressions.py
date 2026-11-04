@@ -630,3 +630,49 @@ def test_data_availability_preserves_dataset_metadata_from_extraction(monkeypatc
     assert result.benchmark_gap == "No high-frequency real-time grid telemetry"
     assert result.reproducibility == "High"
 
+def test_eu_electricity_regulation_passes_regulation_quality_gate():
+    from core.quality import evaluate_collection_quality
+
+    passage = (
+        "Regulation (EU) 2019/943 on the internal market for electricity establishes "
+        "rules for cross-border exchanges, system operation, balancing and transparency. "
+        "Article 3 sets principles for the electricity market."
+    )
+    evidence = {
+        "key_paragraphs": [passage],
+        "evidence_snippets": [
+            passage,
+            "Member States shall ensure the application of the electricity market rules."
+        ],
+        "excerpt_windows": [passage],
+        "section_headings": ["Article 3 - Principles"],
+        "bullet_lists": [],
+    }
+    result = evaluate_collection_quality(
+        agent_name="regulation",
+        title="Regulation (EU) 2019/943 on the internal market for electricity",
+        source="https://eur-lex.europa.eu/eli/reg/2019/943/oj",
+        research_area="Unscoped",
+        raw_content=(passage + " ") * 10,
+        evidence_bundle=evidence,
+        area_scores={},
+    )
+    assert result["passed"] is True
+
+
+def test_eu_electricity_regulation_passes_energy_mission_gate():
+    ctx = _context("AI-driven digital platforms for a more affordable and secure European energy system")
+    passage = (
+        "Regulation (EU) 2019/943 sets rules for the internal electricity market, "
+        "cross-border exchanges, electricity system operation and balancing."
+    )
+    record = {
+        "agent_name": "regulation",
+        "title": "Regulation (EU) 2019/943",
+        "problem_statement": "Rules for the internal electricity market and system operation.",
+        "context_summary": "The instrument covers cross-border electricity exchanges.",
+        "evidence_snippets": [passage],
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is True
+
