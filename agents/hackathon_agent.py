@@ -439,16 +439,20 @@ def has_specific_hackathon_details(title: str, content: str) -> bool:
             r"\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|"
             r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
             r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|"
-            r"dec(?:ember)?)\s+\d{1,2}(?:,?\s+20\d{2})?)\b",
+            r"dec(?:ember)?)\s+\d{1,2}(?:[-–]\d{1,2})?,?\s+20\d{2}|"
+            r"\d{1,2}[-–]\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+            r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+            r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+20\d{2})\b",
             text,
         )
     )
     operational_terms = (
         "registration", "register", "deadline", "submission", "submit",
-        "prize", "prizes", "tracks", "judging", "evaluation criteria",
+        "prize", "prizes", "tracks", "judging", "evaluation criteria", "competition",
         "challenge brief", "rules", "team formation",
     )
     return has_date and any(term in text for term in operational_terms)
+
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
     lowered = text.lower()
@@ -619,6 +623,10 @@ def build_manual_url_document(
         ),
     )
     title, content = combine_recursive_pages(pages)
+    if is_generic_hackathon_listing_title(title):
+        raise HackathonAgentError(
+            "The supplied URL is a general events directory. Provide a direct event/challenge page URL."
+        )
     resolved_name = challenge_name or title or cleaned_text(urlparse(url).netloc)
     resolved_org = sponsor_or_organizer or cleaned_text(urlparse(url).netloc)
     # User-entered name, organizer, and focus are metadata, not page evidence.
