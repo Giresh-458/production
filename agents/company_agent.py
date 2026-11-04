@@ -384,6 +384,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -523,7 +527,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
         save_recursive_review(review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
         full_text = cleaned_text(f"{source.name} {source.focus} {content}")
-        area_hint = area or source.area
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else source.area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the configured research areas.", source.name)
             update_recursive_review(
