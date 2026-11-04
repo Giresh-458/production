@@ -381,10 +381,19 @@ def extract_page_text(html: str) -> tuple[str, str]:
         tag.decompose()
     title_node = soup.find("h1") or soup.title
     title = cleaned_text(title_node.get_text(" ", strip=True)) if title_node else "Untitled"
-    blocks = extract_text_blocks(soup)
-    # Preserve complete source text for event dates, registration, deadlines, prizes, and tracks.
-    content = cleaned_text(" ".join(blocks))
-    return title, content[:7000]
+    blocks: list[str] = []
+    for node in soup.find_all(["h2", "h3", "h4", "h5", "h6", "p", "li"]):
+        value = cleaned_text(node.get_text(" ", strip=True))
+        if not value:
+            continue
+        if node.name and node.name.startswith("h"):
+            level = int(node.name[1])
+            blocks.append(f"{'#' * level} {value}")
+        else:
+            blocks.append(value)
+    # Preserve heading boundaries so event-list pages can be split into individual records.
+    return title, "\n".join(blocks)[:7000]
+
 
 def _keyword_score(text: str, keywords: list[str]) -> int:
     lowered = text.lower()
@@ -429,18 +438,47 @@ def is_generic_hackathon_listing_title(title: str) -> bool:
     }
     return (
         normalized in generic_titles
-        or normalized.endswith(" events")
+        or normalized.startswith("events ") or normalized.endswith(" events")
         or normalized.endswith(" hackathons")
         or normalized.endswith(" contests")
     )
 
 
+def extract_hackathon_event_sections(content: str) -> list[tuple[str, str]]:
+    """Split an event directory into heading-delimited event records."""
+    lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
+    headings: list[tuple[int, int, str]] = []
+    for index, line in enumerate(lines):
+        match = re.match(r"^(#{3,6})\s+(.+)$", line)
+        if match:
+            headings.append((index, len(match.group(1)), cleaned_text(match.group(2))))
+    sections: list[tuple[str, str]] = []
+    month_heading = re.compile(
+        r"^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+20\d{2}$",
+        re.IGNORECASE,
+    )
+    for position, (line_index, level, title) in enumerate(headings):
+        if level == 6 or month_heading.match(title) or is_generic_hackathon_listing_title(title):
+            continue
+        end = headings[position + 1][0] if position + 1 < len(headings) else len(lines)
+        start = line_index
+        if line_index > 0 and re.search(r"\b20\d{2}\b", lines[line_index - 1]):
+            start = line_index - 1
+        section_text = "\n".join(lines[start:end])
+        if has_specific_hackathon_details(title, section_text):
+            sections.append((title, section_text))
+    return sections
+
+
 def has_specific_hackathon_details(title: str, content: str) -> bool:
-    """Require an actual event/challenge and operational details, not a platform homepage."""
+    """Require a named hackathon/challenge, a concrete date, and operational detail."""
     if is_generic_hackathon_listing_title(title):
         return False
+    title_text = cleaned_text(title).casefold()
     text = cleaned_text(f"{title} {content}").casefold()
-    if not any(term in text for term in ("hackathon", "challenge", "competition", "contest")):
+    event_markers = ("hackathon", "challenge", "contest")
+    if not any(term in title_text or term in text for term in event_markers):
         return False
     has_date = bool(
         re.search(
@@ -456,8 +494,8 @@ def has_specific_hackathon_details(title: str, content: str) -> bool:
     )
     operational_terms = (
         "registration", "register", "deadline", "submission", "submit",
-        "prize", "prizes", "tracks", "judging", "evaluation criteria", "competition",
-        "challenge brief", "rules", "team formation",
+        "prize", "prizes", "tracks", "judging", "evaluation criteria",
+        "challenge brief", "rules", "team formation", "competition", "build projects",
     )
     return has_date and any(term in text for term in operational_terms)
 
@@ -551,36 +589,38 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
         source_documents: list[HackathonDocument] = []
         for page in pages:
             page_title = cleaned_text(str(getattr(page, "title", "") or ""))
-            page_body = cleaned_text(str(getattr(page, "content", "") or ""))
+            page_body = str(getattr(page, "content", "") or "").strip()
             if not page_title or not page_body:
                 continue
             if is_generic_hackathon_listing_title(page_title):
-                continue
-            if not has_specific_hackathon_details(page_title, page_body):
-                continue
+                event_sections = extract_hackathon_event_sections(page_body)
+            elif has_specific_hackathon_details(page_title, page_body):
+                event_sections = [(page_title, page_body)]
+            else:
+                event_sections = []
 
-            # Each event page becomes its own artifact. Do not merge a directory
-            # page and several unrelated event cards into one synthetic challenge.
-            full_text = cleaned_text(f"{page_title}\n{page_body}")
-            area_hint = area or infer_area(full_text, "Unscoped")
-            if not is_relevant(full_text, area_hint):
-                continue
-
-            source_documents.append(
-                HackathonDocument(
-                    challenge_name=page_title,
-                    source_type=infer_source_type(source.type),
-                    evidence_type=infer_evidence_type(source.type),
-                    sponsor_or_organizer=source.name,
-                    area_hint=area_hint,
-                    focus=source.focus,
-                    url=str(getattr(page, "url", "") or source.url),
-                    content=full_text,
-                    source_mode="Automatic",
-                    recursive_review_id=review["review_id"],
-                    recursive_page_count=1,
+            for event_title, event_content in event_sections:
+                # One dated event = one artifact. YAML source names/focus remain
+                # metadata and never get injected into the event's evidence text.
+                full_text = cleaned_text(f"{event_title}\n{event_content}")
+                area_hint = area or infer_area(full_text, "Unscoped")
+                if not is_relevant(full_text, area_hint):
+                    continue
+                source_documents.append(
+                    HackathonDocument(
+                        challenge_name=event_title,
+                        source_type=infer_source_type(source.type),
+                        evidence_type=infer_evidence_type(source.type),
+                        sponsor_or_organizer=source.name,
+                        area_hint=area_hint,
+                        focus=source.focus,
+                        url=str(getattr(page, "url", "") or source.url),
+                        content=full_text,
+                        source_mode="Automatic",
+                        recursive_review_id=review["review_id"],
+                        recursive_page_count=1,
+                    )
                 )
-            )
 
         if source_documents:
             documents.extend(source_documents)
@@ -595,7 +635,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
             update_recursive_review(
                 review["review_id"],
                 outcome="filtered_out_no_specific_event",
-                outcome_reason="no individual page had a specific event title, date, and operational challenge details",
+                outcome_reason="no individual page or event section had a specific title, date, and operational challenge details",
                 artifact_title=source.name,
                 selected_area=area or "",
             )
@@ -632,9 +672,12 @@ def build_manual_url_document(
     )
     title, content = combine_recursive_pages(pages)
     if is_generic_hackathon_listing_title(title):
-        raise HackathonAgentError(
-            "The supplied URL is a general events directory. Provide a direct event/challenge page URL."
-        )
+        event_sections = extract_hackathon_event_sections(content)
+        if len(event_sections) != 1:
+            raise HackathonAgentError(
+                "The supplied URL is a general events directory. Provide a direct event/challenge page URL."
+            )
+        title, content = event_sections[0]
     resolved_name = challenge_name or title or cleaned_text(urlparse(url).netloc)
     resolved_org = sponsor_or_organizer or cleaned_text(urlparse(url).netloc)
     # User-entered name, organizer, and focus are metadata, not page evidence.
