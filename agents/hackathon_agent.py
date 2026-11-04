@@ -449,7 +449,7 @@ def extract_hackathon_event_sections(content: str) -> list[tuple[str, str]]:
     lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
     headings: list[tuple[int, int, str]] = []
     for index, line in enumerate(lines):
-        match = re.match(r"^(#{3,6})\s+(.+)$", line)
+        match = re.match(r"^(#{2,6})\s+(.+)$", line)
         if match:
             headings.append((index, len(match.group(1)), cleaned_text(match.group(2))))
     sections: list[tuple[str, str]] = []
