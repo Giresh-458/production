@@ -31,7 +31,6 @@ from core.schemas import AREA_KEYWORDS
 from core.funding_context import funding_context_relevance
 from core.web_collection import collect_source
 from core.structured_sources import collect_structured_source
-from core.web_collection import combine_pages
 
 DEFAULT_OUTPUT_DIR = Path("outputs/data_availability")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "data_availability_memory.db"
@@ -475,20 +474,48 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
         try:
             structured = collect_structured_source(source.url, source.type, area)
             if structured:
-                full_text = structured.text
-                title = structured.title or source.name
-                collected_url = structured.url
+                # Structured adapters must return source-derived text. Never pad
+                # an empty response with configured source names or focus hints.
+                full_text = cleaned_text(str(getattr(structured, "text", "") or ""))
+                title = cleaned_text(str(getattr(structured, "title", "") or "")) or source.name
+                collected_url = str(getattr(structured, "url", "") or source.url)
+                if len(full_text) < 80:
+                    LOGGER.warning("Skipping %s: structured source returned no substantive source text.", source.name)
+                    continue
             else:
                 limits = limits_by_url.get(source.url, {})
-
                 ctx = current_crawl_context.get(None)
-
-                if ctx: ctx.begin_source()
-
-                result = collect_source(source.url, keywords=('dataset'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-                title = result.pages[0].title if result.pages else source.name
-                full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
-                collected_url = source.url
+                if ctx:
+                    ctx.begin_source()
+                result = collect_source(
+                    source.url,
+                    keywords=("dataset",),
+                    max_depth=limits.get("max_depth", 2),
+                    max_pages=limits.get("max_pages", 8),
+                    max_documents=limits.get("max_documents"),
+                    max_seconds=limits.get("max_seconds"),
+                )
+                pages = list(getattr(result, "pages", []) or [])
+                title = cleaned_text(str(getattr(pages[0], "title", "") or "")) if pages else source.name
+                page_texts = []
+                for page in pages:
+                    # WebCollectionResult pages expose extracted text as `.text`.
+                    # The `.content` fallback keeps compatible adapters working.
+                    page_body = cleaned_text(str(getattr(page, "text", "") or getattr(page, "content", "") or ""))
+                    if len(page_body) < 40:
+                        continue
+                    page_title = cleaned_text(str(getattr(page, "title", "") or ""))
+                    page_texts.append(cleaned_text(f"{page_title}\n{page_body}") if page_title else page_body)
+                if not page_texts:
+                    LOGGER.warning("Skipping %s: crawler returned no page with substantive extracted body text.", source.name)
+                    continue
+                # Source names/focus are metadata, not observations. Only actual
+                # extracted page bodies may enter the evidence bundle.
+                full_text = "\n\n".join(page_texts)
+                if len(full_text) < 80:
+                    LOGGER.warning("Skipping %s: extracted source text is too short.", source.name)
+                    continue
+                collected_url = str(getattr(pages[0], "url", "") or source.url)
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
@@ -511,9 +538,9 @@ def build_manual_url_document(
     html = fetch_html(url)
     title, content = extract_page_text(html)
     resolved_name = source_name or title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_name} {focus or ''} {content}")
+    full_text = cleaned_text(content)
     area_hint = area or infer_area(full_text, "Unscoped")
-    if not is_relevant(full_text, area_hint):
+    if len(full_text) < 40 or not is_relevant(full_text, area_hint):
         raise DataAvailabilityAgentError("Manual URL content does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=resolved_name,
@@ -536,8 +563,8 @@ def build_manual_text_document(
     focus: str | None,
 ) -> DataDocument:
     content = cleaned_text(text)
-    area_hint = area or infer_area(cleaned_text(f"{source_name} {focus or ''} {content}"), "Unscoped")
-    if not is_relevant(cleaned_text(f"{area_hint} {focus or ''} {content}"), area_hint):
+    area_hint = area or infer_area(content, "Unscoped")
+    if len(content) < 20 or not is_relevant(content, area_hint):
         raise DataAvailabilityAgentError("Manual text does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=source_name,
