@@ -100,12 +100,14 @@ AREA_KEYWORDS = {
     ],
     "ESG": [
         "esg",
-        "carbon",
+        "carbon market",
         "carbon credit",
+        "carbon accounting",
         "mrv",
-        "sustainability",
-        "emissions",
-        "registry",
+        "sustainability reporting",
+        "sustainability disclosure",
+        "emissions trading",
+        "greenhouse gas emissions",
         "climate change adaptation",
         "climate change mitigation",
         "climate adaptation",
@@ -119,7 +121,6 @@ AREA_KEYWORDS = {
         "mobility data management",
         "transport decarbonization",
         "transport decarbonisation",
-        "climate",
     ],
     "ZK-IoV": [
         "zero-knowledge",
@@ -288,8 +289,12 @@ DOMAIN_TERM_WEIGHTS = {
     "ESG": {
         "climate change adaptation": 3.0, "climate change mitigation": 3.0,
         "climate adaptation": 2.5, "climate mitigation": 2.5, "climate resilience": 2.5,
-        "carbon credit": 3.0, "carbon": 1.5, "mrv": 2.5, "sustainability": 2.0,
-        "emissions": 2.0, "climate": 1.5, "esg": 2.5,
+        "carbon market": 3.0, "carbon markets": 3.0, "carbon credit": 3.0,
+        "carbon accounting": 3.0, "greenhouse gas emissions": 3.0,
+        "emissions trading": 3.0, "sustainability reporting": 2.5,
+        "sustainability disclosure": 2.5, "decarbonization": 2.5,
+        "decarbonisation": 2.5, "carbon": 1.0, "mrv": 2.5,
+        "sustainability": 1.0, "emissions": 1.0, "climate": 1.0, "esg": 2.5,
         # Direct transport-decarbonisation terms are ESG evidence in mobility calls;
         # generic "mobility" alone remains insufficient to classify a call as ESG.
         "electrification of transport": 2.5, "alternative fuels": 2.0,
