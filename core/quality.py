@@ -140,6 +140,11 @@ def _score_evidence_richness(raw_content: str, evidence_bundle: dict[str, Any]) 
     return _clamp_score(score)
 
 
+def _boilerplate_density(raw_content: str) -> int:
+    lowered = (raw_content or "").lower()
+    return sum(lowered.count(term) for term in BOILERPLATE_TERMS)
+
+
 def _agent_specific_evidence_reasons(
     agent_name: str,
     title: str,
