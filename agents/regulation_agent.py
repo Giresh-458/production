@@ -419,6 +419,10 @@ def infer_configured_source_area(
     """Prefer explicit source metadata over incidental terms in page bodies."""
     if explicit_area:
         return explicit_area
+    # A configured source-domain hint is not evidence of relevance when a
+    # funding mission is active; let the extracted page pass the mission query.
+    if current_funding_queries.get():
+        return "Unscoped"
     if source.area:
         return source.area
     metadata_area = infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped")
