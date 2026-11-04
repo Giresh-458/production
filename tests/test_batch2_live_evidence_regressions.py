@@ -211,3 +211,16 @@ def test_zero_knowledge_is_a_controlled_privacy_anchor_for_settlement_calls():
     result = relevance(record, ctx)
     assert result["passed"] is True
     assert {"privacy", "settlement"}.issubset(set(result["matched_title_anchors"]))
+
+
+def test_energy_only_or_energy_plus_digital_does_not_pass_a_specific_ai_platform_call():
+    ctx = _context("AI-driven digital platforms for an affordable and secure European energy system")
+    record = {
+        "agent_name": "company",
+        "title": "Energy Web",
+        "problem_statement": "Energy Web builds digital infrastructure for energy markets.",
+        "context_summary": "The organization works on energy-sector digital infrastructure and sustainability.",
+    }
+    result = relevance(record, ctx)
+    assert result["passed"] is False
+    assert len(result["matched_title_anchors"]) < 3
