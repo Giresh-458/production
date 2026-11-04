@@ -549,7 +549,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
 
             # Each event page becomes its own artifact. Do not merge a directory
             # page and several unrelated event cards into one synthetic challenge.
-            full_text = cleaned_text(f"{page_title}\\n{page_body}")
+            full_text = cleaned_text(f"{page_title}\n{page_body}")
             area_hint = area or infer_area(full_text, "Unscoped")
             if not is_relevant(full_text, area_hint):
                 continue
