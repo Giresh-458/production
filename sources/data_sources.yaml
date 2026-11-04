@@ -369,6 +369,14 @@ data_sources:
       max_pages: 8
       max_depth: 2
       max_seconds: 120
+  - name: ENTSO-E Transparency Platform Manual of Procedures
+    type: dataset_or_api
+    url: https://www.entsoe.eu/Documents/MC%20documents/Transparency%20Platform/MOP/00_ENTSO-E%20Manual%20of%20Procedures_V2R1.pdf
+    focus: official transparency-platform procedures for electricity load, generation, transmission, balancing, XML and CSV downloads, REST API access, registration, and data subscriptions
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 120
   - name: Open Power System Data
     type: dataset_or_api
     url: https://open-power-system-data.org/
