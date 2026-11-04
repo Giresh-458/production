@@ -185,6 +185,8 @@ ENERGY_SYSTEM_EVIDENCE_PATTERNS = (
     r"\belectricity[\s-]+systems?\b",
     r"\b(?:power|transmission|distribution)\s+systems?\b",
     r"\belectricity\s+markets?\b",
+    r"\belectricity[\s-]+(?:supply|generation|consumption|load)\b",
+    r"\bpower[\s-]+generation\b",
     r"\bgrid[\s-]+(?:operation|operations|flexibility|management)\b",
     r"\b(?:smart|distribution|power|electricity)[\s-]+grids?\b",
     r"\brenewable[\s-]+energy\s+(?:integration|generation)\b",
