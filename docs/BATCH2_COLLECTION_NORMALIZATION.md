@@ -16,6 +16,9 @@ The execution path is:
 6. Normalize the current-run artifacts separately for each funding call.
 7. Enforce explicit funding-call ownership, call-scoped funding_call_ids, original attribution trace, run identity, source provenance, and mission relevance. Canonical domain anchors are retained only when their domain-ranking evidence meets the same raw-score and strong-term threshold as the domain router; verified matched terms remain available as anchors, while generic priorities such as market adoption cannot independently admit unrelated evidence.
 8. Write structured normalized JSON, indexes, an input manifest, a skip audit, and the SQLite evidence ledger. Verify SQLite integrity and exact record/run/call/provenance correspondence.
+
+
+**Evidence promotion rule:** configured live-source artifacts that fail the collector quality gate may remain persisted for audit/review, but they are not eligible for the normalized Batch-3 handoff. The mission gate also rejects Data Availability records whose extracted evidence is only the configured source name/focus metadata, and applies technical anchors from a specific funding-call title when available. Source names, configured focus strings, retrieval queries, and other metadata are not treated as source observations.
 9. Validate the Batch-3 handoff and stop. The standalone runner never starts tagging, clustering, trends, synthesis, idea generation, or proposal generation.
 
 The integrated full pipeline has one additional, per-call supplemental `adaptive_research` stage when canonical research-area coverage is insufficient. It is not one of the 11 shared collectors and does not count toward the 11-agent collection-health threshold. Its current-run artifacts may be included in the full pipeline's call-scoped normalized handoff under the explicit supplemental identity `adaptive_research`; the standalone Batch-2 runner does not execute that stage.
