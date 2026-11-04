@@ -145,13 +145,46 @@ def _boilerplate_density(raw_content: str) -> int:
     return sum(lowered.count(term) for term in BOILERPLATE_TERMS)
 
 
+def _score_data_availability_evidence(
+    source: str,
+    raw_content: str,
+    evidence_bundle: dict[str, Any],
+) -> int:
+    observed_parts = [str(source or ""), str(raw_content or "")]
+    for key in ("key_paragraphs", "evidence_snippets", "excerpt_windows", "quoted_passages"):
+        value = evidence_bundle.get(key, [])
+        if isinstance(value, (list, tuple)):
+            observed_parts.extend(str(item) for item in value if str(item).strip())
+    observed = "\n".join(observed_parts).casefold()
+    patterns = (
+        r"\bdataset\b", r"\bapi\b", r"\bendpoint\b", r"\bjson-stat\b",
+        r"\bjson\b", r"\bcsv\b", r"\bparquet\b", r"\bdownload\b",
+        r"\btime series\b", r"\bgeneration\b", r"\bconsumption\b",
+        r"\belectricity supply\b", r"\bspot prices\b", r"\bmeasurements\b",
+        r"\btelemetry\b", r"\bmetadata\b", r"\bdata coverage\b",
+        r"\blicen[cs]e\b", r"\bdata schema\b", r"\bmarket prices\b",
+    )
+    hits = sum(1 for pattern in patterns if re.search(pattern, observed))
+    if hits >= 9:
+        return 5
+    if hits >= 7:
+        return 4
+    if hits >= 5:
+        return 3
+    if hits >= 3:
+        return 2
+    return 1 if hits else 0
+
+
 def _agent_specific_evidence_reasons(
     agent_name: str,
     title: str,
+    source: str,
+    raw_content: str,
     evidence_bundle: dict[str, Any],
 ) -> list[str]:
     """Require evidence that actually belongs to the collector's evidence class."""
-    observed_parts: list[str] = []
+    observed_parts: list[str] = [str(source or ""), str(raw_content or "")]
     for key in ("key_paragraphs", "evidence_snippets", "excerpt_windows", "quoted_passages"):
         value = evidence_bundle.get(key, [])
         if isinstance(value, (list, tuple)):
@@ -227,6 +260,13 @@ def evaluate_collection_quality(
     )
     source_specificity = _score_source_specificity(title, source, evidence_bundle)
     problem_signal_density = _score_problem_signal_density(raw_content, research_area, evidence_bundle)
+    if agent_name == "data_availability":
+        # Data-source records are judged on concrete access/data evidence,
+        # not on whether a dataset page uses generic "problem" vocabulary.
+        problem_signal_density = max(
+            problem_signal_density,
+            _score_data_availability_evidence(source, raw_content, evidence_bundle),
+        )
     evidence_richness = _score_evidence_richness(raw_content, evidence_bundle)
 
     total_score = (
@@ -257,7 +297,9 @@ def evaluate_collection_quality(
         rejection_reasons.append("generic page title without enough specific evidence")
     if not is_manual_source:
         rejection_reasons.extend(
-            _agent_specific_evidence_reasons(agent_name, title, evidence_bundle)
+            _agent_specific_evidence_reasons(
+                agent_name, title, source, raw_content, evidence_bundle
+            )
         )
     if boilerplate_hits >= (6 if is_lenient_agent else 4) and problem_signal_density <= (1 if is_lenient_agent else 2):
         rejection_reasons.append("content appears dominated by boilerplate/navigation text")
