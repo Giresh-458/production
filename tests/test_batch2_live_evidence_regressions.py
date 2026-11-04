@@ -583,3 +583,47 @@ def test_eurostat_electricity_dataset_passes_data_availability_quality_gate():
     )
     assert result["passed"] is True
 
+def test_data_availability_preserves_dataset_metadata_from_extraction(monkeypatch):
+    import json
+
+    payload = {
+        "area": "Unscoped",
+        "what_it_provides": "Monthly electricity supply and consumption data.",
+        "usable_for": "Electricity demand analysis and forecasting.",
+        "access_type": "API",
+        "evaluation_possibility": "Evaluate forecasting and system-operation models.",
+        "limitations": "Monthly rather than real-time observations.",
+        "prototype_use": "Use as historical training and validation data.",
+        "problem_signature": "Unscoped | eurostat | electricity forecasting",
+        "keywords": ["electricity", "generation", "consumption"],
+        "confidence": "High",
+        "dataset_scope": "EU electricity supply and consumption",
+        "coverage_period": "2008-01 to 2026-08",
+        "license_or_access_terms": "Free public Eurostat API",
+        "benchmark_metrics": "Monthly electricity quantities in GWh",
+        "benchmark_gap": "No high-frequency real-time grid telemetry",
+        "reproducibility": "High",
+        "evidence_type": "API Documentation",
+    }
+    monkeypatch.setattr(data_agent, "llm_generate", lambda _prompt: json.dumps(payload))
+    document = data_agent.DataDocument(
+        source_name="Eurostat Electricity Supply Dataset",
+        source_type="Dataset",
+        evidence_type="API Documentation",
+        area_hint="Unscoped",
+        focus="Monthly electricity supply and consumption",
+        url="https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_cb_em?lang=EN",
+        content="Monthly electricity supply and consumption dataset.",
+        source_mode="Automatic",
+    )
+    result = data_agent.analyze_document(document)
+    assert result.area == "Unscoped"
+    assert result.access_type == "API"
+    assert result.confidence == "High"
+    assert result.dataset_scope == "EU electricity supply and consumption"
+    assert result.coverage_period == "2008-01 to 2026-08"
+    assert result.license_or_access_terms == "Free public Eurostat API"
+    assert result.benchmark_metrics == "Monthly electricity quantities in GWh"
+    assert result.benchmark_gap == "No high-frequency real-time grid telemetry"
+    assert result.reproducibility == "High"
+
