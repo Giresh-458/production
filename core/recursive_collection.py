@@ -485,7 +485,10 @@ def collect_recursive_pages_with_review(
         doc = bare_extraction(initial_html, url=root_url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
         root_title = str(getattr(doc, "title", "") or "") or root_title
-        if len(better) > max(400, len(root_content or "") * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in (root_content or "").splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(root_content or "") * 0.35):
             root_content = better
     except Exception:
         pass
