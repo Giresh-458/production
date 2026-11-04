@@ -224,3 +224,31 @@ def test_energy_only_or_energy_plus_digital_does_not_pass_a_specific_ai_platform
     result = relevance(record, ctx)
     assert result["passed"] is False
     assert len(result["matched_title_anchors"]) < 3
+
+
+def test_generic_hackathon_listing_titles_are_not_promoted_as_event_artifacts():
+    from agents.hackathon_agent import is_generic_hackathon_listing_title
+    assert is_generic_hackathon_listing_title("Starknet Events")
+    assert is_generic_hackathon_listing_title("Contests")
+    assert not is_generic_hackathon_listing_title("Starknet Reignite Hackathon")
+
+
+def test_hackathon_manual_text_focus_cannot_make_unrelated_text_relevant(monkeypatch):
+    from agents import hackathon_agent
+    monkeypatch.setattr(hackathon_agent, "funding_context_relevance", lambda _text: False)
+    with pytest.raises(hackathon_agent.HackathonAgentError):
+        hackathon_agent.build_manual_text_document(
+            text="This page describes a university admissions office and campus parking.",
+            challenge_name="Stablecoin Hackathon", source_type="Manual",
+            evidence_type="Problem Statement", sponsor_or_organizer="Example",
+            area=None, focus="zero-knowledge settlement",
+        )
+
+
+def test_hackathon_page_extraction_keeps_dates_and_registration_details(monkeypatch):
+    from agents import hackathon_agent
+    body = "Registration closes March 28, 2027. The hackathon includes prizes and tracks."
+    monkeypatch.setattr(hackathon_agent, "extract_html_text", lambda _html: ("Specific Hackathon", body))
+    title, content = hackathon_agent.extract_page_text("<html></html>")
+    assert title == "Specific Hackathon"
+    assert body in content
