@@ -244,7 +244,7 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     document_phrases = _normalized_text(document_text)
     # Zero-knowledge proofs are a specific privacy-preserving technique, not
     # a generic keyword coincidence. Treat the phrase as a controlled synonym.
-    if "privacy" in title_anchors and re.search(r"\\bzero knowledge\\b|\\bzkp\\b", document_phrases):
+    if "privacy" in title_anchors and re.search(r"\bzero knowledge\b|\bzkp\b", document_phrases):
         matched_title_set.add("privacy")
     matched_title_anchors = sorted(matched_title_set)
     required_title_matches = min(2, len(title_anchors))
