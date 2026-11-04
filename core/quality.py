@@ -21,6 +21,11 @@ GENERIC_TITLE_PATTERNS = {
     "featured",
     "filings",
     "writing",
+    "development topics",
+    "browse all topics",
+    "topics",
+    "home page",
+    "landing page",
 }
 
 BOILERPLATE_TERMS = (
@@ -135,9 +140,59 @@ def _score_evidence_richness(raw_content: str, evidence_bundle: dict[str, Any]) 
     return _clamp_score(score)
 
 
-def _boilerplate_density(raw_content: str) -> int:
-    lowered = (raw_content or "").lower()
-    return sum(lowered.count(term) for term in BOILERPLATE_TERMS)
+def _agent_specific_evidence_reasons(
+    agent_name: str,
+    title: str,
+    evidence_bundle: dict[str, Any],
+) -> list[str]:
+    """Require evidence that actually belongs to the collector's evidence class."""
+    observed_parts: list[str] = []
+    for key in ("key_paragraphs", "evidence_snippets", "excerpt_windows", "quoted_passages"):
+        value = evidence_bundle.get(key, [])
+        if isinstance(value, (list, tuple)):
+            observed_parts.extend(str(item) for item in value if str(item).strip())
+    observed = "\n".join(observed_parts)
+    lowered = observed.casefold()
+    reasons: list[str] = []
+
+    if agent_name == "data_availability":
+        access_artifact = re.search(
+            r"\b(?:dataset|data set|api|endpoint|download|csv|json|parquet|data package|"
+            r"data catalog|data catalogue|dashboard|explorer|registry|simulator|testbed|benchmark)\b",
+            lowered,
+        )
+        concrete_data = re.search(
+            r"\b(?:time series|historical data|generation|electricity load|consumption|"
+            r"market prices|measurements|sensor data|transaction data|protocol data|"
+            r"metrics|query results|data schema|metadata fields|benchmark results)\b",
+            lowered,
+        )
+        if not access_artifact or not concrete_data:
+            reasons.append(
+                "data-availability evidence must describe both a concrete data product/access artifact "
+                "and the data or measurements it provides"
+            )
+
+    if agent_name == "regulation":
+        generic_title = _generic_title_score(title) == 0
+        legal_instrument = re.search(
+            r"\b(?:regulation\s*\(?eu\)?\s*\d{4}/\d+|directive\s*\(?eu\)?\s*\d{4}/\d+|"
+            r"article\s+\d+|act\s+no\.?\s*\d+|law\s+no\.?\s*\d+|"
+            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|regulatory\s+framework|"
+            r"regulatory\s+requirements?|official\s+standard|standard\s+requirements?)\b",
+            lowered,
+        )
+        normative_requirement = re.search(
+            r"\b(?:shall|must|is required to|are required to|prohibited|obligation|"
+            r"compliance requirement|mandatory requirement)\b",
+            lowered,
+        )
+        if not legal_instrument or (generic_title and not normative_requirement):
+            reasons.append(
+                "regulation evidence lacks a specific legal/standards instrument or its normative requirements"
+            )
+
+    return reasons
 
 
 def evaluate_collection_quality(
@@ -184,6 +239,9 @@ def evaluate_collection_quality(
         rejection_reasons.append("evidence bundle too thin")
     if generic_title and problem_signal_density <= (1 if is_lenient_agent else 2):
         rejection_reasons.append("generic page title without enough specific evidence")
+    rejection_reasons.extend(
+        _agent_specific_evidence_reasons(agent_name, title, evidence_bundle)
+    )
     if boilerplate_hits >= (6 if is_lenient_agent else 4) and problem_signal_density <= (1 if is_lenient_agent else 2):
         rejection_reasons.append("content appears dominated by boilerplate/navigation text")
     if total_score < (35 if is_lenient_agent else 45):
