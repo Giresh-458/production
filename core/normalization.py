@@ -218,11 +218,18 @@ def _safe_metadata_text(value: Any) -> str:
     return ""
 
 
-def _normalized_actor_and_focus(body: dict[str, str], source_hints: dict[str, Any], machine_metadata: dict[str, Any], research_area: str) -> tuple[str, str]:
+def _normalized_actor_and_focus(
+    body: dict[str, str],
+    source_hints: dict[str, Any],
+    machine_metadata: dict[str, Any],
+    research_area: str,
+) -> tuple[str, str]:
     authors = source_hints.get("authors")
     author_text = ""
     if isinstance(authors, (list, tuple)):
-        author_text = ", ".join(text for author in authors[:3] if (text := _safe_metadata_text(author)))
+        author_text = ", ".join(
+            text for author in authors[:3] if (text := _safe_metadata_text(author))
+        )
     actor, focus = _normalized_actor_and_focus(
         body, source_hints, machine_metadata, research_area
     )
