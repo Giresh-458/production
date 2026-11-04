@@ -394,15 +394,15 @@ def test_energy_system_dataset_evidence_can_pass_without_repeating_ai_platform_t
     ctx = _context("AI-driven digital platforms for a more affordable and secure European energy system")
     record = {
         "agent_name": "data_availability",
-        "title": "ENTSO-E Transparency Platform",
+        "title": "Eurostat Electricity Supply, Transformation and Consumption Dataset",
         "problem_statement": (
-            "The platform publishes electricity-system data for generation, load, "
-            "transmission, balancing, and cross-border flows. Data are available through "
-            "a REST API and downloadable XML and CSV files."
+            "Monthly quantities of electricity in the energy balance cover cross-border trade, "
+            "transformation input for generation and pumped storage, distribution losses, and "
+            "supply to the internal market. Online data code: nrg_cb_em."
         ),
-        "context_summary": "The electricity system dataset supports grid operation and flexibility analysis.",
+        "context_summary": "The dataset provides monthly electricity supply and consumption data.",
         "evidence_snippets": [
-            "Generation, load, transmission and balancing data are published for the electricity system."
+            "Electricity supply, transformation and consumption - monthly data."
         ],
     }
     result = relevance(record, ctx)
@@ -551,4 +551,31 @@ def test_funding_problem_extractor_does_not_select_eligibility_rationale():
         agent_name="funding",
     )
     assert result["selected_problem"] is None
+
+def test_eurostat_electricity_dataset_passes_data_availability_quality_gate():
+    from core.quality import evaluate_collection_quality
+
+    paragraph = (
+        "Electricity supply, transformation and consumption - monthly data. "
+        "Monthly quantities of electricity cover cross-border trade, transformation "
+        "input for generation and pumped storage, distribution losses, and supply to "
+        "the internal market. Online data code nrg_cb_em."
+    )
+    evidence = {
+        "key_paragraphs": [paragraph, "Dataset information: monthly electricity data."],
+        "evidence_snippets": [paragraph],
+        "excerpt_windows": [paragraph],
+        "section_headings": ["Dataset information", "Electricity supply"],
+        "bullet_lists": [],
+    }
+    result = evaluate_collection_quality(
+        agent_name="data_availability",
+        title="Eurostat Electricity Supply, Transformation and Consumption Dataset",
+        source="https://ec.europa.eu/eurostat/databrowser/view/nrg_cb_em/default/table?lang=en",
+        research_area="Unscoped",
+        raw_content=(paragraph + " ") * 12,
+        evidence_bundle=evidence,
+        area_scores={},
+    )
+    assert result["passed"] is True
 
