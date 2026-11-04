@@ -303,3 +303,18 @@ def test_entity_noise_filter_does_not_drop_legitimate_name_starting_with_one():
     from core.evidence import _named_entities_or_programs
     entities = _named_entities_or_programs("One Medical provides clinical services.", {})
     assert "One Medical" in entities
+
+
+def test_event_directory_split_keeps_only_specific_dated_hackathons():
+    from agents.hackathon_agent import extract_hackathon_event_sections
+    content = (
+        "12 - 26 May, 2025 · online\\n"
+        "#### Starknet Reignite Hackathon\\n"
+        "A two-week online hackathon competition for developers.\\n"
+        "20 February, 2026 · in person\\n"
+        "#### Liquidity & Liquors: Starknet’s Private Trader Meetup\\n"
+        "Registration is open. The meetup discusses leaderboards and competitions."
+    )
+    sections = extract_hackathon_event_sections(content)
+    assert len(sections) == 1
+    assert sections[0][0] == "Starknet Reignite Hackathon"
