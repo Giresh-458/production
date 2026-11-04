@@ -114,11 +114,11 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
         "deliberate", "deep", "regulating", "employing",
     }
     source_title_values = set()
-    if isinstance(machine_metadata, dict):
-        for value in (machine_metadata.get("title"),):
+    if isinstance(metadata, dict):
+        for value in (metadata.get("title"),):
             if isinstance(value, str) and value.strip():
                 source_title_values.add(value.strip().casefold())
-        hints = machine_metadata.get("source_hints")
+        hints = metadata.get("source_hints")
         if isinstance(hints, dict):
             value = hints.get("title")
             if isinstance(value, str) and value.strip():
