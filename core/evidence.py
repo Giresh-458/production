@@ -28,6 +28,18 @@ PROBLEM_SIGNAL_TERMS = (
 )
 
 
+UNSCOPED_EVIDENCE_TERMS = (
+    "dataset", "data set", "api", "endpoint", "json-stat", "csv", "json",
+    "parquet", "download", "time series", "data portal", "data catalog",
+    "data catalogue", "electricity supply", "electricity generation",
+    "electricity consumption", "electricity system", "energy system",
+    "power system", "grid operation", "grid flexibility", "smart grid",
+    "renewable energy", "energy storage", "generation", "consumption",
+    "load", "market prices", "measurements", "telemetry", "benchmark",
+    "registry", "dashboard", "explorer", "metadata", "data schema",
+)
+
+
 def _clean_line(value: str) -> str:
     return " ".join((value or "").split()).strip()
 
@@ -147,6 +159,12 @@ def _keyword_score(text: str, research_area: str | None) -> int:
     if research_area and research_area in AREA_KEYWORDS:
         for keyword in AREA_KEYWORDS[research_area]:
             score += lowered.count(keyword.lower()) * 2
+    elif not research_area or str(research_area).casefold() in {"general", "unscoped"}:
+        # A mission-specific General/Unscoped collector still needs useful
+        # source passages. Prefer concrete data/API/energy-system evidence
+        # instead of returning arbitrary first paragraphs.
+        for term in UNSCOPED_EVIDENCE_TERMS:
+            score += lowered.count(term)
     return score
 
 
