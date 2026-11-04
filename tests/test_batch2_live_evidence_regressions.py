@@ -318,3 +318,19 @@ def test_event_directory_split_keeps_only_specific_dated_hackathons():
     sections = extract_hackathon_event_sections(content)
     assert len(sections) == 1
     assert sections[0][0] == "Starknet Reignite Hackathon"
+
+
+def test_named_entity_extraction_drops_source_title_and_sentence_openers():
+    from core.evidence import _named_entities_or_programs
+    title = "Governance of marine carbon dioxide removal - gaps, challenges and pathways"
+    entities = _named_entities_or_programs(
+        "Deliberate ocean-based interventions are studied. Deep uncertainty remains. "
+        "Regulating and employing a framework can help. The Paris Agreement sets climate goals.",
+        {"source_hints": {"title": title}},
+    )
+    assert title not in entities
+    assert "Deliberate" not in entities
+    assert "Deep" not in entities
+    assert "Regulating" not in entities
+    assert "Employing" not in entities
+    assert "Paris Agreement" in entities
