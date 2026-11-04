@@ -186,8 +186,11 @@ def _agent_specific_evidence_reasons(
         legal_instrument = re.search(
             r"\b(?:regulation\s*\(?eu\)?\s*\d{4}/\d+|directive\s*\(?eu\)?\s*\d{4}/\d+|"
             r"article\s+\d+|act\s+no\.?\s*\d+|law\s+no\.?\s*\d+|"
-            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|regulatory\s+framework|"
-            r"regulatory\s+requirements?|official\s+standard|standard\s+requirements?)\b",
+            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|rfc\s+\d+|nist\s+sp\s*\d+|"
+            r"w3c\s+recommendation|w3c\s+standard|regulatory\s+framework|"
+            r"regulatory\s+requirements?|official\s+standard|standard\s+requirements?|"
+            r"guidance\s+document|consultation\s+document|policy\s+instrument|"
+            r"\bframework\b|\bstandard\b|\brecommendation\b|\bdecision\b)\b",
             lowered,
         )
         normative_requirement = re.search(
