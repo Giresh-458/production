@@ -705,7 +705,7 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     
     usable_for = coalesce_text(parsed.get("usable_for"), "UNKNOWN")
     
-    access_type = infer_access_type(f"{document.url}\\n{document.content}", source_type).title()
+    access_type = infer_access_type(f"{document.url}\n{document.content}", source_type).title()
     if access_type not in {"Open", "Restricted", "Paid", "Manual", "Api", "API"}:
         access_type = "Open"
     if access_type == "Api":
