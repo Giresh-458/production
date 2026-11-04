@@ -430,7 +430,10 @@ def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_pa
         doc = bare_extraction(html, url=url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
         better_title = str(getattr(doc, "title", "") or "") if doc else ""
-        if len(better) > max(400, len(content) * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in content.splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(content) * 0.35):
             content = better
             title = better_title or title
     except Exception:
