@@ -174,6 +174,43 @@ def _normalized_text(value: Any) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
 
 
+ENERGY_SYSTEM_EVIDENCE_PATTERNS = (
+    r"\\benergy[\\s-]+systems?\\b",
+    r"\\belectricity[\\s-]+systems?\\b",
+    r"\\bgrid[\\s-]+(?:operation|operations|flexibility|management)\\b",
+    r"\\b(?:smart|distribution|power|electricity)\\s+grids?\\b",
+    r"\\brenewable[\\s-]+energy\\s+(?:integration|generation)\\b",
+    r"\\benergy\\s+storage\\b",
+    r"\\benergy\\s+platforms?\\b",
+    r"\\bgrid\\s+integration\\b",
+    r"\\bflexibility\\s+management\\b",
+)
+
+
+def _energy_system_evidence(record: dict[str, Any]) -> str:
+    """Use source-derived body evidence, not configured focus or title metadata."""
+    values: list[str] = []
+    for key in ("problem_statement", "context_summary"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+    for key in ("evidence_snippets", "excerpt_windows"):
+        raw = record.get(key)
+        if isinstance(raw, (list, tuple)):
+            values.extend(str(item) for item in raw if str(item).strip())
+    return "\\n".join(values)
+
+
+def _is_energy_system_call(ctx: FundingCallContext) -> bool:
+    title = str(getattr(ctx, "call_title", "") or getattr(ctx, "program_name", "") or "").casefold()
+    return "energy" in title and ("platform" in title or "digital" in title)
+
+
+def _has_energy_system_evidence(record: dict[str, Any]) -> bool:
+    body = _energy_system_evidence(record)
+    return any(re.search(pattern, body, flags=re.IGNORECASE) for pattern in ENERGY_SYSTEM_EVIDENCE_PATTERNS)
+
+
 def _is_data_availability_metadata_echo(record: dict[str, Any]) -> bool:
     """Reject dataset artifacts whose only 'evidence' is the YAML name/focus hint."""
     if str(record.get("agent_name") or "").casefold() != "data_availability":
@@ -240,6 +277,19 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     mission_tokens = _tokens(anchor_text)
     document_tokens = _tokens(document_text)
     title_anchors = _call_title_anchor_terms(ctx)
+    energy_call = _is_energy_system_call(ctx)
+    energy_evidence = _has_energy_system_evidence(record) if energy_call else False
+    agent_name = str(record.get("agent_name") or "").casefold()
+    # For energy-platform calls, data and regulation sources may support the
+    # energy-system workstream without repeating "AI/digital platform". They
+    # must nevertheless contain an explicit grid/electricity-system phrase in
+    # source-derived body evidence; navigation labels and metadata do not count.
+    if energy_call and agent_name in {"data_availability", "regulation"} and not energy_evidence:
+        return {
+            "passed": False, "score": 0.0, "matched_terms": [],
+            "matched_phrases": [], "matched_title_anchors": [],
+            "reason": "source lacks source-derived energy-system/grid evidence for the selected AI energy-platform call",
+        }
     matched_title_set = set(title_anchors) & document_tokens
     document_phrases = _normalized_text(document_text)
     # Normalize simple plurals for title anchors without fuzzy keyword matching.
@@ -257,6 +307,8 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     matched_title_anchors = sorted(matched_title_set)
     required_title_matches = min(3, len(title_anchors))
     title_anchor_match = bool(required_title_matches) and len(matched_title_anchors) >= required_title_matches
+    if energy_call and agent_name in {"data_availability", "regulation"} and energy_evidence:
+        title_anchor_match = True
     if required_title_matches and not title_anchor_match:
         return {
             "passed": False, "score": 0.0,
