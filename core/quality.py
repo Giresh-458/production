@@ -163,7 +163,10 @@ def _agent_specific_evidence_reasons(
         )
         concrete_data = re.search(
             r"\b(?:time series|historical data|generation|electricity load|consumption|"
-            r"market prices|measurements|sensor data|transaction data|protocol data|"
+            r"market prices|measurements|sensor data|telemetry|transaction data|protocol data|"
+            r"stablecoin supply|total value locked|reserve reports?|proof of reserve|"
+            r"carbon credits?|registry entries|project records|credit issuance|block data|"
+            r"mobility traces|node uptime|network metrics|attack traces|anomaly data|"
             r"metrics|query results|data schema|metadata fields|benchmark results)\b",
             lowered,
         )
