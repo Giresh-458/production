@@ -183,7 +183,7 @@ def test_verified_esg_domain_terms_allow_substantive_sustainability_evidence():
                 "domain": "ESG",
                 "score": 0.7143,
                 "raw_score": 6.0,
-                "matched_terms": ["sustainability", "emissions"],
+                "matched_terms": ["sustainability reporting", "greenhouse gas emissions"],
             },
             {
                 "domain": "DePIN",
