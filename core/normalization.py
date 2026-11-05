@@ -267,9 +267,43 @@ def _normalized_record_dedupe_key(record: dict[str, Any]) -> str:
         return f"literature-content:{record['content_hash']}"
     return str(record.get("evidence_id") or "")
 
-def generate_content_hash(title: str, source_type: str, problem_statement: str, context_summary: str) -> str:
-    text = f"{_clean(title)}|{_clean(source_type)}|{_clean(problem_statement)}|{_clean(context_summary)}"
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def generate_content_hash(
+    title: str,
+    source_type: str,
+    problem_statement: str,
+    context_summary: str,
+    *,
+    evidence_snippets: list[str] | None = None,
+    excerpt_windows: list[str] | None = None,
+    raw_content: str = "",
+) -> str:
+    """Fingerprint the extracted source evidence, not just its generated summary.
+
+    Literature records may have different DOI identifiers for the same work.
+    Cross-DOI deduplication is therefore allowed only when the source-backed
+    excerpts/raw content also match. Including those fields prevents unrelated
+    publications with similar titles and summaries from being collapsed.
+    """
+    payload = {
+        "title": _clean(title),
+        "source_type": _clean(source_type),
+        "problem_statement": _clean(problem_statement),
+        "context_summary": _clean(context_summary),
+        "evidence_snippets": [
+            _clean(value) for value in (evidence_snippets or []) if _clean(value)
+        ],
+        "excerpt_windows": [
+            _clean(value) for value in (excerpt_windows or []) if _clean(value)
+        ],
+        "raw_content": _clean(raw_content),
+    }
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def generate_evidence_id(
@@ -563,7 +597,15 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     entity_tokens = (evidence.get("named_entities_or_programs", []) or [actor, title])[:12]
     linked_urls = list(dict.fromkeys(([source_url] if source_url else []) + evidence.get("links_found", [])))[:20]
 
-    content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
+    content_hash = generate_content_hash(
+        title,
+        source_type,
+        normalized_problem,
+        context_summary,
+        evidence_snippets=evidence.get("evidence_snippets", []),
+        excerpt_windows=evidence.get("excerpt_windows", []),
+        raw_content=raw_content,
+    )
     identity_metadata = dict(machine_metadata)
     identity_metadata.update({
         "agent_name": agent_name,
