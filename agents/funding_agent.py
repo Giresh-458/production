@@ -2376,9 +2376,9 @@ def _is_primary_energy_platform_call(title: str, content: str = "") -> bool:
     in these calls; they must not override the primary energy-platform mission.
     """
     title_text = str(title or "").casefold()
-    has_energy_system = bool(re.search(r"\\benergy[\\s-]+systems?\\b", title_text))
+    has_energy_system = bool(re.search(r"\benergy[\s-]+systems?\b", title_text))
     has_digital_platform = bool(
-        re.search(r"\\b(?:ai[\\s-]+driven[\\s-]+)?digital[\\s-]+platforms?\\b", title_text)
+        re.search(r"\b(?:ai[\s-]+driven[\s-]+)?digital[\s-]+platforms?\b", title_text)
     )
     return has_energy_system and has_digital_platform
 
