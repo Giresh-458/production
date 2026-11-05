@@ -343,7 +343,7 @@ A source-backed result about reproducible research workflows.
     assert old_manifest["schema_version"] == 2
     old_manifest["schema_version"] = 1
     manifest_path.write_text(json.dumps(old_manifest), encoding="utf-8")
-    records_path.write_text("[]\\n", encoding="utf-8")
+    records_path.write_text("[]", encoding="utf-8")
 
     ensure_normalized_collection_records(run_root)
 
