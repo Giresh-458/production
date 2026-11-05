@@ -409,9 +409,15 @@ def resolve_research_area(
     if normalized_explicit in ALLOWED_RESEARCH_AREAS:
         explicit_score = scores.get(normalized_explicit, 0)
         if authoritative_explicit:
-            if best_area and best_area != normalized_explicit and best_score > explicit_score:
+            competing_areas = [
+                (area, score)
+                for area, score in scores.items()
+                if area != normalized_explicit and score > 0
+            ]
+            if competing_areas:
+                competing_area, _competing_score = max(competing_areas, key=lambda item: item[1])
                 warnings.append(
-                    f"Content also matched '{best_area}', but retained authoritative routed research area '{normalized_explicit}'."
+                    f"Content also matched '{competing_area}', but retained authoritative routed research area '{normalized_explicit}'."
                 )
             if explicit_score == 0:
                 warnings.append(f"Research area '{normalized_explicit}' has weak textual support in this artifact.")
