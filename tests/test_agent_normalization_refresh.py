@@ -351,4 +351,4 @@ A source-backed result about reproducible research workflows.
     refreshed_records = json.loads(records_path.read_text(encoding="utf-8"))
     assert refreshed_manifest["schema_version"] == 2
     assert [record["title"] for record in refreshed_records] == ["Versioned Evidence"]
-\n
+
