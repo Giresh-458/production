@@ -103,6 +103,54 @@ def test_case_4_and_5_title_identity(temp_outputs):
     recs = conn.execute("SELECT source_id FROM canonical_evidence").fetchall()
     assert recs[0]["source_id"] != recs[1]["source_id"]
 
+def test_literature_records_with_same_summary_but_different_source_evidence_stay_distinct(temp_outputs):
+    first = make_artifact_md(
+        title="Cool Paper",
+        doi="10.1/a",
+        problem="Both publications discuss the same broad research problem.",
+        evidence_snippets=["Source A reports a distinct measured result for system A."],
+    ).replace("- Layer: Literature", "- Layer: Literature\n- Agent Name: literature")
+    second = make_artifact_md(
+        title="Cool Paper",
+        doi="10.1/b",
+        problem="Both publications discuss the same broad research problem.",
+        evidence_snippets=["Source B reports a different measured result for system B."],
+    ).replace("- Layer: Literature", "- Layer: Literature\n- Agent Name: literature")
+    create_artifact(temp_outputs, "literature-a.md", first)
+    create_artifact(temp_outputs, "literature-b.md", second)
+
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+
+    assert len(records) == 2
+    assert {record["source_id"] for record in records} == {"doi:10.1/a", "doi:10.1/b"}
+    assert len({record["content_hash"] for record in records}) == 2
+
+
+def test_exact_literature_source_content_can_still_collapse_across_doi_aliases(temp_outputs):
+    excerpt = "The paper reports the same source-backed measurement and result."
+    first = make_artifact_md(
+        title="Shared Work",
+        doi="10.2/a",
+        problem="A shared research problem statement.",
+        evidence_snippets=[excerpt],
+    ).replace("- Layer: Literature", "- Layer: Literature\n- Agent Name: literature")
+    second = make_artifact_md(
+        title="Shared Work",
+        doi="10.2/b",
+        problem="A shared research problem statement.",
+        evidence_snippets=[excerpt],
+    ).replace("- Layer: Literature", "- Layer: Literature\n- Agent Name: literature")
+    create_artifact(temp_outputs, "literature-alias-a.md", first)
+    create_artifact(temp_outputs, "literature-alias-b.md", second)
+
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+
+    assert len(records) == 1
+    assert set(records[0]["source_id_variants"]) == {"doi:10.2/a", "doi:10.2/b"}
+
+
 def test_case_6_and_7_copied_news(temp_outputs):
     # Copied news has the same content hash -> same independence group
     content = "Breaking news: huge discovery in science."
