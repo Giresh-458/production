@@ -184,6 +184,9 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
         r"\bsafeguard the (?:union|european union)'?s strategic assets\b",
         r"\btechnological dependency on a non[- ]eu source\b",
         r"\bstrategic weaknesses, vulnerabilities and high[- ]risk dependencies\b",
+        # API fields may be split at commas before extraction; keep the semantic
+        # exclusion when the candidate fragment begins at "vulnerabilities".
+        r"\bvulnerabilities and high[- ]risk dependencies(?: which put at risk the attainment of its ambitions)?\b",
         r"\bsubcontracting\b.{0,180}\b(?:proportionate|limited|limit|cap|must not exceed)\b",
         r"\b(?:eligible costs?|funding rate|grant amount|maximum funding|total budget|budget ceiling|"
         r"co[- ]funding|indirect costs?|overheads?)\b.{0,180}\b"
