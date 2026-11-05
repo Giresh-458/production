@@ -2391,8 +2391,8 @@ def _has_primary_esg_anchor(title: str, content: str) -> bool:
     # fuels have a concrete transport-decarbonisation focus, not just generic
     # mobility language.
     if (
-        re.search(r"\\belectrification of transport\\b", body_text)
-        and re.search(r"\\balternative fuels?\\b", body_text)
+        re.search(r"\belectrification of transport\b", body_text)
+        and re.search(r"\balternative fuels?\b", body_text)
     ):
         return True
     explicit_title_anchors = (
