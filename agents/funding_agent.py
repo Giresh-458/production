@@ -2369,10 +2369,32 @@ def _extract_general_themes(content: str) -> list[str]:
     return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
+def _is_primary_energy_platform_call(title: str, content: str = "") -> bool:
+    """Identify calls whose primary technical mission is an AI/digital energy platform.
+
+    Environmental outcomes such as lower emissions are secondary expected outcomes
+    in these calls; they must not override the primary energy-platform mission.
+    """
+    title_text = str(title or "").casefold()
+    has_energy_system = bool(re.search(r"\\benergy[\\s-]+systems?\\b", title_text))
+    has_digital_platform = bool(
+        re.search(r"\\b(?:ai[\\s-]+driven[\\s-]+)?digital[\\s-]+platforms?\\b", title_text)
+    )
+    return has_energy_system and has_digital_platform
+
+
 def _has_primary_esg_anchor(title: str, content: str) -> bool:
     """Require primary ESG evidence; sustainability outcomes alone are not a domain label."""
     title_text = str(title or "").casefold()
     body_text = str(content or "").casefold()
+    # Transport calls that explicitly combine electrification and alternative
+    # fuels have a concrete transport-decarbonisation focus, not just generic
+    # mobility language.
+    if (
+        re.search(r"\\belectrification of transport\\b", body_text)
+        and re.search(r"\\balternative fuels?\\b", body_text)
+    ):
+        return True
     explicit_title_anchors = (
         r"\besg\b", r"\bmrv\b", r"\bcarbon[ -]+(?:markets?|credits?|accounting|footprint)\b",
         r"\bclimate[ -]+(?:change|mitigation|adaptation|resilience)\b",
@@ -2415,12 +2437,17 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         for term in top_matches
         if str(term).strip()
     )
+    energy_platform_call = _is_primary_energy_platform_call(document.title, document.content)
     focus_area = (
-        str(top_item.get("domain"))
-        if top_score >= 0.30
-        and top_raw >= 4.0
-        and (len(top_matches) >= 2 or title_has_domain_anchor)
-        else "General"
+        "General"
+        if energy_platform_call
+        else (
+            str(top_item.get("domain"))
+            if top_score >= 0.30
+            and top_raw >= 4.0
+            and (len(top_matches) >= 2 or title_has_domain_anchor)
+            else "General"
+        )
     )
     if focus_area == "ESG" and not _has_primary_esg_anchor(document.title, document.content):
         focus_area = "General"
