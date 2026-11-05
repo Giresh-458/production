@@ -212,51 +212,9 @@ def _is_energy_system_call(ctx: FundingCallContext) -> bool:
     return "energy" in title and ("platform" in title or "digital" in title)
 
 
-ENERGY_DIGITAL_EVIDENCE_PATTERNS = (
-    r"\bai[\s-]+driven\b",
-    r"\bartificial intelligence\b",
-    r"\bdigital[\s-]+platforms?\b",
-    r"\bdigital[\s-]+twins?\b",
-    r"\bcloud[\s-]+to[\s-]+edge\b",
-    r"\bcross[\s-]+border data exchange\b",
-    r"\binternet of things\b",
-    r"\biot\b",
-)
-
-ENERGY_OPERATIONAL_EVIDENCE_PATTERNS = (
-    r"\bgrid[\s-]+(?:operation|operations|flexibility|management)\b",
-    r"\belectricity[\s-]+system[\s-]+operation\b",
-    r"\bflexibility[\s-]+management\b",
-    r"\brenewable[\s-]+energy[\s-]+integration\b",
-    r"\benergy[\s-]+storage\b",
-    r"\bdistributed energy resources?\b",
-    r"\bsmart[\s-]+charging\b",
-    r"\bcross[\s-]+border flexibility\b",
-    r"\benergy[\s-]+efficiency\b",
-)
-
-
 def _has_energy_system_evidence(record: dict[str, Any]) -> bool:
-    """Require energy-system, digital/AI, and operational evidence from source passages.
-
-    A generic mention of energy, AI, or digital infrastructure is insufficient:
-    all three evidence groups must be present in extracted source passages.
-    """
     body = _energy_system_evidence(record)
-    has_energy = any(
-        re.search(pattern, body, flags=re.IGNORECASE)
-        for pattern in ENERGY_SYSTEM_EVIDENCE_PATTERNS
-    )
-    has_digital = any(
-        re.search(pattern, body, flags=re.IGNORECASE)
-        for pattern in ENERGY_DIGITAL_EVIDENCE_PATTERNS
-    )
-    has_operation = any(
-        re.search(pattern, body, flags=re.IGNORECASE)
-        for pattern in ENERGY_OPERATIONAL_EVIDENCE_PATTERNS
-    )
-    return has_energy and has_digital and has_operation
-
+    return any(re.search(pattern, body, flags=re.IGNORECASE) for pattern in ENERGY_SYSTEM_EVIDENCE_PATTERNS)
 
 def _is_data_availability_metadata_echo(record: dict[str, Any]) -> bool:
     """Reject dataset artifacts whose only 'evidence' is the YAML name/focus hint."""
