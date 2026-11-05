@@ -374,7 +374,13 @@ def collect_source(
             final_url = canonicalize_url(str(response.url))
             if _domain(final_url) not in allowed:
                 raise ValueError("redirected_to_untrusted_domain")
-            if not ("html" in content_type or "pdf" in content_type or final_url.lower().endswith(".pdf")):
+            response_text = str(getattr(response, "text", "") or "")
+            is_json = (
+                "json" in content_type
+                or final_url.lower().endswith(".json")
+                or response_text.lstrip().startswith(("{", "["))
+            )
+            if not ("html" in content_type or "pdf" in content_type or final_url.lower().endswith(".pdf") or is_json):
                 failed.append({"url": url, "reason": f"unsupported_content_type:{content_type or 'unknown'}"})
                 continue
             if "pdf" in content_type or final_url.lower().endswith(".pdf"):
@@ -382,6 +388,19 @@ def collect_source(
                 title = Path(urlparse(final_url).path).stem.replace("_", " ").replace("-", " ").strip()
                 links: list[tuple[str, str]] = []
                 structured: list[dict[str, Any]] = []
+            elif is_json:
+                try:
+                    payload = json.loads(response_text)
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    failed.append({"url": url, "reason": f"invalid_json_response:{str(exc)[:160]}"})
+                    continue
+                if isinstance(payload, dict):
+                    title = str(payload.get("label") or payload.get("title") or payload.get("id") or "JSON Data")
+                else:
+                    title = "JSON Data"
+                text = json.dumps(payload, ensure_ascii=False, indent=2)
+                links = []
+                structured = []
             else:
                 html = response.text
                 title, text, structured, links = _extract(html)

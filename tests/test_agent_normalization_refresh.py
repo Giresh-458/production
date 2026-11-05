@@ -313,3 +313,42 @@ Quantum research system reliability and integration evidence for {title}.
     assert [record["title"] for record in records] == ["Current Run Evidence"]
     assert records[0]["run_id"] == run_id
 
+def test_normalization_algorithm_version_invalidates_existing_cache(tmp_path: Path):
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / "run_cache_version"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "signal.md").write_text("""# Versioned Evidence
+
+## Shared Metadata
+- Title: Versioned Evidence
+- Source: https://example.org/versioned-evidence
+- Layer: Literature
+- Collected At: 2026-11-05T10:00:00+00:00
+
+## Problem
+A source-backed result about reproducible research workflows.
+
+## Evidence Bundle
+### Evidence Snippets
+- The source reports a reproducible workflow result with measured evaluation details.
+""", encoding="utf-8")
+
+    save_normalized_collection_records(intermediate, run_root)
+    manifest_path = run_root / "normalized" / "input_manifest.json"
+    records_path = run_root / "normalized" / "records.json"
+
+    old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert old_manifest["schema_version"] == 2
+    old_manifest["schema_version"] = 1
+    manifest_path.write_text(json.dumps(old_manifest), encoding="utf-8")
+    records_path.write_text("[]", encoding="utf-8")
+
+    ensure_normalized_collection_records(run_root)
+
+    refreshed_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    refreshed_records = json.loads(records_path.read_text(encoding="utf-8"))
+    assert refreshed_manifest["schema_version"] == 2
+    assert [record["title"] for record in refreshed_records] == ["Versioned Evidence"]
+

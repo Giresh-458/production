@@ -31,7 +31,6 @@ from core.schemas import AREA_KEYWORDS
 from core.funding_context import funding_context_relevance
 from core.web_collection import collect_source
 from core.structured_sources import collect_structured_source
-from core.web_collection import combine_pages
 
 DEFAULT_OUTPUT_DIR = Path("outputs/data_availability")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "data_availability_memory.db"
@@ -390,6 +389,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -475,24 +478,52 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
         try:
             structured = collect_structured_source(source.url, source.type, area)
             if structured:
-                full_text = structured.text
-                title = structured.title or source.name
-                collected_url = structured.url
+                # Structured adapters must return source-derived text. Never pad
+                # an empty response with configured source names or focus hints.
+                full_text = cleaned_text(str(getattr(structured, "text", "") or ""))
+                title = cleaned_text(str(getattr(structured, "title", "") or "")) or source.name
+                collected_url = str(getattr(structured, "url", "") or source.url)
+                if len(full_text) < 80:
+                    LOGGER.warning("Skipping %s: structured source returned no substantive source text.", source.name)
+                    continue
             else:
                 limits = limits_by_url.get(source.url, {})
-
                 ctx = current_crawl_context.get(None)
-
-                if ctx: ctx.begin_source()
-
-                result = collect_source(source.url, keywords=('dataset'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-                title = result.pages[0].title if result.pages else source.name
-                full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
-                collected_url = source.url
+                if ctx:
+                    ctx.begin_source()
+                result = collect_source(
+                    source.url,
+                    keywords=("dataset",),
+                    max_depth=limits.get("max_depth", 2),
+                    max_pages=limits.get("max_pages", 8),
+                    max_documents=limits.get("max_documents"),
+                    max_seconds=limits.get("max_seconds"),
+                )
+                pages = list(getattr(result, "pages", []) or [])
+                title = cleaned_text(str(getattr(pages[0], "title", "") or "")) if pages else source.name
+                page_texts = []
+                for page in pages:
+                    # WebCollectionResult pages expose extracted text as `.text`.
+                    # The `.content` fallback keeps compatible adapters working.
+                    page_body = cleaned_text(str(getattr(page, "text", "") or getattr(page, "content", "") or ""))
+                    if len(page_body) < 40:
+                        continue
+                    page_title = cleaned_text(str(getattr(page, "title", "") or ""))
+                    page_texts.append(cleaned_text(f"{page_title}\n{page_body}") if page_title else page_body)
+                if not page_texts:
+                    LOGGER.warning("Skipping %s: crawler returned no page with substantive extracted body text.", source.name)
+                    continue
+                # Source names/focus are metadata, not observations. Only actual
+                # extracted page bodies may enter the evidence bundle.
+                full_text = "\n\n".join(page_texts)
+                if len(full_text) < 80:
+                    LOGGER.warning("Skipping %s: extracted source text is too short.", source.name)
+                    continue
+                collected_url = str(getattr(pages[0], "url", "") or source.url)
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
-        area_hint = area or infer_area(full_text, "Unscoped")
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text did not pass relevance filters.", source.name)
             continue
@@ -511,9 +542,9 @@ def build_manual_url_document(
     html = fetch_html(url)
     title, content = extract_page_text(html)
     resolved_name = source_name or title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_name} {focus or ''} {content}")
-    area_hint = area or infer_area(full_text, "Unscoped")
-    if not is_relevant(full_text, area_hint):
+    full_text = cleaned_text(content)
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
+    if len(full_text) < 40 or not is_relevant(full_text, area_hint):
         raise DataAvailabilityAgentError("Manual URL content does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=resolved_name,
@@ -536,8 +567,8 @@ def build_manual_text_document(
     focus: str | None,
 ) -> DataDocument:
     content = cleaned_text(text)
-    area_hint = area or infer_area(cleaned_text(f"{source_name} {focus or ''} {content}"), "Unscoped")
-    if not is_relevant(cleaned_text(f"{area_hint} {focus or ''} {content}"), area_hint):
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(content, "Unscoped"))
+    if len(content) < 20 or not is_relevant(content, area_hint):
         raise DataAvailabilityAgentError("Manual text does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=source_name,
@@ -585,7 +616,7 @@ def build_analysis_prompt(document: DataDocument) -> str:
 
         Rules:
         - source_type: Dataset, Benchmark, API, Simulator, Testnet, Explorer, Registry, Report, Dashboard, Documentation, or Manual
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, General, or Unscoped. Use General/Unscoped when the source does not clearly belong to a canonical domain; never force-fit a source.
         - access_type: Open, Restricted, Paid, Manual, or API
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
@@ -637,6 +668,14 @@ def sanitize_list(values: object, max_items: int = 6, lowercase: bool = False) -
     return items
 
 
+def coalesce_text(value: object, fallback: str = "UNKNOWN") -> str:
+    """Return a cleaned non-empty scalar or a safe fallback."""
+    if value is None:
+        return fallback
+    text = cleaned_text(str(value))
+    return text if text else fallback
+
+
 def infer_access_type(text: str, source_type: str = "") -> str:
     lowered = text.lower()
     if "api" in source_type.lower() or "api" in lowered:
@@ -674,28 +713,25 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     
     usable_for = coalesce_text(parsed.get("usable_for"), "UNKNOWN")
     
-    access_type = infer_access_type(document.content, source_type).title()
+    access_type = infer_access_type(f"{document.url}\n{document.content}", source_type).title()
     if access_type not in {"Open", "Restricted", "Paid", "Manual", "Api", "API"}:
         access_type = "Open"
     if access_type == "Api":
         access_type = "API"
     evaluation_possibility = coalesce_text(parsed.get("evaluation_possibility"), "UNKNOWN")
-    
     limitations = coalesce_text(parsed.get("limitations"), "UNKNOWN")
-    
     prototype_use = coalesce_text(parsed.get("prototype_use"), "UNKNOWN")
-    
     problem_signature = build_problem_signature(area, source_name, evaluation_possibility)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
+    confidence = coalesce_text(parsed.get("confidence"), "Medium").title()
     if confidence not in {"High", "Medium", "Low"}:
         confidence = "Medium"
-    dataset_scope = "Unknown"
-    coverage_period = "Unknown"
-    license_or_access_terms = "Unknown"
-    benchmark_metrics = "Unknown"
-    benchmark_gap = "None identified"
-    reproducibility = "Medium".title()
+    dataset_scope = coalesce_text(parsed.get("dataset_scope"), "Unknown")
+    coverage_period = coalesce_text(parsed.get("coverage_period"), "Unknown")
+    license_or_access_terms = coalesce_text(parsed.get("license_or_access_terms"), "Unknown")
+    benchmark_metrics = coalesce_text(parsed.get("benchmark_metrics"), "Unknown")
+    benchmark_gap = coalesce_text(parsed.get("benchmark_gap"), "None identified")
+    reproducibility = coalesce_text(parsed.get("reproducibility"), "Medium").title()
     if reproducibility not in {"High", "Medium", "Low"}:
         reproducibility = "Medium"
     return DataAnalysis(

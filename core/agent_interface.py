@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from core.collection_schemas import get_collection_schema, ordered_agent_body_items, validate_agent_specific_body
 from core.evidence import build_evidence_bundle
+from core.file_lock import atomic_write_text
 from core.quality import evaluate_collection_quality
 from core.recursive_collection import update_recursive_review
 from core.schemas import ALLOWED_MODES, ALLOWED_RESEARCH_AREAS, normalize_area, resolve_research_area, validate_response_structure
@@ -198,6 +199,22 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
+
+    # Several collectors model a source as a document with a base_url and
+    # fetched page objects rather than a top-level url/source field. Preserve
+    # the actual fetched HTTP(S) page as provenance instead of silently
+    # labelling these records "Manual".
+    pages = _document_value(document, "pages", [])
+    if isinstance(pages, (list, tuple)):
+        for page in pages:
+            value = str(_document_value(page, "url", "")).strip()
+            parsed = urlparse(value)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                return value
+    value = str(_document_value(document, "base_url", "")).strip()
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return value
     return default_source or "Manual"
 
 
@@ -215,6 +232,29 @@ def _document_content(document: Any) -> str:
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
+
+    # Lab and similar crawlers retain fetched pages as structured objects.
+    # Serialize the page evidence itself, not Python's dataclass/list repr,
+    # so the raw-content field remains useful and reproducible.
+    pages = _document_value(document, "pages", [])
+    if isinstance(pages, (list, tuple)) and pages:
+        page_blocks: list[str] = []
+        for page in pages:
+            title = str(_document_value(page, "title", "")).strip()
+            url = str(_document_value(page, "url", "")).strip()
+            content = str(_document_value(page, "content", "")).strip()
+            if not (title or url or content):
+                continue
+            block = []
+            if title:
+                block.append(f"Page title: {title}")
+            if url:
+                block.append(f"Source URL: {url}")
+            if content:
+                block.append(content)
+            page_blocks.append("\n".join(block))
+        if page_blocks:
+            return "\n\n".join(page_blocks)
 
     parts: list[str] = []
     if isinstance(document, dict):
@@ -352,25 +392,62 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
 
     raw = (str(content) + " " + str(title)).lower()
 
+    def normalized_identity(value: Any) -> str:
+        return " ".join(str(value or "").strip().casefold().split())
+
+    # A parent programme name or common application portal is not unique call
+    # ownership evidence when several selected calls share it. Only use these
+    # weaker identity signals when they identify exactly one active context.
+    identity_counts: dict[str, dict[str, int]] = {
+        "application_url": {},
+        "call_id": {},
+        "call_title": {},
+    }
+    for ctx in funding_contexts:
+        for field in identity_counts:
+            value = normalized_identity(getattr(ctx, field, ""))
+            if value:
+                identity_counts[field][value] = identity_counts[field].get(value, 0) + 1
+
+    def unique_identity(field: str, value: Any) -> bool:
+        key = normalized_identity(value)
+        return bool(key) and identity_counts[field].get(key, 0) == 1
+
     def has_explicit_identity(ctx: FundingCallContext) -> bool:
         funding_call_id = str(ctx.funding_call_id or "").strip()
         if funding_call_id and re.search(rf"\b{re.escape(funding_call_id.lower())}\b", raw):
             return True
 
         application_url = str(ctx.application_url or "").strip().lower()
-        if application_url and application_url in raw:
+        parsed_application_url = urlparse(application_url) if application_url else None
+        generic_application_paths = {
+            "", "/", "/apply", "/application", "/applications", "/submit",
+            "/funding", "/grants", "/opportunities",
+        }
+        normalized_application_path = (
+            parsed_application_url.path.casefold().rstrip("/") or "/"
+            if parsed_application_url else ""
+        )
+        application_path_is_specific = bool(
+            parsed_application_url
+            and (
+                normalized_application_path not in generic_application_paths
+                or bool(parsed_application_url.query)
+            )
+        )
+        if (
+            application_path_is_specific
+            and unique_identity("application_url", application_url)
+            and application_url in raw
+        ):
             return True
 
         call_id = str(ctx.call_id or "").strip()
-        if len(call_id) > 4 and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
+        if len(call_id) > 4 and unique_identity("call_id", call_id) and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
             return True
 
         call_title = str(ctx.call_title or "").strip().lower()
-        if len(call_title) > 15 and call_title in raw:
-            return True
-
-        program_name = str(ctx.program_name or "").strip().lower()
-        if len(program_name) > 15 and program_name in raw:
+        if len(call_title) > 15 and unique_identity("call_title", call_title) and call_title in raw:
             return True
 
         return False
@@ -420,6 +497,9 @@ def build_intermediate_artifact_payload(
     agent_version: str = INTERMEDIATE_ARTIFACT_VERSION,
     allow_llm_refinement: bool = False,
 ) -> tuple[Dict[str, Any], list[str]]:
+    # Normalize line endings once so the raw-content hash can be verified after
+    # Markdown serialization on Windows and POSIX without changing source text.
+    content = str(content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     normalized_area, area_warnings, area_scores = resolve_research_area(
         explicit_area=area,
         title=title,
@@ -644,7 +724,7 @@ def save_intermediate_markdown(
             "",
         ]
     )
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(output_path, "\n".join(lines))
     return output_path
 
 
@@ -686,20 +766,20 @@ def _rescue_required_agent_body(agent: str, document: Any, body: Dict[str, Any],
 
     defaults = {
         "source_type": value_map.get("source_type") or value_map.get("type") or "web_page",
-        "focus": value_map.get("focus") or area or "configured research domain",
+        "focus": value_map.get("focus") or area or "Not extracted from source",
         "evidence_type": value_map.get("evidence_type") or "web_source",
-        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "External practitioner / industry source",
-        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Named expert not extracted",
-        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Source affiliation",
-        "role_hint": value_map.get("role_hint") or "Research / technical contributor",
+        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "Not identified in source",
+        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Not identified in source",
+        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Not identified in source",
+        "role_hint": value_map.get("role_hint") or "Not stated in source",
     }
     for field in schema.fields:
         if not field.required or field.name in result:
             continue
-        result[field.name] = defaults.get(field.name, area or "Preserved live source evidence")
+        result[field.name] = defaults.get(field.name, area or "Not extracted from source")
     return result
 
 

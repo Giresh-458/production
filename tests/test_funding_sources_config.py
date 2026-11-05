@@ -616,10 +616,13 @@ def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_o
 
 def test_full_live_batch1_audit_validates_funding_context_handoff():
     workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
-    assert "build__selected_call_context" in workflow
-    assert "_research_context_quality_reasons" in workflow
-    assert '"funding_context_handoff"' in workflow
-    assert '"funding_context_handoff_not_ready"' in workflow
+    audit_script = (REPO_ROOT / "scripts" / "pipeline_tools" / "audit_batch1_live.py").read_text(encoding="utf-8")
+    assert "python scripts/pipeline_tools/audit_batch1_live.py" in workflow
+    assert "from core.batch2 import validate_batch1_context" in audit_script
+    assert "build__selected_call_context" in audit_script
+    assert "_research_context_quality_reasons" in audit_script
+    assert '"funding_context_handoff"' in audit_script
+    assert '"funding_context_handoff_not_ready"' in audit_script
     assert "Run full configured Batch 1 scan and strict production selector" in workflow
 
 
@@ -799,8 +802,8 @@ def test_filecoin_currentness_verification_is_scoped_to_official_programme_docs(
 
 
 def test_full_live_audit_preserves_per_record_rejection_details():
-    workflow = (REPO_ROOT / ".github" / "workflows" / "eu-funding-tests.yml").read_text(encoding="utf-8")
-    assert '"rejected_candidate_details": [' in workflow
-    assert '"title": candidate.get("title")' in workflow
-    assert '"source_url": candidate.get("source_url")' in workflow
-    assert '"reasons": list(candidate.get("reasons") or [])' in workflow
+    audit_script = (REPO_ROOT / "scripts" / "pipeline_tools" / "audit_batch1_live.py").read_text(encoding="utf-8")
+    assert '"rejected_candidate_details": [' in audit_script
+    assert '"title": candidate.get("title")' in audit_script
+    assert '"source_url": candidate.get("source_url")' in audit_script
+    assert '"reasons": list(candidate.get("reasons") or [])' in audit_script

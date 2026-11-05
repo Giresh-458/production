@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.schemas import normalize_area, rank_research_areas, ALLOWED_RESEARCH_AREAS
+from core.file_lock import atomic_write_json
 from core.evidence_ledger import (
     get_ledger_connection,
     upsert_canonical_evidence,
@@ -208,9 +209,125 @@ def _body_field(body: dict[str, str], *names: str) -> str:
             return _clean(value)
     return ""
 
-def generate_content_hash(title: str, source_type: str, problem_statement: str, context_summary: str) -> str:
-    text = f"{_clean(title)}|{_clean(source_type)}|{_clean(problem_statement)}|{_clean(context_summary)}"
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _safe_metadata_text(value: Any) -> str:
+    """Return scalar metadata only; never stringify nested dictionaries into prose."""
+    if isinstance(value, str):
+        return _clean(value)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _normalized_actor_and_focus(
+    body: dict[str, str],
+    source_hints: dict[str, Any],
+    machine_metadata: dict[str, Any],
+    research_area: str,
+) -> tuple[str, str]:
+    authors = source_hints.get("authors")
+    author_text = ""
+    if isinstance(authors, (list, tuple)):
+        author_text = ", ".join(
+            text for author in authors[:3] if (text := _safe_metadata_text(author))
+        )
+    actor = _coalesce(
+        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
+        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
+        _safe_metadata_text(source_hints.get("organization")),
+        _safe_metadata_text(source_hints.get("company_name")),
+        _safe_metadata_text(source_hints.get("source_name")),
+        _safe_metadata_text(source_hints.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("investor_or_organization")),
+        author_text,
+        _safe_metadata_text(source_hints.get("venue")),
+        _safe_metadata_text(source_hints.get("publisher")),
+        _safe_metadata_text(machine_metadata.get("organization")),
+        _safe_metadata_text(machine_metadata.get("investor_or_organization")),
+        _safe_metadata_text(machine_metadata.get("source_name")),
+        _safe_metadata_text(machine_metadata.get("company_name")),
+        _safe_metadata_text(machine_metadata.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("source")),
+    )
+    focus = _coalesce(
+        _body_field(body, "Focus"),
+        _safe_metadata_text(source_hints.get("focus")),
+        _safe_metadata_text(machine_metadata.get("focus")),
+        _safe_metadata_text(source_hints.get("research_area")),
+        research_area,
+    )
+    return actor or "Unknown", focus
+
+def _normalized_record_dedupe_key(record: dict[str, Any]) -> str:
+    """Collapse exact duplicate literature content across DOI/version aliases."""
+    if (
+        str(record.get("agent_name") or "").casefold() == "literature"
+        and str(record.get("source_id") or "").casefold().startswith("doi:")
+        and record.get("content_hash")
+    ):
+        return f"literature-content:{record['content_hash']}"
+    return str(record.get("evidence_id") or "")
+
+def generate_content_hash(
+    title: str,
+    source_type: str,
+    problem_statement: str,
+    context_summary: str,
+    *,
+    evidence_snippets: list[str] | None = None,
+    excerpt_windows: list[str] | None = None,
+    raw_content: str = "",
+) -> str:
+    """Fingerprint the extracted source evidence, not just its generated summary.
+
+    Literature records may have different DOI identifiers for the same work.
+    Cross-DOI deduplication is therefore allowed only when the source-backed
+    excerpts/raw content also match. Including those fields prevents unrelated
+    publications with similar titles and summaries from being collapsed.
+    """
+    payload = {
+        "title": _clean(title),
+        "source_type": _clean(source_type),
+        "problem_statement": _clean(problem_statement),
+        "context_summary": _clean(context_summary),
+        "evidence_snippets": [
+            _clean(value) for value in (evidence_snippets or []) if _clean(value)
+        ],
+        "excerpt_windows": [
+            _clean(value) for value in (excerpt_windows or []) if _clean(value)
+        ],
+        "raw_content": _clean(raw_content),
+    }
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def generate_evidence_id(
+    source_id: str,
+    funding_call_id: str,
+    agent_name: str,
+    layer: str,
+    evidence_snippets: list[str] | None = None,
+    excerpt_windows: list[str] | None = None,
+    problem_statement: str = "",
+    context_summary: str = "",
+    title: str = "",
+) -> str:
+    """Create a stable evidence identity with a meaningful fallback when excerpts are absent."""
+    evidence_text = "\n".join(str(item) for item in (evidence_snippets or []) if str(item).strip())
+    if not evidence_text:
+        evidence_text = "\n".join(str(item) for item in (excerpt_windows or []) if str(item).strip())
+    if not evidence_text:
+        evidence_text = _clean(problem_statement) or _clean(context_summary) or _clean(title)
+    identity = (
+        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|"
+        f"{layer.casefold()}|{evidence_text}"
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 def extract_source_identity(title: str, source_url: str, canonical_url: str, metadata: dict) -> str:
     # 1. DOI
@@ -335,6 +452,18 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
                         return h3_body
         return ""
 
+    # Raw Content is serialized as the final section of shared intermediate
+    # artifacts. Read it from the original Markdown rather than passing it
+    # through _coalesce/_clean: collapsing whitespace destroys multiline source
+    # text and can also truncate content containing Markdown-style headings.
+    artifact_text = path.read_text(encoding="utf-8")
+    raw_content_match = re.search(r"(?m)^## Raw Content[ \t]*\n", artifact_text)
+    raw_content = (
+        artifact_text[raw_content_match.end():].strip()
+        if raw_content_match
+        else _coalesce(find_section("Problem Statement"), find_section("Problem"))
+    )
+
     return {
         "title": parsed["title"],
         "shared_header": shared_header,
@@ -350,7 +479,7 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
             find_section("Problem"),
         ),
         "original_candidate": extracted_original_candidate,
-        "raw_content": _coalesce(find_section("Raw Content"), find_section("Problem Statement"), find_section("Problem")),
+        "raw_content": raw_content,
         "focus_area": _coalesce(find_section("Focus Area"), shared_header.get("focus_area", "")),
     }
 
@@ -440,26 +569,8 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         str(machine_metadata.get("evidence_type", "")),
         str(source_hints.get("evidence_type", "")),
     )
-    actor = _coalesce(
-        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
-        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
-        str(source_hints.get("organization", "")),
-        str(source_hints.get("company_name", "")),
-        str(source_hints.get("source_name", "")),
-        str(source_hints.get("issuing_body", "")),
-        str(source_hints.get("investor_or_organization", "")),
-        str(machine_metadata.get("organization", "")),
-        str(machine_metadata.get("investor_or_organization", "")),
-        str(machine_metadata.get("source_name", "")),
-        str(machine_metadata.get("company_name", "")),
-        str(machine_metadata.get("issuing_body", "")),
-        source_url,
-    )
-    focus = _coalesce(
-        _body_field(body, "Focus"),
-        str(source_hints.get("focus", "")),
-        str(machine_metadata.get("focus", "")),
-        str(machine_metadata.get("source_hints", "")),
+    actor, focus = _normalized_actor_and_focus(
+        body, source_hints, machine_metadata, research_area
     )
     keywords = _tokenize(
         " ".join(
@@ -486,7 +597,15 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     entity_tokens = (evidence.get("named_entities_or_programs", []) or [actor, title])[:12]
     linked_urls = list(dict.fromkeys(([source_url] if source_url else []) + evidence.get("links_found", [])))[:20]
 
-    content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
+    content_hash = generate_content_hash(
+        title,
+        source_type,
+        normalized_problem,
+        context_summary,
+        evidence_snippets=evidence.get("evidence_snippets", []),
+        excerpt_windows=evidence.get("excerpt_windows", []),
+        raw_content=raw_content,
+    )
     identity_metadata = dict(machine_metadata)
     identity_metadata.update({
         "agent_name": agent_name,
@@ -504,13 +623,21 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     needs_review = (not funding_call_id and not funding_call_ids) or not source_url
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
 
-    evidence_snippets_str = "\n".join(evidence.get("evidence_snippets", []))
     # Keep observations from different collection layers distinct. They may
     # describe the same underlying source, but merging them here loses which
-    # collector actually produced each evidence record.
-    evidence_id = hashlib.sha256(
-        f"{source_id}|{funding_call_id}|{agent_name.casefold()}|{layer.casefold()}|{evidence_snippets_str}".encode("utf-8")
-    ).hexdigest()[:16]
+    # collector actually produced each evidence record. Use the problem/context
+    # as a deterministic fallback when a source has no explicit excerpt snippets.
+    evidence_id = generate_evidence_id(
+        source_id,
+        funding_call_id,
+        agent_name,
+        layer,
+        evidence.get("evidence_snippets", []),
+        evidence.get("excerpt_windows", []),
+        normalized_problem,
+        context_summary,
+        title,
+    )
 
     # Domain relevance is evidence-derived and deliberately independent from
     # the routed research_area. This prevents routing metadata from overriding
@@ -594,8 +721,10 @@ def build_normalized_collection_records(
     *,
     target_run_id: str | None = None,
     errors: list[str] | None = None,
+    skipped_artifacts: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
+    skipped = skipped_artifacts if skipped_artifacts is not None else []
 
     roots = [intermediate_root] if isinstance(intermediate_root, Path) else intermediate_root
 
@@ -604,32 +733,96 @@ def build_normalized_collection_records(
             continue
         for path in sorted(root.rglob("*.md")):
             if path.name.lower() == "insights.md":
+                skipped.append({"path": str(path.resolve()), "reason": "downstream_insights_file"})
                 continue
             try:
+                parsed_sections = _parse_multilevel_markdown(path).get("sections", {})
+                normalized_headings = {
+                    re.sub(r"^\d+\.\s*", "", str(name)).strip().casefold()
+                    for name in parsed_sections
+                }
+                recognized_artifact_sections = {
+                    "shared metadata", "provenance", "evidence bundle",
+                    "problem intelligence", "agent-specific body", "machine metadata",
+                    "metadata", "problem", "problem statement", "problem preview",
+                    "focus area", "research area", "research gap", "source details", "layer", "raw content",
+                }
+                if not normalized_headings.intersection(recognized_artifact_sections):
+                    skipped.append({
+                        "path": str(path.resolve()),
+                        "reason": "not_intermediate_artifact",
+                    })
+                    continue
                 record = normalize_intermediate_artifact(path)
                 # A run-scoped caller must never consume artifacts from a prior
                 # or unknown run, even if they remain under a reused output root.
-                if target_run_id and str(record.get("run_id") or "").strip() != target_run_id:
+                artifact_run_id = str(record.get("run_id") or "").strip()
+                if target_run_id and artifact_run_id != target_run_id:
+                    skipped.append({
+                        "path": str(path.resolve()),
+                        "reason": "run_id_mismatch",
+                        "artifact_run_id": artifact_run_id or None,
+                        "target_run_id": target_run_id,
+                    })
                     continue
 
-                # Filter by target_funding_call_id if provided
+                # An explicit owner is authoritative. A secondary multi-call list
+                # must never override a conflicting explicit funding_call_id.
                 if target_funding_call_id:
                     call_ids = record.get("funding_call_ids", [])
-                    explicit_id = record.get("funding_call_id")
+                    explicit_id = str(record.get("funding_call_id") or "").strip()
 
-                    if explicit_id == target_funding_call_id:
-                        # Valid explicit ownership
-                        pass
-                    elif target_funding_call_id in call_ids:
-                        # Do not treat appearance in a broad multi-ID list as proof of ownership
-                        if len(call_ids) > 3:
-                            # Ambiguous: leave evidence unassigned / skip for this call
+                    if explicit_id:
+                        if explicit_id != target_funding_call_id:
+                            skipped.append({
+                                "path": str(path.resolve()),
+                                "reason": "explicit_funding_call_id_mismatch",
+                                "artifact_funding_call_id": explicit_id,
+                                "target_funding_call_id": target_funding_call_id,
+                                "funding_call_ids": call_ids,
+                            })
                             continue
-                        else:
-                            # Legitimate shared evidence (e.g. 1-3 specific calls)
-                            record["funding_call_id"] = target_funding_call_id
+                    elif target_funding_call_id in call_ids:
+                        # Do not treat appearance in a broad multi-ID list as proof of ownership.
+                        if len(call_ids) > 3:
+                            skipped.append({
+                                "path": str(path.resolve()),
+                                "reason": "ambiguous_multi_call_attribution",
+                                "target_funding_call_id": target_funding_call_id,
+                                "funding_call_ids": call_ids,
+                            })
+                            continue
+                        # Legitimate shared evidence (e.g. 1-3 specific calls).
+                        record["funding_call_id"] = target_funding_call_id
+                        # The first-pass evidence ID was generated before ownership
+                        # was resolved. Recompute it now so each call-scoped copy has
+                        # a distinct canonical identity in its own evidence ledger.
+                        record["evidence_id"] = generate_evidence_id(
+                            str(record.get("source_id") or ""),
+                            target_funding_call_id,
+                            str(record.get("agent_name") or ""),
+                            str(record.get("layer") or ""),
+                            record.get("evidence_snippets") or [],
+                            record.get("excerpt_windows") or [],
+                            str(record.get("problem_statement") or ""),
+                            str(record.get("context_summary") or ""),
+                            str(record.get("title") or ""),
+                        )
                     else:
+                        skipped.append({
+                            "path": str(path.resolve()),
+                            "reason": "funding_call_attribution_missing_or_mismatch",
+                            "artifact_funding_call_id": explicit_id or None,
+                            "target_funding_call_id": target_funding_call_id,
+                            "funding_call_ids": call_ids,
+                        })
                         continue
+
+                    # The normalized artifact is a call-scoped handoff. Preserve the
+                    # collector's original multi-call claim for audit, but never expose
+                    # another call ID as an owner of this call's normalized record.
+                    record["source_funding_call_ids"] = list(call_ids)
+                    record["funding_call_ids"] = [target_funding_call_id]
 
                 records.append(record)
             except Exception as exc:
@@ -703,7 +896,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
@@ -720,6 +913,7 @@ def save_normalized_collection_records(
     target_run_id: str | None = None,
 ) -> dict[str, Path]:
     errors: list[str] = []
+    skipped_artifacts: list[dict[str, Any]] = []
     input_manifest = _normalization_input_manifest(
         intermediate_root, output_dir, target_funding_call_id, target_run_id
     )
@@ -728,20 +922,29 @@ def save_normalized_collection_records(
         target_funding_call_id=target_funding_call_id,
         target_run_id=target_run_id,
         errors=errors,
+        skipped_artifacts=skipped_artifacts,
     )
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
     deduped_records = {}
     for r in records:
-        sid = r["evidence_id"]
+        sid = _normalized_record_dedupe_key(r)
         if sid not in deduped_records:
             r["observation_count"] = 1
             r["first_seen"] = r["collected_at"]
             r["last_seen"] = r["collected_at"]
             r["content_versions"] = [r["content_hash"]]
+            r["source_id_variants"] = [r["source_id"]] if r.get("source_id") else []
+            r["source_url_variants"] = [r["source_url"]] if r.get("source_url") else []
             deduped_records[sid] = r
         else:
             existing = deduped_records[sid]
+            for field, candidate in (
+                ("source_id_variants", r.get("source_id")),
+                ("source_url_variants", r.get("source_url")),
+            ):
+                if candidate and candidate not in existing.setdefault(field, []):
+                    existing[field].append(candidate)
             existing["observation_count"] += 1
             if r["collected_at"] < existing["first_seen"]:
                 existing["first_seen"] = r["collected_at"]
@@ -766,21 +969,19 @@ def save_normalized_collection_records(
     normalized_root.mkdir(parents=True, exist_ok=True)
 
     records_path = normalized_root / "records.json"
-    records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    (normalized_root / "input_manifest.json").write_text(
-        json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(records_path, records)
+    atomic_write_json(normalized_root / "input_manifest.json", input_manifest)
 
     by_area, by_layer = _build_indexes(records)
 
     by_area_path = normalized_root / "by_area.json"
-    by_area_path.write_text(json.dumps(by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(by_area_path, by_area)
 
     by_layer_path = normalized_root / "by_layer.json"
-    by_layer_path.write_text(json.dumps(by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(by_layer_path, by_layer)
 
     # DB Insertion Layer for Evidence Ledger
+    conn = None
     try:
         db_path = normalized_root / "evidence_ledger.db"
         conn = get_ledger_connection(db_path)
@@ -823,7 +1024,12 @@ def save_normalized_collection_records(
                 "evidence_excerpt": "\n".join(record["excerpt_windows"]),
                 "evidence_type": record["evidence_type"],
                 "research_area": record["research_area"],
-                "published_at": record["machine_metadata"].get("source_hints", {}).get("published_at"),
+                "published_at": (
+                    record.get("machine_metadata", {}).get("source_hints", {}).get("published_at")
+                    if isinstance(record.get("machine_metadata"), dict)
+                    and isinstance(record.get("machine_metadata", {}).get("source_hints"), dict)
+                    else None
+                ),
                 "retrieved_at": record["collected_at"],
                 "updated_at": None,
                 "content_hash": record["content_hash"],
@@ -838,6 +1044,8 @@ def save_normalized_collection_records(
                     "source_id": record["source_id"],
                     "agent": record["agent_name"],
                     "funding_call_id": record["funding_call_id"],
+                    "funding_call_ids": record.get("funding_call_ids", []),
+                    "source_funding_call_ids": record.get("source_funding_call_ids", []),
                     "run_id": record["run_id"],
                     "retrieved_at": record["collected_at"],
                     "raw_record_id": record["file_path"]
@@ -871,18 +1079,26 @@ def save_normalized_collection_records(
                 errors.append(f"DB Error for {record['record_id']}: {e}")
 
         conn.commit()
-        conn.close()
     except Exception as e:
         errors.append(f"Ledger DB Init Error: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as close_error:
+                errors.append(f"Ledger DB Close Error: {close_error}")
 
     errors_path = normalized_root / "errors.json"
-    errors_path.write_text(json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(errors_path, errors)
+    skipped_path = normalized_root / "skipped_artifacts.json"
+    atomic_write_json(skipped_path, skipped_artifacts)
 
     return {
         "records": records_path,
         "by_area": by_area_path,
         "by_layer": by_layer_path,
         "errors": errors_path,
+        "skipped_artifacts": skipped_path,
     }
 
 
@@ -967,6 +1183,10 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     # The mtime-only cache check misses deleted inputs, edits with restored
     # timestamps, and call-context changes. Require an exact input manifest match.
     manifest_path = outputs_root / "normalized" / "input_manifest.json"
+    skipped_path = outputs_root / "normalized" / "skipped_artifacts.json"
+    errors_path = outputs_root / "normalized" / "errors.json"
+    if not skipped_path.exists() or not errors_path.exists():
+        force_refresh = True
     if not force_refresh:
         try:
             cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1012,8 +1232,8 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
                     needs_repair = True
 
                 if needs_repair:
-                    area_path.write_text(json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                    layer_path.write_text(json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    atomic_write_json(area_path, expected_by_area)
+                    atomic_write_json(layer_path, expected_by_layer)
         except Exception:
             force_refresh = True
 
@@ -1030,4 +1250,5 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
         "by_area": outputs_root / "normalized" / "by_area.json",
         "by_layer": outputs_root / "normalized" / "by_layer.json",
         "errors": outputs_root / "normalized" / "errors.json",
+        "skipped_artifacts": outputs_root / "normalized" / "skipped_artifacts.json",
     }

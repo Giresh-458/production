@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -383,6 +384,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -514,7 +519,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
@@ -522,7 +527,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
         save_recursive_review(review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
         full_text = cleaned_text(f"{source.name} {source.focus} {content}")
-        area_hint = area or source.area
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else source.area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the configured research areas.", source.name)
             update_recursive_review(
@@ -558,6 +563,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
 
 
 def build_manual_url_document(url: str, company_name: str | None, source_type: str | None, area: str | None, focus: str | None, funding_context: str = "") -> CompanyDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,

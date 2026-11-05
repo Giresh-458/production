@@ -85,6 +85,7 @@ regulation_sources:
       max_seconds: 60
   - name: CSRD
     url: https://finance.ec.europa.eu/capital-markets-union-and-financial-markets/company-reporting-and-auditing/company-reporting/corporate-sustainability-reporting_en
+    area: ESG
     focus: sustainability disclosure, auditability, ESG reporting
     source_type: Regulation
     evidence_type: Official Regulation
@@ -291,6 +292,25 @@ regulation_sources:
     url: https://standards.ieee.org/
     source_type: standards_body
     focus: CPS, IoT, smart grid, autonomy, trustworthy systems
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  energy_systems:
+  - name: EU Electricity Market Regulation 2019/943
+    url: https://eur-lex.europa.eu/eli/reg/2019/943/oj
+    focus: internal electricity market rules, cross-border electricity flows, system operation, balancing, flexibility, energy storage, demand response, and transparency obligations
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: EU Electricity Market Design Directive 2024/1711
+    url: https://eur-lex.europa.eu/eli/dir/2024/1711/oj/eng
+    focus: electricity market design, energy-system digitalisation, grid connection capacity information, demand response, renewable integration, and flexibility
+    source_type: Directive
+    evidence_type: Official Regulation
     limits:
       max_pages: 4
       max_depth: 1

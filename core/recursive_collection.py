@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -120,6 +121,45 @@ def _is_crawlable_url(url: str) -> bool:
         ))
     except Exception:
         return False
+
+
+def source_focus_link_keywords(source_name: str, focus: str | None) -> tuple[str, ...]:
+    """Build a narrow recursive-link vocabulary for one configured source.
+
+    The global recursive vocabulary is intentionally broad for discovery, but
+    using it for every configured source can merge unrelated sibling pages
+    (for example, a MiCA page and a corporate-sustainability page on the same
+    publisher domain). Source names and focus phrases provide a safer boundary.
+    """
+    focus_text = str(focus or "").strip()
+    source_name_text = str(source_name or "").strip()
+    if not focus_text and not source_name_text:
+        return ()
+
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "in", "into", "is", "it", "of", "on", "or", "the", "their", "to",
+        "with", "within", "via", "using", "used", "use", "that", "this",
+        "these", "those", "which", "what", "where", "when", "how",
+    }
+    phrases: list[str] = []
+    tokens: list[str] = []
+    fragments = [source_name_text]
+    fragments.extend(
+        fragment.strip()
+        for fragment in re.split(r"[,;|]+", focus_text)
+        if fragment.strip()
+    )
+    for fragment in fragments:
+        normalized = " ".join(fragment.casefold().split())
+        if len(normalized) >= 3:
+            phrases.append(normalized)
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", normalized):
+            if token not in stop_words:
+                tokens.append(token)
+
+    # Preserve phrase priority and stable order while removing duplicates.
+    return tuple(dict.fromkeys([*phrases, *tokens]))
 
 
 def _score_link(url: str, anchor_text: str, keywords: tuple[str, ...]) -> int:
@@ -390,7 +430,10 @@ def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_pa
         doc = bare_extraction(html, url=url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
         better_title = str(getattr(doc, "title", "") or "") if doc else ""
-        if len(better) > max(400, len(content) * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in content.splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(content) * 0.35):
             content = better
             title = better_title or title
     except Exception:
@@ -441,9 +484,12 @@ def collect_recursive_pages_with_review(
         from trafilatura import bare_extraction
         doc = bare_extraction(initial_html, url=root_url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
-        root_title = str(getattr(doc, "title", "") or "") or root_title
-        if len(better) > max(400, len(root_content or "") * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in (root_content or "").splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(root_content or "") * 0.35):
             root_content = better
+            root_title = str(getattr(doc, "title", "") or "") or root_title
     except Exception:
         pass
     trimmed_root = (root_content or "").strip()[: config.char_limit_per_page]

@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -118,6 +119,7 @@ class RegulationSource:
     focus: str
     source_type: str
     evidence_type: str
+    area: str | None = None
 
 
 @dataclass(slots=True)
@@ -347,6 +349,8 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             focus = cleaned_text(str(entry.get("focus", "")))
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
+            source_area_value = cleaned_text(str(entry.get("area") or ""))
+            source_area = source_area_value if source_area_value in AREA_KEYWORDS else None
             if name and url:
                 sources.append(
                     RegulationSource(
@@ -355,6 +359,7 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
                         focus=focus,
                         source_type=source_type,
                         evidence_type=evidence_type,
+                        area=source_area,
                     )
                 )
     if not sources:
@@ -397,6 +402,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -404,6 +413,26 @@ def infer_area(text: str, default: str = "Unscoped") -> str:
         if any(keyword in lowered for keyword in keywords):
             return area
     return default
+
+
+def infer_configured_source_area(
+    source: RegulationSource,
+    content: str,
+    explicit_area: str | None = None,
+) -> str:
+    """Prefer explicit source metadata over incidental terms in page bodies."""
+    if explicit_area:
+        return explicit_area
+    # A configured source-domain hint is not evidence of relevance when a
+    # funding mission is active; let the extracted page pass the mission query.
+    if current_funding_queries.get():
+        return "Unscoped"
+    if source.area:
+        return source.area
+    metadata_area = infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped")
+    if metadata_area != "Unscoped":
+        return metadata_area
+    return infer_area(cleaned_text(content), "Unscoped")
 
 
 def infer_constraint(text: str) -> str:
@@ -438,7 +467,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         structured = collect_structured_source(source.url, source.source_type, area)
         if structured:
             full_text = cleaned_text(f"{source.name} {source.focus} {structured.text}")
-            area_hint = area or infer_area(full_text, "Unscoped")
+            area_hint = infer_configured_source_area(source, full_text, area)
             if is_relevant(full_text, area_hint):
                 documents.append(RegulationDocument(name=source.name, issuing_body=source.name, source_type=source.source_type, evidence_type=source.evidence_type, area_hint=area_hint, focus=source.focus, url=structured.url, title=structured.title, content=full_text, source_mode="Automatic"))
             continue
@@ -481,14 +510,14 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
         )
         save_recursive_review(review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        area_hint = area or infer_area(cleaned_text(f"{source.focus} {title} {content}"), "Unscoped")
+        area_hint = infer_configured_source_area(source, cleaned_text(f"{title} {content}"), area)
         full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not technically relevant.", source.name)
@@ -535,6 +564,9 @@ def build_manual_url_document(
     area: str | None,
     focus: str | None,
 ) -> RegulationDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,

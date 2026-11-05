@@ -57,6 +57,7 @@ class LabDocument:
     source_type: str
     pages: list[LabPage]
     funding_context: str = ""
+    evidence_type: str = "Research laboratory profile"
 
 
 @dataclass(slots=True)

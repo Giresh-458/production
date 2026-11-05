@@ -90,6 +90,8 @@ def test_cache_mutation_is_isolated(tmp_path):
         json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
         encoding="utf-8",
     )
+    (normalized / "errors.json").write_text("[]", encoding="utf-8")
+    (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
 
     def fake_relevance(rec, ctx):
         gate = {"passed": True, "reason": "mock passed"}

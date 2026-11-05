@@ -16,6 +16,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS, FUNDING_DISCOVERY_AGENT, run_registered_agent
+from core.file_lock import atomic_write_json
+from core.batch2 import audit_collector_artifacts, evaluate_collection_health, is_safe_path_component, minimum_healthy_collectors, prepare_batch2_source_registry, validate_batch1_context, validate_evidence_ledger, validate_normalized_handoff
 from core.batch_runner import execute_batch_run
 from core.funding_selection import (
     FundingCallContext, ScoredCall, ValidationResult,
@@ -25,26 +27,6 @@ from core.normalization import save_normalized_collection_records
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
 
-
-def evaluate_collection_health(collection_tasks: list[dict], min_required_agents: int) -> tuple[bool, int]:
-    healthy_agents = set()
-    for t in collection_tasks:
-        agent_name = str(t.get("agent_name"))
-        status = str(t.get("status", "")).lower()
-        outputs_count = int(t.get("outputs_count", 0) or 0)
-
-        # An agent is healthy if it succeeded (or partially succeeded) AND produced evidence.
-        if status in ("success", "partial_success", "partial_limit") and outputs_count > 0:
-            healthy_agents.add(agent_name)
-
-    is_healthy = len(healthy_agents) >= min_required_agents
-    return is_healthy, len(healthy_agents)
-
-def minimum_healthy_collectors(total_agents: int) -> int:
-    """Require a strict majority, with a three-agent floor for larger batches."""
-    if total_agents <= 0:
-        return 0
-    return min(total_agents, max(3, total_agents // 2 + 1))
 
 def run_stage(agent: str, mode: str, area: str | None, payload: dict[str, Any], funding_context: FundingCallContext | None = None) -> dict[str, Any]:
     return run_registered_agent(agent, mode, area=area, input_data=payload, funding_context=funding_context)
@@ -582,10 +564,15 @@ def main() -> int:
             continue
 
         context_issues = _research_context_quality_reasons(ctx.research_context)
+        context_issues.extend(validate_batch1_context(ctx))
+        context_issues = list(dict.fromkeys(context_issues))
         if context_issues:
             rejected_unverified_research_context.append({
                 "call": call,
+                # Preserve the existing report classification for callers;
+                # identify the additional Batch-2 boundary check separately.
                 "reason": "research_context_unverified",
+                "validation_scope": "batch2_handoff",
                 "reasons": context_issues,
             })
             continue
@@ -616,15 +603,77 @@ def main() -> int:
 
     valid_calls = research_calls
     all_contexts = research_contexts
+
+    # Persist real validated Batch-1 contexts for standalone Batch-2 reruns.
+    # Test doubles used by pipeline unit tests intentionally do not satisfy this schema.
+    context_handoff_dir = root / "workflow"
+    context_handoff_dir.mkdir(parents=True, exist_ok=True)
+    context_handoff_path = context_handoff_dir / "funding_contexts.json"
+    serialized_contexts: list[dict[str, Any]] = []
+    context_handoff_valid = True
+    for context in all_contexts:
+        serializer = getattr(context, "to_dict", None)
+        if not callable(serializer):
+            context_handoff_valid = False
+            break
+        payload = serializer()
+        if not isinstance(payload, dict):
+            context_handoff_valid = False
+            break
+        try:
+            json.dumps(payload)
+        except (TypeError, ValueError):
+            context_handoff_valid = False
+            break
+        serialized_contexts.append(payload)
+
+    if context_handoff_valid:
+        atomic_write_json(
+            context_handoff_path,
+            {
+                "run_id": run_id,
+                "batch1_run_id": run_id,
+                "context_validation": {
+                    "status": "VALIDATED",
+                    "scope": "selected_contexts_only",
+                    "batch1_run_id": run_id,
+                    "validated_funding_call_ids": sorted(
+                        str(context.funding_call_id).strip() for context in all_contexts
+                    ),
+                },
+                "funding_contexts": serialized_contexts,
+            },
+        )
+    else:
+        print(
+            "⚠️ Batch-1 context handoff was not exported because the selected context "
+            "objects do not match the FundingCallContext JSON contract."
+        )
     print(f"   ✅ Discovered {len(valid_calls)} valid open research funding calls.")
 
-    # Pre-sync registry ONCE before parallel operations
+    # Pre-sync the source registry before parallel Batch-2 collection. Continuing
+    # with a stale registry can silently omit configured sources marked inactive
+    # in an old registry snapshot, so this is a fail-closed preparation gate.
     try:
-        from core.source_registry import sync_source_registry, build_source_refresh_plan
-        sync_source_registry()
-        build_source_refresh_plan()
+        source_registry_report = prepare_batch2_source_registry(
+            root / "workflow",
+            force=False,
+        )
+        print(
+            f"Batch-2 source registry: {len(source_registry_report['agents_synced'])} "
+            f"downstream agents synced, {source_registry_report['refresh_due_entries']} "
+            "sources due for refresh. Batch-1 funding-source entries were preserved."
+        )
     except Exception as exc:
-        print(f"   ⚠️ Source registry pre-sync warning: {exc}")
+        report = {
+            "run_id": run_id,
+            "status": "source_registry_sync_failed",
+            "batch3_started": False,
+            "error": str(exc),
+        }
+        atomic_write_json(root / "workflow" / "pipeline_report.json", report)
+        print(f"❌ Batch-2 source registry preparation failed; stopping before collection: {exc}")
+        return 4
 
     downstream_agents = sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
     if len(downstream_agents) != 11:
@@ -656,6 +705,7 @@ def main() -> int:
                 "pipeline_run_dir": str(root), # output to root/intermediate
                 "force_refresh": bool(getattr(args, "force_refresh", False) or not getattr(args, "scheduled_refresh", False)),
                 "allow_llm_refinement": False,
+                "allow_llm_analysis": False,
             },
             execution_mode="parallel",
             max_workers=6,
@@ -665,16 +715,99 @@ def main() -> int:
             funding_contexts=all_contexts, # PASS ALL CONTEXTS!
         )
     except Exception as exc:
+        failure_report = {
+            "run_id": run_id,
+            "status": "shared_collection_execution_failed",
+            "batch3_started": False,
+            "error": str(exc),
+        }
+        atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
         print(f"❌ Shared collection failed with exception: {exc}")
         return 4
 
     collection_tasks = downstream_plan.get("tasks", []) if isinstance(downstream_plan, dict) else []
-    min_required = minimum_healthy_collectors(len(downstream_agents))
-    is_healthy, healthy_count = evaluate_collection_health(collection_tasks, min_required)
+    expected_downstream_agents = set(downstream_agents)
+    # The full pipeline may add one per-call supplemental adaptive-research
+    # artifact after the shared 11-agent collection. It is not counted toward
+    # shared collector health, but its provenance is allowed in that call's
+    # normalized handoff.
+    expected_handoff_agents = expected_downstream_agents | {"adaptive_research"}
+    try:
+        collection_tasks, collector_artifact_audit = audit_collector_artifacts(
+            root,
+            collection_tasks,
+            expected_agents=expected_downstream_agents,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        collector_artifact_audit = {
+            "status": "error",
+            "run_id": run_id,
+            "error": str(exc),
+        }
+        atomic_write_json(global_workflow / "collector_artifact_audit.json", collector_artifact_audit)
+        atomic_write_json(
+            global_workflow / "pipeline_report.json",
+            {
+                "run_id": run_id,
+                "status": "collector_artifact_audit_failed",
+                "batch3_started": False,
+                "collector_artifact_audit": collector_artifact_audit,
+            },
+        )
+        print(f"❌ Collector artifact audit failed; stopping before normalization and Batch-3: {exc}")
+        return 4
+    if isinstance(downstream_plan, dict):
+        downstream_plan["tasks"] = collection_tasks
+        atomic_write_json(global_workflow / "shared_downstream_collection_plan.json", downstream_plan)
+    atomic_write_json(global_workflow / "collector_artifact_audit.json", collector_artifact_audit)
+    task_agent_names = {
+        str(task.get("agent_name") or "").strip()
+        for task in collection_tasks if isinstance(task, dict)
+    }
+    missing_collectors = sorted(expected_downstream_agents - task_agent_names)
+    unexpected_collectors = sorted(task_agent_names - expected_downstream_agents)
+    min_required = minimum_healthy_collectors(len(expected_downstream_agents))
+    is_healthy, healthy_count = evaluate_collection_health(
+        collection_tasks, min_required, expected_downstream_agents
+    )
 
-    collector_health = {"healthy_agents": healthy_count, "total_agents": len(downstream_agents), "required": min_required}
-    if not is_healthy:
-        print(f"❌ Shared collection quality gate failed: {healthy_count}/{len(downstream_agents)} unique collectors produced evidence.")
+    collector_health = {
+        "healthy_agents": healthy_count,
+        "total_agents": len(expected_downstream_agents),
+        "required": min_required,
+        "missing_agents": missing_collectors,
+        "unexpected_agents": unexpected_collectors,
+        "artifact_audit_status": collector_artifact_audit["status"],
+        "artifact_audit_issues": len(collector_artifact_audit["issues"]),
+        "quarantined_artifacts": len(collector_artifact_audit["quarantined_artifacts"]),
+        "duplicate_task_agents": collector_artifact_audit["duplicate_task_agents"],
+    }
+    if (
+        not is_healthy
+        or missing_collectors
+        or unexpected_collectors
+        or collector_artifact_audit["duplicate_task_agents"]
+        or collector_artifact_audit["malformed_task_entries"]
+        or collector_artifact_audit["quarantine_failures"]
+        or collector_artifact_audit["manifest_issues"]
+    ):
+        failure_report = {
+            "run_id": run_id,
+            "status": "blocked_collection_health",
+            "batch3_started": False,
+            "collector_health": collector_health,
+            "collector_artifact_audit": collector_artifact_audit,
+            "collector_manifest_issues": collector_artifact_audit["manifest_issues"],
+            "malformed_collector_tasks": collector_artifact_audit["malformed_task_entries"],
+            "collection_report": downstream_plan,
+        }
+        atomic_write_json(global_workflow / "pipeline_report.json", failure_report)
+        print(
+            f"❌ Shared collection quality gate failed: {healthy_count}/{len(expected_downstream_agents)} "
+            f"expected collectors produced evidence; missing={missing_collectors}; "
+            f"unexpected={unexpected_collectors}."
+        )
         return 4
     # ---------------------------------------------------------
 
@@ -684,6 +817,10 @@ def main() -> int:
     all_reports = []
 
     for call_idx, (selected, context) in enumerate(zip(valid_calls, all_contexts), 1):
+        if not is_safe_path_component(context.funding_call_id):
+            print(f"❌ Funding call ID is not safe for an output-directory name: {context.funding_call_id!r}")
+            global_exit_code = max(global_exit_code, 4)
+            continue
         canonical_areas = select_collection_areas(selected, args.area)
         unknown_area = not canonical_areas or max((float(x.get("score", 0.0) or 0.0) for x in selected.get("domain_relevance", []) or []), default=0.0) < 0.10
 
@@ -774,22 +911,138 @@ def main() -> int:
             continue
 
         records_path = call_root / "normalized" / "records.json"
-        records = json.loads(records_path.read_text(encoding="utf-8")) if records_path.exists() else []
+        records = []
+        normalization_errors: list[Any] = []
+        skipped_artifacts: list[Any] = []
+        if not records_path.exists():
+            normalization_errors.append("normalized records.json is missing")
+        else:
+            try:
+                loaded_records = json.loads(records_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_records, list):
+                    records = loaded_records
+                else:
+                    normalization_errors.append("normalized records.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalized records.json: {exc}")
+
+        required_normalized_outputs = {
+            "by_area": call_root / "normalized" / "by_area.json",
+            "by_layer": call_root / "normalized" / "by_layer.json",
+            "input_manifest": call_root / "normalized" / "input_manifest.json",
+            "errors": call_root / "normalized" / "errors.json",
+            "skipped_artifacts": call_root / "normalized" / "skipped_artifacts.json",
+            "evidence_ledger": call_root / "normalized" / "evidence_ledger.db",
+        }
+        for output_name, output_path in required_normalized_outputs.items():
+            if not output_path.exists():
+                normalization_errors.append(f"required normalization output is missing: {output_name}")
+
+        errors_path = normalized.get("errors", required_normalized_outputs["errors"])
+        if Path(errors_path).exists():
+            try:
+                loaded_errors = json.loads(Path(errors_path).read_text(encoding="utf-8"))
+                if isinstance(loaded_errors, list):
+                    normalization_errors.extend(loaded_errors)
+                else:
+                    normalization_errors.append("normalization errors.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalization errors.json: {exc}")
+
+        skipped_path = normalized.get("skipped_artifacts", required_normalized_outputs["skipped_artifacts"])
+        if Path(skipped_path).exists():
+            try:
+                loaded_skipped = json.loads(Path(skipped_path).read_text(encoding="utf-8"))
+                if isinstance(loaded_skipped, list):
+                    skipped_artifacts = loaded_skipped
+                else:
+                    normalization_errors.append("normalization skipped_artifacts.json must contain a JSON list")
+            except Exception as exc:
+                normalization_errors.append(f"could not read normalization skipped_artifacts.json: {exc}")
 
         accepted_count = len(accepted_evidence_ids)
         rejected_count = len(rejected_evidence_ids)
         input_count = accepted_count + rejected_count
+        handoff_errors = validate_normalized_handoff(
+            records,
+            funding_call_id=context.funding_call_id,
+            run_id=run_id,
+            expected_agents=expected_handoff_agents,
+        )
+        ledger_errors = validate_evidence_ledger(
+            required_normalized_outputs["evidence_ledger"],
+            records,
+            funding_call_id=context.funding_call_id,
+            run_id=run_id,
+        )
+        normalization_errors.extend(ledger_errors)
 
-        if input_count == 0:
-            print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+        normalization_audit = {
+            "input_records": input_count,
+            "normalized_records": len(records),
+            "allowed_handoff_agents": sorted(expected_handoff_agents),
+            "accepted_records": accepted_count,
+            "rejected_records": rejected_count,
+            "errors": normalization_errors,
+            "error_count": len(normalization_errors),
+            "handoff_errors": handoff_errors,
+            "handoff_error_count": len(handoff_errors),
+            "evidence_ledger_errors": ledger_errors,
+            "skipped_artifacts": skipped_artifacts,
+            "skipped_artifact_count": len(skipped_artifacts),
+        }
+        (call_root / "workflow" / "normalization_audit.json").write_text(
+            json.dumps(normalization_audit, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        if normalization_errors or handoff_errors:
+            print(
+                f"❌ Normalization handoff failed: {len(normalization_errors)} normalization error(s), "
+                f"{len(handoff_errors)} record validation error(s); stopping before Batch-3."
+            )
+            report = {
+                "run_id": run_id,
+                "status": "normalization_failed",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "normalization": normalization_audit,
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            (call_root / "workflow" / "pipeline_report.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        (call_root / "workflow" / "mission_relevance_gate.json").write_text(json.dumps({"input_records": input_count, "accepted_records": accepted_count, "rejected_records": rejected_count, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        if input_count == 0:
+            print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+            report = {
+                "run_id": run_id,
+                "status": "no_usable_evidence",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "normalization": normalization_audit,
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            (call_root / "workflow" / "pipeline_report.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            all_reports.append(report)
+            global_exit_code = max(global_exit_code, 4)
+            continue
+
+        (call_root / "workflow" / "mission_relevance_gate.json").write_text(
+            json.dumps({**normalization_audit, "details": gate_details}, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
 
         if not records:
-            report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
+            report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "normalization": normalization_audit, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
             (call_root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
             print("⚠️ Funding call found, but no collected evidence passed the mission relevance gate. No proposal will be generated.")
             all_reports.append(report)
@@ -843,7 +1096,8 @@ def main() -> int:
             report = {
                 "run_id": run_id, "status": "failed_quality_gate", "output_root": str(call_root.resolve()),
                 "funding": {"selected": selected, "rejected_alternatives": rejected if call_idx == 1 else [], "selected_funding_call_id": context.funding_call_id},
-                "collection": downstream_plan, "adaptive_research": adaptive_result, "stage_results": stage_results,
+                "collection": downstream_plan, "normalization": normalization_audit,
+                "adaptive_research": adaptive_result, "stage_results": stage_results,
                 "failure_reason": "synthesis_failed_or_empty", "final_output": None, "proposal_count": 0,
             }
             workflow = call_root / "workflow"; workflow.mkdir(parents=True, exist_ok=True)
@@ -913,6 +1167,7 @@ def main() -> int:
                 "adaptive_mode": bool(adaptive_result),
             },
             "collection": downstream_plan,
+            "normalization": normalization_audit,
             "adaptive_research": adaptive_result,
             "stage_results": stage_results,
             "final_output": str(final_output.resolve()) if final_output else None,

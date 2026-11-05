@@ -10,6 +10,12 @@ on:
     paths:
       - "agents/**"
       - "core/agent_interface.py"
+      - "core/recursive_collection.py"
+      - "core/web_collection.py"
+      - "tests/test_regulation_source_scoping.py"
+      - "sources/regulation_sources.yaml"
+      - "core/file_lock.py"
+      - "core/batch2.py"
       - "core/agent_registry.py"
       - "core/batch_runner.py"
       - "core/collection_schemas.py"
@@ -17,6 +23,9 @@ on:
       - "core/funding_selection.py"
       - "core/schemas.py"
       - "tests/test_all_collection_agents.py"
+      - "tests/test_batch2_live_evidence_regressions.py"
+      - "tests/test_adaptive_scraper.py"
+      - "tests/test_manual_url_collection.py"
       - "tests/test_funding_routing_golden.py"
       - ".github/workflows/collection-agent-contract-tests.yml"
 
@@ -43,4 +52,4 @@ jobs:
 
       - name: Verify all collection-agent contracts and funding routing
         run: |
-          python -m pytest tests/test_all_collection_agents.py tests/test_funding_routing_golden.py -q
+          python -m pytest tests/test_all_collection_agents.py tests/test_batch2_live_evidence_regressions.py tests/test_adaptive_scraper.py tests/test_manual_url_collection.py tests/test_funding_routing_golden.py tests/test_regulation_source_scoping.py -q

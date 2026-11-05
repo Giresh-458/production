@@ -9,7 +9,24 @@ on:
       - main
     paths:
       - "core/agent_interface.py"
+      - "core/funding_selection.py"
+      - "tests/batch2_test_helpers.py"
+      - "tests/test_file_lock.py"
+      - "tests/test_source_registry_isolation.py"
+      - "tests/test_funding_selection.py"
+      - "tests/test_funding_rejection.py"
+      - "core/batch2.py"
+      - "core/batch_runner.py"
+      - "core/file_lock.py"
+      - "scripts/pipeline_tools/run_batch2.py"
+      - "tests/test_batch2_runner.py"
+      - "tests/test_normalization_skip_audit.py"
+      - "tests/test_batch2_lab_artifact_contract.py"
       - "core/normalization.py"
+      - "core/mission_gate.py"
+      - "tests/test_research_mission_grounding.py"
+      - "tests/test_batch2_live_evidence_regressions.py"
+      - "tests/test_mission_gate_semantics.py"
       - "core/intelligence.py"
       - "agents/literature_agent.py"
       - "tests/test_literature_run_provenance.py"
@@ -55,6 +72,12 @@ jobs:
         run: |
           python -m pytest \
             tests/test_agent_normalization_refresh.py \
+            tests/test_batch2_runner.py \
+            tests/test_normalization_skip_audit.py \
+            tests/test_research_mission_grounding.py \
+            tests/test_batch2_live_evidence_regressions.py \
+            tests/test_mission_gate_semantics.py \
+            tests/test_batch2_lab_artifact_contract.py \
             tests/test_literature_run_provenance.py \
             tests/test_batch4_normalization.py \
             tests/test_multi_call_evidence_attribution.py \
@@ -70,3 +93,34 @@ jobs:
             tests/test_intelligence_exceptions.py \
             tests/test_refresh_mission_gate_preservation.py \
             -q
+
+  windows-batch2-compatibility:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11 (supported Windows target)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Batch-2 and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+
+      - name: Verify Windows locking, CLI imports, handoff, and pipeline regressions
+        run: |
+          python -m pytest `
+            tests/test_file_lock.py `
+            tests/test_source_registry_isolation.py `
+            tests/test_funding_selection.py `
+            tests/test_funding_rejection.py `
+            tests/test_batch2_runner.py `
+            tests/test_batch2_lab_artifact_contract.py `
+            tests/test_pipeline_multi_call_behavior.py `
+            tests/test_adaptive_area_filtering.py `
+            -q
+

@@ -389,6 +389,35 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     ):
         return True
 
+    # XRPL's application manager is the authoritative live status endpoint.
+    # The public directory can retain stale accelerator announcements, while
+    # /submit explicitly reports when no applications are being accepted.
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() == "submit.xrplgrants.org"
+        and path == "/submit"
+        and re.search(
+            r"\bthere are (?:presently|currently) no open calls? for applications\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
+
+    # The official XRPL grants directory currently states that applications
+    # are by invitation only. Scope this status to the canonical root page;
+    # historical subpages must not make the whole source appear closed.
+    if (
+        (parsed.hostname or "").casefold() in {"xrplgrants.org", "www.xrplgrants.org"}
+        and path == ""
+        and re.search(
+            r"\bapplications? (?:are )?(?:currently )?available by invitation only\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
+
     # Solana's public Airtable RFP view deliberately displays a non-call
     # "RFP CONTEXT" placeholder when no active RFPs exist. Treat it as an
     # explicit empty state only on that exact shared-view route and only when
@@ -408,6 +437,34 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     ):
         return True
     return False
+
+
+def _reports_active_funding_program(url: str, title: str, content: str) -> bool:
+    """Recognize Solana Foundation's official evergreen, rolling grant programme.
+
+    This is source-level availability evidence, not a dated call. Keep the rule
+    pinned to the canonical publisher route and require both the application
+    requirement and rolling-review statement; a generic funding mention is not
+    enough to mark a source current.
+    """
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() not in {"solana.org", "www.solana.org"}
+        or parsed.path.rstrip("/").casefold() != "/grants-funding"
+    ):
+        return False
+    combined = re.sub(r"\s+", " ", f"{title} {content}".casefold())
+    has_application_requirement = bool(re.search(
+        r"all funding applicants.{0,300}required to fill out the application",
+        combined,
+        flags=re.IGNORECASE,
+    ))
+    has_rolling_review = bool(re.search(
+        r"all applications are reviewed on a rolling basis",
+        combined,
+        flags=re.IGNORECASE,
+    ))
+    return has_application_requirement and has_rolling_review
 
 
 def _is_generic_funding_hub(url: str, title: str, content: str) -> bool:
@@ -751,6 +808,37 @@ def _ethereum_esp_wait_options(url: str) -> dict[str, Any]:
     }
 
 
+
+def _xrpl_application_manager_wait_options(url: str) -> dict[str, Any]:
+    """Wait for the XRPL application manager's rendered status before extraction.
+
+    The manager is a JavaScript-rendered status page. A successful navigation
+    alone is not evidence that its current application state has been rendered.
+    Wait for either the publisher's explicit no-open-calls notice or an
+    application-state cue on the same programme page. If neither appears before
+    Crawl4AI's page timeout, the fetch remains incomplete rather than being
+    interpreted as an empty source.
+    """
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() != "submit.xrplgrants.org"
+        or parsed.path.rstrip("/").casefold() != "/submit"
+    ):
+        return {}
+    return {
+        "wait_for": (
+            "js:() => { "
+            "const text = (document.body?.innerText || '').toLowerCase().replace(/\\s+/g, ' '); "
+            "const empty = /there are (presently|currently) no open calls? for applications/.test(text); "
+            "const active = text.includes('open call') || text.includes('apply now') "
+            "|| text.includes('applications are open') || text.includes('accepting applications'); "
+            "return empty || (text.includes('ripplex ecosystem programs') && active); "
+            "}"
+        ),
+        "delay_before_return_html": 0.75,
+    }
+
+
 def _raw_markdown_text(result: Any) -> str:
     """Read the generated Markdown across Crawl4AI result API variants."""
     for attribute in ("markdown", "markdown_v2"):
@@ -832,6 +920,7 @@ async def _fetch_url(url: str) -> dict:
         "page_timeout": int(timeout * 1000),
         **_superteam_directory_wait_options(url),
         **_ethereum_esp_wait_options(url),
+        **_xrpl_application_manager_wait_options(url),
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -1199,7 +1288,13 @@ def _finalize_collection_status(result: CollectionResult, *, test_limits: bool =
     elif has_coverage_gaps:
         result.final_status = "PARTIAL" if successful_fetches else "FAIL"
     elif successful_fetches:
-        if result.opportunities:
+        if result.active_program_confirmed:
+            # A publisher-confirmed evergreen programme is positive source-level
+            # availability evidence even when it has no dated call cards.
+            # It is VERIFIED only after the configured discovery boundary ends.
+            result.no_active_opportunities_confirmed = False
+            result.final_status = "VERIFIED" if result.discovery_exhausted else "PARTIAL"
+        elif result.opportunities:
             complete = (
                 (result.pagination_detected and result.pagination_complete)
                 or (not result.pagination_detected and result.discovery_exhausted)
@@ -1664,16 +1759,43 @@ def crawl_funding_source(
         if ctx:
             ctx.add_page()
 
-        page_content = res["markdown"] or res["html"] or ""
+        page_markdown = str(res.get("markdown") or "")
+        page_html = str(res.get("html") or "")
+        page_content = page_markdown or page_html
         page_title = res.get("title", "")
-        # The empty-state detector is tightly scoped to known listing routes,
-        # including the nested Solana Airtable view. It is safe to apply at any
-        # depth because it cannot match arbitrary detail pages on the same host.
-        if _reports_no_active_funding(page_url, page_title, page_content):
-            result.no_active_opportunities_confirmed = True
+        # Crawl4AI can return non-empty Markdown that omits text present in the
+        # source HTML. Empty-state verification must inspect both representations;
+        # classification/extraction continues to use the preferred Markdown
+        # representation to avoid duplicating the same page content.
+        html_text = ""
+        if page_html:
+            try:
+                from bs4 import BeautifulSoup
 
-        # Stage B: classify this page
-        is_funding_page = _classify_page_stage_b(page_url, page_title, page_content)
+                html_text = BeautifulSoup(page_html, "html.parser").get_text(" ", strip=True)
+            except Exception:
+                # Keep a conservative fallback if optional HTML parsing fails.
+                html_text = re.sub(r"<[^>]+>", " ", page_html)
+        empty_state_content = "\n".join(
+            part for part in (page_markdown, html_text) if part
+        )
+        is_explicit_empty_state = _reports_no_active_funding(
+            page_url, page_title, empty_state_content
+        )
+        if is_explicit_empty_state:
+            result.no_active_opportunities_confirmed = True
+        if _reports_active_funding_program(page_url, page_title, empty_state_content):
+            result.active_program_confirmed = True
+
+        # An explicit publisher empty-state listing is evidence about source
+        # availability, never an opportunity record. Apply this exclusion before
+        # the general funding-page classifier so generic "grant/application"
+        # language on the page cannot turn the empty-state notice into a call.
+        is_funding_page = (
+            False
+            if is_explicit_empty_state
+            else _classify_page_stage_b(page_url, page_title, page_content)
+        )
         # direct_page explicitly identifies the configured starting URL as a
         # programme-level record, even when its page title looks like a hub.
         # Known empty-state listings remain excluded.

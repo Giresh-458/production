@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -380,17 +381,18 @@ def extract_page_text(html: str) -> tuple[str, str]:
         tag.decompose()
     title_node = soup.find("h1") or soup.title
     title = cleaned_text(title_node.get_text(" ", strip=True)) if title_node else "Untitled"
-    blocks = extract_text_blocks(soup)
-    content = cleaned_text(" ".join(blocks))
-    focused_content = build_focused_content(
-        title=title,
-        blocks=blocks,
-        focus_keywords=PROBLEM_STATEMENT_KEYWORDS + BUILDER_SIGNAL_KEYWORDS,
-        area_keywords=[keyword for keywords in AREA_KEYWORDS.values() for keyword in keywords],
-        min_score=3,
-        max_chars=5000,
-    ) or extract_problem_statement_text(blocks, title)
-    return title, (focused_content or content)[:7000]
+    blocks: list[str] = []
+    for node in soup.find_all(["h2", "h3", "h4", "h5", "h6", "p", "li"]):
+        value = cleaned_text(node.get_text(" ", strip=True))
+        if not value:
+            continue
+        if node.name and node.name.startswith("h"):
+            level = int(node.name[1])
+            blocks.append(f"{'#' * level} {value}")
+        else:
+            blocks.append(value)
+    # Preserve heading boundaries so event-list pages can be split into individual records.
+    return title, "\n".join(blocks)[:7000]
 
 
 def _keyword_score(text: str, keywords: list[str]) -> int:
@@ -426,7 +428,83 @@ def extract_problem_statement_text(blocks: list[str], title: str) -> str:
     return merged[:5000]
 
 
+def is_generic_hackathon_listing_title(title: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", cleaned_text(title).casefold()).strip()
+    generic_titles = {
+        "events", "event calendar", "hackathon", "hackathons", "hackathon events",
+        "contests", "competitions", "devfolio", "dorahacks", "ethglobal",
+        "hackster", "home", "homepage", "opportunities", "work with us",
+        "fund what matters", "request rejected",
+    }
+    return (
+        normalized in generic_titles
+        or normalized.startswith("events ") or normalized.endswith(" events")
+        or normalized.endswith(" hackathons")
+        or normalized.endswith(" contests")
+    )
+
+
+def extract_hackathon_event_sections(content: str) -> list[tuple[str, str]]:
+    """Split an event directory into heading-delimited event records."""
+    lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
+    headings: list[tuple[int, int, str]] = []
+    for index, line in enumerate(lines):
+        match = re.match(r"^(#{2,6})\s+(.+)$", line)
+        if match:
+            headings.append((index, len(match.group(1)), cleaned_text(match.group(2))))
+    sections: list[tuple[str, str]] = []
+    month_heading = re.compile(
+        r"^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+20\d{2}$",
+        re.IGNORECASE,
+    )
+    for position, (line_index, level, title) in enumerate(headings):
+        if month_heading.match(title) or is_generic_hackathon_listing_title(title):
+            continue
+        end = headings[position + 1][0] if position + 1 < len(headings) else len(lines)
+        start = line_index
+        if line_index > 0 and re.search(r"\b20\d{2}\b", lines[line_index - 1]):
+            start = line_index - 1
+        section_text = "\n".join(lines[start:end])
+        if has_specific_hackathon_details(title, section_text):
+            sections.append((title, section_text))
+    return sections
+
+
+def has_specific_hackathon_details(title: str, content: str) -> bool:
+    """Require a named hackathon/challenge, a concrete date, and operational detail."""
+    if is_generic_hackathon_listing_title(title):
+        return False
+    title_text = cleaned_text(title).casefold()
+    text = cleaned_text(f"{title} {content}").casefold()
+    event_markers = ("hackathon", "challenge", "contest")
+    if not any(term in title_text or term in text for term in event_markers):
+        return False
+    has_date = bool(
+        re.search(
+            r"\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|"
+            r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|"
+            r"dec(?:ember)?)\s+\d{1,2}(?:\s*[-–]\s*\d{1,2})?,?\s+20\d{2}|"
+            r"\d{1,2}\s*[-–]\s*\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+            r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+            r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*,?\s+20\d{2})\b",
+            text,
+        )
+    )
+    operational_terms = (
+        "registration", "register", "deadline", "submission", "submit",
+        "prize", "prizes", "tracks", "judging", "evaluation criteria",
+        "challenge brief", "rules", "team formation", "competition", "build projects",
+    )
+    return has_date and any(term in text for term in operational_terms)
+
+
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -458,11 +536,14 @@ def infer_evidence_type(raw_type: str) -> str:
 
 def build_auto_documents(sources_path: Path, area: str | None = None) -> list[HackathonDocument]:
     import yaml
+
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
-    limits_by_url = extract_yaml_limits(raw_sources)
     from core.crawl_context import current_crawl_context
+
+    limits_by_url = extract_yaml_limits(raw_sources)
     documents: list[HackathonDocument] = []
+
     for source in load_sources(sources_path):
         LOGGER.info("Collecting hackathon intelligence from %s", source.name)
         try:
@@ -470,25 +551,23 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
         except HackathonAgentError as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
+
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
         if not limits:
             limits = limits_by_url.get(canonicalize_url(source.url), {})
-
-        source_limit_configured = bool(limits)
         ctx = current_crawl_context.get(None)
-
         if ctx:
             ctx.source_limits_telemetry.append({
                 "source_name": source.name,
                 "url": source.url,
-                "source_limit_configured": source_limit_configured,
-                "source_limit_matched": source_limit_configured,
+                "source_limit_configured": bool(limits),
+                "source_limit_matched": bool(limits),
                 "max_pages": limits.get("max_pages"),
                 "max_documents": limits.get("max_documents"),
                 "max_depth": limits.get("max_depth"),
                 "max_seconds": limits.get("max_seconds"),
-                "global_fallback_used": not source_limit_configured
+                "global_fallback_used": not bool(limits),
             })
             ctx.begin_source()
 
@@ -499,62 +578,72 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
             fetch_html=fetch_html,
             extract_page_text=extract_page_text,
             config=RecursiveCollectionConfig(
-                max_depth=limits.get('max_depth', RECURSIVE_CONFIG.max_depth),
-                max_pages=limits.get('max_pages', RECURSIVE_CONFIG.max_pages),
-                max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
-                max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
+                max_depth=limits.get("max_depth", RECURSIVE_CONFIG.max_depth),
+                max_pages=limits.get("max_pages", RECURSIVE_CONFIG.max_pages),
+                max_documents=limits.get("max_documents", getattr(RECURSIVE_CONFIG, "max_documents", None)),
+                max_seconds=limits.get("max_seconds", getattr(RECURSIVE_CONFIG, "max_seconds", None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        if not content:
-            LOGGER.info("Skipping %s because no focused challenge/problem text was extracted.", source.name)
+
+        source_documents: list[HackathonDocument] = []
+        for page in pages:
+            page_title = cleaned_text(str(getattr(page, "title", "") or ""))
+            page_body = str(getattr(page, "content", "") or "").strip()
+            if not page_title or not page_body:
+                continue
+            if is_generic_hackathon_listing_title(page_title):
+                event_sections = extract_hackathon_event_sections(page_body)
+            elif has_specific_hackathon_details(page_title, page_body):
+                event_sections = [(page_title, page_body)]
+            else:
+                event_sections = []
+
+            for event_title, event_content in event_sections:
+                # One dated event = one artifact. YAML source names/focus remain
+                # metadata and never get injected into the event's evidence text.
+                full_text = cleaned_text(f"{event_title}\n{event_content}")
+                area_hint = area or infer_area(full_text, "Unscoped")
+                if not is_relevant(full_text, area_hint):
+                    continue
+                source_documents.append(
+                    HackathonDocument(
+                        challenge_name=event_title,
+                        source_type=infer_source_type(source.type),
+                        evidence_type=infer_evidence_type(source.type),
+                        sponsor_or_organizer=source.name,
+                        area_hint=area_hint,
+                        focus=source.focus,
+                        url=str(getattr(page, "url", "") or source.url),
+                        content=full_text,
+                        source_mode="Automatic",
+                        recursive_review_id=review["review_id"],
+                        recursive_page_count=1,
+                    )
+                )
+
+        if source_documents:
+            documents.extend(source_documents)
             update_recursive_review(
                 review["review_id"],
-                outcome="filtered_out_empty",
-                outcome_reason="no focused challenge/problem text was extracted",
-                artifact_title=title,
+                outcome="accepted_for_collection",
+                outcome_reason=f"{len(source_documents)} individual dated event page(s) passed hackathon relevance filters",
+                artifact_title=source_documents[0].challenge_name,
+                selected_area=source_documents[0].area_hint,
+            )
+        else:
+            update_recursive_review(
+                review["review_id"],
+                outcome="filtered_out_no_specific_event",
+                outcome_reason="no individual page or event section had a specific title, date, and operational challenge details",
+                artifact_title=source.name,
                 selected_area=area or "",
             )
-            continue
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
-        area_hint = area or infer_area(full_text, "Unscoped")
-        if not is_relevant(full_text, area_hint):
-            LOGGER.info("Skipping %s because the source text is not hackathon-relevant enough.", source.name)
-            update_recursive_review(
-                review["review_id"],
-                outcome="filtered_out_irrelevant",
-                outcome_reason="document did not pass hackathon relevance filters",
-                artifact_title=title,
-                selected_area=area_hint or "",
-            )
-            continue
-        documents.append(
-            HackathonDocument(
-                challenge_name=title or source.name,
-                source_type=infer_source_type(source.type),
-                evidence_type=infer_evidence_type(source.type),
-                sponsor_or_organizer=source.name,
-                area_hint=area_hint,
-                focus=source.focus,
-                url=source.url,
-                content=full_text,
-                source_mode="Automatic",
-                recursive_review_id=review["review_id"],
-                recursive_page_count=len(pages),
-            )
-        )
-        update_recursive_review(
-            review["review_id"],
-            outcome="accepted_for_collection",
-            outcome_reason="document passed hackathon relevance filters",
-            artifact_title=title,
-            selected_area=area_hint or "",
-        )
+
     return documents
 
 
@@ -567,6 +656,9 @@ def build_manual_url_document(
     area: str | None,
     focus: str | None,
 ) -> HackathonDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,
@@ -582,10 +674,18 @@ def build_manual_url_document(
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=challenge_name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
+    if is_generic_hackathon_listing_title(title):
+        event_sections = extract_hackathon_event_sections(content)
+        if len(event_sections) != 1:
+            raise HackathonAgentError(
+                "The supplied URL is a general events directory. Provide a direct event/challenge page URL."
+            )
+        title, content = event_sections[0]
     resolved_name = challenge_name or title or cleaned_text(urlparse(url).netloc)
     resolved_org = sponsor_or_organizer or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_name} {resolved_org} {focus or ''} {content}")
+    # User-entered name, organizer, and focus are metadata, not page evidence.
+    full_text = cleaned_text(content)
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise HackathonAgentError("Manual URL content does not map to the selected research areas or hackathon signals.")
@@ -613,8 +713,8 @@ def build_manual_text_document(
 ) -> HackathonDocument:
     content = cleaned_text(text)
     resolved_org = sponsor_or_organizer or "Manual"
-    area_hint = area or infer_area(cleaned_text(f"{challenge_name} {resolved_org} {focus or ''} {content}"), "Unscoped")
-    if not is_relevant(cleaned_text(f"{area_hint} {focus or ''} {content}"), area_hint):
+    area_hint = area or infer_area(content, "Unscoped")
+    if not is_relevant(content, area_hint):
         raise HackathonAgentError("Manual text does not map to the selected research areas or hackathon signals.")
     return HackathonDocument(
         challenge_name=challenge_name,

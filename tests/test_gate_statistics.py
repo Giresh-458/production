@@ -6,17 +6,16 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_pipeline import main
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
 
 @patch('run_pipeline.execute_batch_run')
 @patch('run_pipeline.evaluate_collection_health')
-@patch('core.source_registry.sync_source_registry')
-@patch('core.source_registry.build_source_refresh_plan')
+@patch('run_pipeline.prepare_batch2_source_registry')
 def test_duplicate_mission_gate_statistics(
-    mock_build_source_refresh,
-    mock_sync_registry,
+    mock_prepare_registry,
     mock_evaluate_health,
     mock_execute_batch,
     mock_get_calls,
@@ -28,12 +27,17 @@ def test_duplicate_mission_gate_statistics(
 
     call_id = "CALL-TEST-DUPES"
     mock_evaluate_health.return_value = (True, 10)
+    mock_prepare_registry.return_value = {"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}
 
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Quantum Networking",
             "organization": "QOrg",
+            "source_url": f"https://funding.example.org/calls/{call_id}",
+            "application_url": f"https://funding.example.org/calls/{call_id}",
+            "eligibility": "Eligible applicants: research universities and technology organizations may apply.",
             "research_area": "DePIN", "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {
                 "funding_call_id": call_id, "research_intent": "research",
@@ -53,6 +57,13 @@ def test_duplicate_mission_gate_statistics(
     }
     mock_get_calls.return_value = ([selected_call["selected"]], [])
 
+    def fake_run_stage(agent, *args, **kwargs):
+        if agent == "funding":
+            return {"status": "success", "outputs": [selected_call["selected"]], "errors": []}
+        return {"status": "success", "outputs_count": 1, "outputs": []}
+
+    mock_run_stage.side_effect = fake_run_stage
+
     # Mock execute_batch_run to create intermediate files
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
@@ -65,6 +76,7 @@ def test_duplicate_mission_gate_statistics(
 - title: Quantum entanglement
 - source: https://example.org/quant
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:00+00:00
@@ -82,6 +94,7 @@ Quantum entanglement networks.
 - title: Quantum entanglement
 - source: https://example.org/quant
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:01+00:00
@@ -99,6 +112,7 @@ Quantum entanglement networks part 2.
 - title: Classic networking
 - source: https://example.org/class
 - layer: Literature
+- agent_name: literature
 - funding_call_id: CALL-TEST-DUPES
 - research_area: DePIN
 - collected_at: 2026-08-24T10:00:02+00:00
@@ -113,6 +127,8 @@ Classic networking networks.
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
         run_id = kwargs["base_input_data"]["run_id"]
+        from tests.batch2_test_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
             marker = f"- funding_call_id: {call_id}\n"
@@ -122,7 +138,10 @@ Classic networking networks.
                 )
                 artifact.write_text(artifact_text, encoding="utf-8")
 
-        return {"tasks": []}
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
 
     mock_execute_batch.side_effect = fake_execute_batch
 

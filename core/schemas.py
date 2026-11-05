@@ -58,6 +58,12 @@ class CollectionResult:
     currentness_verified: bool = False
     # Empty status is valid only when the source explicitly confirms no active calls.
     no_active_opportunities_confirmed: bool = False
+    # Publisher-confirmed evergreen programme with explicit rolling applications.
+    active_program_confirmed: bool = False
+    # Some publishers run evergreen programmes with explicit rolling applications,
+    # but no single dated call record. Keep that source-level positive evidence
+    # separate from an individual funding opportunity.
+    active_program_confirmed: bool = False
     # --- error tracking ---
     failed_urls: list[str] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
@@ -94,12 +100,14 @@ AREA_KEYWORDS = {
     ],
     "ESG": [
         "esg",
-        "carbon",
+        "carbon market",
         "carbon credit",
+        "carbon accounting",
         "mrv",
-        "sustainability",
-        "emissions",
-        "registry",
+        "sustainability reporting",
+        "sustainability disclosure",
+        "emissions trading",
+        "greenhouse gas emissions",
         "climate change adaptation",
         "climate change mitigation",
         "climate adaptation",
@@ -113,7 +121,6 @@ AREA_KEYWORDS = {
         "mobility data management",
         "transport decarbonization",
         "transport decarbonisation",
-        "climate",
     ],
     "ZK-IoV": [
         "zero-knowledge",
@@ -217,8 +224,10 @@ def _keyword_occurrences(text: str, keyword: str) -> int:
 DOMAIN_REQUIRED_ANCHOR_GROUPS = {
     "ESG": (
         frozenset({
-            "esg", "carbon", "carbon credit", "mrv", "emissions",
-            "sustainability reporting", "sustainability-linked",
+            "esg", "carbon", "carbon market", "carbon markets", "carbon credit",
+            "carbon accounting", "greenhouse gas emissions", "emissions trading",
+            "decarbonization", "decarbonisation", "mrv", "emissions",
+            "sustainability reporting", "sustainability disclosure", "sustainability-linked",
             "environmental social governance", "climate finance",
             "climate change adaptation", "climate change mitigation",
             "climate adaptation", "climate mitigation", "climate resilience",
@@ -282,8 +291,12 @@ DOMAIN_TERM_WEIGHTS = {
     "ESG": {
         "climate change adaptation": 3.0, "climate change mitigation": 3.0,
         "climate adaptation": 2.5, "climate mitigation": 2.5, "climate resilience": 2.5,
-        "carbon credit": 3.0, "carbon": 1.5, "mrv": 2.5, "sustainability": 2.0,
-        "emissions": 2.0, "climate": 1.5, "esg": 2.5,
+        "carbon market": 3.0, "carbon markets": 3.0, "carbon credit": 3.0,
+        "carbon accounting": 3.0, "greenhouse gas emissions": 3.0,
+        "emissions trading": 3.0, "sustainability reporting": 2.5,
+        "sustainability disclosure": 2.5, "decarbonization": 2.5,
+        "decarbonisation": 2.5, "carbon": 1.0, "mrv": 2.5,
+        "sustainability": 1.0, "emissions": 1.0, "climate": 1.0, "esg": 2.5,
         # Direct transport-decarbonisation terms are ESG evidence in mobility calls;
         # generic "mobility" alone remains insufficient to classify a call as ESG.
         "electrification of transport": 2.5, "alternative fuels": 2.0,
@@ -396,9 +409,15 @@ def resolve_research_area(
     if normalized_explicit in ALLOWED_RESEARCH_AREAS:
         explicit_score = scores.get(normalized_explicit, 0)
         if authoritative_explicit:
-            if best_area and best_area != normalized_explicit and best_score > explicit_score:
+            competing_areas = [
+                (area, score)
+                for area, score in scores.items()
+                if area != normalized_explicit and score > 0
+            ]
+            if competing_areas:
+                competing_area, _competing_score = max(competing_areas, key=lambda item: item[1])
                 warnings.append(
-                    f"Content also matched '{best_area}', but retained authoritative routed research area '{normalized_explicit}'."
+                    f"Content also matched '{competing_area}', but retained authoritative routed research area '{normalized_explicit}'."
                 )
             if explicit_score == 0:
                 warnings.append(f"Research area '{normalized_explicit}' has weak textual support in this artifact.")

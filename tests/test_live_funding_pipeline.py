@@ -1429,6 +1429,16 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
 
 def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
     from agents.funding_agent import FundingDocument, analyze_document
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            fixed = cls(2026, 10, 1)
+            return fixed.replace(tzinfo=tz) if tz else fixed
+
+    # The first listed deadline is only "next" when the reference date is
+    # before it. Freeze time so this regression does not expire in later runs.
+    monkeypatch.setattr("agents.funding_agent.datetime", FrozenDateTime)
     from agents.funding_collector import _fetch_linked_official_sbir_context
     import core.http_client
 

@@ -7,6 +7,7 @@ import sys
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import run_pipeline
 from run_pipeline import main
 from core.intelligence import refresh_intelligence_views
 
@@ -36,10 +37,8 @@ def run_pipeline_with_mocked_areas(
 ):
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 
-    mock_ctx = MagicMock()
-    mock_ctx.research_context.research_intent = "research"
-    mock_ctx.funding_call_id = "CALL-TEST"
-    mock_build_ctx.return_value = mock_ctx
+    from tests.batch2_test_helpers import build_valid_funding_context
+    mock_build_ctx.return_value = build_valid_funding_context("CALL-TEST")
 
 
     mock_get_calls.return_value = ([{
@@ -52,17 +51,72 @@ def run_pipeline_with_mocked_areas(
     mock_evaluate_health.return_value = (True, 11)
 
     def fake_save_normalized(roots, call_root, call_id, **kwargs):
-        if "filter_func" in kwargs:
-            for r in accepted_records:
-                kwargs["filter_func"](r)
+        run_id = kwargs.get("target_run_id")
+        normalized_records = []
+        import hashlib
+        for index, original in enumerate(accepted_records):
+            record = dict(original)
+            source_url = f"https://example.com/adaptive-evidence/{index}"
+            record.update({
+                "record_id": hashlib.sha1(f"adaptive-record-{index}".encode()).hexdigest()[:16],
+                "evidence_id": hashlib.sha256(f"adaptive-evidence-{index}".encode()).hexdigest()[:16],
+                "source_id": f"url:{source_url}",
+                "content_hash": hashlib.sha256(f"adaptive-content-{index}".encode()).hexdigest(),
+                "title": "Adaptive area test evidence",
+                "agent_name": "literature",
+                "layer": "Literature",
+                "source_type": "web_page",
+                "evidence_type": "web_source",
+                "evidence_strength": 0.7,
+                "collected_at": "2026-11-01T10:00:00+00:00",
+                "problem_statement": "A controlled source-grounded research limitation.",
+                "context_summary": "A controlled source-grounded research limitation.",
+                "evidence_snippets": ["A measurable source-grounded limitation."],
+                "excerpt_windows": [],
+                "run_id": run_id,
+                "funding_call_id": call_id,
+                "funding_call_ids": [call_id],
+                "source_funding_call_ids": [call_id],
+                "source_url": source_url,
+                "normalization_status": "NORMALIZED",
+            })
+            normalized_records.append(record)
+            if kwargs.get("filter_func"):
+                kwargs["filter_func"](record)
+
         norm_dir = call_root / "normalized"
         norm_dir.mkdir(parents=True, exist_ok=True)
-        (norm_dir / "records.json").write_text(json.dumps(accepted_records), encoding="utf-8")
-        return {"records": norm_dir / "records.json"}
+        (norm_dir / "records.json").write_text(json.dumps(normalized_records), encoding="utf-8")
+        (norm_dir / "by_area.json").write_text(json.dumps({}), encoding="utf-8")
+        (norm_dir / "by_layer.json").write_text(json.dumps({}), encoding="utf-8")
+        (norm_dir / "input_manifest.json").write_text("{}", encoding="utf-8")
+        (norm_dir / "errors.json").write_text("[]", encoding="utf-8")
+        (norm_dir / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+        from tests.batch2_test_helpers import write_test_evidence_ledger
+        write_test_evidence_ledger(norm_dir / "evidence_ledger.db", normalized_records)
+        return {
+            "records": norm_dir / "records.json",
+            "by_area": norm_dir / "by_area.json",
+            "by_layer": norm_dir / "by_layer.json",
+            "errors": norm_dir / "errors.json",
+            "skipped_artifacts": norm_dir / "skipped_artifacts.json",
+        }
 
     mock_save_normalized.side_effect = fake_save_normalized
     mock_mission_relevance.return_value = {"passed": True}
-    mock_execute_batch.return_value = {"tasks": []}
+    def fake_execute_batch(**kwargs):
+        from tests.batch2_test_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            kwargs["base_input_data"]["run_id"],
+            kwargs["agent_names"],
+        )
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(run_pipeline.DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
+
+    mock_execute_batch.side_effect = fake_execute_batch
     mock_run_stage.return_value = {"status": "success", "outputs_count": 1, "outputs": [{}]}
 
     exit_code = main()

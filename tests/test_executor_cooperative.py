@@ -71,3 +71,40 @@ def test_executor_non_cooperative_hangs(monkeypatch):
     # and future.cancel() does NOT kill them, it will hang for the full 2.0 seconds.
     assert duration >= 1.9, f"Expected non-cooperative executor to hang for ~2.0s, but finished in {duration}s"
     assert result["status"] == "completed_with_errors"
+
+
+
+@pytest.mark.parametrize("execution_mode", ["parallel", "sequential"])
+def test_late_collector_artifacts_are_removed_before_the_batch_returns(tmp_path, monkeypatch, execution_mode):
+    output_root = tmp_path / "batch-run"
+
+    def late_agent(*args, **kwargs):
+        input_data = kwargs["input_data"]
+        output_dir = __import__("pathlib").Path(input_data["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        artifact = output_dir / "late-artifact.md"
+        artifact.write_text("late output", encoding="utf-8")
+        time.sleep(0.08)
+        return {
+            "status": "success",
+            "outputs": [{"markdown_path": str(artifact)}],
+            "items_processed": 1,
+            "items_saved": 1,
+            "metadata": {},
+        }
+
+    monkeypatch.setattr("core.batch_runner.run_registered_agent", late_agent)
+    report = execute_batch_run(
+        agent_names=["lab"],
+        area_names=[None],
+        mode="configured_scan",
+        base_input_data={"pipeline_run_dir": str(output_root), "run_id": "late-test-run"},
+        execution_mode=execution_mode,
+        timeout_budget_seconds=0.01,
+        max_workers=1,
+        analysis_mode="collect_only",
+    )
+
+    assert report["tasks"][0]["status"] == "timeout_budget_exceeded"
+    assert report["tasks"][0]["outputs_count"] == 0
+    assert not (output_root / "intermediate" / "lab").exists()

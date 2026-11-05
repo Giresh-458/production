@@ -67,7 +67,7 @@ hackathon_sources:
       max_seconds: 120
   - name: Starknet Events
     type: ecosystem_hackathon
-    url: https://www.starknet.io/en/content/events
+    url: https://www.starknet.io/events/
     focus: ZK, Cairo, scalability, on-chain applications
     limits:
       max_pages: 12
@@ -75,7 +75,7 @@ hackathon_sources:
       max_seconds: 120
   - name: Filecoin Events
     type: ecosystem_hackathon
-    url: https://filecoin.io/events/
+    url: https://fil.org/events
     focus: decentralized storage, DePIN, data infrastructure
     limits:
       max_pages: 12

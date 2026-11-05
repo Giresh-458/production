@@ -28,6 +28,19 @@ PROBLEM_SIGNAL_TERMS = (
 )
 
 
+UNSCOPED_EVIDENCE_TERMS = (
+    "dataset", "data set", "api", "endpoint", "json-stat", "csv", "json",
+    "parquet", "download", "time series", "data portal", "data catalog",
+    "data catalogue", "electricity supply", "electricity generation",
+    "electricity consumption", "electricity system", "energy system",
+    "power system", "electricity market", "transmission system",
+    "cross-border electricity", "grid operation", "grid flexibility", "smart grid",
+    "renewable energy", "energy storage", "generation", "consumption",
+    "load", "balancing", "market prices", "measurements", "telemetry", "benchmark",
+    "registry", "dashboard", "explorer", "metadata", "data schema",
+)
+
+
 def _clean_line(value: str) -> str:
     return " ".join((value or "").split()).strip()
 
@@ -108,9 +121,30 @@ def _named_entities_or_programs(raw_content: str, metadata: dict[str, Any]) -> l
             candidates.append(value.strip())
     unique: list[str] = []
     seen: set[str] = set()
+    generic_sentence_starters = {
+        "such", "while", "meanwhile", "however", "therefore", "moreover",
+        "although", "already", "these", "those", "this", "that",
+        "deliberate", "deep", "regulating", "employing",
+    }
+    source_title_values = set()
+    if isinstance(metadata, dict):
+        for value in (metadata.get("title"),):
+            if isinstance(value, str) and value.strip():
+                source_title_values.add(value.strip().casefold())
+        hints = metadata.get("source_hints")
+        if isinstance(hints, dict):
+            value = hints.get("title")
+            if isinstance(value, str) and value.strip():
+                source_title_values.add(value.strip().casefold())
     for candidate in candidates:
         cleaned = _clean_line(candidate)
-        if len(cleaned) < 3 or cleaned.lower() in {"manual", "source", "title"}:
+        first_word = cleaned.split(" ", 1)[0].casefold() if cleaned else ""
+        if (
+            len(cleaned) < 3
+            or cleaned.lower() in {"manual", "source", "title"}
+            or first_word in generic_sentence_starters
+            or cleaned.casefold() in source_title_values
+        ):
             continue
         if cleaned not in seen:
             seen.add(cleaned)
@@ -126,6 +160,12 @@ def _keyword_score(text: str, research_area: str | None) -> int:
     if research_area and research_area in AREA_KEYWORDS:
         for keyword in AREA_KEYWORDS[research_area]:
             score += lowered.count(keyword.lower()) * 2
+    elif not research_area or str(research_area).casefold() in {"general", "unscoped"}:
+        # A mission-specific General/Unscoped collector still needs useful
+        # source passages. Prefer concrete data/API/energy-system evidence
+        # instead of returning arbitrary first paragraphs.
+        for term in UNSCOPED_EVIDENCE_TERMS:
+            score += lowered.count(term)
     return score
 
 

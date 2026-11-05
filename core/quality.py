@@ -21,6 +21,11 @@ GENERIC_TITLE_PATTERNS = {
     "featured",
     "filings",
     "writing",
+    "development topics",
+    "browse all topics",
+    "topics",
+    "home page",
+    "landing page",
 }
 
 BOILERPLATE_TERMS = (
@@ -140,6 +145,103 @@ def _boilerplate_density(raw_content: str) -> int:
     return sum(lowered.count(term) for term in BOILERPLATE_TERMS)
 
 
+def _score_data_availability_evidence(
+    source: str,
+    raw_content: str,
+    evidence_bundle: dict[str, Any],
+) -> int:
+    observed_parts = [str(source or ""), str(raw_content or "")]
+    for key in ("key_paragraphs", "evidence_snippets", "excerpt_windows", "quoted_passages"):
+        value = evidence_bundle.get(key, [])
+        if isinstance(value, (list, tuple)):
+            observed_parts.extend(str(item) for item in value if str(item).strip())
+    observed = "\n".join(observed_parts).casefold()
+    patterns = (
+        r"\bdataset\b", r"\bapi\b", r"\bendpoint\b", r"\bjson-stat\b",
+        r"\bjson\b", r"\bcsv\b", r"\bparquet\b", r"\bdownload\b",
+        r"\btime series\b", r"\bgeneration\b", r"\bconsumption\b",
+        r"\belectricity supply\b", r"\bspot prices\b", r"\bmeasurements\b",
+        r"\btelemetry\b", r"\bmetadata\b", r"\bdata coverage\b",
+        r"\blicen[cs]e\b", r"\bdata schema\b", r"\bmarket prices\b",
+    )
+    hits = sum(1 for pattern in patterns if re.search(pattern, observed))
+    if hits >= 9:
+        return 5
+    if hits >= 7:
+        return 4
+    if hits >= 5:
+        return 3
+    if hits >= 3:
+        return 2
+    return 1 if hits else 0
+
+
+def _agent_specific_evidence_reasons(
+    agent_name: str,
+    title: str,
+    source: str,
+    raw_content: str,
+    evidence_bundle: dict[str, Any],
+) -> list[str]:
+    """Require evidence that actually belongs to the collector's evidence class."""
+    observed_parts: list[str] = [str(source or ""), str(raw_content or "")]
+    for key in ("key_paragraphs", "evidence_snippets", "excerpt_windows", "quoted_passages"):
+        value = evidence_bundle.get(key, [])
+        if isinstance(value, (list, tuple)):
+            observed_parts.extend(str(item) for item in value if str(item).strip())
+    observed = "\n".join(observed_parts)
+    lowered = observed.casefold()
+    reasons: list[str] = []
+
+    if agent_name == "data_availability":
+        access_artifact = re.search(
+            r"\b(?:dataset|data set|api|endpoint|download|csv|json|parquet|data package|"
+            r"data catalog|data catalogue|dashboard|explorer|registry|simulator|testbed|benchmark)\b",
+            lowered,
+        )
+        concrete_data = re.search(
+            r"\b(?:time series|historical data|generation|electricity load|consumption|"
+            r"market prices|measurements|sensor data|telemetry|transaction data|protocol data|"
+            r"stablecoin supply|total value locked|reserve reports?|proof of reserve|"
+            r"carbon credits?|registry entries|project records|credit issuance|block data|"
+            r"mobility traces|node uptime|network metrics|attack traces|anomaly data|"
+            r"metrics|query results|data schema|metadata fields|benchmark results)\b",
+            lowered,
+        )
+        if not access_artifact or not concrete_data:
+            reasons.append(
+                "data-availability evidence must describe both a concrete data product/access artifact "
+                "and the data or measurements it provides"
+            )
+
+    if agent_name == "regulation":
+        generic_title = _generic_title_score(title) == 0
+        legal_instrument = re.search(
+            r"\b(?:regulation\s*\(?eu\)?\s*\d{4}/\d+|directive\s*\(?eu\)?\s*\d{4}/\d+|"
+            r"article\s+\d+|act\s+no\.?\s*\d+|law\s+no\.?\s*\d+|"
+            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|rfc\s+\d+|nist\s+sp\s*\d+|"
+            r"w3c\s+recommendation|w3c\s+standard|regulatory\s+framework|"
+            r"regulatory\s+requirements?|official\s+standard|standard\s+requirements?|"
+            r"guidance\s+document|consultation\s+document|policy\s+instrument|"
+            r"\bframework\b|\bstandard\b|\brecommendation\b|\bdecision\b)\b",
+            lowered,
+        )
+        named_instrument = re.search(
+            r"\b(?:regulation\s*\(?eu\)?\s*\d{4}/\d+|directive\s*\(?eu\)?\s*\d{4}/\d+|"
+            r"article\s+\d+|act\s+no\.?\s*\d+|law\s+no\.?\s*\d+|"
+            r"iso\s*\d{3,}|iec\s*\d{3,}|nerc\s+cip|rfc\s+\d+|nist\s+(?:sp|special\s+publication)\s*\d+|"
+            r"w3c\s+recommendation|w3c\s+standard|decision\s+no\.?\s*\d+|"
+            r"directive\s+\d{4}/\d+|regulation\s+\d{4}/\d+)\b",
+            lowered,
+        )
+        if not legal_instrument or (generic_title and not named_instrument):
+            reasons.append(
+                "regulation evidence lacks a specific legal/standards instrument or its normative requirements"
+            )
+
+    return reasons
+
+
 def evaluate_collection_quality(
     *,
     agent_name: str,
@@ -153,9 +255,21 @@ def evaluate_collection_quality(
     schema = get_collection_schema(agent_name)
     is_lenient_agent = agent_name in LENIENT_COLLECTION_AGENTS
     is_manual_source = (source or "").startswith("manual://") or (source or "").strip().lower() == "manual"
-    research_area_match = _score_research_area_match(research_area, area_scores, explicit_area=research_area)
+    # A user-selected area is authoritative for manual text; an inferred or
+    # configured area on an automatically fetched page must be verified.
+    research_area_match = _score_research_area_match(
+        research_area, area_scores,
+        explicit_area=research_area if is_manual_source else None,
+    )
     source_specificity = _score_source_specificity(title, source, evidence_bundle)
     problem_signal_density = _score_problem_signal_density(raw_content, research_area, evidence_bundle)
+    if agent_name == "data_availability":
+        # Data-source records are judged on concrete access/data evidence,
+        # not on whether a dataset page uses generic "problem" vocabulary.
+        problem_signal_density = max(
+            problem_signal_density,
+            _score_data_availability_evidence(source, raw_content, evidence_bundle),
+        )
     evidence_richness = _score_evidence_richness(raw_content, evidence_bundle)
 
     total_score = (
@@ -184,6 +298,12 @@ def evaluate_collection_quality(
         rejection_reasons.append("evidence bundle too thin")
     if generic_title and problem_signal_density <= (1 if is_lenient_agent else 2):
         rejection_reasons.append("generic page title without enough specific evidence")
+    if not is_manual_source:
+        rejection_reasons.extend(
+            _agent_specific_evidence_reasons(
+                agent_name, title, source, raw_content, evidence_bundle
+            )
+        )
     if boilerplate_hits >= (6 if is_lenient_agent else 4) and problem_signal_density <= (1 if is_lenient_agent else 2):
         rejection_reasons.append("content appears dominated by boilerplate/navigation text")
     if total_score < (35 if is_lenient_agent else 45):
