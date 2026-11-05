@@ -695,3 +695,141 @@ def test_unscoped_evidence_bundle_selects_energy_dataset_passages():
     assert bundle["evidence_snippets"]
     assert "electricity supply" in bundle["evidence_snippets"][0].casefold()
 
+
+
+def test_energy_platform_call_rejects_unrelated_live_false_positive_pages():
+    ctx = _context(
+        "Large-Scale piloting of next-generation AI-driven digital platforms for a more affordable, "
+        "secure and sustainable European energy system (IA) - Apply AI"
+    )
+    unrelated_records = [
+        {
+            "agent_name": "literature",
+            "title": "DeFiLlama",
+            "problem_statement": (
+                "Breaking the bank: a stablecoin founder discusses revenue distribution, "
+                "DeFi adoption, and the European crypto market."
+            ),
+            "context_summary": (
+                "Interview — DefiLlama Research. Conversations with people building, funding, "
+                "and using DeFi."
+            ),
+            "evidence_snippets": [
+                "The stablecoin business relies heavily on distribution. "
+                "Tether and Circle arrived first and secured listings everywhere."
+            ],
+        },
+        {
+            "agent_name": "regulation",
+            "title": "Development Topics",
+            "problem_statement": (
+                "World Bank Carbon Markets carbon markets, climate finance Development Topics."
+            ),
+            "context_summary": (
+                "Browse all topics: Climate Change, Digital and AI, Energy, Environment, "
+                "Financial Sector Development, and Sustainable Infrastructure Finance."
+            ),
+            "evidence_snippets": [
+                "World Bank Carbon Markets carbon markets, climate finance Development Topics.",
+                "Browse All Topics Climate Change Competitiveness Digital and AI Education and Skills "
+                "Energy Environment Farming and Agribusiness."
+            ],
+        },
+    ]
+    for record in unrelated_records:
+        result = relevance(record, ctx)
+        assert result["passed"] is False
+        assert "energy-system/grid evidence" in result["reason"]
+
+
+def test_energy_platform_call_accepts_source_quoted_electricity_system_regulation():
+    ctx = _context(
+        "Large-Scale piloting of next-generation AI-driven digital platforms for a more affordable, "
+        "secure and sustainable European energy system (IA) - Apply AI"
+    )
+    passage = (
+        "Regulation (EU) 2019/943 sets rules for the internal electricity market, "
+        "cross-border exchanges, electricity system operation and balancing."
+    )
+    result = relevance(
+        {
+            "agent_name": "regulation",
+            "title": "Regulation (EU) 2019/943",
+            "problem_statement": "Rules for the internal electricity market and system operation.",
+            "context_summary": "The instrument covers cross-border electricity exchanges.",
+            "evidence_snippets": [passage],
+        },
+        ctx,
+    )
+    assert result["passed"] is True
+
+
+def test_energy_platform_funding_call_uses_primary_energy_mission_not_esg_outcomes():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    title = (
+        "Large-Scale piloting of next-generation AI-driven digital platforms for a more affordable, "
+        "secure and sustainable European energy system (IA) - Apply AI"
+    )
+    eligibility = (
+        "In order to achieve the expected outcomes, and safeguard the Union's strategic assets, "
+        "interests, autonomy, or security, it is important to avoid a situation of technological "
+        "dependency on a non-EU source, in a global context that requires the EU to take action to "
+        "build on its strengths, and to carefully assess and address any strategic weaknesses, "
+        "vulnerabilities and high-risk dependencies which put at risk the attainment of its ambitions. "
+        "For this reason, participation is limited to legal entities established in Member States, "
+        "Iceland and Norway and associated countries."
+    )
+    content = "\n".join([
+        f"Title: {title}",
+        "Expected Outcome: Strengthened Europe's technological leadership and sovereignty in the energy sector.",
+        "Market-ready AI-driven digital platforms and solutions should enhance grid operation, "
+        "renewable energy integration, energy storage integration, electrification and energy efficiency.",
+        "Successfully integrate applied research results in real-world pilot programmes involving "
+        "energy operators, technology providers, public authorities, and end users.",
+        "Scope: This topic supports a large-scale cross-border pilot demonstrating AI-driven digital "
+        "platforms for the European energy system to optimize electricity system operation and "
+        "flexibility management across multiple European energy systems.",
+        f"Eligibility: {eligibility}",
+    ])
+    opportunity = analyze_document(
+        FundingDocument(
+            organization="European Commission",
+            title=title,
+            source="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-01-12",
+            source_type="html",
+            content=content,
+            year=2026,
+        )
+    )
+    context = opportunity.research_context
+    assert opportunity.focus_area == "General"
+    assert "AI-Driven Digital Platforms" in context["technology_themes"]
+    assert "Energy Systems" in context["technology_themes"]
+    assert not any("ESG" in question or "Carbon and MRV" in question for question in context["investigation_questions"])
+    assert context["inferred_challenges"] == []
+
+
+def test_horizon_strategic_autonomy_eligibility_fragment_is_not_a_problem_statement():
+    from core.problem_extraction import extract_problem_intelligence
+
+    text = (
+        "Eligibility: In order to achieve the expected outcomes, and safeguard the Union's "
+        "strategic assets, interests, autonomy, or security, it is important to avoid a situation "
+        "of technological dependency on a non-EU source, in a global context that requires the EU "
+        "to take action to build on its strengths, and to carefully assess and address any strategic "
+        "weaknesses, vulnerabilities and high-risk dependencies which put at risk the attainment of "
+        "its ambitions. For this reason, participation is limited to legal entities established in "
+        "Member States, Iceland and Norway and associated countries."
+    )
+    result = extract_problem_intelligence(
+        text,
+        "AI-driven digital platforms for the European energy system",
+        {"evidence_snippets": [text]},
+        allow_llm_refinement=False,
+        research_area="General",
+        agent_name="funding",
+    )
+    assert result["selected_problem"] is None
+    assert result["problem_type"] == "unresolved"
+    assert result["problem_evidence"] == []
