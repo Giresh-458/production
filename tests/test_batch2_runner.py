@@ -1408,3 +1408,72 @@ def test_batch2_context_rejects_missing_call_title():
     context = _context()
     context.call_title = "   "
     assert "funding call title is missing" in validate_batch1_context(context)
+
+
+@pytest.mark.parametrize("symlink_location", ["agent_root", "nested_directory"])
+def test_internal_agent_symlinks_are_quarantined_without_moving_target_evidence(
+    tmp_path, symlink_location
+):
+    from tests.batch2_test_helpers import write_test_collector_artifacts
+
+    run_root = tmp_path / "batch2-run"
+    write_test_collector_artifacts(run_root, "current-run", {"lab"})
+    lab_root = run_root / "intermediate" / "lab"
+    lab_file = next(lab_root.glob("*.md"))
+    original_content = lab_file.read_text(encoding="utf-8")
+    literature_root = run_root / "intermediate" / "literature"
+
+    try:
+        if symlink_location == "agent_root":
+            literature_root.symlink_to(lab_root, target_is_directory=True)
+            symlink_path = literature_root
+            reported_alias = literature_root / lab_file.name
+        else:
+            literature_root.mkdir(parents=True)
+            symlink_path = literature_root / "lab-alias"
+            symlink_path.symlink_to(lab_root, target_is_directory=True)
+            reported_alias = symlink_path / lab_file.name
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are not available on this platform")
+
+    tasks = [
+        {
+            "agent_name": "literature",
+            "status": "success",
+            "outputs_count": 1,
+            "output_paths": [str(reported_alias)],
+            "errors": [],
+            "warnings": [],
+        },
+        {
+            "agent_name": "lab",
+            "status": "success",
+            "outputs_count": 1,
+            "output_paths": [str(lab_file)],
+            "errors": [],
+            "warnings": [],
+        },
+    ]
+
+    _, audit = audit_collector_artifacts(
+        run_root,
+        tasks,
+        expected_agents={"literature", "lab"},
+        run_id="current-run",
+    )
+
+    # The symlink alias is quarantined, but the real Lab artifact is untouched.
+    assert not symlink_path.is_symlink()
+    assert lab_file.is_file()
+    assert lab_file.read_text(encoding="utf-8") == original_content
+    assert audit["quarantine_failures"] == []
+    assert audit["manifest_issues"]
+    quarantined_reasons = [
+        reason
+        for item in audit["quarantined_artifacts"]
+        for reason in item.get("reasons", [])
+    ]
+    assert (
+        "agent_output_directory_is_symlink" in quarantined_reasons
+        or "symlinked_agent_artifact_path" in quarantined_reasons
+    )

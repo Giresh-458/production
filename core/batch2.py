@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import sqlite3
@@ -464,6 +465,31 @@ def validate_evidence_ledger(
     return errors
 
 
+def _discover_agent_artifacts(agent_root: Path) -> tuple[list[Path], list[Path]]:
+    """Discover Markdown without following symlinked files or directories.
+
+    Symlink aliases can point into another collector's directory while still
+    resolving somewhere inside the run root. Following them can misattribute,
+    or even quarantine, another agent's original evidence.
+    """
+    markdown_files: list[Path] = []
+    symlink_paths: list[Path] = []
+    for current, directory_names, file_names in os.walk(agent_root, followlinks=False):
+        current_path = Path(current)
+        for name in list(directory_names):
+            candidate = current_path / name
+            if candidate.is_symlink():
+                symlink_paths.append(candidate)
+                directory_names.remove(name)
+        for name in file_names:
+            candidate = current_path / name
+            if candidate.is_symlink():
+                symlink_paths.append(candidate)
+            elif candidate.suffix.casefold() == ".md" and candidate.name.casefold() != "insights.md":
+                markdown_files.append(candidate)
+    return sorted(markdown_files), sorted(symlink_paths)
+
+
 def audit_collector_artifacts(
     run_root: Path,
     collection_tasks: list[dict[str, Any]],
@@ -527,23 +553,72 @@ def audit_collector_artifacts(
         agent_root = intermediate_root / agent
         task_items = tasks_by_agent.get(agent, [])
         task = task_items[0] if len(task_items) == 1 else None
+        agent_root_is_symlink = agent_root.is_symlink()
         agent_root_escapes = (
-            agent_root.exists()
+            not agent_root_is_symlink
+            and agent_root.exists()
             and not agent_root.resolve().is_relative_to(intermediate_root.resolve())
         )
-        files = (
-            sorted(path for path in agent_root.glob("**/*.md") if path.name.casefold() != "insights.md")
-            if agent_root.is_dir() and not agent_root_escapes
-            else []
-        )
+        agent_root_unsafe = agent_root_is_symlink or agent_root_escapes
+        if agent_root_is_symlink:
+            files = []
+            symlink_paths = [agent_root]
+        elif agent_root.is_dir() and not agent_root_unsafe:
+            files, symlink_paths = _discover_agent_artifacts(agent_root)
+        else:
+            files, symlink_paths = [], []
         valid_files: list[Path] = []
         agent_issues: list[dict[str, Any]] = []
-        if agent_root_escapes:
+        if agent_root_is_symlink:
+            agent_issues.append({
+                "agent_name": agent,
+                "reasons": ["agent_output_directory_is_symlink"],
+                "output_directory": str(agent_root.absolute()),
+            })
+        elif agent_root_escapes:
             agent_issues.append({
                 "agent_name": agent,
                 "reasons": ["agent_output_directory_escapes_intermediate_root"],
                 "output_directory": str(agent_root.resolve()),
             })
+
+        # Move only the symlink itself into quarantine. Never move a path
+        # reached through a symlinked parent: that can move another agent's
+        # original evidence instead of the alias.
+        for symlink_path in symlink_paths:
+            relative = (
+                Path("__agent_output_directory_symlink__")
+                if symlink_path == agent_root
+                else symlink_path.relative_to(agent_root)
+            )
+            destination = quarantine_root / agent / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() or destination.is_symlink():
+                destination = destination.with_name(
+                    f"{destination.name}-{len(quarantined) + 1}"
+                )
+            quarantine_error = None
+            try:
+                symlink_path.rename(destination)
+            except OSError as exc:
+                quarantine_error = str(exc)
+            symlink_reasons = (
+                ["agent_output_directory_is_symlink"]
+                if symlink_path == agent_root
+                else ["symlinked_agent_artifact_path"]
+            )
+            if quarantine_error:
+                symlink_reasons.append("artifact_quarantine_failed")
+            item = {
+                "agent_name": agent,
+                "original_path": str(symlink_path.absolute()),
+                "quarantined_path": str(destination.absolute()) if quarantine_error is None else None,
+                "quarantine_error": quarantine_error,
+                "reasons": symlink_reasons,
+            }
+            quarantined.append(item)
+            agent_issues.append(item)
+
         task_status = str(task.get("status") or "").strip().lower() if task is not None else ""
 
         for path in files:
@@ -828,6 +903,8 @@ def audit_collector_artifacts(
 
     critical_manifest_reasons = {
         "agent_output_directory_escapes_intermediate_root",
+        "agent_output_directory_is_symlink",
+        "symlinked_agent_artifact_path",
         "collector_output_paths_must_be_a_list",
         "reported_output_path_escapes_agent_output_directory",
         "reported_output_path_does_not_exist",
