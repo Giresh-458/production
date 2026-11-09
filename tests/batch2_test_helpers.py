@@ -209,3 +209,44 @@ def build_valid_funding_context(
             domain_relevance=(),
         ),
     )
+
+
+
+def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
+    """Write the minimal canonical-evidence table needed by normalization cache tests."""
+    import sqlite3
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(path))
+    try:
+        connection.execute(
+            """
+            CREATE TABLE canonical_evidence (
+                evidence_id TEXT PRIMARY KEY,
+                funding_call_id TEXT,
+                run_id TEXT,
+                source_url TEXT,
+                content_hash TEXT
+            )
+            """
+        )
+        connection.executemany(
+            """
+            INSERT INTO canonical_evidence (
+                evidence_id, funding_call_id, run_id, source_url, content_hash
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    str(record.get("evidence_id") or ""),
+                    str(record.get("funding_call_id") or ""),
+                    str(record.get("run_id") or ""),
+                    str(record.get("source_url") or ""),
+                    str(record.get("content_hash") or ""),
+                )
+                for record in records
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()

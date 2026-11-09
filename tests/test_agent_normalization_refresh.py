@@ -352,3 +352,54 @@ A source-backed result about reproducible research workflows.
     assert refreshed_manifest["schema_version"] == 2
     assert [record["title"] for record in refreshed_records] == ["Versioned Evidence"]
 
+
+
+
+@pytest.mark.parametrize("cache_damage", ["missing_ledger", "corrupt_ledger", "recorded_error"])
+def test_normalization_cache_rebuilds_unhealthy_ledger_or_error_report(tmp_path, cache_damage):
+    import sqlite3
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / f"run_cache_{cache_damage}"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "signal.md").write_text(
+        """# Cache Integrity Signal
+
+## Shared Metadata
+- title: Cache Integrity Signal
+- source: https://example.org/cache-integrity
+- layer: Literature
+- collected_at: 2026-11-09T10:00:00+00:00
+
+## Problem Preview
+The source describes a reproducible research workflow and its measured evaluation.
+
+## Evidence Bundle
+### Evidence Snippets
+- The source describes a reproducible research workflow and its measured evaluation.
+""",
+        encoding="utf-8",
+    )
+
+    save_normalized_collection_records(intermediate, run_root)
+    normalized = run_root / "normalized"
+    ledger_path = normalized / "evidence_ledger.db"
+    errors_path = normalized / "errors.json"
+
+    if cache_damage == "missing_ledger":
+        ledger_path.unlink()
+    elif cache_damage == "corrupt_ledger":
+        ledger_path.write_text("not a SQLite database", encoding="utf-8")
+    else:
+        errors_path.write_text(json.dumps(["previous normalization database error"]), encoding="utf-8")
+
+    ensure_normalized_collection_records(run_root)
+
+    assert json.loads(errors_path.read_text(encoding="utf-8")) == []
+    connection = sqlite3.connect(str(ledger_path))
+    try:
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert connection.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0] == 1
+    finally:
+        connection.close()

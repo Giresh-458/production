@@ -90,6 +90,8 @@ def test_stale_index_survives_cache_hit(tmp_path):
     )
     (normalized / "errors.json").write_text("[]", encoding="utf-8")
     (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+    from tests.batch2_test_helpers import write_cache_test_ledger
+    write_cache_test_ledger(normalized / "evidence_ledger.db", [good_record])
 
     with patch("core.mission_gate.relevance") as mock_gate, patch("core.normalization.save_normalized_collection_records") as mock_save:
         mock_gate.return_value = {"passed": True}

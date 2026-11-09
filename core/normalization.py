@@ -1157,6 +1157,69 @@ def resolve_refresh_run_id(outputs_root: Path) -> str | None:
     return _clean(str(run_value or "")) or None
 
 
+def _normalization_cache_ledger_matches_records(
+    ledger_path: Path,
+    records: list[dict[str, Any]],
+) -> bool:
+    """Return whether the persisted evidence ledger exactly matches cached records."""
+    import sqlite3
+
+    if not ledger_path.is_file():
+        return False
+    try:
+        if ledger_path.stat().st_size == 0:
+            return False
+    except OSError:
+        return False
+
+    expected: dict[str, tuple[str, str, str, str]] = {}
+    for record in records:
+        evidence_id = str(record.get("evidence_id") or "").strip()
+        if not evidence_id or evidence_id in expected:
+            return False
+        expected[evidence_id] = (
+            str(record.get("funding_call_id") or ""),
+            str(record.get("run_id") or ""),
+            str(record.get("source_url") or ""),
+            str(record.get("content_hash") or ""),
+        )
+
+    connection = None
+    try:
+        connection = sqlite3.connect(str(ledger_path))
+        check = connection.execute("PRAGMA quick_check").fetchone()
+        if not check or str(check[0]).casefold() != "ok":
+            return False
+        rows = connection.execute(
+            """
+            SELECT evidence_id, funding_call_id, run_id, source_url, content_hash
+            FROM canonical_evidence
+            """
+        ).fetchall()
+        if len(rows) != len(expected):
+            return False
+        actual_ids: set[str] = set()
+        for evidence_id, funding_call_id, run_id, source_url, content_hash in rows:
+            key = str(evidence_id or "")
+            if key in actual_ids or key not in expected:
+                return False
+            actual_ids.add(key)
+            actual_values = (
+                str(funding_call_id or ""),
+                str(run_id or ""),
+                str(source_url or ""),
+                str(content_hash or ""),
+            )
+            if actual_values != expected[key]:
+                return False
+        return actual_ids == set(expected)
+    except (OSError, sqlite3.Error):
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
@@ -1185,6 +1248,7 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     manifest_path = outputs_root / "normalized" / "input_manifest.json"
     skipped_path = outputs_root / "normalized" / "skipped_artifacts.json"
     errors_path = outputs_root / "normalized" / "errors.json"
+    ledger_path = outputs_root / "normalized" / "evidence_ledger.db"
     if not skipped_path.exists() or not errors_path.exists():
         force_refresh = True
     if not force_refresh:
@@ -1202,10 +1266,19 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
         import copy
         try:
             cached = json.loads(records_path.read_text(encoding="utf-8"))
-            if not isinstance(cached, list):
-                raise ValueError("normalized records cache must contain a JSON list")
+            if not isinstance(cached, list) or not all(isinstance(record, dict) for record in cached):
+                raise ValueError("normalized records cache must contain a JSON list of objects")
 
-            if filter_func:
+            cached_errors = json.loads(errors_path.read_text(encoding="utf-8"))
+            cached_skipped = json.loads(skipped_path.read_text(encoding="utf-8"))
+            if not isinstance(cached_errors, list) or cached_errors:
+                force_refresh = True
+            if not isinstance(cached_skipped, list):
+                force_refresh = True
+            if not _normalization_cache_ledger_matches_records(ledger_path, cached):
+                force_refresh = True
+
+            if filter_func and not force_refresh:
                 for record in cached:
                     if not filter_func(copy.deepcopy(record)):
                         force_refresh = True
