@@ -221,7 +221,7 @@ def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
     try:
         connection.execute(
             """
-            CREATE TABLE canonical_evidence (
+            CREATE TABLE IF NOT EXISTS canonical_evidence (
                 evidence_id TEXT PRIMARY KEY,
                 funding_call_id TEXT,
                 run_id TEXT,
@@ -230,6 +230,7 @@ def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
             )
             """
         )
+        connection.execute("DELETE FROM canonical_evidence")
         connection.executemany(
             """
             INSERT INTO canonical_evidence (

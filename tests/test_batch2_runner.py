@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import closing
 import os
 import sqlite3
 import subprocess
@@ -761,7 +762,7 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
         funding_call_id=context.funding_call_id,
         run_id="batch2-test-run",
     ) == []
-    with sqlite3.connect(ledger_path) as ledger_connection:
+    with closing(sqlite3.connect(ledger_path)) as ledger_connection:
         provenance_json = ledger_connection.execute(
             "SELECT provenance FROM canonical_evidence WHERE evidence_id = ?",
             (records[0]["evidence_id"],),
@@ -781,7 +782,7 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     )
     assert any("provenance source_url mismatch" in error for error in provenance_errors)
 
-    with sqlite3.connect(ledger_path) as ledger_connection:
+    with closing(sqlite3.connect(ledger_path)) as ledger_connection:
         ledger_connection.execute(
             "DELETE FROM canonical_evidence WHERE evidence_id = ?",
             (records[0]["evidence_id"],),
