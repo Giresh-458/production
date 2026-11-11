@@ -756,9 +756,7 @@ def audit_collector_artifacts(
                     and not provenance_parsed.query
                     and not provenance_parsed.fragment
                 )
-                if manual_input_source:
-                    pass
-                else:
+                if not manual_input_source:
                     if header_parsed.scheme not in {"http", "https"} or not header_parsed.netloc:
                         reasons.append("artifact_header_source_url_invalid")
                     if provenance_parsed.scheme not in {"http", "https"} or not provenance_parsed.netloc:

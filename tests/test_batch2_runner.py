@@ -1551,12 +1551,10 @@ def test_manual_text_artifact_is_preserved_but_never_marked_external_or_batch3_r
     run_id = "manual-text-provenance-run"
     run_root = tmp_path / run_id
     context = _context("CALL-MANUAL-TEXT")
+    from tests.test_all_collection_agents import TEXTS
+
     document = build_manual_text_document(
-        (
-            "A distributed system has a reproducible interoperability limitation under "
-            "concurrent load. A controlled benchmark records message-delivery failures, "
-            "response-time constraints, and the conditions that reproduce the failure."
-        ),
+        TEXTS["lab"],
         "Manual Lab Evidence",
         None,
         None,
