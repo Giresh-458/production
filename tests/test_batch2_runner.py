@@ -1659,3 +1659,24 @@ def test_optional_adaptive_research_artifacts_are_audited_before_normalization(t
     assert audit["agents"][0]["agent_name"] == "adaptive_research"
     assert audit["agents"][0]["persisted_valid_artifacts"] == 1
     assert (call_root / "workflow" / "adaptive_research_artifact_audit.json").is_file()
+
+
+def test_optional_adaptive_stage_still_rejects_redirected_roots_without_artifacts(tmp_path):
+    from run_pipeline import audit_optional_adaptive_research_artifacts
+
+    call_root = tmp_path / "call-root"
+    call_root.mkdir()
+    redirected_target = call_root / "other-workflow"
+    redirected_target.mkdir()
+    workflow_root = call_root / "workflow"
+    try:
+        workflow_root.symlink_to(redirected_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are not available on this platform")
+
+    with pytest.raises(RuntimeError, match="Per-call artifact-root audit failed"):
+        audit_optional_adaptive_research_artifacts(
+            call_root,
+            None,
+            "adaptive-root-audit-run",
+        )
