@@ -928,6 +928,58 @@ def _normalized_record_provenance(record: dict[str, Any]) -> dict[str, Any]:
         "raw_record_id": record.get("file_path") or record.get("record_id", ""),
     }
 
+
+
+def _canonical_evidence_ledger_record(
+    record: dict[str, Any],
+    content_hash_to_group: dict[str, str],
+) -> dict[str, Any]:
+    """Build the exact canonical SQLite row from one normalized JSON record."""
+    if record["normalization_status"] == "NEEDS_REVIEW":
+        independence_status = "UNKNOWN"
+        independence_group = "UNKNOWN"
+    else:
+        independence_group = content_hash_to_group[record["content_hash"]]
+        independence_status = (
+            "INDEPENDENT" if independence_group == record["source_id"] else "DERIVED"
+        )
+    machine_metadata = record.get("machine_metadata", {})
+    source_hints = machine_metadata.get("source_hints", {}) if isinstance(machine_metadata, dict) else {}
+    published_at = source_hints.get("published_at") if isinstance(source_hints, dict) else None
+    strength = max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0)))
+    return {
+        "evidence_id": record["evidence_id"],
+        "record_id": record["record_id"],
+        "funding_call_id": record["funding_call_id"],
+        "run_id": record["run_id"],
+        "agent": record["agent_name"],
+        "layer": record["layer"],
+        "source_id": record["source_id"],
+        "source_url": record["source_url"],
+        "canonical_url": record["canonical_url"],
+        "source_type": record["source_type"],
+        "source_name": record["actor"],
+        "title": record["title"],
+        "problem": record["problem_statement"],
+        "problem_signature": "pending-synthesis",
+        "evidence": "\\n".join(record["evidence_snippets"]),
+        "evidence_excerpt": "\\n".join(record["excerpt_windows"]),
+        "evidence_type": record["evidence_type"],
+        "research_area": record["research_area"],
+        "published_at": published_at,
+        "retrieved_at": record["collected_at"],
+        "updated_at": None,
+        "content_hash": record["content_hash"],
+        "source_quality": strength,
+        "evidence_strength": record["evidence_strength"],
+        "confidence": strength,
+        "independence_group": independence_group,
+        "independence_status": independence_status,
+        "normalization_status": record["normalization_status"],
+        "provenance": _normalized_record_provenance(record),
+        "raw_record_id": record["file_path"],
+    }
+
 def save_normalized_collection_records(
     intermediate_root: Path | list[Path],
     output_dir: Path,
@@ -1038,54 +1090,7 @@ def save_normalized_collection_records(
                 content_hash_to_group[rec["content_hash"]] = rec["source_id"]
 
         for record in records:
-            if record["normalization_status"] == "NEEDS_REVIEW":
-                independence_status = "UNKNOWN"
-                independence_group = "UNKNOWN"
-            else:
-                independence_group = content_hash_to_group[record["content_hash"]]
-                if independence_group == record["source_id"]:
-                    independence_status = "INDEPENDENT"
-                else:
-                    independence_status = "DERIVED"
-
-            # Flatten to canonical schema
-            canonical_rec = {
-                "evidence_id": record["evidence_id"],
-                "record_id": record["record_id"],
-                "funding_call_id": record["funding_call_id"],
-                "run_id": record["run_id"],
-                "agent": record["agent_name"],
-                "layer": record["layer"],
-                "source_id": record["source_id"],
-                "source_url": record["source_url"],
-                "canonical_url": record["canonical_url"],
-                "source_type": record["source_type"],
-                "source_name": record["actor"],
-                "title": record["title"],
-                "problem": record["problem_statement"],
-                "problem_signature": "pending-synthesis",
-                "evidence": "\n".join(record["evidence_snippets"]),
-                "evidence_excerpt": "\n".join(record["excerpt_windows"]),
-                "evidence_type": record["evidence_type"],
-                "research_area": record["research_area"],
-                "published_at": (
-                    record.get("machine_metadata", {}).get("source_hints", {}).get("published_at")
-                    if isinstance(record.get("machine_metadata"), dict)
-                    and isinstance(record.get("machine_metadata", {}).get("source_hints"), dict)
-                    else None
-                ),
-                "retrieved_at": record["collected_at"],
-                "updated_at": None,
-                "content_hash": record["content_hash"],
-                "source_quality": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
-                "evidence_strength": record["evidence_strength"],
-                "confidence": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
-                "independence_group": independence_group,
-                "independence_status": independence_status,
-                "normalization_status": record["normalization_status"],
-                "provenance": _normalized_record_provenance(record),
-                "raw_record_id": record["file_path"]
-            }
+            canonical_rec = _canonical_evidence_ledger_record(record, content_hash_to_group)
 
             try:
                 upsert_canonical_evidence(conn, canonical_rec)
