@@ -67,89 +67,59 @@ def test_source_discovery_duplicate_preservation(
 
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        intermediate_dir = root / "calls" / call_id / "intermediate"
+        run_id = kwargs["base_input_data"]["run_id"]
+        intermediate_dir = root / "intermediate" / "literature"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Accepted evidence (matches 'blockchain' & 'ledger')
-        (intermediate_dir / "acc1.md").write_text("""# Signal
-## Shared Metadata
-- title: Blockchain basics
-- source: https://example.org/accepted
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:00+00:00
-
-## Problem Preview
-Blockchain ledger systems.
-## Evidence Bundle
-### Evidence Snippets
-- Blockchain ledger systems.
-### Links Found
-- https://example.org/link-acc
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Blockchain basics",
+            source_url="https://example.org/accepted",
+            content="Blockchain ledger systems.\n\nBlockchain ledger systems.\n\nhttps://example.org/link-acc",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:00+00:00",
+        )
 
         # 2. Rejected evidence
-        (intermediate_dir / "rej1.md").write_text("""# Signal
-## Shared Metadata
-- title: Nothing matches here
-- source: https://example.org/rejected
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:01+00:00
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Nothing matches here",
+            source_url="https://example.org/rejected",
+            content="Trees and leaves.\n\nTrees and leaves.",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:01+00:00",
+        )
 
-## Problem Preview
-Trees and leaves.
-## Evidence Bundle
-### Evidence Snippets
-- Trees and leaves.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Missing title keywords",
+            source_url="https://example.org/conflict",
+            content="A completely unrelated problem statement.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confB",
+            research_area="Unscoped",
+            collected_at="2026-08-24T10:00:02+00:00",
+        )
 
-        (intermediate_dir / "confB.md").write_text("""# Signal
-## Shared Metadata
-- title: Missing title keywords
-- source: https://example.org/conflict
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: Unscoped
-- collected_at: 2026-08-24T10:00:02+00:00
-
-## Problem Preview
-A completely unrelated problem statement.
-## Evidence Bundle
-### Evidence Snippets
-- Shared conflict ledger snippet.
-### Links Found
-- https://example.org/link-confB
-""", encoding="utf-8")
-
-        (intermediate_dir / "confA.md").write_text("""# Signal
-## Shared Metadata
-- title: Blockchain conflict resolution
-- source: https://example.org/conflict
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:03+00:00
-
-## Problem Preview
-Blockchain ledger systems.
-## Evidence Bundle
-### Evidence Snippets
-- Shared conflict ledger snippet.
-### Links Found
-- https://example.org/link-confA
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Blockchain conflict resolution",
+            source_url="https://example.org/conflict",
+            content="Blockchain ledger systems.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confA",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:03+00:00",
+        )
 
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
-        run_id = kwargs["base_input_data"]["run_id"]
-        from tests.batch2_test_helpers import write_test_collector_artifacts
+        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
         write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
@@ -161,7 +131,7 @@ Blockchain ledger systems.
                 artifact.write_text(artifact_text, encoding="utf-8")
 
         return {"tasks": [
-            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            {"agent_name": agent, "status": "success", "outputs_count": len(list((root / "intermediate" / agent).glob("*.md")))}
             for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
         ]}
 
