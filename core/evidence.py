@@ -58,17 +58,17 @@ def strip_collection_metadata(raw_content: str) -> str:
         if stripped.startswith("[SOURCE]"):
             cleaned_lines.append(stripped[len("[SOURCE]"):].strip())
             continue
-        if re.match(r"^(?:URL|Depth|Dates):\\s*", stripped, flags=re.IGNORECASE):
+        if re.match(r"^(?:URL|Depth|Dates):\s*", stripped, flags=re.IGNORECASE):
             continue
-        depth_header = re.match(r"^\\[Depth\\s+\\d+\\]\\s*(.*)$", stripped, flags=re.IGNORECASE)
+        depth_header = re.match(r"^\[Depth\s+\d+\]\s*(.*)$", stripped, flags=re.IGNORECASE)
         if depth_header:
             header = depth_header.group(1).strip()
             if " | http://" in header or " | https://" in header:
-                header = re.split(r"\\s+\\|\\s+https?://", header, maxsplit=1, flags=re.IGNORECASE)[0]
+                header = re.split(r"\s+\|\s+https?://", header, maxsplit=1, flags=re.IGNORECASE)[0]
             cleaned_lines.append(header)
             continue
         cleaned_lines.append(line)
-    return "\\n".join(cleaned_lines).strip()
+    return "\n".join(cleaned_lines).strip()
 
 
 def _paragraphs(raw_content: str) -> list[str]:
