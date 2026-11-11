@@ -781,7 +781,7 @@ def test_batch1_handoff_batch2_collection_and_normalization_handoff_end_to_end(t
         funding_call_id=context.funding_call_id,
         run_id="batch2-test-run",
     )
-    assert any("provenance source_url mismatch" in error for error in provenance_errors)
+    assert any("provenance mismatch" in error for error in provenance_errors)
 
     with closing(sqlite3.connect(ledger_path)) as ledger_connection:
         ledger_connection.execute(
