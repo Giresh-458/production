@@ -940,11 +940,16 @@ def finalize_collection_agent_response(
             )
             continue
         if live_source_rescue and not quality_gate.get("passed", False):
-            quality_gate["accepted_with_warnings"] = True
-            quality_gate["acceptance_reason"] = "configured live source preserved for evidence despite a soft collection-quality gate"
+            quality_gate["accepted_with_warnings"] = False
+            quality_gate["preserved_for_review"] = True
+            quality_gate["acceptance_reason"] = (
+                "configured live source retained for review only; failed quality gate "
+                "continues to block normalized handoff"
+            )
             artifact_payload["metadata"]["quality_gate"] = quality_gate
             collected_warnings.append(
-                f"Preserved '{artifact_payload['shared_header']['title']}' as live evidence despite soft quality gate: "
+                f"Retained '{artifact_payload['shared_header']['title']}' for review only; "
+                f"the quality gate still blocks handoff: "
                 f"{quality_gate.get('rejection_reason') or 'limited structure/signal'}."
             )
 
