@@ -164,7 +164,13 @@ class FundingCallContext:
                     "A selected funding call and its research context must both have non-empty IDs."
                 )
             if research_context_id != canonical_call_id:
-                evidence_refs = research_context_payload.get("evidence_refs") or ()
+                raw_evidence_refs = research_context_payload.get("evidence_refs") or ()
+                if isinstance(raw_evidence_refs, str):
+                    evidence_refs = [raw_evidence_refs]
+                elif isinstance(raw_evidence_refs, (list, tuple, set)):
+                    evidence_refs = list(raw_evidence_refs)
+                else:
+                    evidence_refs = []
                 candidate_urls = (
                     _clean_str(rec.get("source_url") or rec.get("url")),
                     _clean_str(rec.get("application_url")),
