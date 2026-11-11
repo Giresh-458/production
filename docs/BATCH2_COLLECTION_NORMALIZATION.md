@@ -88,7 +88,9 @@ Open the repository folder in VS Code and select the interpreter at .venv\Script
 
 Focused Batch-2, agent-contract, and normalization checks:
 
-    python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_regulation_source_scoping.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_research_mission_grounding.py tests/test_agent_normalization_refresh.py tests/test_batch3_verification.py tests/test_batch4_normalization.py tests/test_multi_call_evidence_attribution.py -q
+    python -m pytest tests/test_all_collection_agents.py tests/test_manual_url_collection.py tests/test_regulation_source_scoping.py tests/test_batch2_runner.py tests/test_normalization_skip_audit.py tests/test_research_mission_grounding.py tests/test_agent_normalization_refresh.py tests/test_multi_call_evidence_attribution.py -q
+
+This focused command stops at Batch-2 normalization. Batch-3 and Batch-4 tests remain separate downstream regression suites and are not part of the Batch-2 completion gate.
 
 These tests use controlled fixtures and mocks where appropriate. The RIF funding and collection quality-gates workflow keeps the full Batch-1 source-coverage acceptance decision strict. Separately, it writes a selected-context handoff for the subset of real Batch-1 selected calls that pass the individual downstream-context checks; invalid selected calls are excluded and recorded in the audit. The bounded Batch-2 smoke runs only against that validated subset, even if an unrelated configured Batch-1 source blocks global coverage. This smoke verifies Batch-2 independently; it does not mark Batch-1 globally accepted or make the full pipeline eligible to proceed. A failed global Batch-1 gate still fails the full quality workflow and must be reported separately from the Batch-2 smoke result.
 
