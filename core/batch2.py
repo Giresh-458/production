@@ -1116,6 +1116,8 @@ def execute_batch2(
             or not isinstance(validated_ids, list)
             or sorted(str(value).strip() for value in validated_ids) != actual_ids
             or len(set(actual_ids)) != len(actual_ids)
+            or context_validation.get("blockers", []) != []
+            or context_validation.get("blocker_count", 0) != 0
             or (batch1_run_id and str(batch1_run_id).strip() != str(context_validation.get("batch1_run_id")).strip())
         ):
             raise ValueError(
