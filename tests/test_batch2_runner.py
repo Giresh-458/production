@@ -1933,7 +1933,7 @@ def test_exact_literature_source_content_can_collapse_across_doi_aliases(tmp_pat
 def test_batch2_normalization_exception_isolated_to_one_funding_call(tmp_path):
     contexts = [_context("CALL-NORMALIZATION-FAIL"), _context("CALL-NORMALIZATION-OK")]
     run_id = "batch2-normalization-isolation-run"
-    original_normalizer = save_normalized_collection_records
+    from core.normalization import save_normalized_collection_records as original_normalizer
     calls = []
 
     def fake_execute_batch_run(**kwargs):
