@@ -186,17 +186,19 @@ def test_source_discovery_duplicate_preservation(
 
     titles = [r.get("title", "") for r in discovery_args]
     assert "Blockchain networking basics" in titles
-    assert titles.count("Blockchain networking conflict resolution") == 2
-    assert "Missing title keywords" not in titles
+    # The earliest observation remains canonical when two observations share
+    # one evidence identity. A later title/area cannot relabel that evidence.
+    assert titles.count("Missing title keywords") == 2
+    assert "Blockchain networking conflict resolution" not in titles
     assert "Nothing matches here" not in titles
 
     problem_statements = [r.get("problem_statement", "") for r in discovery_args]
-    assert problem_statements.count("Blockchain networking ledger systems.") == 3
-    assert "A completely unrelated problem statement." not in problem_statements
+    assert problem_statements.count("Blockchain networking ledger systems.") == 1
+    assert problem_statements.count("A completely unrelated problem statement.") == 2
 
     research_areas = [r.get("research_area", "") for r in discovery_args]
-    assert research_areas.count("DePIN") == 3
-    assert "Unscoped" not in research_areas
+    assert research_areas.count("DePIN") == 1
+    assert research_areas.count("Unscoped") == 2
 
     # Verify linked_urls were extracted and preserved physically
     linked_urls = [url for r in discovery_args for url in (r.get("linked_urls", []) or [])]
