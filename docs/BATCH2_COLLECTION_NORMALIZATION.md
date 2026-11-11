@@ -172,7 +172,7 @@ A successful HTTP request alone is not evidence of successful collection. Both t
 
 ## Normalization, provenance, and isolation
 
-Normalization discovers intermediate Markdown artifacts under the run's intermediate roots and preserves structured fields such as title, source identity, source URL, collection agent, layer, research area, evidence snippets, problem/context summary, timestamps, content hash, run ID, and funding-call attribution.
+A call-scoped normalization exception is recorded in that call's `workflow/normalization_audit.json` and `mission_relevance_gate.json`; the runner continues to other selected calls, while the overall run remains blocked if any call failed normalization. Normalization discovers intermediate Markdown artifacts under the run's intermediate roots and preserves structured fields such as title, source identity, source URL, collection agent, layer, research area, evidence snippets, problem/context summary, timestamps, content hash, run ID, and funding-call attribution.
 
 The normalization audit distinguishes:
 - errors.json: malformed artifacts or processing/ledger errors.

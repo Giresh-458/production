@@ -1420,13 +1420,71 @@ def execute_batch2(
             run_root / "intermediate" / agent
             for agent in sorted(expected_agents)
         ]
-        normalized_paths = save_normalized_collection_records(
-            batch2_input_roots,
-            call_root,
-            call_id,
-            filter_func=apply_mission_gate,
-            target_run_id=resolved_run_id,
-        )
+        try:
+            normalized_paths = save_normalized_collection_records(
+                batch2_input_roots,
+                call_root,
+                call_id,
+                filter_func=apply_mission_gate,
+                target_run_id=resolved_run_id,
+            )
+        except Exception as exc:
+            # A call-scoped normalization failure must not prevent other
+            # independently selected funding calls from being normalized.
+            # Record the failed boundary explicitly and continue with the next
+            # call; the overall Batch-2 report will remain blocked.
+            error_message = (
+                f"normalization execution failed: {type(exc).__name__}: {exc}"
+            )
+            normalization_audit = {
+                "funding_call_id": call_id,
+                "run_id": resolved_run_id,
+                "normalization_complete": False,
+                "input_records_observed_before_failure": len(accepted_ids) + len(rejected_ids),
+                "accepted_records_observed_before_failure": len(accepted_ids),
+                "rejected_records_observed_before_failure": len(rejected_ids),
+                "errors": [error_message],
+                "handoff_errors": ["normalization did not complete; Batch-3 handoff is blocked"],
+                "evidence_ledger_errors": [],
+                "skipped_artifacts": [],
+            }
+            atomic_write_json(
+                call_workflow / "normalization_audit.json",
+                normalization_audit,
+            )
+            gate_report = {
+                "funding_call_id": call_id,
+                "run_id": resolved_run_id,
+                "normalization_complete": False,
+                "input_records_observed_before_failure": len(accepted_ids) + len(rejected_ids),
+                "accepted_records_observed_before_failure": len(accepted_ids),
+                "rejected_records_observed_before_failure": len(rejected_ids),
+                "details": gate_details,
+            }
+            atomic_write_json(
+                call_workflow / "mission_relevance_gate.json",
+                gate_report,
+            )
+            report["funding_calls"].append(
+                {
+                    "funding_call_id": call_id,
+                    "title": context.call_title or context.program_name,
+                    "status": "blocked_normalization",
+                    "normalized_records": 0,
+                    "normalization_errors": [error_message],
+                    "evidence_ledger_errors": [],
+                    "skipped_artifacts": [],
+                    "skipped_artifact_count": 0,
+                    "handoff_errors": normalization_audit["handoff_errors"],
+                    "normalized_paths": {},
+                    "input_manifest": None,
+                    "evidence_ledger": None,
+                    "mission_relevance_gate": gate_report,
+                    "output_root": str(call_root.resolve()),
+                }
+            )
+            continue
+
         normalization_errors: list[Any] = []
         try:
             records = _read_json_list(normalized_paths["records"])

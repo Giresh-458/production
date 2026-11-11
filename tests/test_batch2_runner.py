@@ -1928,3 +1928,84 @@ def test_exact_literature_source_content_can_collapse_across_doi_aliases(tmp_pat
         "https://example.org/doi-alias-a",
         "https://example.org/doi-alias-b",
     }
+
+
+def test_batch2_normalization_exception_isolated_to_one_funding_call(tmp_path):
+    contexts = [_context("CALL-NORMALIZATION-FAIL"), _context("CALL-NORMALIZATION-OK")]
+    run_id = "batch2-normalization-isolation-run"
+    original_normalizer = save_normalized_collection_records
+    calls = []
+
+    def fake_execute_batch_run(**kwargs):
+        run_root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
+        for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
+            artifact_dir = run_root / "intermediate" / agent
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            for context in contexts:
+                (artifact_dir / f"{agent}-{context.funding_call_id}.md").write_text(
+                    _artifact(run_id, context.funding_call_id, agent),
+                    encoding="utf-8",
+                )
+        return {
+            "status": "completed",
+            "tasks": [
+                {
+                    "agent_name": agent,
+                    "status": "success",
+                    "outputs_count": len(contexts),
+                    "items_processed": len(contexts),
+                    "items_saved": len(contexts),
+                }
+                for agent in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS)
+            ],
+        }
+
+    def fail_first_call_then_normalize(roots, call_root, call_id, **kwargs):
+        calls.append(call_id)
+        if call_id == "CALL-NORMALIZATION-FAIL":
+            raise RuntimeError("controlled per-call normalization failure")
+        return original_normalizer(roots, call_root, call_id, **kwargs)
+
+    with patch(
+        "core.batch2.prepare_batch2_source_registry",
+        return_value={
+            "status": "ready",
+            "agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            "refresh_plan_entries": 11,
+            "refresh_due_entries": 11,
+            "refresh_skipped_entries": 0,
+        },
+    ), patch("core.batch2.execute_batch_run", side_effect=fake_execute_batch_run), patch(
+        "core.batch2.save_normalized_collection_records",
+        side_effect=fail_first_call_then_normalize,
+    ):
+        report = execute_batch2(
+            batch1_acceptance=_batch1_acceptance(),
+            funding_contexts=contexts,
+            output_root=tmp_path / "batch2",
+            run_id=run_id,
+            batch1_run_id="batch1-test-run",
+            execution_mode="sequential",
+            max_workers=1,
+            timeout_budget_seconds=60,
+        )
+
+    assert calls == ["CALL-NORMALIZATION-FAIL", "CALL-NORMALIZATION-OK"]
+    assert report["status"] == "blocked_normalization"
+    by_call = {item["funding_call_id"]: item for item in report["funding_calls"]}
+    assert by_call["CALL-NORMALIZATION-FAIL"]["status"] == "blocked_normalization"
+    assert any(
+        "controlled per-call normalization failure" in error
+        for error in by_call["CALL-NORMALIZATION-FAIL"]["normalization_errors"]
+    )
+    assert by_call["CALL-NORMALIZATION-OK"]["status"] == "ready_for_batch3"
+    assert by_call["CALL-NORMALIZATION-OK"]["normalized_records"] == 11
+
+    failed_audit = json.loads(
+        (
+            tmp_path / "batch2" / run_id / "calls" / "CALL-NORMALIZATION-FAIL"
+            / "workflow" / "normalization_audit.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert failed_audit["normalization_complete"] is False
+    assert failed_audit["handoff_errors"]
