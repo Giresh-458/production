@@ -5,6 +5,7 @@ import json
 import re
 import ast
 import urllib.parse
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -926,6 +927,22 @@ def save_normalized_collection_records(
     )
     target_dir = output_dir / "normalized"
     normalized_root = target_dir
+    # Process observations chronologically so the canonical metadata and
+    # title are independent of hashed filenames or filesystem traversal order.
+    # This prevents a later conflicting title from laundering an otherwise
+    # unrelated evidence excerpt through the mission-relevance gate.
+    def _observation_sort_key(record: dict[str, Any]) -> tuple[float, str]:
+        raw_timestamp = str(record.get("collected_at") or "").strip()
+        try:
+            parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+            if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+                raise ValueError("naive collection timestamp")
+            timestamp = parsed_timestamp.timestamp()
+        except (TypeError, ValueError, OverflowError, OSError):
+            timestamp = float("inf")
+        return timestamp, str(record.get("record_id") or "")
+
+    records.sort(key=_observation_sort_key)
     deduped_records = {}
     for r in records:
         sid = _normalized_record_dedupe_key(r)
