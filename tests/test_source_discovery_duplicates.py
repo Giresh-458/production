@@ -77,11 +77,11 @@ def test_source_discovery_duplicate_preservation(
             root,
             run_id=run_id,
             funding_call_id=call_id,
-            title="Blockchain basics",
+            title="Blockchain networking basics",
             source_url="https://example.org/accepted",
-            content="Blockchain ledger systems.\n\nBlockchain ledger systems.\n\nhttps://example.org/link-acc",
+            content="Blockchain networking ledger systems.\n\nBlockchain networking ledger systems.\n\nhttps://example.org/link-acc",
             research_area="DePIN",
-            evidence_snippets=["Blockchain ledger systems."],
+            evidence_snippets=["Blockchain networking ledger systems."],
             collected_at="2026-08-24T10:00:00+00:00",
         )
 
@@ -104,9 +104,9 @@ def test_source_discovery_duplicate_preservation(
             funding_call_id=call_id,
             title="Missing title keywords",
             source_url="https://example.org/conflict",
-            content="A completely unrelated problem statement.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confB",
+            content="A completely unrelated problem statement.\n\nShared blockchain networking conflict ledger snippet.\n\nhttps://example.org/link-confB",
             research_area="Unscoped",
-            evidence_snippets=["Shared conflict ledger snippet."],
+            evidence_snippets=["Shared blockchain networking conflict ledger snippet."],
             collected_at="2026-08-24T10:00:02+00:00",
         )
 
@@ -114,11 +114,11 @@ def test_source_discovery_duplicate_preservation(
             root,
             run_id=run_id,
             funding_call_id=call_id,
-            title="Blockchain conflict resolution",
+            title="Blockchain networking conflict resolution",
             source_url="https://example.org/conflict",
-            content="Blockchain ledger systems.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confA",
+            content="Blockchain networking ledger systems.\n\nShared blockchain networking conflict ledger snippet.\n\nhttps://example.org/link-confA",
             research_area="DePIN",
-            evidence_snippets=["Shared conflict ledger snippet."],
+            evidence_snippets=["Shared blockchain networking conflict ledger snippet."],
             collected_at="2026-08-24T10:00:03+00:00",
         )
 
@@ -185,13 +185,13 @@ def test_source_discovery_duplicate_preservation(
     assert len(discovery_args) == 3
 
     titles = [r.get("title", "") for r in discovery_args]
-    assert "Blockchain basics" in titles
-    assert titles.count("Blockchain conflict resolution") == 2
+    assert "Blockchain networking basics" in titles
+    assert titles.count("Blockchain networking conflict resolution") == 2
     assert "Missing title keywords" not in titles
     assert "Nothing matches here" not in titles
 
     problem_statements = [r.get("problem_statement", "") for r in discovery_args]
-    assert problem_statements.count("Blockchain ledger systems.") == 3
+    assert problem_statements.count("Blockchain networking ledger systems.") == 3
     assert "A completely unrelated problem statement." not in problem_statements
 
     research_areas = [r.get("research_area", "") for r in discovery_args]
