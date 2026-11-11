@@ -585,7 +585,7 @@ def build_manual_url_document(url: str, company_name: str | None, source_type: s
     name = company_name or cleaned_text(urlparse(url).netloc)
     source_type_value = source_type or "Enterprise adopter"
     focus_value = focus or title
-    area_hint = area or infer_area(cleaned_text(f"{name} {title} {content}"), "Unscoped")
+    area_hint = area or infer_area(cleaned_text(f"{title} {content}"), "Unscoped")
     document = CompanyDocument(
         company_name=name,
         url=url,
