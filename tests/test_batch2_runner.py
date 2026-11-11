@@ -2009,3 +2009,50 @@ def test_batch2_normalization_exception_isolated_to_one_funding_call(tmp_path):
     )
     assert failed_audit["normalization_complete"] is False
     assert failed_audit["handoff_errors"]
+
+
+def test_batch2_runner_executes_from_repository_root_when_invoked_elsewhere(tmp_path, monkeypatch):
+    from scripts.pipeline_tools import run_batch2
+
+    handoff_path = tmp_path / "funding_contexts.json"
+    handoff_path.write_text(
+        json.dumps(
+            {
+                "batch1_run_id": "batch1-test-run",
+                "batch1_acceptance": _batch1_acceptance("batch1-test-run"),
+                "funding_contexts": [_context().to_dict()],
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_execute_batch2(**kwargs):
+        captured["cwd"] = Path.cwd()
+        captured["output_root"] = kwargs["output_root"]
+        return {"status": "dry_run"}
+
+    monkeypatch.setattr(run_batch2, "execute_batch2", fake_execute_batch2)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(Path(run_batch2.__file__)),
+            "--funding-context-file",
+            str(handoff_path),
+            "--output-root",
+            "relative-output",
+            "--dry-run",
+        ],
+    )
+    original_cwd = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        exit_code = run_batch2.main()
+        assert Path.cwd() == tmp_path
+    finally:
+        os.chdir(original_cwd)
+
+    assert exit_code == 0
+    assert captured["cwd"] == run_batch2.REPOSITORY_ROOT
+    assert captured["output_root"] == tmp_path / "relative-output"

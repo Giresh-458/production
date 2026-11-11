@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -147,27 +148,38 @@ def main() -> int:
     profile = profiles[args.profile]
 
     try:
-        handoff_path = Path(args.funding_context_file)
+        handoff_path = Path(args.funding_context_file).expanduser().resolve()
+        output_root = Path(args.output_root).expanduser().resolve()
         contexts, batch1_run_id = load_funding_context_handoff(handoff_path)
         if not batch1_run_id:
             raise ValueError("Accepted Batch-1 handoff is missing batch1_run_id.")
         handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
         batch1_acceptance = handoff_payload.get("batch1_acceptance")
         context_validation = handoff_payload.get("context_validation")
-        report = execute_batch2(
-            funding_contexts=contexts,
-            output_root=Path(args.output_root),
-            run_id=args.run_id,
-            batch1_run_id=batch1_run_id,
-            batch1_acceptance=batch1_acceptance,
-            context_validation=context_validation,
-            execution_mode=args.execution_mode,
-            max_workers=args.max_workers,
-            timeout_budget_seconds=profile["timeout_budget_seconds"],
-            default_limit=profile["default_limit"],
-            force_refresh=not args.scheduled_refresh,
-            dry_run=args.dry_run,
-        )
+
+        # Agent source paths are repository-relative. Execute the pipeline from
+        # the project root even when this CLI was launched from another working
+        # directory, while preserving the caller's interpretation of relative
+        # handoff and output paths.
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(REPOSITORY_ROOT)
+            report = execute_batch2(
+                funding_contexts=contexts,
+                output_root=output_root,
+                run_id=args.run_id,
+                batch1_run_id=batch1_run_id,
+                batch1_acceptance=batch1_acceptance,
+                context_validation=context_validation,
+                execution_mode=args.execution_mode,
+                max_workers=args.max_workers,
+                timeout_budget_seconds=profile["timeout_budget_seconds"],
+                default_limit=profile["default_limit"],
+                force_refresh=not args.scheduled_refresh,
+                dry_run=args.dry_run,
+            )
+        finally:
+            os.chdir(original_cwd)
     except Exception as exc:
         logging.exception("Batch-2 execution failed")
         print(f"Batch-2 failed: {exc}")
