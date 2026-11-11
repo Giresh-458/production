@@ -1680,3 +1680,51 @@ def test_optional_adaptive_stage_still_rejects_redirected_roots_without_artifact
             None,
             "adaptive-root-audit-run",
         )
+
+
+def test_unexpected_agent_directory_is_quarantined_and_allowed_funding_directory_is_excluded(tmp_path):
+    run_root = tmp_path / "batch2-run"
+    run_root.mkdir()
+    intermediate = run_root / "intermediate"
+    (intermediate / "lab").mkdir(parents=True)
+    (intermediate / "funding").mkdir()
+    (intermediate / "unexpected-agent").mkdir()
+    (intermediate / "unexpected-agent" / "untrusted.md").write_text(
+        "# Untrusted\n\nThis artifact is not from an expected Batch-2 collector.\n",
+        encoding="utf-8",
+    )
+    (intermediate / "funding" / "insights.md").write_text(
+        "# Batch-1 funding summary\n",
+        encoding="utf-8",
+    )
+
+    _, audit = audit_collector_artifacts(
+        run_root,
+        [
+            {
+                "agent_name": "lab",
+                "status": "success",
+                "outputs_count": 0,
+                "output_paths": [],
+                "errors": [],
+                "warnings": [],
+            }
+        ],
+        expected_agents={"lab"},
+        allowed_extra_agents={"funding"},
+        run_id="current-run",
+    )
+
+    unexpected_dir = intermediate / "unexpected-agent"
+    assert not unexpected_dir.exists()
+    assert (
+        run_root / "workflow" / "quarantined_intermediate"
+        / "__unexpected_intermediate_entries__" / "unexpected-agent" / "untrusted.md"
+    ).is_file()
+    assert (intermediate / "funding" / "insights.md").is_file()
+    assert any(
+        item["agent_name"] == "unexpected-agent"
+        and "unexpected_agent_output_directory" in item.get("reasons", [])
+        for item in audit["unexpected_intermediate_entries"]
+    )
+    assert audit["quarantine_failures"] == []

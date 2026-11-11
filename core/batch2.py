@@ -519,6 +519,7 @@ def audit_collector_artifacts(
     *,
     expected_agents: set[str],
     run_id: str,
+    allowed_extra_agents: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Audit persisted current-run artifacts rather than trusting response counters.
 
@@ -527,6 +528,7 @@ def audit_collector_artifacts(
     """
     if not isinstance(collection_tasks, list):
         raise TypeError("collector task report must be a list")
+    allowed_extra_agents = set(allowed_extra_agents or set())
     tasks_by_agent: dict[str, list[dict[str, Any]]] = {}
     unexpected_tasks: list[str] = []
     malformed_tasks: list[dict[str, Any]] = []
@@ -570,8 +572,55 @@ def audit_collector_artifacts(
     agent_audits: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
+    unexpected_intermediate_entries: list[dict[str, Any]] = []
     duplicate_tasks = sorted(agent for agent, items in tasks_by_agent.items() if len(items) != 1)
     missing_task_agents = sorted(expected_agents - set(tasks_by_agent))
+
+    # Quarantine unexpected top-level collector directories and Markdown files
+    # before normalization can recursively discover them. The full pipeline
+    # may explicitly allow Batch-1's "funding" directory; it is never included
+    # in Batch-2 normalization input roots.
+    known_agent_directories = expected_agents | allowed_extra_agents
+    if intermediate_root.is_dir():
+        for child in sorted(intermediate_root.iterdir(), key=lambda item: item.name.casefold()):
+            if child.name in known_agent_directories:
+                continue
+            is_redirected = _is_redirected_path(child)
+            is_root_markdown = (
+                child.is_file()
+                and child.suffix.casefold() == ".md"
+                and child.name.casefold() != "insights.md"
+            )
+            if not (is_redirected or child.is_dir() or is_root_markdown):
+                continue
+            destination_root = quarantine_root / "__unexpected_intermediate_entries__"
+            destination_root.mkdir(parents=True, exist_ok=True)
+            destination = destination_root / child.name
+            if destination.exists() or destination.is_symlink():
+                destination = destination.with_name(f"{destination.name}-{len(quarantined) + 1}")
+            quarantine_error = None
+            try:
+                # Rename the entry itself; never walk through a symlinked parent.
+                child.rename(destination)
+            except OSError as exc:
+                quarantine_error = str(exc)
+            reason = (
+                "unexpected_intermediate_symlink"
+                if is_redirected
+                else "unexpected_root_level_markdown"
+                if is_root_markdown
+                else "unexpected_agent_output_directory"
+            )
+            item = {
+                "agent_name": child.name,
+                "original_path": str(child.absolute()),
+                "quarantined_path": str(destination.absolute()) if quarantine_error is None else None,
+                "quarantine_error": quarantine_error,
+                "reasons": [reason] + (["artifact_quarantine_failed"] if quarantine_error else []),
+            }
+            quarantined.append(item)
+            issues.append(item)
+            unexpected_intermediate_entries.append(item)
 
     for agent in sorted(expected_agents):
         agent_root = intermediate_root / agent
@@ -958,6 +1007,9 @@ def audit_collector_artifacts(
         "agent_output_directory_escapes_intermediate_root",
         "agent_output_directory_is_symlink",
         "symlinked_agent_artifact_path",
+        "unexpected_intermediate_symlink",
+        "unexpected_root_level_markdown",
+        "unexpected_agent_output_directory",
         "collector_output_paths_must_be_a_list",
         "reported_output_path_escapes_agent_output_directory",
         "reported_output_path_does_not_exist",
@@ -988,6 +1040,7 @@ def audit_collector_artifacts(
         "duplicate_task_agents": duplicate_tasks,
         "malformed_task_entries": malformed_tasks,
         "unexpected_task_agents": sorted(set(unexpected_tasks)),
+        "unexpected_intermediate_entries": unexpected_intermediate_entries,
         "quarantined_artifacts": quarantined,
         "quarantine_failures": [
             item for item in quarantined if item.get("quarantine_error")
