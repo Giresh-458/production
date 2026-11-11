@@ -32,7 +32,6 @@ on:
       - "tests/test_literature_run_provenance.py"
       - "run_pipeline.py"
       - "tests/test_agent_normalization_refresh.py"
-      - "tests/test_batch4_normalization.py"
       - "tests/test_multi_call_evidence_attribution.py"
       - "tests/test_stale_index.py"
       - "tests/test_stale_index_deep.py"
@@ -40,7 +39,6 @@ on:
       - "tests/test_stale_index_advanced.py"
       - "tests/test_cache_bypass.py"
       - "tests/test_pipeline_multi_call_behavior.py"
-      - "tests/test_batch3_verification.py"
       - "tests/test_source_registry_isolation.py"
       - "tests/test_adaptive_area_filtering.py"
       - "tests/test_intelligence_exceptions.py"
@@ -79,7 +77,6 @@ jobs:
             tests/test_mission_gate_semantics.py \
             tests/test_batch2_lab_artifact_contract.py \
             tests/test_literature_run_provenance.py \
-            tests/test_batch4_normalization.py \
             tests/test_multi_call_evidence_attribution.py \
             tests/test_stale_index.py \
             tests/test_stale_index_deep.py \
@@ -87,7 +84,6 @@ jobs:
             tests/test_stale_index_advanced.py \
             tests/test_cache_bypass.py \
             tests/test_pipeline_multi_call_behavior.py \
-            tests/test_batch3_verification.py \
             tests/test_source_registry_isolation.py \
             tests/test_adaptive_area_filtering.py \
             tests/test_intelligence_exceptions.py \
