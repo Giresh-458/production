@@ -1464,3 +1464,37 @@ def test_internal_agent_symlinks_are_quarantined_without_moving_target_evidence(
         "agent_output_directory_is_symlink" in quarantined_reasons
         or "symlinked_agent_artifact_path" in quarantined_reasons
     )
+
+
+@pytest.mark.parametrize(
+    "redirected_root,target_name",
+    [
+        ("intermediate", "other-intermediate"),
+        ("workflow", "other-workflow"),
+        ("workflow/quarantined_intermediate", "other-quarantine"),
+    ],
+)
+def test_collector_artifact_audit_rejects_internal_redirected_roots(
+    tmp_path, redirected_root, target_name
+):
+    run_root = tmp_path / "batch2-run"
+    run_root.mkdir()
+    target = run_root / target_name
+    target.mkdir()
+    root_path = run_root / redirected_root
+    root_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        root_path.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are not available on this platform")
+
+    with pytest.raises(ValueError, match="must not be a symlink or redirected path"):
+        audit_collector_artifacts(
+            run_root,
+            [],
+            expected_agents={"literature"},
+            run_id="current-run",
+        )
+
+    assert target.is_dir()
+    assert list(target.iterdir()) == []

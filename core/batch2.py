@@ -6,6 +6,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -465,6 +466,23 @@ def validate_evidence_ledger(
     return errors
 
 
+def _is_redirected_path(path: Path) -> bool:
+    """Reject symlinks, Windows junctions/reparse points, and paths through them."""
+    try:
+        if path.is_symlink():
+            return True
+        stat_result = path.lstat()
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        if int(getattr(stat_result, "st_file_attributes", 0) or 0) & reparse_flag:
+            return True
+        # Compare normalized absolute spelling with the resolved path. This also
+        # detects a symlinked ancestor when the final path itself is not a link.
+        return Path(os.path.abspath(path)) != path.resolve()
+    except (OSError, RuntimeError):
+        # An unreadable or looping path is unsafe for evidence discovery.
+        return True
+
+
 def _discover_agent_artifacts(agent_root: Path) -> tuple[list[Path], list[Path]]:
     """Discover Markdown without following symlinked files or directories.
 
@@ -478,12 +496,12 @@ def _discover_agent_artifacts(agent_root: Path) -> tuple[list[Path], list[Path]]
         current_path = Path(current)
         for name in list(directory_names):
             candidate = current_path / name
-            if candidate.is_symlink():
+            if _is_redirected_path(candidate):
                 symlink_paths.append(candidate)
                 directory_names.remove(name)
         for name in file_names:
             candidate = current_path / name
-            if candidate.is_symlink():
+            if _is_redirected_path(candidate):
                 symlink_paths.append(candidate)
             elif candidate.suffix.casefold() == ".md" and candidate.name.casefold() != "insights.md":
                 markdown_files.append(candidate)
@@ -527,20 +545,21 @@ def audit_collector_artifacts(
             continue
         tasks_by_agent.setdefault(agent, []).append(task)
 
+    if _is_redirected_path(run_root):
+        raise ValueError("Batch-2 run root must not be a symlink or redirected path")
+    run_root = run_root.resolve()
     intermediate_root = run_root / "intermediate"
     workflow_root = run_root / "workflow"
     quarantine_root = workflow_root / "quarantined_intermediate"
-    resolved_run_root = run_root.resolve()
-    if (
-        (intermediate_root.exists() or intermediate_root.is_symlink())
-        and not intermediate_root.resolve().is_relative_to(resolved_run_root)
-    ):
-        raise ValueError("intermediate output root resolves outside the Batch-2 run directory")
+    resolved_run_root = run_root
     for directory, label in (
+        (intermediate_root, "intermediate output"),
         (workflow_root, "workflow"),
         (quarantine_root, "artifact quarantine"),
     ):
-        if (directory.exists() or directory.is_symlink()) and not directory.resolve().is_relative_to(resolved_run_root):
+        if _is_redirected_path(directory):
+            raise ValueError(f"{label} root must not be a symlink or redirected path")
+        if directory.exists() and not directory.resolve().is_relative_to(resolved_run_root):
             raise ValueError(f"{label} root resolves outside the Batch-2 run directory")
     quarantine_root.mkdir(parents=True, exist_ok=True)
     agent_audits: list[dict[str, Any]] = []
@@ -553,7 +572,7 @@ def audit_collector_artifacts(
         agent_root = intermediate_root / agent
         task_items = tasks_by_agent.get(agent, [])
         task = task_items[0] if len(task_items) == 1 else None
-        agent_root_is_symlink = agent_root.is_symlink()
+        agent_root_is_symlink = _is_redirected_path(agent_root)
         agent_root_escapes = (
             not agent_root_is_symlink
             and agent_root.exists()
