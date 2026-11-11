@@ -313,5 +313,8 @@ def test_one_esg_concept_group_is_not_enough_to_support_a_secondary_domain():
 
     result = relevance(record, ctx)
 
+    from core.mission_gate import _supported_domain_evidence
+    supported_domains = _supported_domain_evidence(ctx.research_context)
     assert result["passed"] is False
-    assert "ESG" not in result["supported_domains"]
+    assert supported_domains is not None
+    assert "ESG" not in supported_domains
