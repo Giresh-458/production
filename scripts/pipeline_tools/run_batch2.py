@@ -49,6 +49,8 @@ def load_funding_context_handoff(path: Path) -> tuple[list[FundingCallContext], 
                 and candidate_validation.get("scope") == "selected_contexts_only"
                 and str(candidate_validation.get("batch1_run_id") or "") == str(batch1_run_id or "")
                 and isinstance(candidate_validation.get("validated_funding_call_ids"), list)
+                and candidate_validation.get("blockers", []) == []
+                and candidate_validation.get("blocker_count", 0) == 0
             ):
                 context_validation = candidate_validation
         if not global_acceptance_valid and context_validation is None:
