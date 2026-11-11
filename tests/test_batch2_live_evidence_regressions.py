@@ -701,3 +701,78 @@ def test_energy_platform_call_accepts_source_quoted_electricity_system_regulatio
         ctx,
     )
     assert result["passed"] is True
+
+@pytest.mark.parametrize(
+    "agent_name",
+    ["company", "regulation", "opensource", "practitioner", "investment", "failure", "expert"],
+)
+def test_configured_source_metadata_never_enters_collected_evidence(agent_name, monkeypatch, tmp_path):
+    from agents import (
+        company_agent,
+        expert_agent,
+        failure_agent,
+        investment_agent,
+        opensource_agent,
+        practitioner_agent,
+        regulation_agent,
+    )
+
+    modules = {
+        "company": company_agent,
+        "regulation": regulation_agent,
+        "opensource": opensource_agent,
+        "practitioner": practitioner_agent,
+        "investment": investment_agent,
+        "failure": failure_agent,
+        "expert": expert_agent,
+    }
+    module = modules[agent_name]
+    source = SimpleNamespace(
+        name="CONFIG_ONLY_SOURCE_NAME",
+        url=f"https://example.org/{agent_name}",
+        focus="CONFIG_ONLY_FOCUS_MUST_NOT_ENTER_EVIDENCE",
+        area="DePIN",
+        type="web",
+        source_type="Documentation",
+        evidence_type="Technical Documentation",
+        auto_collect=True,
+        query_template=None,
+    )
+    source_path = tmp_path / f"{agent_name}_sources.yaml"
+    source_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(module, "load_sources", lambda _path: [source])
+    monkeypatch.setattr("core.source_registry.extract_yaml_limits", lambda _payload: {})
+    monkeypatch.setattr(module, "is_relevant", lambda *_args: True)
+
+    actual_body = (
+        "The source documents a measured interoperability limitation in distributed "
+        "infrastructure, including reproducible performance results and deployment constraints."
+    )
+    if agent_name in {"company", "regulation", "opensource"}:
+        monkeypatch.setattr(module, "fetch_html", lambda _url: "<html><body>source</body></html>")
+        monkeypatch.setattr(
+            module,
+            "collect_recursive_pages_with_review",
+            lambda **_kwargs: ([SimpleNamespace(depth=0, title="Actual source page", url=source.url, content=actual_body)], {"review_id": "review"}),
+        )
+        monkeypatch.setattr(
+            module,
+            "combine_recursive_pages",
+            lambda _pages, **kwargs: ("Actual source page", actual_body),
+        )
+        monkeypatch.setattr(module, "save_recursive_review", lambda _review: None)
+        monkeypatch.setattr(module, "update_recursive_review", lambda *_args, **_kwargs: None)
+        if agent_name == "regulation":
+            monkeypatch.setattr(module, "collect_structured_source", lambda *_args: None)
+    else:
+        page = SimpleNamespace(title="Actual source page", text=actual_body, url=source.url, depth=0)
+        result = SimpleNamespace(pages=[page])
+        monkeypatch.setattr(module, "collect_source", lambda *_args, **_kwargs: result)
+        monkeypatch.setattr(module, "combine_pages", lambda _result, **_kwargs: actual_body)
+
+    documents = module.build_auto_documents(source_path, area="DePIN")
+
+    assert len(documents) == 1
+    assert actual_body in documents[0].content
+    assert "CONFIG_ONLY_SOURCE_NAME" not in documents[0].content
+    assert "CONFIG_ONLY_FOCUS_MUST_NOT_ENTER_EVIDENCE" not in documents[0].content
