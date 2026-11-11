@@ -355,7 +355,7 @@ A source-backed result about reproducible research workflows.
 
 
 
-@pytest.mark.parametrize("cache_damage", ["missing_ledger", "corrupt_ledger", "tampered_provenance", "recorded_error"])
+@pytest.mark.parametrize("cache_damage", ["missing_ledger", "corrupt_ledger", "tampered_provenance", "tampered_row", "recorded_error"])
 def test_normalization_cache_rebuilds_unhealthy_ledger_or_error_report(tmp_path, cache_damage):
     import sqlite3
     from core.normalization import save_normalized_collection_records
@@ -402,6 +402,16 @@ The source describes a reproducible research workflow and its measured evaluatio
             connection.execute(
                 "UPDATE canonical_evidence SET provenance = ? WHERE evidence_id = ?",
                 (json.dumps(provenance), row[0]),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+    elif cache_damage == "tampered_row":
+        connection = sqlite3.connect(str(ledger_path))
+        try:
+            connection.execute(
+                "UPDATE canonical_evidence SET title = ?",
+                ("Tampered canonical title",),
             )
             connection.commit()
         finally:
