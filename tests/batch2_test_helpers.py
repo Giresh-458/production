@@ -5,62 +5,112 @@ from typing import Any
 
 
 def write_test_evidence_ledger(path: Path, records: list[dict[str, Any]]) -> None:
-    """Create a real schema-valid ledger for tests that mock normalization output."""
+    """Write exact canonical ledger rows and enrich the matching JSON fixtures."""
+    import hashlib
+    import json
     from core.evidence_ledger import get_ledger_connection, upsert_canonical_evidence
+    from core.normalization import canonicalize_url, _canonical_evidence_ledger_record
+
+    selected_call_id = ""
+    selected_run_id = ""
+    selected_path = path.parent.parent / "workflow" / "selected_funding_call.json"
+    try:
+        selected_wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
+        selected = selected_wrapper.get("selected", {}) if isinstance(selected_wrapper, dict) else {}
+        if isinstance(selected, dict):
+            selected_call_id = str(selected.get("call_id") or selected.get("funding_call_id") or "")
+        if isinstance(selected_wrapper, dict):
+            selected_run_id = str(selected_wrapper.get("run_id") or "")
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    for index, record in enumerate(records):
+        title = str(record.get("title") or f"Cache fixture {index + 1}")
+        source_url = str(record.get("source_url") or f"https://example.org/cache-fixture/{index + 1}")
+        canonical_url = str(record.get("canonical_url") or canonicalize_url(source_url))
+        funding_call_id = str(record.get("funding_call_id") or selected_call_id)
+        run_id = str(record.get("run_id") or selected_run_id)
+        problem = str(record.get("problem_statement") or record.get("problem") or "Cache fixture problem statement.")
+        context_summary = str(record.get("context_summary") or problem)
+        snippets = record.get("evidence_snippets")
+        if not isinstance(snippets, list):
+            snippets = [str(snippets)] if snippets else [problem]
+        snippets = [str(value) for value in snippets if str(value).strip()]
+        excerpt_windows = record.get("excerpt_windows")
+        if not isinstance(excerpt_windows, list):
+            excerpt_windows = []
+        collected_at = str(record.get("collected_at") or "2026-11-11T10:00:00+00:00")
+        record_id = str(record.get("record_id") or record.get("evidence_id") or f"cache-record-{index + 1}")
+        content_hash = str(record.get("content_hash") or hashlib.sha256(
+            (title + source_url + problem + context_summary + "\\n".join(snippets)).encode("utf-8")
+        ).hexdigest())
+        source_id = str(record.get("source_id") or f"url:{canonical_url}")
+        actor = str(record.get("actor") or record.get("source_name") or "Test source")
+        machine_metadata = record.get("machine_metadata")
+        if not isinstance(machine_metadata, dict):
+            machine_metadata = {}
+        record.update({
+            "evidence_id": str(record.get("evidence_id") or hashlib.sha256(record_id.encode("utf-8")).hexdigest()[:16]),
+            "record_id": record_id,
+            "funding_call_id": funding_call_id,
+            "funding_call_ids": record.get("funding_call_ids") if isinstance(record.get("funding_call_ids"), list) else ([funding_call_id] if funding_call_id else []),
+            "source_funding_call_ids": record.get("source_funding_call_ids") if isinstance(record.get("source_funding_call_ids"), list) else ([funding_call_id] if funding_call_id else []),
+            "run_id": run_id,
+            "agent_name": str(record.get("agent_name") or "literature"),
+            "layer": str(record.get("layer") or ""),
+            "source_id": source_id,
+            "source_url": source_url,
+            "canonical_url": canonical_url,
+            "source_type": str(record.get("source_type") or "web_page"),
+            "actor": actor,
+            "title": title,
+            "problem_statement": problem,
+            "context_summary": context_summary,
+            "evidence_snippets": snippets,
+            "excerpt_windows": [str(value) for value in excerpt_windows],
+            "evidence_type": str(record.get("evidence_type") or "web_source"),
+            "research_area": str(record.get("research_area") or "Unscoped"),
+            "collected_at": collected_at,
+            "content_hash": content_hash,
+            "evidence_strength": float(record.get("evidence_strength", 0.7) or 0.7),
+            "normalization_status": str(record.get("normalization_status") or "NORMALIZED"),
+            "machine_metadata": machine_metadata,
+            "named_entities": record.get("named_entities") if isinstance(record.get("named_entities"), list) else [],
+            "file_path": str(record.get("file_path") or (path.parent.parent / "intermediate" / f"{record_id}.md")),
+            "source_id_variants": record.get("source_id_variants") if isinstance(record.get("source_id_variants"), list) else [source_id],
+            "source_url_variants": record.get("source_url_variants") if isinstance(record.get("source_url_variants"), list) else [source_url],
+            "title_variants": record.get("title_variants") if isinstance(record.get("title_variants"), list) else [title],
+            "content_versions": record.get("content_versions") if isinstance(record.get("content_versions"), list) else [content_hash],
+            "observation_count": int(record.get("observation_count", 1) or 1),
+            "first_seen": str(record.get("first_seen") or collected_at),
+            "last_seen": str(record.get("last_seen") or collected_at),
+        })
+
+    records_path = path.parent / "records.json"
+    if records_path.is_file():
+        records_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    content_hash_to_group: dict[str, str] = {}
+    for record in records:
+        content_hash = str(record.get("content_hash") or "")
+        if content_hash and content_hash not in content_hash_to_group:
+            content_hash_to_group[content_hash] = str(record.get("source_id") or "")
 
     connection = get_ledger_connection(path)
     try:
         for record in records:
-            strength = float(record.get("evidence_strength", 0.7) or 0.7)
-            source_url = str(record.get("source_url") or "https://example.org/test-evidence")
-            source_id = str(record.get("source_id") or f"url:{source_url}")
-            canonical = {
-                "evidence_id": str(record["evidence_id"]),
-                "record_id": str(record["record_id"]),
-                "funding_call_id": str(record["funding_call_id"]),
-                "run_id": str(record["run_id"]),
-                "agent": str(record.get("agent_name") or "literature"),
-                "layer": str(record.get("layer") or "Literature"),
-                "source_id": source_id,
-                "source_url": source_url,
-                "canonical_url": str(record.get("canonical_url") or source_url),
-                "source_type": str(record.get("source_type") or "web_page"),
-                "source_name": str(record.get("actor") or record.get("source_name") or "Test source"),
-                "title": str(record.get("title") or "Test evidence"),
-                "problem": str(record.get("problem_statement") or ""),
-                "problem_signature": "pending-synthesis",
-                "evidence": "\n".join(record.get("evidence_snippets") or []),
-                "evidence_excerpt": "\n".join(record.get("excerpt_windows") or []),
-                "evidence_type": str(record.get("evidence_type") or "web_source"),
-                "research_area": str(record.get("research_area") or "Unscoped"),
-                "published_at": None,
-                "retrieved_at": str(record["collected_at"]),
-                "updated_at": None,
-                "content_hash": str(record["content_hash"]),
-                "source_quality": strength,
-                "evidence_strength": strength,
-                "confidence": strength,
-                "independence_group": source_id,
-                "independence_status": "INDEPENDENT",
-                "normalization_status": str(record.get("normalization_status") or "NORMALIZED"),
-                "provenance": {
-                    "source_url": source_url,
-                    "source_id": source_id,
-                    "agent": str(record.get("agent_name") or "literature"),
-                    "funding_call_id": str(record["funding_call_id"]),
-                    "funding_call_ids": record.get("funding_call_ids", [str(record["funding_call_id"])]),
-                    "run_id": str(record["run_id"]),
-                    "retrieved_at": str(record["collected_at"]),
-                    "source_funding_call_ids": record.get("source_funding_call_ids", []),
-                    "raw_record_id": str(record.get("file_path") or record["record_id"]),
-                },
-                "raw_record_id": str(record.get("file_path") or record["record_id"]),
-            }
-            upsert_canonical_evidence(connection, canonical)
+            upsert_canonical_evidence(
+                connection,
+                _canonical_evidence_ledger_record(record, content_hash_to_group),
+            )
         connection.commit()
     finally:
         connection.close()
 
+
+def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
+    """Compatibility wrapper for cache tests; always writes the full ledger contract."""
+    write_test_evidence_ledger(path, records)
 
 
 def write_test_collector_artifacts(run_root: Path, run_id: str, agents: list[str] | set[str]) -> None:
