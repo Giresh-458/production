@@ -1612,3 +1612,50 @@ def test_manual_text_artifact_is_preserved_but_never_marked_external_or_batch3_r
         expected_agents={"lab"},
     )
     assert any("HTTP(S) source URL" in error for error in handoff_errors)
+
+
+def test_optional_adaptive_research_artifacts_are_audited_before_normalization(tmp_path):
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+    from core.agent_interface import finalize_collection_agent_response
+    from run_pipeline import audit_optional_adaptive_research_artifacts
+
+    run_id = "adaptive-artifact-audit-run"
+    call_root = tmp_path / "calls" / "CALL-ADAPTIVE"
+    context = _context("CALL-ADAPTIVE")
+    document = {
+        "title": "Distributed Systems Reliability Study",
+        "source": "https://example.org/research/reliability-study",
+        "content": (
+            "The study identifies a reproducible reliability limitation in distributed "
+            "systems under concurrent load. Controlled experiments report failure rates, "
+            "latency measurements, and repeatable validation conditions."
+        ),
+    }
+    with patch(
+        "core.agent_interface.evaluate_collection_quality",
+        return_value={"passed": True, "score": 1.0, "reasons": [], "warnings": []},
+    ):
+        response = finalize_collection_agent_response(
+            agent="adaptive_research",
+            layer="Unscoped",
+            mode="configured_scan",
+            area="Unscoped",
+            documents=[document],
+            output_dir=call_root / "intermediate" / "adaptive_research",
+            started_at=datetime(2026, 11, 11, tzinfo=UTC),
+            funding_context=context,
+            funding_contexts=[context],
+            run_id=run_id,
+            default_source=context.source_url,
+        )
+
+    assert len(response["outputs"]) == 1
+    audit = audit_optional_adaptive_research_artifacts(call_root, response, run_id)
+
+    assert audit["status"] == "passed"
+    assert audit["manifest_issues"] == []
+    assert audit["quarantined_artifacts"] == []
+    assert audit["agents"][0]["agent_name"] == "adaptive_research"
+    assert audit["agents"][0]["persisted_valid_artifacts"] == 1
+    assert (call_root / "workflow" / "adaptive_research_artifact_audit.json").is_file()

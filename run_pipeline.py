@@ -32,6 +32,75 @@ def run_stage(agent: str, mode: str, area: str | None, payload: dict[str, Any], 
     return run_registered_agent(agent, mode, area=area, input_data=payload, funding_context=funding_context)
 
 
+def audit_optional_adaptive_research_artifacts(
+    call_root: Path,
+    adaptive_result: dict[str, Any] | None,
+    run_id: str,
+) -> dict[str, Any] | None:
+    """Audit optional per-call adaptive artifacts before normalization can read them."""
+    output_dir = call_root / "intermediate" / "adaptive_research"
+    outputs = adaptive_result.get("outputs", []) if isinstance(adaptive_result, dict) else []
+    output_paths = [
+        str(item.get("markdown_path") or item.get("path") or "")
+        for item in outputs
+        if isinstance(item, dict) and (item.get("markdown_path") or item.get("path"))
+    ]
+    should_audit = bool(output_paths) or output_dir.exists() or output_dir.is_symlink()
+    report_path = call_root / "workflow" / "adaptive_research_artifact_audit.json"
+    if not should_audit:
+        report = {
+            "status": "skipped_no_artifacts",
+            "run_id": run_id,
+            "agent_name": "adaptive_research",
+            "persisted_artifacts": 0,
+        }
+        atomic_write_json(report_path, report)
+        return report
+
+    result = adaptive_result if isinstance(adaptive_result, dict) else {}
+    task = {
+        "agent_name": "adaptive_research",
+        "status": str(result.get("status") or "error"),
+        "outputs_count": int(result.get("outputs_count", len(outputs)) or 0),
+        "output_paths": output_paths,
+        "errors": list(result.get("errors") or []),
+        "warnings": list(result.get("warnings") or []),
+    }
+    try:
+        audited_tasks, report = audit_collector_artifacts(
+            call_root,
+            [task],
+            expected_agents={"adaptive_research"},
+            run_id=run_id,
+        )
+    except Exception as exc:
+        report = {
+            "status": "error",
+            "run_id": run_id,
+            "agent_name": "adaptive_research",
+            "error": str(exc),
+        }
+        atomic_write_json(report_path, report)
+        raise RuntimeError(f"Adaptive-research artifact audit failed: {exc}") from exc
+
+    atomic_write_json(report_path, report)
+    if report.get("quarantine_failures"):
+        raise RuntimeError(
+            "Adaptive-research artifacts could not be safely quarantined; "
+            "normalization is blocked to prevent unaudited evidence from entering the handoff."
+        )
+    if isinstance(adaptive_result, dict):
+        adaptive_result["artifact_audit"] = report
+        if report.get("manifest_issues") or report.get("issues"):
+            warnings = list(adaptive_result.get("warnings") or [])
+            warnings.append(
+                "Adaptive-research artifact audit found issues; invalid artifacts were quarantined "
+                "or excluded before normalization."
+            )
+            adaptive_result["warnings"] = warnings
+    return report
+
+
 def _parse_date(value: str | None, *, end_of_day: bool = False) -> datetime | None:
     if not value:
         return None
@@ -867,6 +936,7 @@ def main() -> int:
 
 
         adaptive_result = None
+        adaptive_artifact_audit = None
         if unknown_area or len(canonical_areas) < 2:
             print("   -> Running adaptive research discovery for potentially new/underrepresented research space...")
             try:
@@ -877,6 +947,26 @@ def main() -> int:
                 )
             except Exception as exc:
                 print(f"   ⚠️ Adaptive research failed: {exc}")
+            try:
+                adaptive_artifact_audit = audit_optional_adaptive_research_artifacts(
+                    call_root,
+                    adaptive_result,
+                    run_id,
+                )
+            except Exception as exc:
+                report = {
+                    "run_id": run_id,
+                    "status": "adaptive_research_artifact_audit_failed",
+                    "batch3_started": False,
+                    "funding_call_id": context.funding_call_id,
+                    "adaptive_research": adaptive_result,
+                    "error": str(exc),
+                }
+                atomic_write_json(call_root / "workflow" / "pipeline_report.json", report)
+                all_reports.append(report)
+                global_exit_code = max(global_exit_code, 4)
+                print(f"❌ Adaptive-research artifacts could not be safely audited; stopping before normalization: {exc}")
+                continue
 
         print("\n[3/6] Normalizing evidence...")
         gate_details = []
@@ -981,6 +1071,7 @@ def main() -> int:
             "input_records": input_count,
             "normalized_records": len(records),
             "allowed_handoff_agents": sorted(expected_handoff_agents),
+            "adaptive_research_artifact_audit": adaptive_artifact_audit,
             "accepted_records": accepted_count,
             "rejected_records": rejected_count,
             "errors": normalization_errors,
