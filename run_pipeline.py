@@ -1127,6 +1127,14 @@ def main() -> int:
             global_exit_code = max(global_exit_code, 4)
             continue
 
+        # Persist the mission-gate report for every completed normalization,
+        # including the zero-input case. Consumers and audit tests rely on this
+        # report to distinguish "nothing collected" from a gate that never ran.
+        atomic_write_json(
+            call_root / "workflow" / "mission_relevance_gate.json",
+            {**normalization_audit, "details": gate_details},
+        )
+
         if input_count == 0:
             print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
             report = {
@@ -1143,10 +1151,6 @@ def main() -> int:
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        atomic_write_json(
-            call_root / "workflow" / "mission_relevance_gate.json",
-            {**normalization_audit, "details": gate_details},
-        )
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
 
         if not records:
