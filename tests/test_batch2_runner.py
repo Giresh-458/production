@@ -1534,7 +1534,7 @@ def test_collection_finalizer_preserves_changed_content_for_same_title_and_sourc
     )
 
     assert response["status"] in {"success", "partial_success"}
-    assert response["outputs_count"] == 2
+    assert len(response["outputs"]) == 2
     paths = [Path(item["markdown_path"]) for item in response["outputs"]]
     assert len(set(paths)) == 2
     records = [normalize_intermediate_artifact(path) for path in paths]
