@@ -1207,6 +1207,7 @@ def _normalization_cache_ledger_matches_records(
         return False
 
     expected: dict[str, tuple[str, str, str, str]] = {}
+    records_by_id: dict[str, dict[str, Any]] = {}
     for record in records:
         evidence_id = str(record.get("evidence_id") or "").strip()
         if not evidence_id or evidence_id in expected:
@@ -1217,6 +1218,7 @@ def _normalization_cache_ledger_matches_records(
             str(record.get("source_url") or ""),
             str(record.get("content_hash") or ""),
         )
+        records_by_id[evidence_id] = record
 
     connection = None
     try:
@@ -1246,7 +1248,7 @@ def _normalization_cache_ledger_matches_records(
             )
             if actual_values != expected[key]:
                 return False
-            record = next((item for item in records if str(item.get("evidence_id") or "") == key), None)
+            record = records_by_id.get(key)
             if record is None:
                 return False
             try:
