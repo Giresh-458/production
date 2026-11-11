@@ -1517,10 +1517,18 @@ def test_collection_finalizer_preserves_changed_content_for_same_title_and_sourc
         "systems, but adds a second benchmark, updated test conditions, and a measured reduction "
         "in failure rates after the protocol change."
     )
-    documents = [
-        {"title": "Distributed Systems Interoperability Report", "source": source, "content": first_content},
-        {"title": "Distributed Systems Interoperability Report", "source": source, "content": revised_content},
-    ]
+    first_document = {
+        "title": "Distributed Systems Interoperability Report",
+        "source": source,
+        "content": first_content,
+    }
+    revised_document = {
+        "title": "Distributed Systems Interoperability Report",
+        "source": source,
+        "content": revised_content,
+    }
+    # Exact duplicates collapse, but a changed body from the same URL is retained.
+    documents = [first_document, dict(first_document), revised_document]
 
     response = finalize_collection_agent_response(
         agent="lab",
@@ -1538,7 +1546,7 @@ def test_collection_finalizer_preserves_changed_content_for_same_title_and_sourc
     paths = [Path(item["markdown_path"]) for item in response["outputs"]]
     assert len(set(paths)) == 2
     records = [normalize_intermediate_artifact(path) for path in paths]
-    assert {record["content_hash"] for record in records}.__len__() == 2
+    assert len({record["content_hash"] for record in records}) == 2
     assert {record["source_url"] for record in records} == {source}
 
 
