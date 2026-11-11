@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from core.funding_selection import FundingCallContext
 from core.funding_context import build_agent_specific_funding_context, current_funding_prompt_context, current_funding_queries, generate_funding_queries
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import yaml
 
@@ -482,10 +482,19 @@ def is_relevant(text: str, area_hint: str) -> bool:
 def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDocument]:
     if not source.query_template:
         return []
-    terms = API_SEARCH_TERMS.get(area, []) if area else []
+    if area:
+        terms = API_SEARCH_TERMS.get(area, [])
+    else:
+        # Funding-driven Batch-2 scans are intentionally unscoped by the
+        # legacy RIF taxonomy; use the active call's queries for expert APIs.
+        terms = [
+            str(query).strip()
+            for query in (current_funding_queries.get() or [])
+            if str(query).strip()
+        ]
     documents: list[ExpertDocument] = []
     for term in terms[:2]:
-        query_url = source.query_template.replace("{query}", term.replace(" ", "%20"))
+        query_url = source.query_template.replace("{query}", quote_plus(term))
         LOGGER.info("Collecting expert intelligence from API %s with query '%s'", source.name, term)
         try:
             content = fetch_json_text(query_url)
