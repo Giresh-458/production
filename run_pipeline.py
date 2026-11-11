@@ -898,17 +898,13 @@ def main() -> int:
 
         selected_path = call_root / "workflow" / "selected_funding_call.json"
         selected_path.parent.mkdir(parents=True, exist_ok=True)
-        selected_path.write_text(
-            json.dumps(
-                {
-                    "run_id": run_id,
-                    "selected": selected,
-                    "rejected_alternatives": rejected if call_idx == 1 else [],
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        atomic_write_json(
+            selected_path,
+            {
+                "run_id": run_id,
+                "selected": selected,
+                "rejected_alternatives": rejected if call_idx == 1 else [],
+            },
         )
 
         print(f"\n==============================================")
@@ -1082,10 +1078,7 @@ def main() -> int:
             "skipped_artifacts": skipped_artifacts,
             "skipped_artifact_count": len(skipped_artifacts),
         }
-        (call_root / "workflow" / "normalization_audit.json").write_text(
-            json.dumps(normalization_audit, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(call_root / "workflow" / "normalization_audit.json", normalization_audit)
 
         if normalization_errors or handoff_errors:
             print(
@@ -1101,9 +1094,7 @@ def main() -> int:
                 "final_output": None,
                 "proposal_count": 0,
             }
-            (call_root / "workflow" / "pipeline_report.json").write_text(
-                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            atomic_write_json(call_root / "workflow" / "pipeline_report.json", report)
             all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
@@ -1119,16 +1110,14 @@ def main() -> int:
                 "final_output": None,
                 "proposal_count": 0,
             }
-            (call_root / "workflow" / "pipeline_report.json").write_text(
-                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            atomic_write_json(call_root / "workflow" / "pipeline_report.json", report)
             all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        (call_root / "workflow" / "mission_relevance_gate.json").write_text(
-            json.dumps({**normalization_audit, "details": gate_details}, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        atomic_write_json(
+            call_root / "workflow" / "mission_relevance_gate.json",
+            {**normalization_audit, "details": gate_details},
         )
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
 
