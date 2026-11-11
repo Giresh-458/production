@@ -157,7 +157,10 @@ def test_source_discovery_duplicate_preservation(
     assert len(records) == 2
 
     by_area = json.loads((call_root / "normalized" / "by_area.json").read_text(encoding="utf-8"))
-    assert len(by_area.get("DePIN", [])) == 2
+    # The duplicate source's earliest observation is explicitly Unscoped;
+    # a later observation cannot silently relabel its canonical evidence.
+    assert len(by_area.get("DePIN", [])) == 1
+    assert len(by_area.get("Unscoped", [])) == 1
 
     by_layer = json.loads((call_root / "normalized" / "by_layer.json").read_text(encoding="utf-8"))
     assert len(by_layer.get("Literature", [])) == 2
