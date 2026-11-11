@@ -550,9 +550,16 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
         if source.type == "github_repo":
             try:
                 content, github_metadata = fetch_github_snapshot(source)
-                title = source.name
-                area_hint = area or infer_area(cleaned_text(f"{source.name} {source.focus} {content}"), "Unscoped")
-                if not is_relevant(cleaned_text(f"{source.name} {area_hint} {source.focus or ''} {content}"), area_hint):
+                title = next(
+                    (
+                        line.split(":", 1)[1].strip()
+                        for line in content.splitlines()
+                        if line.startswith("GitHub repository:") and ":" in line
+                    ),
+                    "GitHub repository snapshot",
+                )
+                area_hint = area or infer_area(content, "Unscoped")
+                if not is_relevant(content, area_hint):
                     LOGGER.info("Skipping GitHub source %s because it is not relevant.", source.name)
                     continue
                 documents.append(
@@ -564,7 +571,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
                         focus=source.focus,
                         url=source.url,
                         title=title,
-                        content=cleaned_text(f"{source.name} {source.focus} {content}"),
+                        content=content,
                         source_mode="Automatic",
                     )
                 )
@@ -616,8 +623,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the selected areas.", source.name)
@@ -680,11 +687,11 @@ def build_manual_url_document(
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=project_name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     name = project_name or title or cleaned_text(urlparse(url).netloc)
     source_type_value = source_type or "Documentation"
     evidence_type_value = evidence_type or "Documentation"
-    full_text = cleaned_text(f"{name} {area or ''} {focus or ''} {title} {content}")
+    full_text = cleaned_text(f"{title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise OpenSourceAgentError("Manual URL content does not map to the selected research areas or engineering signals.")

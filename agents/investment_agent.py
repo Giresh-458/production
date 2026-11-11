@@ -433,8 +433,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[In
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=('funding', 'investment', 'portfolio', 'thesis', 'venture', 'capital'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-            title = result.pages[0].title if result.pages else source.name
-            full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
+            title = result.pages[0].title if result.pages else "Investment source"
+            full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
@@ -457,9 +457,9 @@ def build_manual_url_document(
 ) -> InvestmentDocument:
     html = fetch_html(url)
     page_title, content = extract_page_text(html)
-    resolved_title = title or page_title or cleaned_text(urlparse(url).netloc)
+    resolved_title = page_title or title or cleaned_text(urlparse(url).netloc)
     resolved_org = investor_or_organization or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_title} {resolved_org} {focus or ''} {content}")
+    full_text = cleaned_text(f"{page_title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise InvestmentAgentError("Manual URL content does not map to the selected research areas or investment signals.")

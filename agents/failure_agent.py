@@ -462,8 +462,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Fa
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=('incident', 'exploit', 'vulnerability', 'postmortem', 'outage', 'attack'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-            title = result.pages[0].title if result.pages else source.name
-            full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
+            title = result.pages[0].title if result.pages else "Failure source"
+            full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
@@ -485,8 +485,8 @@ def build_manual_url_document(
 ) -> FailureDocument:
     html = fetch_html(url)
     title, content = extract_page_text(html)
-    resolved_name = incident_name or title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_name} {focus or ''} {content}")
+    resolved_name = title or incident_name or cleaned_text(urlparse(url).netloc)
+    full_text = cleaned_text(f"{title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise FailureAgentError("Manual URL content does not map to the selected research areas or failure signals.")

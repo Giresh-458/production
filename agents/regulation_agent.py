@@ -466,7 +466,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         LOGGER.info("Collecting regulation intelligence from %s", source.name)
         structured = collect_structured_source(source.url, source.source_type, area)
         if structured:
-            full_text = cleaned_text(f"{source.name} {source.focus} {structured.text}")
+            full_text = cleaned_text(f"{structured.title} {structured.text}")
             area_hint = infer_configured_source_area(source, full_text, area)
             if is_relevant(full_text, area_hint):
                 documents.append(RegulationDocument(name=source.name, issuing_body=source.name, source_type=source.source_type, evidence_type=source.evidence_type, area_hint=area_hint, focus=source.focus, url=structured.url, title=structured.title, content=full_text, source_mode="Automatic"))
@@ -516,9 +516,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        area_hint = infer_configured_source_area(source, cleaned_text(f"{title} {content}"), area)
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
+        area_hint = infer_configured_source_area(source, full_text, area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not technically relevant.", source.name)
             update_recursive_review(
@@ -582,11 +582,11 @@ def build_manual_url_document(
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     resolved_name = name or title or urlparse(url).netloc
     resolved_body = issuing_body or cleaned_text(urlparse(url).netloc)
-    area_hint = area or infer_area(cleaned_text(f"{resolved_name} {focus or ''} {title} {content}"), "Unscoped")
-    full_text = cleaned_text(f"{resolved_name} {resolved_body} {focus or ''} {title} {content}")
+    full_text = cleaned_text(f"{title} {content}")
+    area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise RegulationAgentError("Manual URL content does not map to the selected research areas or technical policy signals.")
     return RegulationDocument(

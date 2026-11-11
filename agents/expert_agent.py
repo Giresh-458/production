@@ -492,8 +492,8 @@ def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDo
         except ExpertAgentError as exc:
             LOGGER.warning("Skipping API source %s query '%s': %s", source.name, term, exc)
             continue
-        title = f"{source.name}: {term}"
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        title = "Expert API result"
+        full_text = cleaned_text(content)
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
             continue
@@ -502,7 +502,7 @@ def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDo
                 title=title,
                 source_type=infer_source_type(source.type),
                 evidence_type=infer_evidence_type(source.type),
-                expert_name_hint=infer_expert_name(title, full_text),
+                expert_name_hint=infer_expert_name("", full_text),
                 affiliation_hint=infer_affiliation(full_text, query_url),
                 role_hint="Expert",
                 area_hint=area_hint,
@@ -540,8 +540,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ex
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
-        content = combine_pages(result, prefix=f"{source.name} {source.focus}")
-        title = result.pages[0].title if result.pages else source.name
+        content = combine_pages(result)
+        title = result.pages[0].title if result.pages else "Expert source"
         full_text = cleaned_text(content)
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
@@ -561,8 +561,8 @@ def build_manual_url_document(
 ) -> ExpertDocument:
     html = fetch_html(url)
     page_title, content = extract_page_text(html)
-    resolved_title = title or page_title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_title} {focus or ''} {content}")
+    resolved_title = page_title or title or cleaned_text(urlparse(url).netloc)
+    full_text = cleaned_text(f"{page_title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise ExpertAgentError("Manual URL content does not map to the selected research areas or expert signals.")

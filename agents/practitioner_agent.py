@@ -517,7 +517,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Pr
         try:
             if source.type in {"github_issues", "github_discussions", "stack_overflow"}:
                 title, content = fetch_native_practitioner_source(source)
-                full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+                full_text = cleaned_text(f"{title} {content}")
             else:
                 limits = limits_by_url.get(source.url, {})
 
@@ -526,8 +526,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Pr
                 if ctx: ctx.begin_source()
 
                 result = collect_source(source.url, keywords=("issue", "discussion", "deployment", "developer", "engineering", "operational", "job", "benchmark", "problem"), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-                title = result.pages[0].title if result.pages else source.name
-                full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
+                title = result.pages[0].title if result.pages else "Practitioner source"
+                full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             continue
@@ -550,8 +550,8 @@ def build_manual_url_document(
 ) -> PractitionerDocument:
     html = fetch_html(url)
     page_title, content = extract_page_text(html)
-    resolved_title = title or page_title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_title} {area or ''} {focus or ''} {content}")
+    resolved_title = page_title or title or cleaned_text(urlparse(url).netloc)
+    full_text = cleaned_text(f"{page_title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise PractitionerAgentError("Manual URL content does not map to the selected research areas or practitioner signals.")

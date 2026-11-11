@@ -525,8 +525,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        full_text = cleaned_text(f"{source.name} {source.focus} {content}")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
         area_hint = area or ("Unscoped" if current_funding_queries.get() else source.area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the configured research areas.", source.name)
@@ -581,7 +581,7 @@ def build_manual_url_document(url: str, company_name: str | None, source_type: s
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=company_name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     name = company_name or cleaned_text(urlparse(url).netloc)
     source_type_value = source_type or "Enterprise adopter"
     focus_value = focus or title
@@ -592,7 +592,7 @@ def build_manual_url_document(url: str, company_name: str | None, source_type: s
         source_type=source_type_value,
         focus=focus_value,
         area_hint=area_hint,
-        content=cleaned_text(f"{name} {focus_value} {title} {content}"),
+        content=cleaned_text(f"{title} {content}"),
         source_mode="Manual",
         title=title,
     )
