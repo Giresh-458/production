@@ -40,7 +40,7 @@ def _is_redirected_path(path: Path) -> bool:
 
 def _count_quarantined_markdown(path: Path) -> int:
     """Count regular Markdown files without following links inside quarantine."""
-    if path.is_symlink():
+    if _is_redirected_path(path):
         return 0
     if path.is_file():
         return int(path.suffix.casefold() == ".md")
@@ -51,12 +51,12 @@ def _count_quarantined_markdown(path: Path) -> int:
         current_path = Path(current)
         directory_names[:] = [
             name for name in directory_names
-            if not (current_path / name).is_symlink()
+            if not _is_redirected_path(current_path / name)
         ]
         count += sum(
             1 for name in file_names
             if (current_path / name).suffix.casefold() == ".md"
-            and not (current_path / name).is_symlink()
+            and not _is_redirected_path(current_path / name)
         )
     return count
 

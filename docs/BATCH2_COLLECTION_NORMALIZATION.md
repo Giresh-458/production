@@ -145,6 +145,9 @@ Every run receives a new output directory. The runner refuses to reuse any exist
         shared_downstream_collection_plan.json
         batch2_report.json
         quarantined_intermediate/
+          timeouts/
+            <agent>/<task-id>/
+              *.md
           <agent>/
             *.md
 
@@ -154,7 +157,7 @@ The standalone runner and full pipeline share the same normalized-record validat
 
 Before collection, the coordinator synchronizes the configured source registry and builds its refresh plan once. Workers defer registry synchronization so they do not race on the shared registry. If registry preparation fails, collection stops instead of running against stale source lifecycle state.
 
-The batch timeout is cooperative because Python cannot safely kill a running worker thread. A worker that finishes after the deadline is marked `timeout_budget_exceeded`; its output directory is removed. Any late or invalid artifact that remains is quarantined and excluded from normalization. A quarantine failure blocks the handoff.
+The batch timeout is cooperative because Python cannot safely kill a running worker thread. A worker that finishes after the deadline is marked `timeout_budget_exceeded`; its output directory is moved intact to `workflow/quarantined_intermediate/timeouts/<agent>/<task-id>/`. Late artifacts are preserved for inspection but excluded from normalization. If quarantine cannot be performed safely, the artifacts are left in place, the error is recorded, and the handoff is blocked.
 
 A call is marked ready_for_batch3 only when:
 - The collection health gate passes using verified persisted artifacts.
