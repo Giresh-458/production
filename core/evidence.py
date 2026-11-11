@@ -53,13 +53,18 @@ def strip_collection_metadata(raw_content: str) -> str:
     must not create problem, area, or relevance signals.
     """
     cleaned_lines: list[str] = []
+    source_header_metadata_remaining = 0
     for line in (raw_content or "").splitlines():
         stripped = line.strip()
         if stripped.startswith("[SOURCE]"):
             cleaned_lines.append(stripped[len("[SOURCE]"):].strip())
+            source_header_metadata_remaining = 3
             continue
-        if re.match(r"^(?:URL|Depth|Dates):\s*", stripped, flags=re.IGNORECASE):
-            continue
+        if source_header_metadata_remaining:
+            if re.match(r"^(?:URL|Depth|Dates):\s*", stripped, flags=re.IGNORECASE):
+                source_header_metadata_remaining -= 1
+                continue
+            source_header_metadata_remaining = 0
         depth_header = re.match(r"^\[Depth\s+\d+\]\s*(.*)$", stripped, flags=re.IGNORECASE)
         if depth_header:
             header = depth_header.group(1).strip()
