@@ -897,7 +897,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
@@ -1067,7 +1067,13 @@ def save_normalized_collection_records(
                     "funding_call_id": record["funding_call_id"],
                     "funding_call_ids": record.get("funding_call_ids", []),
                     "source_funding_call_ids": record.get("source_funding_call_ids", []),
+                    "source_id_variants": record.get("source_id_variants", [record.get("source_id")]),
+                    "source_url_variants": record.get("source_url_variants", [record.get("source_url")]),
                     "title_variants": record.get("title_variants", [record.get("title")]),
+                    "content_versions": record.get("content_versions", [record.get("content_hash")]),
+                    "observation_count": record.get("observation_count", 1),
+                    "first_seen": record.get("first_seen", record.get("collected_at")),
+                    "last_seen": record.get("last_seen", record.get("collected_at")),
                     "run_id": record["run_id"],
                     "retrieved_at": record["collected_at"],
                     "raw_record_id": record["file_path"]
