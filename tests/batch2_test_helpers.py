@@ -286,7 +286,18 @@ def write_test_intermediate_artifact(
     payload["shared_header"]["funding_call_ids"] = [funding_call_id]
     payload["shared_header"]["run_id"] = run_id
     if evidence_snippets is not None:
-        payload["evidence_bundle"]["evidence_snippets"] = list(evidence_snippets)
+        snippets = list(evidence_snippets)
+        if len(snippets) < 2:
+            snippets.append("A second supporting source excerpt retained for deterministic contract coverage.")
+        payload["evidence_bundle"]["evidence_snippets"] = snippets
+    payload["agent_specific_body"].update({
+        "authors": "Batch-2 Test Author",
+        "score": 0.8,
+        "relevance_score": 0.8,
+        "impact_score": 0.8,
+        "recency_score": 0.8,
+        "problem_clarity_score": 0.8,
+    })
     # These tests isolate mission-gate and deduplication behavior. Collection
     # quality is exercised independently by the 11-agent contract suite.
     payload["metadata"]["quality_gate"]["passed"] = True
