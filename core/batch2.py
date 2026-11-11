@@ -471,7 +471,12 @@ def _is_redirected_path(path: Path) -> bool:
     try:
         if path.is_symlink():
             return True
-        stat_result = path.lstat()
+        try:
+            stat_result = path.lstat()
+        except FileNotFoundError:
+            # A not-yet-created path is safe unless one of its existing parents
+            # redirects elsewhere (for example, a symlinked run-root ancestor).
+            return Path(os.path.abspath(path)) != path.resolve()
         reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
         if int(getattr(stat_result, "st_file_attributes", 0) or 0) & reparse_flag:
             return True
