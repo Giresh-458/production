@@ -262,11 +262,6 @@ def build_valid_funding_context(
 
 
 
-def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
-    """Write the complete canonical ledger contract used by production cache validation."""
-    write_test_evidence_ledger(path, records)
-
-
 def write_test_intermediate_artifact(
     run_root: Path,
     *,
