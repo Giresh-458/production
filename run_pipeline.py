@@ -1123,7 +1123,7 @@ def main() -> int:
 
         if not records:
             report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "normalization": normalization_audit, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
-            (call_root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            atomic_write_json(call_root / "workflow" / "pipeline_report.json", report)
             print("⚠️ Funding call found, but no collected evidence passed the mission relevance gate. No proposal will be generated.")
             all_reports.append(report)
             continue
