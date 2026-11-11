@@ -80,6 +80,8 @@ def test_duplicate_mission_gate_statistics(
             source_url="https://example.org/quant",
             content="Quantum entanglement networks.\n\nQuantum entanglement networks.",
             research_area="DePIN",
+            evidence_snippets=["Quantum entanglement networks."],
+            evidence_snippets=["Quantum entanglement networks."],
             collected_at="2026-08-24T10:00:00+00:00",
         )
 
@@ -104,6 +106,7 @@ def test_duplicate_mission_gate_statistics(
             source_url="https://example.org/class",
             content="Classic networking networks.\n\nClassic networking networks.",
             research_area="DePIN",
+            evidence_snippets=["Classic networking networks."],
             collected_at="2026-08-24T10:00:02+00:00",
         )
 
