@@ -1770,3 +1770,67 @@ def test_standalone_runner_rejects_selected_context_validation_with_blockers(tmp
     }), encoding="utf-8")
     with pytest.raises(ValueError, match="ACCEPTED global Batch-1 source-coverage attestation"):
         load_funding_context_handoff(handoff)
+
+
+def test_normalization_preserves_title_variants_for_conflicting_duplicate_evidence(tmp_path):
+    from tests.batch2_test_helpers import write_test_intermediate_artifact
+    from core.normalization import save_normalized_collection_records
+
+    run_id = "title-variant-run"
+    call_id = "CALL-TITLE-VARIANTS"
+    input_root = tmp_path / "intermediate"
+    first_title = "Unrelated page title"
+    later_title = "Quantum entanglement"
+    shared_excerpt = "A shared source excerpt that does not itself establish quantum entanglement."
+
+    write_test_intermediate_artifact(
+        tmp_path,
+        run_id=run_id,
+        funding_call_id=call_id,
+        title=first_title,
+        source_url="https://example.org/conflicting-title",
+        content="Unrelated page text.\n\n" + shared_excerpt,
+        research_area="DePIN",
+        evidence_snippets=[shared_excerpt],
+        collected_at="2026-11-11T10:00:00+00:00",
+    )
+    write_test_intermediate_artifact(
+        tmp_path,
+        run_id=run_id,
+        funding_call_id=call_id,
+        title=later_title,
+        source_url="https://example.org/conflicting-title",
+        content="Quantum entanglement.\n\n" + shared_excerpt,
+        research_area="DePIN",
+        evidence_snippets=[shared_excerpt],
+        collected_at="2026-11-11T10:01:00+00:00",
+    )
+
+    paths = save_normalized_collection_records(
+        input_root / "literature",
+        tmp_path / "call-output",
+        call_id,
+        target_run_id=run_id,
+    )
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+
+    assert len(records) == 1
+    assert records[0]["title"] == first_title
+    assert records[0]["title_variants"] == [first_title, later_title]
+    assert records[0]["observation_count"] == 2
+    assert len(records[0]["content_versions"]) == 2
+    assert records[0]["first_seen"] == "2026-11-11T10:00:00+00:00"
+    assert records[0]["last_seen"] == "2026-11-11T10:01:00+00:00"
+
+    from core.evidence_ledger import get_ledger_connection
+    connection = get_ledger_connection(tmp_path / "call-output" / "normalized" / "evidence_ledger.db")
+    try:
+        row = connection.execute(
+            "SELECT provenance FROM canonical_evidence WHERE evidence_id = ?",
+            (records[0]["evidence_id"],),
+        ).fetchone()
+        assert row is not None
+        ledger_provenance = json.loads(row[0])
+        assert ledger_provenance["title_variants"] == [first_title, later_title]
+    finally:
+        connection.close()
