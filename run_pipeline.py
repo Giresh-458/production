@@ -573,6 +573,26 @@ def select_collection_areas(funding_output: dict[str, Any], detected_area: str |
     return list(dict.fromkeys(selected[:3]))
 
 
+def create_unique_pipeline_run_root(
+    output_root: Path,
+    now: datetime | None = None,
+) -> tuple[str, Path]:
+    """Create an exclusive run directory; concurrent starts cannot share artifacts."""
+    timestamp = now or datetime.now(UTC)
+    base_run_id = timestamp.strftime("%Y%m%d-%H%M%S-%f")
+    parent = Path(output_root)
+    parent.mkdir(parents=True, exist_ok=True)
+    for suffix in range(1000):
+        run_id = base_run_id if suffix == 0 else f"{base_run_id}-{suffix:03d}"
+        root = parent / run_id
+        try:
+            root.mkdir(exist_ok=False)
+            return run_id, root
+        except FileExistsError:
+            continue
+    raise RuntimeError("Unable to allocate a unique pipeline run directory after 1000 attempts")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the live RIF funding-to-proposal pipeline.")
     parser.add_argument("--force-refresh", action="store_true", help="Force live refetch of every source (default live mode already does this).")
@@ -584,9 +604,7 @@ def main() -> int:
     parser.add_argument("--max-open-calls", type=int, default=None, help="Maximum number of open calls to send downstream (default: all valid calls).")
     args = parser.parse_args()
 
-    run_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    root = Path(args.output_root) / run_id
-    root.mkdir(parents=True, exist_ok=True)
+    run_id, root = create_unique_pipeline_run_root(Path(args.output_root))
     print("==============================================")
     print(f"🚀 Starting RIF Live Pipeline: {run_id}")
     print("==============================================")
