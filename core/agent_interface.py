@@ -205,17 +205,37 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
     # the actual fetched HTTP(S) page as provenance instead of silently
     # labelling these records "Manual".
     pages = _document_value(document, "pages", [])
+    manual_page_source = ""
     if isinstance(pages, (list, tuple)):
         for page in pages:
             value = str(_document_value(page, "url", "")).strip()
             parsed = urlparse(value)
             if parsed.scheme in {"http", "https"} and parsed.netloc:
                 return value
+            if (
+                parsed.scheme == "manual"
+                and parsed.netloc
+                and parsed.path.strip("/")
+                and not parsed.query
+                and not parsed.fragment
+            ):
+                manual_page_source = value
     value = str(_document_value(document, "base_url", "")).strip()
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"} and parsed.netloc:
         return value
-    return default_source or "Manual"
+    if (
+        parsed.scheme == "manual"
+        and parsed.netloc
+        and parsed.path.strip("/")
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        return value
+    # Preserve a collector's controlled manual:// identity rather than
+    # replacing it with the ambiguous placeholder "Manual". The downstream
+    # normalizer will still mark it NEEDS_REVIEW because it is not HTTP(S).
+    return manual_page_source or default_source or "Manual"
 
 
 def _document_area(document: Any, fallback_area: Optional[str]) -> Optional[str]:
