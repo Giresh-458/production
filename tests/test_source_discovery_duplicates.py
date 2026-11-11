@@ -80,6 +80,7 @@ def test_source_discovery_duplicate_preservation(
             source_url="https://example.org/accepted",
             content="Blockchain ledger systems.\n\nBlockchain ledger systems.\n\nhttps://example.org/link-acc",
             research_area="DePIN",
+            evidence_snippets=["Blockchain ledger systems."],
             collected_at="2026-08-24T10:00:00+00:00",
         )
 
@@ -92,6 +93,7 @@ def test_source_discovery_duplicate_preservation(
             source_url="https://example.org/rejected",
             content="Trees and leaves.\n\nTrees and leaves.",
             research_area="DePIN",
+            evidence_snippets=["Trees and leaves."],
             collected_at="2026-08-24T10:00:01+00:00",
         )
 
@@ -103,6 +105,7 @@ def test_source_discovery_duplicate_preservation(
             source_url="https://example.org/conflict",
             content="A completely unrelated problem statement.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confB",
             research_area="Unscoped",
+            evidence_snippets=["Shared conflict ledger snippet."],
             collected_at="2026-08-24T10:00:02+00:00",
         )
 
@@ -114,6 +117,7 @@ def test_source_discovery_duplicate_preservation(
             source_url="https://example.org/conflict",
             content="Blockchain ledger systems.\n\nShared conflict ledger snippet.\n\nhttps://example.org/link-confA",
             research_area="DePIN",
+            evidence_snippets=["Shared conflict ledger snippet."],
             collected_at="2026-08-24T10:00:03+00:00",
         )
 
