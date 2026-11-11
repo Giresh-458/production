@@ -340,9 +340,17 @@ def execute_batch_run(
                 quarantine_error,
             ) = _quarantine_timed_out_output(task, output_dir)
         timed_out = dict(result or {})
-        reported_outputs = timed_out.get("outputs") or []
-        reported_output_paths = list(timed_out.get("output_paths") or [])
-        if not reported_output_paths and isinstance(reported_outputs, list):
+        reported_outputs = timed_out.get("outputs")
+        if not isinstance(reported_outputs, list):
+            reported_outputs = []
+        raw_reported_paths = timed_out.get("output_paths")
+        if isinstance(raw_reported_paths, (list, tuple)):
+            reported_output_paths = [str(value) for value in raw_reported_paths if str(value)]
+        elif isinstance(raw_reported_paths, str) and raw_reported_paths.strip():
+            reported_output_paths = [raw_reported_paths.strip()]
+        else:
+            reported_output_paths = []
+        if not reported_output_paths:
             reported_output_paths = [
                 str(item.get("markdown_path") or item.get("path") or "")
                 for item in reported_outputs
