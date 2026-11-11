@@ -785,6 +785,20 @@ def test_batch1_handoff_batch2_collection_and_normalization_handoff_end_to_end(t
 
     with closing(sqlite3.connect(ledger_path)) as ledger_connection:
         ledger_connection.execute(
+            "UPDATE canonical_evidence SET title = ? WHERE evidence_id = ?",
+            ("Tampered title", records[0]["evidence_id"]),
+        )
+        ledger_connection.commit()
+    row_errors = validate_evidence_ledger(
+        ledger_path,
+        records,
+        funding_call_id=context.funding_call_id,
+        run_id="batch2-test-run",
+    )
+    assert any("title mismatch" in error for error in row_errors)
+
+    with closing(sqlite3.connect(ledger_path)) as ledger_connection:
+        ledger_connection.execute(
             "DELETE FROM canonical_evidence WHERE evidence_id = ?",
             (records[0]["evidence_id"],),
         )
