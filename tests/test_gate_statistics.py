@@ -67,67 +67,49 @@ def test_duplicate_mission_gate_statistics(
     # Mock execute_batch_run to create intermediate files
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        intermediate_dir = root / "calls" / call_id / "intermediate"
+        run_id = kwargs["base_input_data"]["run_id"]
+        intermediate_dir = root / "intermediate" / "literature"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Accepted evidence (matches 'quantum') - copy 1
-        (intermediate_dir / "acc1.md").write_text("""# Signal
-## Shared Metadata
-- title: Quantum entanglement
-- source: https://example.org/quant
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:00+00:00
-
-## Problem Preview
-Quantum entanglement networks.
-## Evidence Bundle
-### Evidence Snippets
-- Quantum entanglement networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Quantum entanglement",
+            source_url="https://example.org/quant",
+            content="Quantum entanglement networks.\n\nQuantum entanglement networks.",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:00+00:00",
+        )
 
         # 2. Accepted evidence (matches 'quantum') - copy 2 (DUPLICATE source and title -> same evidence_id)
-        (intermediate_dir / "acc2.md").write_text("""# Signal
-## Shared Metadata
-- title: Quantum entanglement
-- source: https://example.org/quant
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:01+00:00
-
-## Problem Preview
-Quantum entanglement networks part 2.
-## Evidence Bundle
-### Evidence Snippets
-- Quantum entanglement networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Quantum entanglement",
+            source_url="https://example.org/quant",
+            content="Quantum entanglement networks part 2.\n\nQuantum entanglement networks.",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:01+00:00",
+        )
 
         # 3. Rejected evidence (no matching substantive keywords)
-        (intermediate_dir / "rej1.md").write_text("""# Signal
-## Shared Metadata
-- title: Classic networking
-- source: https://example.org/class
-- layer: Literature
-- agent_name: literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:02+00:00
-
-## Problem Preview
-Classic networking networks.
-## Evidence Bundle
-### Evidence Snippets
-- Classic networking networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Classic networking",
+            source_url="https://example.org/class",
+            content="Classic networking networks.\n\nClassic networking networks.",
+            research_area="DePIN",
+            collected_at="2026-08-24T10:00:02+00:00",
+        )
 
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
-        run_id = kwargs["base_input_data"]["run_id"]
-        from tests.batch2_test_helpers import write_test_collector_artifacts
+        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
         write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
@@ -139,7 +121,7 @@ Classic networking networks.
                 artifact.write_text(artifact_text, encoding="utf-8")
 
         return {"tasks": [
-            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            {"agent_name": agent, "status": "success", "outputs_count": len(list((root / "intermediate" / agent).glob("*.md")))}
             for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
         ]}
 
