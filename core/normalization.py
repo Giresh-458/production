@@ -905,6 +905,29 @@ def _normalization_input_manifest(
     }
 
 
+
+
+def _normalized_record_provenance(record: dict[str, Any]) -> dict[str, Any]:
+    """Build the canonical provenance payload shared by the JSON and SQLite outputs."""
+    return {
+        "source_url": record.get("source_url", ""),
+        "source_id": record.get("source_id", ""),
+        "agent": record.get("agent_name", ""),
+        "funding_call_id": record.get("funding_call_id", ""),
+        "funding_call_ids": record.get("funding_call_ids", []),
+        "source_funding_call_ids": record.get("source_funding_call_ids", []),
+        "source_id_variants": record.get("source_id_variants", [record.get("source_id")]),
+        "source_url_variants": record.get("source_url_variants", [record.get("source_url")]),
+        "title_variants": record.get("title_variants", [record.get("title")]),
+        "content_versions": record.get("content_versions", [record.get("content_hash")]),
+        "observation_count": record.get("observation_count", 1),
+        "first_seen": record.get("first_seen", record.get("collected_at")),
+        "last_seen": record.get("last_seen", record.get("collected_at")),
+        "run_id": record.get("run_id", ""),
+        "retrieved_at": record.get("collected_at", ""),
+        "raw_record_id": record.get("file_path") or record.get("record_id", ""),
+    }
+
 def save_normalized_collection_records(
     intermediate_root: Path | list[Path],
     output_dir: Path,
@@ -1060,24 +1083,7 @@ def save_normalized_collection_records(
                 "independence_group": independence_group,
                 "independence_status": independence_status,
                 "normalization_status": record["normalization_status"],
-                "provenance": {
-                    "source_url": record["source_url"],
-                    "source_id": record["source_id"],
-                    "agent": record["agent_name"],
-                    "funding_call_id": record["funding_call_id"],
-                    "funding_call_ids": record.get("funding_call_ids", []),
-                    "source_funding_call_ids": record.get("source_funding_call_ids", []),
-                    "source_id_variants": record.get("source_id_variants", [record.get("source_id")]),
-                    "source_url_variants": record.get("source_url_variants", [record.get("source_url")]),
-                    "title_variants": record.get("title_variants", [record.get("title")]),
-                    "content_versions": record.get("content_versions", [record.get("content_hash")]),
-                    "observation_count": record.get("observation_count", 1),
-                    "first_seen": record.get("first_seen", record.get("collected_at")),
-                    "last_seen": record.get("last_seen", record.get("collected_at")),
-                    "run_id": record["run_id"],
-                    "retrieved_at": record["collected_at"],
-                    "raw_record_id": record["file_path"]
-                },
+                "provenance": _normalized_record_provenance(record),
                 "raw_record_id": record["file_path"]
             }
 
@@ -1220,14 +1226,14 @@ def _normalization_cache_ledger_matches_records(
             return False
         rows = connection.execute(
             """
-            SELECT evidence_id, funding_call_id, run_id, source_url, content_hash
+            SELECT evidence_id, funding_call_id, run_id, source_url, content_hash, provenance
             FROM canonical_evidence
             """
         ).fetchall()
         if len(rows) != len(expected):
             return False
         actual_ids: set[str] = set()
-        for evidence_id, funding_call_id, run_id, source_url, content_hash in rows:
+        for evidence_id, funding_call_id, run_id, source_url, content_hash, provenance_json in rows:
             key = str(evidence_id or "")
             if key in actual_ids or key not in expected:
                 return False
@@ -1239,6 +1245,15 @@ def _normalization_cache_ledger_matches_records(
                 str(content_hash or ""),
             )
             if actual_values != expected[key]:
+                return False
+            record = next((item for item in records if str(item.get("evidence_id") or "") == key), None)
+            if record is None:
+                return False
+            try:
+                actual_provenance = json.loads(provenance_json)
+            except (TypeError, ValueError):
+                return False
+            if actual_provenance != _normalized_record_provenance(record):
                 return False
         return actual_ids == set(expected)
     except (OSError, sqlite3.Error):
