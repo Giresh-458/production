@@ -280,3 +280,38 @@ def test_adaptive_research_does_not_emit_synthetic_evidence_when_all_sources_fai
     assert result.get("outputs") == []
     assert not list(output_dir.rglob("*.md"))
     assert any("no synthetic mission artifact" in warning.lower() for warning in result.get("warnings", []))
+
+
+def test_one_esg_concept_group_is_not_enough_to_support_a_secondary_domain():
+    ctx = build_context(
+        themes=("ESG",),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG", "DePIN"),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.72,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability reporting", "sustainability disclosure"],
+            },
+            {
+                "domain": "DePIN",
+                "score": 0.28,
+                "raw_score": 2.4,
+                "matched_terms": ["iot"],
+            },
+        ),
+    )
+    record = {
+        "title": "Sustainability reporting controls",
+        "problem_statement": "The report describes sustainability reporting controls and disclosure assurance.",
+        "context_summary": "The report identifies gaps in sustainability reporting.",
+    }
+
+    result = relevance(record, ctx)
+
+    assert result["passed"] is False
+    assert "ESG" not in result["supported_domains"]

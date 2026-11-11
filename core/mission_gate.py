@@ -6,6 +6,37 @@ from typing import Any
 from core.funding_selection import FundingCallContext
 from core.schemas import DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 
+# Batch-2 mission verification uses a deliberately narrow ESG vocabulary.
+# Keep this local to the downstream gate so Batch-1 routing/schema behavior remains
+# unchanged while normalized evidence can still validate source-grounded ESG calls.
+BATCH2_ESG_DOMAIN_TERMS = {
+    "sustainability reporting",
+    "sustainability disclosure",
+    "sustainability assurance",
+    "greenhouse gas emissions",
+    "emissions trading",
+    "emissions reporting",
+    "carbon markets",
+    "carbon market",
+    "carbon credits",
+    "carbon credit",
+    "carbon accounting",
+    "mrv",
+    "climate change adaptation",
+    "climate change mitigation",
+    "climate resilience",
+}
+BATCH2_ESG_ANCHOR_GROUPS = (
+    frozenset({"sustainability reporting", "sustainability disclosure", "sustainability assurance"}),
+    frozenset({
+        "greenhouse gas emissions", "emissions trading", "emissions reporting",
+        "carbon markets", "carbon market", "carbon credits", "carbon credit",
+        "carbon accounting", "mrv",
+    }),
+    frozenset({"climate change adaptation", "climate change mitigation", "climate resilience"}),
+)
+
+
 STOP = {
     "the", "and", "for", "with", "that", "this", "from", "into", "their",
     "there", "which", "using", "used", "use", "are", "was", "were", "have",
@@ -73,6 +104,8 @@ def _supported_domain_evidence(research_context: Any) -> dict[str, set[str]] | N
             for term, weight in weights.items()
             if float(weight) >= 2.0
         }
+        if domain == "ESG":
+            strong_terms.update(BATCH2_ESG_DOMAIN_TERMS)
         supported_terms = {
             str(term).casefold().strip()
             for term in matched_terms
@@ -84,7 +117,18 @@ def _supported_domain_evidence(research_context: Any) -> dict[str, set[str]] | N
             # an otherwise energy/digital call into an ESG research mission.
             if context_domain != "ESG" and len(supported_terms) < 2:
                 continue
-        if supported_terms and has_required_domain_anchor_groups(domain, supported_terms):
+        if domain == "ESG":
+            # A single sustainability/emissions phrase is often only an
+            # expected outcome of another technical mission. Require evidence
+            # from at least two independent ESG concept groups in Batch-2.
+            matched_esg_groups = sum(
+                1 for group in BATCH2_ESG_ANCHOR_GROUPS
+                if group.intersection(supported_terms)
+            )
+            domain_anchors_supported = matched_esg_groups >= 2
+        else:
+            domain_anchors_supported = has_required_domain_anchor_groups(domain, supported_terms)
+        if supported_terms and domain_anchors_supported:
             supported[str(domain)] = supported_terms
     return supported
 
