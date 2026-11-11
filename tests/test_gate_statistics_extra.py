@@ -134,20 +134,22 @@ def test_conflicting_duplicate_mission_gate_statistics(
     assert gate_report_path.exists()
     gate_report = json.loads(gate_report_path.read_text(encoding="utf-8"))
 
-    # 2 canonical evidence_ids: 1 accepted (the conflict group was accepted because conf2 was seen later and replaced the title, OR because our deterministic policy just relies on the final merged state, which in save_normalized_collection_records keeps the LATEST data)
-    # Actually, the merged record will have the LATEST title if we merge them, which is "Quantum entanglement". So it will pass!
-    assert gate_report["accepted_records"] == 0
-    assert gate_report["rejected_records"] == 2
+    # The two conflicting observations share one evidence identity. The latest
+    # observation is retained for normalization, so its mission-matching title
+    # is evaluated once; the unrelated source remains rejected.
+    assert gate_report["accepted_records"] == 1
+    assert gate_report["rejected_records"] == 1
     assert gate_report["input_records"] == 2
 
     records = json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8"))
-    assert len(records) == 0
+    assert len(records) == 1
+    assert records[0]["title"] == "Quantum entanglement"
 
     by_area = json.loads((call_root / "normalized" / "by_area.json").read_text(encoding="utf-8"))
-    assert len(by_area.get("DePIN", [])) == 0
+    assert len(by_area.get("DePIN", [])) == 1
 
     by_layer = json.loads((call_root / "normalized" / "by_layer.json").read_text(encoding="utf-8"))
-    assert len(by_layer.get("Literature", [])) == 0
+    assert len(by_layer.get("Literature", [])) == 1
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
