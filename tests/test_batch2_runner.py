@@ -1728,3 +1728,45 @@ def test_unexpected_agent_directory_is_quarantined_and_allowed_funding_directory
         for item in audit["unexpected_intermediate_entries"]
     )
     assert audit["quarantine_failures"] == []
+
+
+def test_batch2_selected_context_validation_rejects_reported_blockers(tmp_path):
+    context = _context()
+    validation = {
+        "status": "VALIDATED",
+        "scope": "selected_contexts_only",
+        "batch1_run_id": "batch1-independent-run",
+        "validated_funding_call_ids": [context.funding_call_id],
+        "blockers": ["funding context source evidence was not verified"],
+        "blocker_count": 1,
+    }
+    with pytest.raises(ValueError, match="does not match the supplied Batch-1 run and funding-call IDs"):
+        execute_batch2(
+            funding_contexts=[context],
+            context_validation=validation,
+            batch1_run_id="batch1-independent-run",
+            output_root=tmp_path,
+            run_id="batch2-blocked-context-validation",
+            dry_run=True,
+        )
+
+
+def test_standalone_runner_rejects_selected_context_validation_with_blockers(tmp_path):
+    from scripts.pipeline_tools.run_batch2 import load_funding_context_handoff
+
+    context = _context()
+    handoff = tmp_path / "funding_contexts.json"
+    handoff.write_text(json.dumps({
+        "batch1_run_id": "batch1-blocked-context-run",
+        "context_validation": {
+            "status": "VALIDATED",
+            "scope": "selected_contexts_only",
+            "batch1_run_id": "batch1-blocked-context-run",
+            "validated_funding_call_ids": [context.funding_call_id],
+            "blockers": ["research intent not verified"],
+            "blocker_count": 1,
+        },
+        "funding_contexts": [context.to_dict()],
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="ACCEPTED global Batch-1 source-coverage attestation"):
+        load_funding_context_handoff(handoff)
