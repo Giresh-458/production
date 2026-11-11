@@ -24,6 +24,7 @@ from core.normalization import (
     normalize_intermediate_artifact,
     save_normalized_collection_records,
     _normalized_record_provenance,
+    _canonical_evidence_ledger_record,
 )
 from core.source_registry import build_source_refresh_plan, sync_source_registry
 
@@ -394,13 +395,17 @@ def validate_evidence_ledger(
             errors.append(f"evidence ledger SQLite quick_check failed: {quick_check!r}")
 
         total_rows = int(connection.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0])
+        ledger_columns = (
+            "evidence_id", "record_id", "funding_call_id", "run_id", "agent", "layer",
+            "source_id", "source_url", "canonical_url", "source_type", "source_name",
+            "title", "problem", "problem_signature", "evidence", "evidence_excerpt",
+            "evidence_type", "research_area", "published_at", "retrieved_at", "updated_at",
+            "content_hash", "source_quality", "evidence_strength", "confidence",
+            "independence_group", "independence_status", "normalization_status",
+            "provenance", "raw_record_id",
+        )
         rows = connection.execute(
-            """
-            SELECT evidence_id, record_id, funding_call_id, run_id, agent,
-                   source_url, retrieved_at, content_hash, normalization_status, provenance
-            FROM canonical_evidence
-            WHERE funding_call_id = ? AND run_id = ?
-            """,
+            f"SELECT {', '.join(ledger_columns)} FROM canonical_evidence WHERE funding_call_id = ? AND run_id = ?",
             (funding_call_id, run_id),
         ).fetchall()
 
@@ -412,36 +417,30 @@ def validate_evidence_ledger(
         if actual_ids != set(expected):
             errors.append("evidence ledger evidence_id set does not match normalized records")
 
+        content_hash_to_group: dict[str, str] = {}
+        for record in records:
+            content_hash = str(record.get("content_hash") or "")
+            if content_hash and content_hash not in content_hash_to_group:
+                content_hash_to_group[content_hash] = str(record.get("source_id") or "")
         for row in rows:
-            evidence_id, record_id, call_id, row_run_id, agent, source_url, retrieved_at, content_hash, status, provenance_json = row
-            record = expected.get(str(evidence_id))
+            actual = dict(zip(ledger_columns, row))
+            evidence_id = str(actual.get("evidence_id") or "")
+            record = expected.get(evidence_id)
             if record is None:
                 continue
-            comparisons = {
-                "record_id": (record_id, record.get("record_id")),
-                "funding_call_id": (call_id, funding_call_id),
-                "run_id": (row_run_id, run_id),
-                "agent": (agent, record.get("agent_name")),
-                "source_url": (source_url, record.get("source_url")),
-                "retrieved_at": (retrieved_at, record.get("collected_at")),
-                "content_hash": (content_hash, record.get("content_hash")),
-                "normalization_status": (status, "NORMALIZED"),
-            }
-            for field, (actual, wanted) in comparisons.items():
-                if actual != wanted:
+            expected_row = _canonical_evidence_ledger_record(record, content_hash_to_group)
+            for field in ledger_columns:
+                actual_value = actual.get(field)
+                expected_value = expected_row.get(field)
+                if field == "provenance":
+                    try:
+                        actual_value = json.loads(actual_value)
+                    except (TypeError, ValueError):
+                        actual_value = None
+                if actual_value != expected_value:
                     errors.append(
                         f"evidence ledger {field} mismatch for evidence_id {evidence_id}"
                     )
-            try:
-                provenance = json.loads(provenance_json)
-            except (TypeError, ValueError):
-                provenance = None
-            if not isinstance(provenance, dict):
-                errors.append(f"evidence ledger provenance is invalid for evidence_id {evidence_id}")
-            elif provenance != _normalized_record_provenance(record):
-                errors.append(
-                    f"evidence ledger provenance mismatch for evidence_id {evidence_id}"
-                )
     except (sqlite3.Error, OSError, TypeError, ValueError) as exc:
         errors.append(f"could not validate evidence ledger {ledger_path}: {exc}")
     finally:
