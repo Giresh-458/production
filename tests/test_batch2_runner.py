@@ -667,7 +667,7 @@ def _artifact(run_id: str, call_id: str, agent_name: str = "literature") -> str:
 """
 
 
-def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path):
+def test_batch1_handoff_batch2_collection_and_normalization_handoff_end_to_end(tmp_path):
     context = _context()
     batch1_handoff = tmp_path / "batch1" / "workflow" / "funding_contexts.json"
     batch1_handoff.parent.mkdir(parents=True, exist_ok=True)
@@ -803,26 +803,12 @@ def test_batch1_handoff_batch2_collection_and_batch3_tagging_end_to_end(tmp_path
     assert roots[0].name == "intermediate"
     assert gate(records[0]) is True
 
-    # Batch-3's real tagging entry point must be able to reload and consume the
-    # normalized per-call records. Keep semantic scores deterministic so this
-    # integration test does not depend on Ollama or a transformer download.
-    from agents import tagging_agent
-
-    tag_output = call_root / "processed" / "tags"
-    with patch("agents.tagging_agent._semantic_tag_scores", return_value={}), patch(
-        "agents.tagging_agent._semantic_signal_scores", return_value={}
-    ):
-        tagging_response = tagging_agent.run_agent(
-            "configured_scan",
-            area="RWA",
-            input_data={
-                "outputs_root": str(call_root),
-                "output_dir": str(tag_output),
-            },
-        )
-    assert tagging_response["status"] == "success"
-    assert tagging_response["metadata"]["tagging_summary"]["records_tagged"] == 11
-    assert Path(tagging_response["metadata"]["tagging_summary"]["summary_markdown"]).is_file()
+    # Batch-2's acceptance boundary is the validated normalized handoff.
+    # Deliberately do not invoke any Batch-3 agent in this test.
+    assert report["status"] == "ready_for_batch3"
+    assert report["batch3_started"] is False
+    assert call_report["status"] == "ready_for_batch3"
+    assert len(records) == 11
 
     report_path = Path(report["report_path"])
     assert report_path.is_file()
