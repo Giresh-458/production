@@ -79,6 +79,7 @@ def test_conflicting_duplicate_mission_gate_statistics(
             source_url="https://example.org/conflict",
             content="Blah\n\nSame snippet string.",
             research_area="DePIN",
+            evidence_snippets=["Same snippet string."],
             collected_at="2026-08-24T10:00:00+00:00",
         )
 
@@ -91,6 +92,7 @@ def test_conflicting_duplicate_mission_gate_statistics(
             source_url="https://example.org/conflict",
             content="Blah\n\nSame snippet string.",
             research_area="DePIN",
+            evidence_snippets=["Same snippet string."],
             collected_at="2026-08-24T10:00:01+00:00",
         )
 
@@ -103,6 +105,7 @@ def test_conflicting_duplicate_mission_gate_statistics(
             source_url="https://example.org/class",
             content="Classic\n\nClassic networking.",
             research_area="DePIN",
+            evidence_snippets=["Classic networking."],
             collected_at="2026-08-24T10:00:02+00:00",
         )
 
