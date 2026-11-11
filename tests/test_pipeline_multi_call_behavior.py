@@ -281,3 +281,18 @@ def test_shared_evidence_isolation(tmp_path):
     # Verify shared evidence doesn't cause duplicate network collection.
     # Since there's only one intermediate file `evidence_shared.md`, it was collected once, but correctly distributed to both calls.
     assert len(list(intermediate.rglob("*.md"))) == 3
+
+
+def test_pipeline_run_directories_are_unique_for_same_timestamp(tmp_path):
+    from datetime import UTC, datetime
+    from run_pipeline import create_unique_pipeline_run_root
+
+    fixed_time = datetime(2026, 11, 11, 10, 30, 45, 123456, tzinfo=UTC)
+    first_id, first_root = create_unique_pipeline_run_root(tmp_path, fixed_time)
+    second_id, second_root = create_unique_pipeline_run_root(tmp_path, fixed_time)
+
+    assert first_id != second_id
+    assert first_root != second_root
+    assert first_root.is_dir()
+    assert second_root.is_dir()
+    assert first_root.parent == second_root.parent == tmp_path
