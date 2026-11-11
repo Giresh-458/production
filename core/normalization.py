@@ -896,7 +896,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
