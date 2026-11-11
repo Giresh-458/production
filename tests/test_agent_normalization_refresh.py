@@ -340,8 +340,8 @@ A source-backed result about reproducible research workflows.
     records_path = run_root / "normalized" / "records.json"
 
     old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert old_manifest["schema_version"] == 3
-    old_manifest["schema_version"] = 2
+    assert old_manifest["schema_version"] == 4
+    old_manifest["schema_version"] = 3
     manifest_path.write_text(json.dumps(old_manifest), encoding="utf-8")
     records_path.write_text("[]", encoding="utf-8")
 
@@ -349,7 +349,7 @@ A source-backed result about reproducible research workflows.
 
     refreshed_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     refreshed_records = json.loads(records_path.read_text(encoding="utf-8"))
-    assert refreshed_manifest["schema_version"] == 3
+    assert refreshed_manifest["schema_version"] == 4
     assert [record["title"] for record in refreshed_records] == ["Versioned Evidence"]
 
 
