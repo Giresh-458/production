@@ -245,6 +245,7 @@ class AllCollectionAgentTests(unittest.TestCase):
             set(COLLECTION_AGENTS) - {"funding"},
         )
 
+        tasks = []
         for name in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
             with self.subTest(agent=name):
                 result = run_registered_agent(
@@ -256,7 +257,7 @@ class AllCollectionAgentTests(unittest.TestCase):
                         "title": f"Contract evidence for {name}",
                         "source_name": f"Contract test {name}",
                         "analysis_mode": "collect_only",
-                        "output_dir": str(root / name),
+                        "output_dir": str(root / "intermediate" / name),
                         "run_id": run_id,
                     },
                     funding_context=funding_context,
@@ -287,6 +288,34 @@ class AllCollectionAgentTests(unittest.TestCase):
                     run_id,
                     f"{name} artifact does not belong to the orchestrated run",
                 )
+                tasks.append({
+                    "agent_name": name,
+                    "status": result["status"],
+                    "outputs_count": len(result["outputs"]),
+                    "output_paths": [item["markdown_path"] for item in result["outputs"]],
+                    "errors": result["errors"],
+                    "warnings": result["warnings"],
+                })
+
+        from core.batch2 import audit_collector_artifacts
+
+        audited_tasks, audit = audit_collector_artifacts(
+            root,
+            tasks,
+            expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            run_id=run_id,
+        )
+        self.assertEqual(audit["manifest_issues"], [])
+        self.assertEqual(audit["quarantined_artifacts"], [])
+        self.assertEqual(
+            sum(item["manual_input_artifacts"] for item in audit["agents"]),
+            11,
+        )
+        for task in audited_tasks:
+            self.assertTrue(
+                any("user-supplied inputs" in warning for warning in task["warnings"]),
+                task,
+            )
 
     def test_all_12_collection_schemas_exist_and_have_required_fields(self):
         for name in COLLECTION_AGENTS:
