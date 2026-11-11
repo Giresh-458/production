@@ -1834,3 +1834,79 @@ def test_normalization_preserves_title_variants_for_conflicting_duplicate_eviden
         assert ledger_provenance["title_variants"] == [first_title, later_title]
     finally:
         connection.close()
+
+
+def test_literature_records_with_same_summary_but_different_source_evidence_stay_distinct(tmp_path):
+    from tests.batch2_test_helpers import write_test_intermediate_artifact
+    from core.normalization import save_normalized_collection_records
+
+    run_id = "doi-distinct-evidence-run"
+    call_id = "CALL-DOI-DISTINCT"
+    first = "Source A reports a distinct measured result for system A."
+    second = "Source B reports a different measured result for system B."
+    for title, doi, url, excerpt, minute in (
+        ("Cool Paper", "10.1/a", "https://example.org/paper-a", first, "00"),
+        ("Cool Paper", "10.1/b", "https://example.org/paper-b", second, "01"),
+    ):
+        write_test_intermediate_artifact(
+            tmp_path,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title=title,
+            source_url=url,
+            content="Both publications discuss the same broad research problem.\n\n" + excerpt,
+            research_area="DePIN",
+            evidence_snippets=[excerpt],
+            collected_at=f"2026-11-11T10:{minute}:00+00:00",
+            doi=doi,
+        )
+
+    paths = save_normalized_collection_records(
+        tmp_path / "intermediate" / "literature",
+        tmp_path / "call-output",
+        call_id,
+        target_run_id=run_id,
+    )
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    assert len(records) == 2
+    assert {record["source_id"] for record in records} == {"doi:10.1/a", "doi:10.1/b"}
+    assert len({record["content_hash"] for record in records}) == 2
+
+
+def test_exact_literature_source_content_can_collapse_across_doi_aliases(tmp_path):
+    from tests.batch2_test_helpers import write_test_intermediate_artifact
+    from core.normalization import save_normalized_collection_records
+
+    run_id = "doi-alias-evidence-run"
+    call_id = "CALL-DOI-ALIASES"
+    excerpt = "The paper reports the same source-backed measurement and result."
+    for doi, url, minute in (
+        ("10.2/a", "https://example.org/doi-alias-a", "00"),
+        ("10.2/b", "https://example.org/doi-alias-b", "01"),
+    ):
+        write_test_intermediate_artifact(
+            tmp_path,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Shared Work",
+            source_url=url,
+            content="A shared research problem statement.\n\n" + excerpt,
+            research_area="DePIN",
+            evidence_snippets=[excerpt],
+            collected_at=f"2026-11-11T10:{minute}:00+00:00",
+            doi=doi,
+        )
+
+    paths = save_normalized_collection_records(
+        tmp_path / "intermediate" / "literature",
+        tmp_path / "call-output",
+        call_id,
+        target_run_id=run_id,
+    )
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert set(records[0]["source_id_variants"]) == {"doi:10.2/a", "doi:10.2/b"}
+    assert set(records[0]["source_url_variants"]) == {
+        "https://example.org/doi-alias-a",
+        "https://example.org/doi-alias-b",
+    }
