@@ -919,9 +919,18 @@ def finalize_collection_agent_response(
                 f"{quality_gate.get('rejection_reason') or 'limited structure/signal'}."
             )
 
+        # Same title/source can legitimately have different source content
+        # versions within one run. Collapse only byte-identical content so a
+        # changed page is retained as a distinct evidence artifact.
+        content_hash = str(
+            artifact_payload.get("provenance", {}).get("content_hash") or ""
+        ).strip()
+        if not content_hash:
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         dedupe_key = (
-            artifact_payload["shared_header"]["title"].lower(),
-            artifact_payload["shared_header"]["source"].lower(),
+            artifact_payload["shared_header"]["title"].casefold(),
+            artifact_payload["shared_header"]["source"].casefold(),
+            content_hash,
         )
         score_map = artifact_payload["metadata"].get("area_normalization", {}).get("keyword_scores", {})
         selected_area = artifact_payload["shared_header"]["research_area"]

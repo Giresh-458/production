@@ -1499,3 +1499,44 @@ def test_collector_artifact_audit_rejects_internal_redirected_roots(
 
     assert target.is_dir()
     assert list(target.iterdir()) == []
+
+
+def test_collection_finalizer_preserves_changed_content_for_same_title_and_source(tmp_path):
+    from datetime import UTC, datetime
+    from core.agent_interface import finalize_collection_agent_response
+    from core.normalization import normalize_intermediate_artifact
+
+    source = "https://example.org/research/technical-report"
+    first_content = (
+        "The report documents a measured interoperability limitation across distributed "
+        "systems, including a reproducible benchmark, test conditions, and observed failure "
+        "rates. The original version records a baseline result for the system under load."
+    )
+    revised_content = (
+        "The revised report documents the same interoperability limitation across distributed "
+        "systems, but adds a second benchmark, updated test conditions, and a measured reduction "
+        "in failure rates after the protocol change."
+    )
+    documents = [
+        {"title": "Distributed Systems Interoperability Report", "source": source, "content": first_content},
+        {"title": "Distributed Systems Interoperability Report", "source": source, "content": revised_content},
+    ]
+
+    response = finalize_collection_agent_response(
+        agent="lab",
+        layer="Lab",
+        mode="configured_scan",
+        area="DePIN",
+        documents=documents,
+        output_dir=tmp_path / "intermediate" / "lab",
+        started_at=datetime(2026, 11, 11, tzinfo=UTC),
+        run_id="same-source-content-version-test",
+    )
+
+    assert response["status"] in {"success", "partial_success"}
+    assert response["outputs_count"] == 2
+    paths = [Path(item["markdown_path"]) for item in response["outputs"]]
+    assert len(set(paths)) == 2
+    records = [normalize_intermediate_artifact(path) for path in paths]
+    assert {record["content_hash"] for record in records}.__len__() == 2
+    assert {record["source_url"] for record in records} == {source}
