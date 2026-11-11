@@ -264,6 +264,7 @@ def write_test_intermediate_artifact(
     research_area: str,
     collected_at: str,
     evidence_snippets: list[str] | None = None,
+    doi: str | None = None,
 ) -> Path:
     """Write a complete, auditable Batch-2 artifact for pipeline integration tests."""
     from datetime import datetime
@@ -278,7 +279,11 @@ def write_test_intermediate_artifact(
         title=title,
         source=source_url,
         content=content,
-        metadata={"source_type": "Research publication", "evidence_type": "Source excerpt"},
+        metadata={
+            "source_type": "Research publication",
+            "evidence_type": "Source excerpt",
+            **({"doi": doi} if doi else {}),
+        },
         collected_at=timestamp,
         allow_llm_refinement=False,
     )
