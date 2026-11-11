@@ -108,6 +108,10 @@ def test_late_collector_artifacts_are_quarantined_before_the_batch_returns(tmp_p
 
     assert report["tasks"][0]["status"] == "timeout_budget_exceeded"
     assert report["tasks"][0]["outputs_count"] == 0
+    assert report["tasks"][0]["reported_outputs_count"] == 1
+    assert report["tasks"][0]["reported_items_processed"] == 1
+    assert report["tasks"][0]["reported_items_saved"] == 1
+    assert report["tasks"][0]["reported_output_paths"]
     assert not (output_root / "intermediate" / "lab").exists()
     quarantined_dir = Path(report["tasks"][0]["quarantined_output_dir"])
     assert quarantined_dir.is_dir()

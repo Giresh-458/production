@@ -340,12 +340,36 @@ def execute_batch_run(
                 quarantine_error,
             ) = _quarantine_timed_out_output(task, output_dir)
         timed_out = dict(result or {})
+        reported_outputs = timed_out.get("outputs") or []
+        reported_output_paths = list(timed_out.get("output_paths") or [])
+        if not reported_output_paths and isinstance(reported_outputs, list):
+            reported_output_paths = [
+                str(item.get("markdown_path") or item.get("path") or "")
+                for item in reported_outputs
+                if isinstance(item, dict) and (item.get("markdown_path") or item.get("path"))
+            ]
+        try:
+            reported_outputs_count = int(timed_out.get("outputs_count", len(reported_outputs)) or 0)
+        except (TypeError, ValueError):
+            reported_outputs_count = len(reported_outputs) if isinstance(reported_outputs, list) else 0
+        try:
+            reported_items_processed = int(timed_out.get("items_processed", 0) or 0)
+        except (TypeError, ValueError):
+            reported_items_processed = 0
+        try:
+            reported_items_saved = int(timed_out.get("items_saved", 0) or 0)
+        except (TypeError, ValueError):
+            reported_items_saved = 0
         timed_out.update({
             "task_id": task["task_id"],
             "agent_name": task["agent_name"],
             "mode": task["mode"],
             "area": task["area"],
             "status": "timeout_budget_exceeded",
+            "reported_items_processed": reported_items_processed,
+            "reported_items_saved": reported_items_saved,
+            "reported_outputs_count": reported_outputs_count,
+            "reported_output_paths": reported_output_paths,
             "items_processed": 0,
             "items_saved": 0,
             "outputs_count": 0,
