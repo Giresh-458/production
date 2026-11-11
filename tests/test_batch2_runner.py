@@ -1832,6 +1832,10 @@ def test_normalization_preserves_title_variants_for_conflicting_duplicate_eviden
         assert row is not None
         ledger_provenance = json.loads(row["provenance"])
         assert ledger_provenance["title_variants"] == [first_title, later_title]
+        assert len(ledger_provenance["content_versions"]) == 2
+        assert ledger_provenance["observation_count"] == 2
+        assert ledger_provenance["first_seen"] == "2026-11-11T10:00:00+00:00"
+        assert ledger_provenance["last_seen"] == "2026-11-11T10:01:00+00:00"
     finally:
         connection.close()
 
