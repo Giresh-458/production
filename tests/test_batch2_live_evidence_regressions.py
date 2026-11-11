@@ -827,3 +827,33 @@ def test_unscoped_expert_api_collection_uses_funding_queries_without_copying_que
         assert "grid flexibility verification" not in document.content
         assert "Actual Researcher" in document.content
         assert captured == document.content
+
+
+def test_crawler_url_and_depth_headers_remain_provenance_not_problem_evidence():
+    from core.agent_interface import build_intermediate_artifact_payload
+
+    source_url = "https://example.org/energy-storage-grid-flexibility-challenge"
+    raw_content = (
+        "[SOURCE] Generic organisation landing page\n"
+        f"URL: {source_url}\n"
+        "Depth: 0\n"
+        "Dates: 2026-11-11\n\n"
+        "This page provides general organisation information and contact details."
+    )
+
+    payload, _warnings = build_intermediate_artifact_payload(
+        agent="company",
+        layer="Company",
+        mode="configured_scan",
+        area="Unscoped",
+        title="Generic organisation landing page",
+        source=source_url,
+        content=raw_content,
+        metadata={"source_name": "CONFIG_ONLY_NAME", "focus": "CONFIG_ONLY_FOCUS"},
+        allow_llm_refinement=False,
+    )
+
+    assert payload["raw_content"] == raw_content
+    assert source_url in payload["evidence_bundle"]["links_found"]
+    assert all(source_url not in item for item in payload["evidence_bundle"]["evidence_snippets"])
+    assert payload["problem_intelligence"]["selected_problem"] is None

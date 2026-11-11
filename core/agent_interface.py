@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from core.collection_schemas import get_collection_schema, ordered_agent_body_items, validate_agent_specific_body
-from core.evidence import build_evidence_bundle
+from core.evidence import build_evidence_bundle, strip_collection_metadata
 from core.file_lock import atomic_write_text
 from core.quality import evaluate_collection_quality
 from core.recursive_collection import update_recursive_review
@@ -520,10 +520,15 @@ def build_intermediate_artifact_payload(
     # Normalize line endings once so the raw-content hash can be verified after
     # Markdown serialization on Windows and POSIX without changing source text.
     content = str(content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    evidence_content = (
+        content
+        if agent.strip().casefold() == "funding"
+        else strip_collection_metadata(content)
+    )
     normalized_area, area_warnings, area_scores = resolve_research_area(
         explicit_area=area,
         title=title,
-        raw_content=content,
+        raw_content=evidence_content,
         authoritative_explicit=bool(area),
     )
     machine_metadata = {
@@ -546,6 +551,7 @@ def build_intermediate_artifact_payload(
     }
     evidence_bundle = build_evidence_bundle(
         raw_content=content.strip(),
+        evidence_content=evidence_content,
         title=shared_header["title"],
         research_area=shared_header["research_area"],
         metadata=metadata or {},
@@ -571,7 +577,7 @@ def build_intermediate_artifact_payload(
         title=shared_header["title"],
         source=shared_header["source"],
         research_area=shared_header["research_area"],
-        raw_content=content.strip(),
+        raw_content=evidence_content,
         evidence_bundle=evidence_bundle,
         area_scores=area_scores,
     )
@@ -584,7 +590,7 @@ def build_intermediate_artifact_payload(
     provenance["content_hash"] = content_hash
 
     problem_intelligence = extract_problem_intelligence(
-        content.strip(),
+        evidence_content,
         shared_header["title"],
         evidence_bundle,
         allow_llm_refinement=allow_llm_refinement,
@@ -899,14 +905,17 @@ def finalize_collection_agent_response(
         artifact_payload["agent_specific_body"] = agent_specific_body
         collected_warnings.extend(area_warnings)
         quality_gate = artifact_payload["metadata"].get("quality_gate", {})
-        # Configured live scans are source collection, not final publication.
-        # Preserve useful fetched evidence even when a page is structurally thin
-        # or does not contain a literal "problem" phrase. The downstream stages
-        # can weight the quality metadata rather than losing the evidence entirely.
+        # Configured live scans preserve fetched pages in the intermediate
+        # audit trail, but a failed quality gate remains failed. The Batch-2
+        # mission gate will not promote these review-only artifacts to handoff.
         live_source_rescue = (
             mode == "configured_scan"
             and bool(source.strip().startswith(("http://", "https://")))
-            and len(content.strip()) >= 180
+            and len(
+                content.strip()
+                if agent.strip().casefold() == "funding"
+                else strip_collection_metadata(content).strip()
+            ) >= 180
             and agent != "adaptive_research"
         )
         if live_source_rescue and not quality_gate.get("passed", False):

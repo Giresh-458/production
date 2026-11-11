@@ -45,6 +45,32 @@ def _clean_line(value: str) -> str:
     return " ".join((value or "").split()).strip()
 
 
+def strip_collection_metadata(raw_content: str) -> str:
+    """Remove crawler wrapper lines from evidence text while retaining page titles.
+
+    The original raw content remains stored for provenance and audit. URLs,
+    crawl depth, and publication-date headers are not source observations and
+    must not create problem, area, or relevance signals.
+    """
+    cleaned_lines: list[str] = []
+    for line in (raw_content or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[SOURCE]"):
+            cleaned_lines.append(stripped[len("[SOURCE]"):].strip())
+            continue
+        if re.match(r"^(?:URL|Depth|Dates):\\s*", stripped, flags=re.IGNORECASE):
+            continue
+        depth_header = re.match(r"^\\[Depth\\s+\\d+\\]\\s*(.*)$", stripped, flags=re.IGNORECASE)
+        if depth_header:
+            header = depth_header.group(1).strip()
+            if " | http://" in header or " | https://" in header:
+                header = re.split(r"\\s+\\|\\s+https?://", header, maxsplit=1, flags=re.IGNORECASE)[0]
+            cleaned_lines.append(header)
+            continue
+        cleaned_lines.append(line)
+    return "\\n".join(cleaned_lines).strip()
+
+
 def _paragraphs(raw_content: str) -> list[str]:
     if not raw_content.strip():
         return []
@@ -211,16 +237,18 @@ def build_evidence_bundle(
     title: str,
     research_area: str | None,
     metadata: dict[str, Any] | None = None,
+    evidence_content: str | None = None,
 ) -> dict[str, Any]:
     metadata = metadata or {}
-    paragraphs = _paragraphs(raw_content)
+    evidence_text = evidence_content if evidence_content is not None else raw_content
+    paragraphs = _paragraphs(evidence_text)
     key_paragraphs = _top_scored(paragraphs, research_area, 5)
     evidence_snippets = _top_scored(paragraphs, research_area, 6)
-    headings = _section_headings(raw_content)
-    bullets = _bullet_lists(raw_content)
-    quoted = _quoted_passages(raw_content)
+    headings = _section_headings(evidence_text)
+    bullets = _bullet_lists(evidence_text)
+    quoted = _quoted_passages(evidence_text)
     links = _links_found(raw_content, metadata)
-    entities = _named_entities_or_programs(raw_content, metadata)
+    entities = _named_entities_or_programs(evidence_text, metadata)
 
     return {
         "page_title": title,
