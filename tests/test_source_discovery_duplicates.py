@@ -196,8 +196,9 @@ def test_source_discovery_duplicate_preservation(
     assert "Nothing matches here" not in titles
 
     problem_statements = [r.get("problem_statement", "") for r in discovery_args]
-    assert problem_statements.count("Blockchain networking ledger systems.") == 1
-    assert problem_statements.count("A completely unrelated problem statement.") == 2
+    # These short fixture descriptions do not satisfy deterministic problem
+    # extraction; the normalized fallback must remain explicit, not fabricated.
+    assert problem_statements == ["No explicit problem statement found."] * 3
 
     research_areas = [r.get("research_area", "") for r in discovery_args]
     assert research_areas.count("DePIN") == 1
