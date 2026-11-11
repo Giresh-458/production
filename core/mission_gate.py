@@ -118,14 +118,20 @@ def _supported_domain_evidence(research_context: Any) -> dict[str, set[str]] | N
             if context_domain != "ESG" and len(supported_terms) < 2:
                 continue
         if domain == "ESG":
-            # A single sustainability/emissions phrase is often only an
-            # expected outcome of another technical mission. Require evidence
-            # from at least two independent ESG concept groups in Batch-2.
-            matched_esg_groups = sum(
-                1 for group in BATCH2_ESG_ANCHOR_GROUPS
-                if group.intersection(supported_terms)
-            )
-            domain_anchors_supported = matched_esg_groups >= 2
+            context_domain = normalize_area(str(getattr(research_context, "domain", "") or ""))
+            if context_domain == "ESG":
+                # ESG is the selected call's primary domain: the normal
+                # required ESG anchor group is sufficient for a focused call.
+                domain_anchors_supported = has_required_domain_anchor_groups(domain, supported_terms)
+            else:
+                # ESG is secondary to another mission. Require independent
+                # evidence from two ESG concept groups so an expected outcome
+                # cannot promote the source into a second research mission.
+                matched_esg_groups = sum(
+                    1 for group in BATCH2_ESG_ANCHOR_GROUPS
+                    if group.intersection(supported_terms)
+                )
+                domain_anchors_supported = matched_esg_groups >= 2
         else:
             domain_anchors_supported = has_required_domain_anchor_groups(domain, supported_terms)
         if supported_terms and domain_anchors_supported:

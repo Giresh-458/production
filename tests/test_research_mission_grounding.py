@@ -24,10 +24,11 @@ def build_context(
     target_outcomes=(),
     selected_domains=(),
     domain_relevance=(),
+    domain="General",
 ):
     rc = FundingResearchContext(
         funding_call_id="CALL-TCUP",
-        domain="General",
+        domain=domain,
         technology_themes=tuple(themes),
         funding_priorities=tuple(funding_priorities),
         target_outcomes=tuple(target_outcomes),
@@ -318,3 +319,29 @@ def test_one_esg_concept_group_is_not_enough_to_support_a_secondary_domain():
     assert result["passed"] is False
     assert supported_domains is not None
     assert "ESG" not in supported_domains
+
+
+def test_primary_esg_call_can_use_one_focused_esg_anchor_group():
+    ctx = build_context(
+        themes=("sustainability reporting",),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG",),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.9,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability reporting"],
+            },
+        ),
+        domain="ESG",
+    )
+
+    from core.mission_gate import _supported_domain_evidence
+
+    supported = _supported_domain_evidence(ctx.research_context)
+    assert supported is not None
+    assert "ESG" in supported
