@@ -936,12 +936,14 @@ def save_normalized_collection_records(
             r["content_versions"] = [r["content_hash"]]
             r["source_id_variants"] = [r["source_id"]] if r.get("source_id") else []
             r["source_url_variants"] = [r["source_url"]] if r.get("source_url") else []
+            r["title_variants"] = [r["title"]] if r.get("title") else []
             deduped_records[sid] = r
         else:
             existing = deduped_records[sid]
             for field, candidate in (
                 ("source_id_variants", r.get("source_id")),
                 ("source_url_variants", r.get("source_url")),
+                ("title_variants", r.get("title")),
             ):
                 if candidate and candidate not in existing.setdefault(field, []):
                     existing[field].append(candidate)
@@ -1046,6 +1048,7 @@ def save_normalized_collection_records(
                     "funding_call_id": record["funding_call_id"],
                     "funding_call_ids": record.get("funding_call_ids", []),
                     "source_funding_call_ids": record.get("source_funding_call_ids", []),
+                    "title_variants": record.get("title_variants", [record.get("title")]),
                     "run_id": record["run_id"],
                     "retrieved_at": record["collected_at"],
                     "raw_record_id": record["file_path"]
