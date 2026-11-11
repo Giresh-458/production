@@ -648,6 +648,7 @@ def audit_collector_artifacts(
 
         for path in files:
             reasons: list[str] = []
+            manual_input_source = False
             if task_status == "timeout_budget_exceeded":
                 reasons.append("collector_exceeded_batch_timeout")
             try:
@@ -756,7 +757,7 @@ def audit_collector_artifacts(
                     and not provenance_parsed.fragment
                 )
                 if manual_input_source:
-                    manual_input_paths.append(str(path.resolve()))
+                    pass
                 else:
                     if header_parsed.scheme not in {"http", "https"} or not header_parsed.netloc:
                         reasons.append("artifact_header_source_url_invalid")
@@ -855,6 +856,8 @@ def audit_collector_artifacts(
                 continue
 
             valid_files.append(path)
+            if manual_input_source:
+                manual_input_paths.append(str(path.resolve()))
 
         if len(task_items) > 1:
             agent_issues.append({
