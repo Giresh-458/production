@@ -251,3 +251,43 @@ def write_cache_test_ledger(path: Path, records: list[dict[str, Any]]) -> None:
         connection.commit()
     finally:
         connection.close()
+
+
+def write_test_intermediate_artifact(
+    run_root: Path,
+    *,
+    run_id: str,
+    funding_call_id: str,
+    title: str,
+    source_url: str,
+    content: str,
+    research_area: str,
+    collected_at: str,
+) -> Path:
+    """Write a complete, auditable Batch-2 artifact for pipeline integration tests."""
+    from datetime import datetime
+    from core.agent_interface import build_intermediate_artifact_payload, save_intermediate_markdown
+
+    timestamp = datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+    payload, _ = build_intermediate_artifact_payload(
+        agent="literature",
+        layer="Literature",
+        mode="configured_scan",
+        area=research_area,
+        title=title,
+        source=source_url,
+        content=content,
+        metadata={"source_type": "Research publication", "evidence_type": "Source excerpt"},
+        collected_at=timestamp,
+        allow_llm_refinement=False,
+    )
+    payload["shared_header"]["funding_call_id"] = funding_call_id
+    payload["shared_header"]["funding_call_ids"] = [funding_call_id]
+    payload["shared_header"]["run_id"] = run_id
+    # These tests isolate mission-gate and deduplication behavior. Collection
+    # quality is exercised independently by the 11-agent contract suite.
+    payload["metadata"]["quality_gate"]["passed"] = True
+    return save_intermediate_markdown(
+        payload=payload,
+        output_dir=run_root / "intermediate" / "literature",
+    )
