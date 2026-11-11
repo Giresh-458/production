@@ -270,7 +270,7 @@ def test_collector_artifact_audit_rejects_external_workflow_symlink_before_quara
     except (OSError, NotImplementedError):
         pytest.skip("directory symlinks are not available on this platform")
 
-    with pytest.raises(ValueError, match="workflow root resolves outside"):
+    with pytest.raises(ValueError, match="workflow root must not be a symlink or redirected path"):
         audit_collector_artifacts(
             run_root,
             [],
