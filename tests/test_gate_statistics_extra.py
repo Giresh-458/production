@@ -137,22 +137,21 @@ def test_conflicting_duplicate_mission_gate_statistics(
     assert gate_report_path.exists()
     gate_report = json.loads(gate_report_path.read_text(encoding="utf-8"))
 
-    # The two conflicting observations share one evidence identity. The latest
-    # observation is retained for normalization, so its mission-matching title
-    # is evaluated once; the unrelated source remains rejected.
-    assert gate_report["accepted_records"] == 1
-    assert gate_report["rejected_records"] == 1
+    # The first-seen title remains the canonical title for this evidence ID.
+    # A later conflicting title is retained as a variant, not allowed to make
+    # an otherwise unrelated excerpt pass the mission gate.
+    assert gate_report["accepted_records"] == 0
+    assert gate_report["rejected_records"] == 2
     assert gate_report["input_records"] == 2
 
     records = json.loads((call_root / "normalized" / "records.json").read_text(encoding="utf-8"))
-    assert len(records) == 1
-    assert records[0]["title"] == "Quantum entanglement"
+    assert len(records) == 0
 
     by_area = json.loads((call_root / "normalized" / "by_area.json").read_text(encoding="utf-8"))
-    assert len(by_area.get("DePIN", [])) == 1
+    assert len(by_area.get("DePIN", [])) == 0
 
     by_layer = json.loads((call_root / "normalized" / "by_layer.json").read_text(encoding="utf-8"))
-    assert len(by_layer.get("Literature", [])) == 1
+    assert len(by_layer.get("Literature", [])) == 0
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
