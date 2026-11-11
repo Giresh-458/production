@@ -592,6 +592,7 @@ def audit_collector_artifacts(
         else:
             files, symlink_paths = [], []
         valid_files: list[Path] = []
+        manual_input_paths: list[str] = []
         agent_issues: list[dict[str, Any]] = []
         if agent_root_is_symlink:
             agent_issues.append({
@@ -739,20 +740,38 @@ def audit_collector_artifacts(
                 provenance_source = str(provenance.get("source_url") or "").strip()
                 header_parsed = urlparse(header_source)
                 provenance_parsed = urlparse(provenance_source)
-                if header_parsed.scheme not in {"http", "https"} or not header_parsed.netloc:
-                    reasons.append("artifact_header_source_url_invalid")
-                if provenance_parsed.scheme not in {"http", "https"} or not provenance_parsed.netloc:
-                    reasons.append("artifact_provenance_source_url_missing_or_invalid")
-                if (
-                    header_parsed.scheme in {"http", "https"}
-                    and header_parsed.netloc
-                    and provenance_parsed.scheme in {"http", "https"}
-                    and provenance_parsed.netloc
-                ):
-                    header_canonical = canonicalize_url(header_source)
-                    provenance_canonical = canonicalize_url(provenance_source)
-                    if header_canonical != provenance_canonical:
-                        reasons.append("artifact_header_and_provenance_source_url_conflict")
+                collection_mode = str(shared_header.get("collection_mode") or "").strip().casefold()
+                manual_input_source = (
+                    collection_mode == "manual_text"
+                    and header_parsed.scheme == "manual"
+                    and bool(header_parsed.netloc)
+                    and bool(header_parsed.path.strip("/"))
+                    and not header_parsed.query
+                    and not header_parsed.fragment
+                    and provenance_source == header_source
+                    and provenance_parsed.scheme == "manual"
+                    and bool(provenance_parsed.netloc)
+                    and bool(provenance_parsed.path.strip("/"))
+                    and not provenance_parsed.query
+                    and not provenance_parsed.fragment
+                )
+                if manual_input_source:
+                    manual_input_paths.append(str(path.resolve()))
+                else:
+                    if header_parsed.scheme not in {"http", "https"} or not header_parsed.netloc:
+                        reasons.append("artifact_header_source_url_invalid")
+                    if provenance_parsed.scheme not in {"http", "https"} or not provenance_parsed.netloc:
+                        reasons.append("artifact_provenance_source_url_missing_or_invalid")
+                    if (
+                        header_parsed.scheme in {"http", "https"}
+                        and header_parsed.netloc
+                        and provenance_parsed.scheme in {"http", "https"}
+                        and provenance_parsed.netloc
+                    ):
+                        header_canonical = canonicalize_url(header_source)
+                        provenance_canonical = canonicalize_url(provenance_source)
+                        if header_canonical != provenance_canonical:
+                            reasons.append("artifact_header_and_provenance_source_url_conflict")
                 if str(provenance.get("agent_name") or "").strip() != agent:
                     reasons.append("artifact_provenance_agent_name_missing_or_mismatched")
                 if str(provenance.get("collected_at") or "").strip() != str(shared_header.get("collected_at") or "").strip():
@@ -790,7 +809,9 @@ def audit_collector_artifacts(
                     reasons.append("artifact_run_id_mismatch")
                 source_url = str(record.get("source_url") or "").strip()
                 parsed_source = urlparse(source_url)
-                if parsed_source.scheme not in {"http", "https"} or not parsed_source.netloc:
+                if not manual_input_source and (
+                    parsed_source.scheme not in {"http", "https"} or not parsed_source.netloc
+                ):
                     reasons.append("artifact_source_url_invalid")
                 collected_at = datetime.fromisoformat(
                     str(record.get("collected_at") or "").replace("Z", "+00:00")
@@ -902,6 +923,11 @@ def audit_collector_artifacts(
             task["outputs_count"] = len(valid_files)
             task["artifact_audit_issues"] = agent_issues
             task["warnings"] = list(task.get("warnings") or [])
+            if manual_input_paths:
+                task["warnings"].append(
+                    "Manual-text artifacts are user-supplied inputs, not externally verified sources; "
+                    "their normalized records remain NEEDS_REVIEW and cannot satisfy the Batch-3 handoff."
+                )
             task["errors"] = list(task.get("errors") or [])
             status = str(task.get("status") or "").strip().lower()
             if valid_files and status not in {"success", "partial_success", "partial_limit"}:
@@ -921,6 +947,8 @@ def audit_collector_artifacts(
             "agent_name": agent,
             "task_entries": len(task_items),
             "persisted_valid_artifacts": len(valid_files),
+            "manual_input_artifacts": len(manual_input_paths),
+            "manual_input_paths": manual_input_paths,
             "quarantined_artifacts": sum(1 for item in agent_issues if "quarantined_path" in item),
             "issues": agent_issues,
         })

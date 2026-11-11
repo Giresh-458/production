@@ -1540,3 +1540,69 @@ def test_collection_finalizer_preserves_changed_content_for_same_title_and_sourc
     records = [normalize_intermediate_artifact(path) for path in paths]
     assert {record["content_hash"] for record in records}.__len__() == 2
     assert {record["source_url"] for record in records} == {source}
+
+
+def test_manual_text_artifact_is_preserved_but_never_marked_external_or_batch3_ready(tmp_path):
+    from datetime import UTC, datetime
+    from agents.lab_agent import build_manual_text_document
+    from core.agent_interface import finalize_collection_agent_response
+    from core.normalization import normalize_intermediate_artifact
+
+    run_id = "manual-text-provenance-run"
+    run_root = tmp_path / run_id
+    context = _context("CALL-MANUAL-TEXT")
+    document = build_manual_text_document(
+        (
+            "A distributed system has a reproducible interoperability limitation under "
+            "concurrent load. A controlled benchmark records message-delivery failures, "
+            "response-time constraints, and the conditions that reproduce the failure."
+        ),
+        "Manual Lab Evidence",
+        None,
+        None,
+    )
+    response = finalize_collection_agent_response(
+        agent="lab",
+        layer="Lab",
+        mode="manual_text",
+        area="DePIN",
+        documents=[document],
+        output_dir=run_root / "intermediate" / "lab",
+        started_at=datetime(2026, 11, 11, tzinfo=UTC),
+        funding_context=context,
+        run_id=run_id,
+    )
+    assert response["status"] in {"success", "partial_success"}
+    assert len(response["outputs"]) == 1
+    artifact_path = Path(response["outputs"][0]["markdown_path"])
+
+    task = {
+        "agent_name": "lab",
+        "status": response["status"],
+        "outputs_count": len(response["outputs"]),
+        "output_paths": [str(artifact_path)],
+        "errors": [],
+        "warnings": [],
+    }
+    tasks, audit = audit_collector_artifacts(
+        run_root,
+        [task],
+        expected_agents={"lab"},
+        run_id=run_id,
+    )
+
+    assert audit["manifest_issues"] == []
+    assert audit["quarantined_artifacts"] == []
+    assert audit["agents"][0]["manual_input_artifacts"] == 1
+    assert any("user-supplied inputs" in warning for warning in tasks[0]["warnings"])
+
+    record = normalize_intermediate_artifact(artifact_path)
+    assert record["source_url"] == ""
+    assert record["normalization_status"] == "NEEDS_REVIEW"
+    handoff_errors = validate_normalized_handoff(
+        [record],
+        funding_call_id=context.funding_call_id,
+        run_id=run_id,
+        expected_agents={"lab"},
+    )
+    assert any("HTTP(S) source URL" in error for error in handoff_errors)
