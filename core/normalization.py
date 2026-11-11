@@ -897,7 +897,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
@@ -940,7 +940,9 @@ def save_normalized_collection_records(
             timestamp = parsed_timestamp.timestamp()
         except (TypeError, ValueError, OverflowError, OSError):
             timestamp = float("inf")
-        return timestamp, str(record.get("record_id") or "")
+        # Python's stable sort preserves the deterministic path order for
+        # observations collected at the same instant.
+        return (timestamp,)
 
     records.sort(key=_observation_sort_key)
     deduped_records = {}
