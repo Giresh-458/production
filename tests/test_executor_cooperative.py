@@ -75,7 +75,7 @@ def test_executor_non_cooperative_hangs(monkeypatch):
 
 
 @pytest.mark.parametrize("execution_mode", ["parallel", "sequential"])
-def test_late_collector_artifacts_are_removed_before_the_batch_returns(tmp_path, monkeypatch, execution_mode):
+def test_late_collector_artifacts_are_quarantined_before_the_batch_returns(tmp_path, monkeypatch, execution_mode):
     output_root = tmp_path / "batch-run"
 
     def late_agent(*args, **kwargs):
@@ -108,3 +108,8 @@ def test_late_collector_artifacts_are_removed_before_the_batch_returns(tmp_path,
     assert report["tasks"][0]["status"] == "timeout_budget_exceeded"
     assert report["tasks"][0]["outputs_count"] == 0
     assert not (output_root / "intermediate" / "lab").exists()
+    quarantined_dir = Path(report["tasks"][0]["quarantined_output_dir"])
+    assert quarantined_dir.is_dir()
+    assert (quarantined_dir / "late-artifact.md").read_text(encoding="utf-8") == "late output"
+    assert report["tasks"][0]["quarantined_artifact_count"] == 1
+    assert report["tasks"][0].get("artifact_quarantine_error") is None

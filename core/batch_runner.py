@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
-import shutil
+import stat
 import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,96 @@ LOGGER = logging.getLogger(__name__)
 
 BATCH_REPORT_PATH = Path("outputs/workflow/batch_run_report.json")
 FULL_COLLECTION_REPORT_PATH = Path("outputs/workflow/full_collection_run_report.json")
+
+
+def _is_redirected_path(path: Path) -> bool:
+    """Reject symlinks, junctions/reparse points, and paths through redirected parents."""
+    try:
+        if path.is_symlink():
+            return True
+        try:
+            stat_result = path.lstat()
+        except FileNotFoundError:
+            return Path(os.path.abspath(path)) != path.resolve()
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        if int(getattr(stat_result, "st_file_attributes", 0) or 0) & reparse_flag:
+            return True
+        return Path(os.path.abspath(path)) != path.resolve()
+    except (OSError, RuntimeError):
+        return True
+
+
+def _count_quarantined_markdown(path: Path) -> int:
+    """Count regular Markdown files without following links inside quarantine."""
+    if path.is_symlink():
+        return 0
+    if path.is_file():
+        return int(path.suffix.casefold() == ".md")
+    if not path.is_dir():
+        return 0
+    count = 0
+    for current, directory_names, file_names in os.walk(path, followlinks=False):
+        current_path = Path(current)
+        directory_names[:] = [
+            name for name in directory_names
+            if not (current_path / name).is_symlink()
+        ]
+        count += sum(
+            1 for name in file_names
+            if (current_path / name).suffix.casefold() == ".md"
+            and not (current_path / name).is_symlink()
+        )
+    return count
+
+
+def _quarantine_timed_out_output(
+    task: Dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path | None, int, str | None]:
+    """Preserve timed-out artifacts outside the active intermediate tree."""
+    pipeline_run_dir = (task.get("input_data") or {}).get("pipeline_run_dir")
+    if not pipeline_run_dir:
+        return None, 0, "pipeline_run_dir is unavailable; timed-out artifacts were left in place"
+
+    run_root = Path(pipeline_run_dir)
+    intermediate_root = run_root / "intermediate"
+    workflow_root = run_root / "workflow"
+    quarantine_root = workflow_root / "quarantined_intermediate" / "timeouts"
+    output_absolute = Path(os.path.abspath(output_dir))
+    intermediate_absolute = Path(os.path.abspath(intermediate_root))
+
+    # Never create a quarantine through a redirected run/intermediate/workflow
+    # parent. The output directory itself may be a symlink/junction: rename the
+    # link itself into quarantine rather than following its target.
+    for protected_root in (run_root, intermediate_root, output_dir.parent, workflow_root, quarantine_root):
+        if _is_redirected_path(protected_root):
+            return None, 0, f"refusing timeout quarantine through redirected path: {protected_root}"
+    if not output_absolute.is_relative_to(intermediate_absolute):
+        return None, 0, f"timed-out output path escapes the run intermediate root: {output_absolute}"
+    if not (output_dir.exists() or output_dir.is_symlink()):
+        return None, 0, None
+
+    agent_segment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(task.get("agent_name") or "agent")).strip("-.") or "agent"
+    task_segment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(task.get("task_id") or "task")).strip("-.") or "task"
+    destination_parent = quarantine_root / agent_segment
+    destination_parent.mkdir(parents=True, exist_ok=True)
+    if _is_redirected_path(destination_parent):
+        return None, 0, f"timeout quarantine destination is redirected: {destination_parent}"
+
+    destination = destination_parent / task_segment
+    suffix = 1
+    while destination.exists() or destination.is_symlink():
+        destination = destination_parent / f"{task_segment}-{suffix}"
+        suffix += 1
+
+    try:
+        # Source and destination are within the same run root, so rename keeps
+        # the artifact tree intact and does not follow a symlinked output root.
+        os.rename(output_dir, destination)
+    except OSError as exc:
+        return None, 0, f"could not preserve timed-out artifacts in quarantine: {exc}"
+
+    return destination, _count_quarantined_markdown(destination), None
 
 
 def _iso_now() -> str:
@@ -239,12 +330,15 @@ def execute_batch_run(
         result: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         output_dir = task_output_dirs.get(task["task_id"])
-        cleanup_error = None
-        if output_dir is not None and output_dir.exists():
-            try:
-                shutil.rmtree(output_dir)
-            except OSError as exc:
-                cleanup_error = str(exc)
+        quarantined_output_dir = None
+        quarantined_artifact_count = 0
+        quarantine_error = None
+        if output_dir is not None:
+            (
+                quarantined_output_dir,
+                quarantined_artifact_count,
+                quarantine_error,
+            ) = _quarantine_timed_out_output(task, output_dir)
         timed_out = dict(result or {})
         timed_out.update({
             "task_id": task["task_id"],
@@ -260,12 +354,17 @@ def execute_batch_run(
             "warnings": list(timed_out.get("warnings") or []),
             "duration_seconds": timed_out.get("duration_seconds", 0),
             "finished_at": timed_out.get("finished_at") or datetime.now(UTC).isoformat(),
-            "output_dir": str(output_dir.resolve()) if output_dir is not None else None,
+            "output_dir": str(Path(os.path.abspath(output_dir))) if output_dir is not None else None,
+            "quarantined_output_dir": (
+                str(Path(os.path.abspath(quarantined_output_dir)))
+                if quarantined_output_dir is not None else None
+            ),
+            "quarantined_artifact_count": quarantined_artifact_count,
         })
-        if cleanup_error:
-            timed_out["artifact_cleanup_error"] = cleanup_error
+        if quarantine_error:
+            timed_out["artifact_quarantine_error"] = quarantine_error
             timed_out["errors"].append(
-                f"timed-out task artifacts could not be removed and must be quarantined: {cleanup_error}"
+                f"timed-out task artifacts were preserved in place because quarantine failed: {quarantine_error}"
             )
         return timed_out
 
