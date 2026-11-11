@@ -69,6 +69,7 @@ def test_conflicting_duplicate_mission_gate_statistics(
         run_id = kwargs["base_input_data"]["run_id"]
         intermediate_dir = root / "intermediate" / "literature"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
+        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
 
         # 1. Conflicting Evidence 1 (Fails gate - title doesn't match, snippet is empty so no match)
         write_test_intermediate_artifact(
@@ -111,7 +112,6 @@ def test_conflicting_duplicate_mission_gate_statistics(
 
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
-        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
         write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
