@@ -1809,23 +1809,6 @@ def _collect_web_source(
             result.final_status = "NO_ACTIVE_OPPORTUNITIES"
         elif result.pages_fetched > 0 and not result.truncated:
             result.final_status = "PARTIAL"
-    elif result.records_valid == 0 and result.active_program_confirmed:
-        if (
-            result.pages_fetched > 0
-            and not result.truncated
-            and result.discovery_exhausted
-            and not result.coverage_gaps
-            and result.relevant_urls_skipped == 0
-            and (not result.pagination_detected or result.pagination_complete)
-            and not result.errors
-            and result.pages_failed == 0
-            and result.detail_pages_failed == 0
-            and result.documents_failed == 0
-        ):
-            result.no_active_opportunities_confirmed = False
-            result.final_status = "VERIFIED"
-        elif result.pages_fetched > 0 and not result.truncated:
-            result.final_status = "PARTIAL"
     elif result.records_valid == 0 and result.records_discovered == 0:
         if (
             result.pages_fetched > 0

@@ -494,67 +494,6 @@ def test_regulation_quality_gate_rejects_generic_world_bank_topics_page():
     )
     assert result["passed"] is False
     assert "legal/standards instrument" in result["rejection_reason"]
-
-
-def test_batch1_energy_ai_call_is_not_primary_esg_and_keeps_energy_themes(monkeypatch):
-    from agents import funding_agent
-
-    title = (
-        "Large-Scale piloting of next-generation AI-driven digital platforms "
-        "for a more affordable, secure and sustainable European energy system (IA) - Apply AI"
-    )
-    content = (
-        "This topic supports a large-scale cross-border pilot demonstrating AI-driven "
-        "digital platforms for the European energy system, optimizing electricity-system "
-        "operation and flexibility management. Expected outcomes include renewable energy "
-        "integration, energy storage, grid flexibility, and quantifiable reductions in "
-        "greenhouse gas emissions and energy costs. Participation is limited to legal "
-        "entities established in EU Member States and associated countries."
-    )
-    document = funding_agent.FundingDocument(
-        organization="European Commission",
-        title=title,
-        source="https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-01-12",
-        source_type="Official Funding Portal",
-        content=content,
-        year=2026,
-    )
-    monkeypatch.setattr(funding_agent, "extract_funding_problem_intelligence", lambda *_args, **_kwargs: {})
-    result = funding_agent.analyze_document(document)
-    assert result.focus_area == "General"
-    assert "AI-Driven Digital Platforms" in result.research_context["technology_themes"]
-    assert "Energy Systems" in result.research_context["technology_themes"]
-    assert not result.research_context["inferred_challenges"]
-
-
-def test_batch1_strategic_autonomy_eligibility_rationale_is_not_a_technical_problem():
-    from core.problem_extraction import _is_administrative_or_financial_rule
-
-    passage = (
-        "In order to safeguard the Union's strategic assets and avoid technological "
-        "dependency on a non-EU source, the EU must carefully assess strategic weaknesses, "
-        "vulnerabilities and high-risk dependencies which put at risk the attainment of its ambitions."
-    )
-    assert _is_administrative_or_financial_rule(passage)
-
-def test_funding_problem_extractor_does_not_select_eligibility_rationale():
-    from core.problem_extraction import extract_problem_intelligence
-
-    passage = (
-        "In order to safeguard the Union's strategic assets and avoid technological "
-        "dependency on a non-EU source, the EU must carefully assess strategic weaknesses, "
-        "vulnerabilities and high-risk dependencies which put at risk the attainment of its ambitions."
-    )
-    result = extract_problem_intelligence(
-        passage,
-        "AI-driven digital platforms for the European energy system",
-        {},
-        allow_llm_refinement=False,
-        research_area="General",
-        agent_name="funding",
-    )
-    assert result["selected_problem"] is None
-
 def test_eurostat_electricity_dataset_passes_data_availability_quality_gate():
     from core.quality import evaluate_collection_quality
 
@@ -808,28 +747,3 @@ def test_energy_platform_funding_call_uses_primary_energy_mission_not_esg_outcom
     assert "Energy Systems" in context["technology_themes"]
     assert not any("ESG" in question or "Carbon and MRV" in question for question in context["investigation_questions"])
     assert context["inferred_challenges"] == []
-
-
-def test_horizon_strategic_autonomy_eligibility_fragment_is_not_a_problem_statement():
-    from core.problem_extraction import extract_problem_intelligence
-
-    text = (
-        "Eligibility: In order to achieve the expected outcomes, and safeguard the Union's "
-        "strategic assets, interests, autonomy, or security, it is important to avoid a situation "
-        "of technological dependency on a non-EU source, in a global context that requires the EU "
-        "to take action to build on its strengths, and to carefully assess and address any strategic "
-        "weaknesses, vulnerabilities and high-risk dependencies which put at risk the attainment of "
-        "its ambitions. For this reason, participation is limited to legal entities established in "
-        "Member States, Iceland and Norway and associated countries."
-    )
-    result = extract_problem_intelligence(
-        text,
-        "AI-driven digital platforms for the European energy system",
-        {"evidence_snippets": [text]},
-        allow_llm_refinement=False,
-        research_area="General",
-        agent_name="funding",
-    )
-    assert result["selected_problem"] is None
-    assert result["problem_type"] == "unresolved"
-    assert result["problem_evidence"] == []

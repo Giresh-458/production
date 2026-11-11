@@ -222,9 +222,7 @@ def _update_source_verification_flags(result: Any) -> Any:
     content, and at least one extracted source-grounded evidence field. Currentness
     verification additionally requires complete source acquisition and explicit
     status/date evidence for every emitted record. A confirmed, fully exhausted
-    empty-state page can verify that no active opportunities were found; a
-    publisher-confirmed evergreen programme can verify source availability without
-    fabricating a dated opportunity record.
+    empty-state page can verify that no active opportunities were found.
     """
     opportunities = list(getattr(result, "opportunities", None) or [])
     errors = list(getattr(result, "errors", None) or [])
@@ -258,14 +256,8 @@ def _update_source_verification_flags(result: Any) -> Any:
             and bool(getattr(result, "no_active_opportunities_confirmed", False))
             and str(getattr(result, "final_status", "") or "").upper() == "NO_ACTIVE_OPPORTUNITIES"
         )
-        confirmed_active_program = (
-            complete
-            and bool(getattr(result, "active_program_confirmed", False))
-            and str(getattr(result, "final_status", "") or "").upper() == "VERIFIED"
-        )
-        source_verified = confirmed_empty or confirmed_active_program
-        result.evidence_verified = source_verified
-        result.currentness_verified = source_verified
+        result.evidence_verified = confirmed_empty
+        result.currentness_verified = confirmed_empty
         return result
 
     qualified_opportunities = []
@@ -2215,15 +2207,6 @@ def _extract_general_themes(content: str) -> list[str]:
     # Preserve canonical multi-word technical themes before token-based phrase
     # scoring. Hyphenated labels otherwise lose their domain meaning.
     canonical_patterns = (
-        (r"\bAI[ -]+driven[ -]+digital[ -]+platforms?\b", "AI-Driven Digital Platforms"),
-        (r"\bdigital[ -]+platforms?\b", "Digital Platforms"),
-        (r"\benergy[ -]+systems?\b", "Energy Systems"),
-        (r"\belectricity[ -]+systems?\b", "Electricity Systems"),
-        (r"\bgrid[ -]+flexibility\b", "Grid Flexibility"),
-        (r"\bgrid[ -]+operation\b", "Grid Operations"),
-        (r"\brenewable[ -]+energy[ -]+integration\b", "Renewable Energy Integration"),
-        (r"\benergy[ -]+storage\b", "Energy Storage"),
-        (r"\bdigital[ -]+twins?\b", "Digital Twins"),
         (r"\bcyber[\s-]+physical systems\b", "Cyber-Physical Systems"),
         (r"\bcps\b", "Cyber-Physical Systems"),
         (r"\bdigital healthcare\b", "Digital Healthcare"),
@@ -2369,57 +2352,6 @@ def _extract_general_themes(content: str) -> list[str]:
     return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
-def _is_primary_energy_platform_call(title: str, content: str = "") -> bool:
-    """Identify calls whose primary technical mission is an AI/digital energy platform.
-
-    Environmental outcomes such as lower emissions are secondary expected outcomes
-    in these calls; they must not override the primary energy-platform mission.
-    """
-    title_text = str(title or "").casefold()
-    has_energy_system = bool(re.search(r"\benergy[\s-]+systems?\b", title_text))
-    has_digital_platform = bool(
-        re.search(r"\b(?:ai[\s-]+driven[\s-]+)?digital[\s-]+platforms?\b", title_text)
-    )
-    return has_energy_system and has_digital_platform
-
-
-def _has_primary_esg_anchor(title: str, content: str) -> bool:
-    """Require primary ESG evidence; sustainability outcomes alone are not a domain label."""
-    title_text = str(title or "").casefold()
-    body_text = str(content or "").casefold()
-    # Transport calls that explicitly combine electrification and alternative
-    # fuels have a concrete transport-decarbonisation focus, not just generic
-    # mobility language.
-    if (
-        re.search(r"\belectrification of transport\b", body_text)
-        and re.search(r"\balternative fuels?\b", body_text)
-    ):
-        return True
-    explicit_title_anchors = (
-        r"\besg\b", r"\bmrv\b", r"\bcarbon[ -]+(?:markets?|credits?|accounting|footprint)\b",
-        r"\bclimate[ -]+(?:change|mitigation|adaptation|resilience)\b",
-        r"\bemissions[ -]+trading\b", r"\bdecarboni[sz]ation\b",
-    )
-    if any(re.search(pattern, title_text) for pattern in explicit_title_anchors):
-        return True
-
-    # A secondary expected outcome (e.g. lower emissions) must not relabel an
-    # AI/energy-system call as ESG. Require evidence from two independent ESG
-    # concepts in the actual call text when the title itself is not ESG-specific.
-    concept_groups = (
-        (r"\besg\b", r"\bmrv\b"),
-        (r"\bcarbon[ -]+(?:markets?|credits?|accounting|footprint)\b",),
-        (r"\bclimate[ -]+(?:change|mitigation|adaptation|resilience)\b",),
-        (r"\b(?:greenhouse[ -]+gas[ -]+emissions|emissions[ -]+trading|emissions[ -]+reporting)\b",),
-        (r"\b(?:sustainability[ -]+reporting|sustainability[ -]+disclosure|sustainability[ -]+assurance)\b",),
-    )
-    matched_groups = sum(
-        1 for group in concept_groups
-        if any(re.search(pattern, body_text) for pattern in group)
-    )
-    return matched_groups >= 2
-
-
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
@@ -2437,20 +2369,13 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         for term in top_matches
         if str(term).strip()
     )
-    energy_platform_call = _is_primary_energy_platform_call(document.title, document.content)
     focus_area = (
-        "General"
-        if energy_platform_call
-        else (
-            str(top_item.get("domain"))
-            if top_score >= 0.30
-            and top_raw >= 4.0
-            and (len(top_matches) >= 2 or title_has_domain_anchor)
-            else "General"
-        )
+        str(top_item.get("domain"))
+        if top_score >= 0.30
+        and top_raw >= 4.0
+        and (len(top_matches) >= 2 or title_has_domain_anchor)
+        else "General"
     )
-    if focus_area == "ESG" and not _has_primary_esg_anchor(document.title, document.content):
-        focus_area = "General"
     domain_themes = {
         "RWA": ["Real-World Assets", "Asset Tokenization"],
         "ESG": ["ESG", "Carbon and MRV"],
@@ -2462,7 +2387,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     }
     themes = list(domain_themes.get(focus_area, []))
     if focus_area == "General" or not themes:
-        extracted = _extract_general_themes(f"{document.title}\n{document.content}")
+        extracted = _extract_general_themes(document.content)
         if extracted:
             themes = extracted
 
@@ -3633,7 +3558,6 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "evidence_verified": res.evidence_verified,
                     "currentness_verified": res.currentness_verified,
                     "no_active_opportunities_confirmed": res.no_active_opportunities_confirmed,
-                    "active_program_confirmed": res.active_program_confirmed,
                     "pagination_detected": res.pagination_detected,
                     "pagination_complete": res.pagination_complete,
                     "discovery_exhausted": res.discovery_exhausted,
