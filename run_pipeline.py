@@ -829,6 +829,7 @@ def main() -> int:
             collection_tasks,
             expected_agents=expected_downstream_agents,
             run_id=run_id,
+            allowed_extra_agents={"funding"},
         )
     except Exception as exc:
         collector_artifact_audit = {
@@ -1006,8 +1007,13 @@ def main() -> int:
                 return False
 
         try:
+            batch2_input_roots = [
+                root / "intermediate" / agent
+                for agent in sorted(expected_downstream_agents)
+            ]
+            batch2_input_roots.append(call_root / "intermediate" / "adaptive_research")
             normalized = save_normalized_collection_records(
-                [root / "intermediate", call_root / "intermediate"],
+                batch2_input_roots,
                 call_root,
                 context.funding_call_id,
                 filter_func=apply_gate,

@@ -1430,8 +1430,12 @@ def execute_batch2(
             )
             return False
 
+        batch2_input_roots = [
+            run_root / "intermediate" / agent
+            for agent in sorted(expected_agents)
+        ]
         normalized_paths = save_normalized_collection_records(
-            [run_root / "intermediate", call_root / "intermediate"],
+            batch2_input_roots,
             call_root,
             call_id,
             filter_func=apply_mission_gate,
