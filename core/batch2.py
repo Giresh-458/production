@@ -23,6 +23,7 @@ from core.normalization import (
     canonicalize_url,
     normalize_intermediate_artifact,
     save_normalized_collection_records,
+    _normalized_record_provenance,
 )
 from core.source_registry import build_source_refresh_plan, sync_source_registry
 
@@ -437,26 +438,10 @@ def validate_evidence_ledger(
                 provenance = None
             if not isinstance(provenance, dict):
                 errors.append(f"evidence ledger provenance is invalid for evidence_id {evidence_id}")
-            else:
-                provenance_comparisons = {
-                    "source_url": (provenance.get("source_url"), record.get("source_url")),
-                    "source_id": (provenance.get("source_id"), record.get("source_id")),
-                    "agent": (provenance.get("agent"), record.get("agent_name")),
-                    "funding_call_id": (provenance.get("funding_call_id"), funding_call_id),
-                    "run_id": (provenance.get("run_id"), run_id),
-                    "retrieved_at": (provenance.get("retrieved_at"), record.get("collected_at")),
-                    "raw_record_id": (provenance.get("raw_record_id"), record.get("file_path") or record.get("record_id")),
-                }
-                for field, (actual, wanted) in provenance_comparisons.items():
-                    if actual != wanted:
-                        errors.append(
-                            f"evidence ledger provenance {field} mismatch for evidence_id {evidence_id}"
-                        )
-                if provenance.get("funding_call_ids") != [funding_call_id]:
-                    errors.append(f"evidence ledger provenance funding_call_ids are not call-scoped for evidence_id {evidence_id}")
-                source_call_ids = provenance.get("source_funding_call_ids")
-                if not isinstance(source_call_ids, list) or funding_call_id not in source_call_ids:
-                    errors.append(f"evidence ledger original funding-call attribution is missing for evidence_id {evidence_id}")
+            elif provenance != _normalized_record_provenance(record):
+                errors.append(
+                    f"evidence ledger provenance mismatch for evidence_id {evidence_id}"
+                )
     except (sqlite3.Error, OSError, TypeError, ValueError) as exc:
         errors.append(f"could not validate evidence ledger {ledger_path}: {exc}")
     finally:
