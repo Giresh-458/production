@@ -1200,7 +1200,7 @@ def _normalization_cache_ledger_matches_records(
     ledger_path: Path,
     records: list[dict[str, Any]],
 ) -> bool:
-    """Return whether the persisted evidence ledger exactly matches cached records."""
+    """Return whether every SQLite canonical row exactly matches cached JSON."""
     import sqlite3
 
     if not ledger_path.is_file():
@@ -1211,20 +1211,28 @@ def _normalization_cache_ledger_matches_records(
     except OSError:
         return False
 
-    expected: dict[str, tuple[str, str, str, str]] = {}
     records_by_id: dict[str, dict[str, Any]] = {}
     for record in records:
         evidence_id = str(record.get("evidence_id") or "").strip()
-        if not evidence_id or evidence_id in expected:
+        if not evidence_id or evidence_id in records_by_id:
             return False
-        expected[evidence_id] = (
-            str(record.get("funding_call_id") or ""),
-            str(record.get("run_id") or ""),
-            str(record.get("source_url") or ""),
-            str(record.get("content_hash") or ""),
-        )
         records_by_id[evidence_id] = record
 
+    content_hash_to_group: dict[str, str] = {}
+    for record in records:
+        content_hash = str(record.get("content_hash") or "")
+        if content_hash and content_hash not in content_hash_to_group:
+            content_hash_to_group[content_hash] = str(record.get("source_id") or "")
+
+    ledger_columns = (
+        "evidence_id", "record_id", "funding_call_id", "run_id", "agent", "layer",
+        "source_id", "source_url", "canonical_url", "source_type", "source_name",
+        "title", "problem", "problem_signature", "evidence", "evidence_excerpt",
+        "evidence_type", "research_area", "published_at", "retrieved_at", "updated_at",
+        "content_hash", "source_quality", "evidence_strength", "confidence",
+        "independence_group", "independence_status", "normalization_status",
+        "provenance", "raw_record_id",
+    )
     connection = None
     try:
         connection = sqlite3.connect(str(ledger_path))
@@ -1232,38 +1240,33 @@ def _normalization_cache_ledger_matches_records(
         if not check or str(check[0]).casefold() != "ok":
             return False
         rows = connection.execute(
-            """
-            SELECT evidence_id, funding_call_id, run_id, source_url, content_hash, provenance
-            FROM canonical_evidence
-            """
+            f"SELECT {', '.join(ledger_columns)} FROM canonical_evidence"
         ).fetchall()
-        if len(rows) != len(expected):
+        if len(rows) != len(records_by_id):
             return False
         actual_ids: set[str] = set()
-        for evidence_id, funding_call_id, run_id, source_url, content_hash, provenance_json in rows:
-            key = str(evidence_id or "")
-            if key in actual_ids or key not in expected:
+        for row in rows:
+            actual = dict(zip(ledger_columns, row))
+            evidence_id = str(actual.get("evidence_id") or "")
+            if evidence_id in actual_ids:
                 return False
-            actual_ids.add(key)
-            actual_values = (
-                str(funding_call_id or ""),
-                str(run_id or ""),
-                str(source_url or ""),
-                str(content_hash or ""),
-            )
-            if actual_values != expected[key]:
-                return False
-            record = records_by_id.get(key)
+            actual_ids.add(evidence_id)
+            record = records_by_id.get(evidence_id)
             if record is None:
                 return False
-            try:
-                actual_provenance = json.loads(provenance_json)
-            except (TypeError, ValueError):
-                return False
-            if actual_provenance != _normalized_record_provenance(record):
-                return False
-        return actual_ids == set(expected)
-    except (OSError, sqlite3.Error):
+            expected = _canonical_evidence_ledger_record(record, content_hash_to_group)
+            for field in ledger_columns:
+                actual_value = actual.get(field)
+                expected_value = expected.get(field)
+                if field == "provenance":
+                    try:
+                        actual_value = json.loads(actual_value)
+                    except (TypeError, ValueError):
+                        return False
+                if actual_value != expected_value:
+                    return False
+        return actual_ids == set(records_by_id)
+    except (OSError, sqlite3.Error, TypeError, ValueError, KeyError):
         return False
     finally:
         if connection is not None:
