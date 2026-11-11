@@ -1830,7 +1830,7 @@ def test_normalization_preserves_title_variants_for_conflicting_duplicate_eviden
             (records[0]["evidence_id"],),
         ).fetchone()
         assert row is not None
-        ledger_provenance = json.loads(row[0])
+        ledger_provenance = json.loads(row["provenance"])
         assert ledger_provenance["title_variants"] == [first_title, later_title]
     finally:
         connection.close()
