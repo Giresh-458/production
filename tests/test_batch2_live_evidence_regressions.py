@@ -755,11 +755,14 @@ def test_configured_source_metadata_never_enters_collected_evidence(agent_name, 
             "collect_recursive_pages_with_review",
             lambda **_kwargs: ([SimpleNamespace(depth=0, title="Actual source page", url=source.url, content=actual_body)], {"review_id": "review"}),
         )
-        monkeypatch.setattr(
-            module,
-            "combine_recursive_pages",
-            lambda _pages, **kwargs: ("Actual source page", actual_body),
-        )
+        def fake_combine_recursive_pages(_pages, **kwargs):
+            prefix = " ".join(
+                str(kwargs.get(key) or "")
+                for key in ("root_name", "focus")
+            ).strip()
+            return "Actual source page", f"{prefix} {actual_body}".strip()
+
+        monkeypatch.setattr(module, "combine_recursive_pages", fake_combine_recursive_pages)
         monkeypatch.setattr(module, "save_recursive_review", lambda _review: None)
         monkeypatch.setattr(module, "update_recursive_review", lambda *_args, **_kwargs: None)
         if agent_name == "regulation":
@@ -768,7 +771,11 @@ def test_configured_source_metadata_never_enters_collected_evidence(agent_name, 
         page = SimpleNamespace(title="Actual source page", text=actual_body, url=source.url, depth=0)
         result = SimpleNamespace(pages=[page])
         monkeypatch.setattr(module, "collect_source", lambda *_args, **_kwargs: result)
-        monkeypatch.setattr(module, "combine_pages", lambda _result, **_kwargs: actual_body)
+
+        def fake_combine_pages(_result, **kwargs):
+            return f"{kwargs.get('prefix', '')} {actual_body}".strip()
+
+        monkeypatch.setattr(module, "combine_pages", fake_combine_pages)
 
     documents = module.build_auto_documents(source_path, area="DePIN")
 
@@ -776,3 +783,47 @@ def test_configured_source_metadata_never_enters_collected_evidence(agent_name, 
     assert actual_body in documents[0].content
     assert "CONFIG_ONLY_SOURCE_NAME" not in documents[0].content
     assert "CONFIG_ONLY_FOCUS_MUST_NOT_ENTER_EVIDENCE" not in documents[0].content
+
+
+def test_unscoped_expert_api_collection_uses_funding_queries_without_copying_query_metadata(monkeypatch):
+    from agents import expert_agent
+
+    source = SimpleNamespace(
+        name="CONFIG_ONLY_EXPERT_API",
+        type="api_directory",
+        query_template="https://api.example.org/authors?search={query}",
+        focus="CONFIG_ONLY_EXPERT_FOCUS",
+    )
+    token = expert_agent.current_funding_queries.set(
+        ["privacy-preserving energy control", "grid flexibility verification"]
+    )
+    requested_urls = []
+    captured_text = []
+    try:
+        monkeypatch.setattr(
+            expert_agent,
+            "fetch_json_text",
+            lambda url: (
+                requested_urls.append(url)
+                or '{"results":[{"display_name":"Actual Researcher","works_count":12}]}'
+            ),
+        )
+        monkeypatch.setattr(
+            expert_agent,
+            "is_relevant",
+            lambda text, _area: captured_text.append(text) or True,
+        )
+        documents = expert_agent.build_api_documents(source, area=None)
+    finally:
+        expert_agent.current_funding_queries.reset(token)
+
+    assert len(documents) == 2
+    assert "privacy-preserving+energy+control" in requested_urls[0]
+    assert "grid+flexibility+verification" in requested_urls[1]
+    for document, captured in zip(documents, captured_text):
+        assert "CONFIG_ONLY_EXPERT_API" not in document.content
+        assert "CONFIG_ONLY_EXPERT_FOCUS" not in document.content
+        assert "privacy-preserving energy control" not in document.content
+        assert "grid flexibility verification" not in document.content
+        assert "Actual Researcher" in document.content
+        assert captured == document.content
