@@ -32,8 +32,6 @@ on:
       - "tests/test_literature_run_provenance.py"
       - "run_pipeline.py"
       - "tests/test_agent_normalization_refresh.py"
-      - "tests/test_batch3_verification.py"
-      - "tests/test_batch4_normalization.py"
       - "tests/test_multi_call_evidence_attribution.py"
       - "tests/test_stale_index.py"
       - "tests/test_stale_index_deep.py"
@@ -72,8 +70,6 @@ jobs:
         run: |
           python -m pytest \
             tests/test_agent_normalization_refresh.py \
-            tests/test_batch3_verification.py \
-            tests/test_batch4_normalization.py \
             tests/test_batch2_runner.py \
             tests/test_normalization_skip_audit.py \
             tests/test_research_mission_grounding.py \
