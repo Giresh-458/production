@@ -263,6 +263,7 @@ def write_test_intermediate_artifact(
     content: str,
     research_area: str,
     collected_at: str,
+    evidence_snippets: list[str] | None = None,
 ) -> Path:
     """Write a complete, auditable Batch-2 artifact for pipeline integration tests."""
     from datetime import datetime
@@ -284,6 +285,8 @@ def write_test_intermediate_artifact(
     payload["shared_header"]["funding_call_id"] = funding_call_id
     payload["shared_header"]["funding_call_ids"] = [funding_call_id]
     payload["shared_header"]["run_id"] = run_id
+    if evidence_snippets is not None:
+        payload["evidence_bundle"]["evidence_snippets"] = list(evidence_snippets)
     # These tests isolate mission-gate and deduplication behavior. Collection
     # quality is exercised independently by the 11-agent contract suite.
     payload["metadata"]["quality_gate"]["passed"] = True
