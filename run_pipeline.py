@@ -48,13 +48,35 @@ def audit_optional_adaptive_research_artifacts(
     should_audit = bool(output_paths) or output_dir.exists() or output_dir.is_symlink()
     report_path = call_root / "workflow" / "adaptive_research_artifact_audit.json"
     if not should_audit:
+        # Even when the optional agent produced nothing, validate the per-call
+        # roots so a redirected intermediate/workflow directory cannot bypass
+        # the artifact boundary before normalization.
+        try:
+            _, root_audit = audit_collector_artifacts(
+                call_root,
+                [],
+                expected_agents=set(),
+                run_id=run_id,
+            )
+        except Exception as exc:
+            report = {
+                "status": "error",
+                "run_id": run_id,
+                "agent_name": "adaptive_research",
+                "error": str(exc),
+            }
+            atomic_write_json(report_path, report)
+            raise RuntimeError(f"Per-call artifact-root audit failed: {exc}") from exc
         report = {
             "status": "skipped_no_artifacts",
             "run_id": run_id,
             "agent_name": "adaptive_research",
             "persisted_artifacts": 0,
+            "root_audit": root_audit,
         }
         atomic_write_json(report_path, report)
+        if root_audit.get("quarantine_failures"):
+            raise RuntimeError("Per-call artifact-root audit could not safely quarantine redirected paths.")
         return report
 
     result = adaptive_result if isinstance(adaptive_result, dict) else {}
