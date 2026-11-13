@@ -545,3 +545,38 @@ def test_post_json_does_not_retry_non_retryable_http_errors(monkeypatch):
     assert requested == ["https://api.example.test/missing"]
     assert response.closed is True
 
+def test_fetch_text_closes_response_after_success(monkeypatch):
+    import core.http_client as http_client
+
+    response = _RedirectResponse(
+        200,
+        headers={"Content-Type": "text/plain"},
+        body=b"plain text",
+        url="https://example.test/text",
+    )
+    monkeypatch.setattr(http_client, "get_response", lambda *args, **kwargs: response)
+
+    text, final_url = http_client.fetch_text("https://example.test/text")
+
+    assert text == "plain text"
+    assert final_url == "https://example.test/text"
+    assert response.closed is True
+
+
+def test_fetch_json_closes_response_after_parse_failure(monkeypatch):
+    import core.http_client as http_client
+
+    response = _RedirectResponse(
+        200,
+        headers={"Content-Type": "application/json"},
+        body=b"not json",
+        url="https://example.test/data",
+    )
+    response.json = lambda: (_ for _ in ()).throw(ValueError("invalid JSON"))
+    monkeypatch.setattr(http_client, "get_response", lambda *args, **kwargs: response)
+
+    with pytest.raises(ValueError, match="Invalid JSON"):
+        http_client.fetch_json("https://example.test/data")
+
+    assert response.closed is True
+
