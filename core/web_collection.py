@@ -40,7 +40,7 @@ class WebCollectionResult:
 
 
 
-def _is_crawlable_url(url: str) -> bool:
+def _is_crawlable_url(url: str, *, allow_loopback: bool = False) -> bool:
     """Reject malformed URLs and non-page assets before they reach the queue."""
     try:
         parsed = urlparse(url)
@@ -51,7 +51,7 @@ def _is_crawlable_url(url: str) -> bool:
         if parsed.username or parsed.password:
             return False
         try:
-            _safe_redirect_target(url, url)
+            _safe_redirect_target(url, url, allow_loopback=allow_loopback)
         except ValueError:
             return False
         path = parsed.path.lower()
@@ -243,7 +243,7 @@ def _sitemap_urls(
                 close_response()
             if not location:
                 return []
-            next_url = _safe_redirect_target(current_url, location)
+            next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback_for_tests)
             next_parsed = urlparse(next_url)
             if (
                 next_parsed.scheme not in ("http", "https")
@@ -366,6 +366,7 @@ def _render_with_browser(
     url: str,
     *,
     allowed_domains: set[str] | None = None,
+    allow_loopback: bool = False,
 ) -> tuple[str, str, list[tuple[str, str]], str] | None:
     """Render a JS shell without bypassing robots policy or the active deadline."""
     try:
@@ -402,7 +403,7 @@ def _render_with_browser(
                 request = route.request
                 if request.resource_type == "document":
                     try:
-                        _safe_redirect_target(url, request.url)
+                        _safe_redirect_target(url, request.url, allow_loopback=allow_loopback)
                     except ValueError:
                         route.abort("blockedbyclient")
                         return
@@ -431,7 +432,7 @@ def _render_with_browser(
             if response is not None and not 200 <= response.status < 300:
                 return None
             final_url = page.url
-            _safe_redirect_target(url, final_url)
+            _safe_redirect_target(url, final_url, allow_loopback=allow_loopback)
             if not check_robots(final_url)[0]:
                 return None
             if crawl_ctx and crawl_ctx.deadline:
@@ -476,6 +477,7 @@ def collect_source(
     max_seconds: int | None = None,
     char_limit: int = 12000,
     timeout: tuple[float, float] = (8.0, 25.0),
+    allow_loopback_for_tests: bool = False,
 ) -> WebCollectionResult:
     """Adaptive, bounded, free web collection.
 
@@ -499,7 +501,7 @@ def collect_source(
 
     def push(url: str, depth: int, parent: str | None, source: str, score: float) -> None:
         url = canonicalize_url(url)
-        if not _is_crawlable_url(url) or url in seen or not _same_domain(url, allowed):
+        if not _is_crawlable_url(url, allow_loopback=allow_loopback_for_tests) or url in seen or not _same_domain(url, allowed):
             return
         queue.append((score, url, depth, parent, source))
         queue.sort(key=lambda x: (-x[0], x[2], x[1]))
@@ -511,7 +513,7 @@ def collect_source(
             break
             
         score, url, depth, parent, source = queue.pop(0)
-        if not _is_crawlable_url(url) or url in seen or not _same_domain(url, allowed):
+        if not _is_crawlable_url(url, allow_loopback=allow_loopback_for_tests) or url in seen or not _same_domain(url, allowed):
             continue
         seen.add(url)
         if not _robots_allowed(root_url, url, cache=robots_cache):
@@ -718,7 +720,11 @@ def collect_source(
                 with ctx.lock:
                     ctx.browser_attempts += 1
                     ctx.browser_escalations += 1
-            rendered = _render_with_browser(url, allowed_domains=allowed)
+            rendered = _render_with_browser(
+                        url,
+                        allowed_domains=allowed,
+                        allow_loopback=allow_loopback_for_tests,
+                    )
             used_playwright = True
             if ctx:
                 with ctx.lock: ctx.playwright_used += 1
