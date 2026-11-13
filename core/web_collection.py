@@ -499,6 +499,7 @@ def collect_source(
         if ctx:
             ctx.add_page(0)
         used_playwright = False
+        html = ""
         try:
             # Follow redirects one hop at a time so each destination is
             # checked against its own robots.txt before it is requested.
