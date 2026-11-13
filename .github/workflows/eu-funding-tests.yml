@@ -62,6 +62,7 @@ on:
       - "tests/test_redirect_security.py"
       - "tests/test_recursive_robots_policy.py"
       - "tests/test_playwright_fallback.py"
+      - "tests/test_real_local_js.py"
       - "tests/test_shared_collection.py"
       - "tests/test_funding_quality.py"
       - "core/funding_quality.py"
