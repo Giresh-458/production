@@ -315,8 +315,6 @@ class SharedCrawlManager:
             return True
         if "<noscript>" in html_lower and len(html) < 2000:
             return True
-        if "cloudflare" in html_lower and "challenge" in html_lower:
-            return True
         return False
 
     def _do_http_fetch(self, url: str) -> CrawlResult:
@@ -407,6 +405,8 @@ class SharedCrawlManager:
     def _do_browser_fetch(self, url: str, timeout_seconds: float | None = None) -> CrawlResult:
         started = time.monotonic()
         try:
+            if timeout_seconds is not None and timeout_seconds <= 0.5:
+                raise TimeoutError("deadline_exceeded_before_browser_start")
             if not hasattr(self.pw_local, "playwright"):
                 import asyncio
                 try:
