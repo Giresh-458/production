@@ -201,6 +201,10 @@ def check_robots(
                     reason,
                 )
         except Exception as exc:
+            if isinstance(exc, TimeoutError) and "deadline" in str(exc).lower():
+                # A run deadline is not a robots.txt server failure. Do not
+                # poison the process-wide policy cache for a later run.
+                return False, str(exc), 0.0
             response = getattr(exc, "response", None)
             status = getattr(response, "status_code", None)
             if isinstance(status, int) and 400 <= status < 500 and status != 429:
