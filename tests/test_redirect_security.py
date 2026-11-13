@@ -26,7 +26,16 @@ def _patch_policy(monkeypatch):
 
 def test_authorized_redirect_allowed(monkeypatch):
     pages = {
-        "https://hadronfc.com/": "<html><head><title>Hadron</title></head><body><h1>Hadron</h1><p>Particle physics research.</p></body></html>"
+        "https://hadronfc.com/": (
+            "<html><head><title>Hadron</title></head><body><h1>Hadron</h1>"
+            "<p>Hadron develops advanced particle-physics research programmes and "
+            "collaborates with universities, laboratories and engineering teams. "
+            "Its public research pages describe scientific facilities, project "
+            "partners, technical capabilities, current work packages and the "
+            "research outcomes supported by its programme. This page contains "
+            "substantive information about the organisation and its work rather "
+            "than a short placeholder or an unavailable-page message.</p></body></html>"
+        )
     }
     requested = []
 
