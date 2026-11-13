@@ -7,7 +7,8 @@ from pathlib import Path
 from core.shared_crawl_manager import SharedCrawlManager, CrawlResult
 
 @pytest.fixture
-def mock_db(tmp_path):
+def mock_db(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.shared_crawl_manager.check_robots", lambda *a, **k: (True, None, 0.0))
     manager = SharedCrawlManager()
     manager.db_path = str(tmp_path / "shared_crawl_cache.db")
     manager._init_db()
@@ -57,7 +58,7 @@ def test_d_inflight_deduplication(mock_db, monkeypatch):
 
 def test_f_fallback_playwright(mock_db, monkeypatch):
     def fetch_http_side_effect(url):
-        return CrawlResult(url, url, 403, "text/html", "title", "error", "error", "hash", "http", False)
+        return CrawlResult(url, url, 200, "text/html", "title", "<html><body>Please enable JavaScript to view this page.</body></html>", "Please enable JavaScript to view this page.", "hash", "http", False)
         
     monkeypatch.setattr(mock_db, "_do_http_fetch", fetch_http_side_effect)
     
@@ -114,3 +115,58 @@ def test_j_sqlite_wal(mock_db):
 
 def test_l_pipeline_report(mock_db):
     assert "unique_urls_requested" in mock_db.get_stats()
+
+
+
+def test_429_never_uses_browser_fallback(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: CrawlResult(
+            url, url, 429, "text/html", "", "", "", "",
+            "http", False, error="http_status_429", retry_after="60",
+        ),
+    )
+    called = []
+    monkeypatch.setattr(
+        mock_db,
+        "_do_browser_fetch",
+        lambda *args, **kwargs: called.append(True),
+    )
+    result = mock_db.fetch("https://example.test/rate-limited", bypass_cache=True)
+    assert result.status_code == 429
+    assert result.retry_after == "60"
+    assert result.error.startswith("http_status_429")
+    assert called == []
+
+
+def test_robots_denial_precedes_cache_and_network(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda *args, **kwargs: (False, "robots.txt disallows this URL", 0.0),
+    )
+    called = []
+    monkeypatch.setattr(mock_db, "_do_http_fetch", lambda url: called.append(url))
+    result = mock_db.fetch("https://example.test/private")
+    assert result.fetch_method == "robots"
+    assert result.error == "robots.txt disallows this URL"
+    assert called == []
+
+
+def test_deadline_expires_while_waiting_for_domain_slot(mock_db, monkeypatch):
+    import time
+    from core.crawl_context import CrawlContext, current_crawl_context
+
+    url = "https://example.test/deadline"
+    domain = "example.test"
+    mock_db.domain_last_fetch[domain] = time.time() + 5.0
+    ctx = CrawlContext(deadline=time.time() + 0.1)
+    token = current_crawl_context.set(ctx)
+    called = []
+    monkeypatch.setattr(mock_db, "_do_http_fetch", lambda target: called.append(target))
+    try:
+        result = mock_db._execute_fetch(url)
+    finally:
+        current_crawl_context.reset(token)
+    assert result.error == "deadline_exceeded_before_request"
+    assert called == []
