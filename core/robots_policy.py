@@ -271,7 +271,7 @@ def wait_for_host_slot(
 
 
 def _retry_after_ttl(headers) -> int:
-    """Keep a robots 429 cached until its Retry-After time, within 24 hours."""
+    """Keep a robots 429 cached until Retry-After, capped at one year."""
     raw = str((headers or {}).get("Retry-After", "")).strip()
     delay = 0.0
     if raw.isdigit():
