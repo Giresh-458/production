@@ -463,6 +463,11 @@ class SharedCrawlManager:
                 def guard_document_navigation(route):
                     request = route.request
                     if request.resource_type == "document":
+                        try:
+                            _safe_redirect_target(url, request.url)
+                        except ValueError:
+                            route.abort("blockedbyclient")
+                            return
                         allowed, _, browser_crawl_delay = check_robots(request.url)
                         if not allowed:
                             route.abort("blockedbyclient")
@@ -483,6 +488,7 @@ class SharedCrawlManager:
                     url, wait_until="domcontentloaded", timeout=navigation_timeout_ms
                 )
                 final_url = page.url
+                _safe_redirect_target(url, final_url)
                 allowed, reason, _ = check_robots(final_url)
                 if not allowed:
                     raise PermissionError(reason or "robots policy denied browser navigation target")
