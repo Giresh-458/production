@@ -205,6 +205,7 @@ def get_response(
         request_params = params
         request_headers = dict(merged_headers)
         redirects_followed = 0
+        response = None
         try:
             while True:
                 if ctx:
@@ -369,9 +370,19 @@ def get_response(
             return response
         except requests.HTTPError as exc:
             last_exc = exc
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
             raise
         except TimeoutError as exc:
             last_exc = exc
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
             message = str(exc).casefold()
             if (
                 "deadline exceeded" in message
@@ -392,6 +403,11 @@ def get_response(
             raise
         except requests.RequestException as exc:
             last_exc = exc
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
             if isinstance(
                 exc,
                 (
@@ -411,6 +427,13 @@ def get_response(
                 )
                 _sleep_or_abort(delay)
                 continue
+            raise
+        except Exception:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
             raise
     if last_exc:
         raise last_exc
