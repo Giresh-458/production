@@ -119,7 +119,12 @@ def _sleep_or_abort(delay: float) -> None:
             raise TimeoutError("Deadline exceeded during retry sleep")
     time.sleep(delay)
 
-def _safe_redirect_target(current_url: str, location: str | None) -> str:
+def _safe_redirect_target(
+    current_url: str,
+    location: str | None,
+    *,
+    allow_loopback: bool = False,
+) -> str:
     """Resolve and validate an HTTP redirect before issuing the next request.
 
     Redirects to non-HTTP schemes, credential-bearing URLs, local hostnames,
@@ -145,10 +150,8 @@ def _safe_redirect_target(current_url: str, location: str | None) -> str:
 
     host = parsed.hostname.rstrip(".").casefold()
     if (
-        host == "localhost"
-        or host.endswith((".localhost", ".local"))
-        or host in {"metadata", "metadata.google.internal"}
-    ):
+        (host == "localhost" or host.endswith(".localhost")) and not allow_loopback
+    ) or host.endswith(".local") or host in {"metadata", "metadata.google.internal"}:
         raise ValueError("redirect_to_local_or_metadata_host")
     address = None
     try:
@@ -161,7 +164,8 @@ def _safe_redirect_target(current_url: str, location: str | None) -> str:
         except OSError:
             pass
     if address is not None and not address.is_global:
-        raise ValueError("redirect_to_non_public_ip")
+        if not (allow_loopback and address.is_loopback):
+            raise ValueError("redirect_to_non_public_ip")
     return target
 
 
