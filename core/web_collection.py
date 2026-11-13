@@ -209,9 +209,10 @@ def _sitemap_urls(
     if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
         return []
 
-    current_origin = f"{parsed.scheme}://{parsed.netloc}"
+    current_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
     if allowed_origin is None:
         allowed_origin = current_origin
+    allowed_origin = allowed_origin.lower()
     if current_origin != allowed_origin:
         return []
 
@@ -245,7 +246,7 @@ def _sitemap_urls(
                 or not next_parsed.netloc
                 or next_parsed.username
                 or next_parsed.password
-                or f"{next_parsed.scheme}://{next_parsed.netloc}" != allowed_origin
+                or f"{next_parsed.scheme.lower()}://{next_parsed.netloc.lower()}" != allowed_origin
             ):
                 return []
             current_url = next_url
@@ -257,7 +258,7 @@ def _sitemap_urls(
             return []
         final_url = canonicalize_url(str(response.url or current_url))
         final_parsed = urlparse(final_url)
-        if f"{final_parsed.scheme}://{final_parsed.netloc}" != allowed_origin:
+        if f"{final_parsed.scheme.lower()}://{final_parsed.netloc.lower()}" != allowed_origin:
             return []
         text = response.text
     except Exception:
