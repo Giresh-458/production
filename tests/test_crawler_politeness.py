@@ -92,6 +92,10 @@ def test_robots_network_failure_fails_closed(monkeypatch):
 
 def test_same_host_request_waits_for_minimum_delay(monkeypatch):
     _clear_caches()
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        lambda *args, **kwargs: True,
+    )
     times = iter([100.0, 100.8, 100.8])
     monkeypatch.setattr("core.crawl4ai_web.time.monotonic", lambda: next(times))
     sleeps = []
