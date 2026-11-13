@@ -294,29 +294,30 @@ def _retry_after_ttl(headers) -> int:
 
 
 def _cached_policy(origin: str, cache=None):
-    store = cache if cache is not None else _CACHE
-    lock = _CACHE_LOCK if cache is None else None
-    if lock:
-        with lock:
-            entry = store.get(origin)
-            if entry and entry[0] > time.monotonic():
-                return entry
-            store.pop(origin, None)
-            return None
-    entry = store.get(origin)
-    if entry and entry[0] > time.monotonic():
-        return entry
-    store.pop(origin, None)
+    now = time.monotonic()
+    if cache is not None:
+        entry = cache.get(origin)
+        if entry and entry[0] > now:
+            return entry
+        if entry:
+            cache.pop(origin, None)
+
+    with _CACHE_LOCK:
+        entry = _CACHE.get(origin)
+        if entry and entry[0] > now:
+            if cache is not None:
+                cache[origin] = entry
+            return entry
+        if entry:
+            _CACHE.pop(origin, None)
     return None
 
 
 def _store_policy(origin: str, entry, cache=None) -> None:
-    store = cache if cache is not None else _CACHE
-    if cache is None:
-        with _CACHE_LOCK:
-            store[origin] = entry
-    else:
-        store[origin] = entry
+    with _CACHE_LOCK:
+        _CACHE[origin] = entry
+    if cache is not None:
+        cache[origin] = entry
 
 
 def check_robots(
