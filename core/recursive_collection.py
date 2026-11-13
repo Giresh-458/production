@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
 from xml.etree import ElementTree as ET
 
-from core.http_client import canonicalize_url
+from core.http_client import canonicalize_url, _safe_redirect_target
 
 
 @dataclass(slots=True)
@@ -114,6 +114,10 @@ def _is_crawlable_url(url: str) -> bool:
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return False
         if any(ch.isspace() for ch in url) or parsed.username or parsed.password:
+            return False
+        try:
+            _safe_redirect_target(url, url)
+        except ValueError:
             return False
         return not parsed.path.lower().endswith((
             ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".bmp",
