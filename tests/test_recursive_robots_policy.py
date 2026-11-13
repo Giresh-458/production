@@ -209,5 +209,5 @@ def test_recursive_failure_report_preserves_http_429_retry_after(monkeypatch):
         item["url"] == "https://example.test/child"
         and item["reason"] == "http_status_429: retry_after=120"
         for item in review["skipped_links"]
-    )
+    ), repr(review)
 
