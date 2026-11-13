@@ -49,8 +49,8 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
         "https://example.test/allowed",
     ]
     assert any(
-        item.url == "https://example.test/blocked"
-        and item.reason.startswith("robots_disallow")
+        item["url"] == "https://example.test/blocked"
+        and item["reason"].startswith("robots_disallow")
         for item in review["skipped_links"]
     )
 
