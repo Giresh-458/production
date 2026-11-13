@@ -126,7 +126,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
 
 
 def _wait_for_host_slot(url: str, delay_seconds: float) -> bool:
-    """Reserve a per-host request slot without serializing unrelated hosts."""
+    """Reserve a local pacing slot and honor shared HTTP 429 cooldowns."""
+    from core.crawl_context import current_crawl_context
+    from core.robots_policy import wait_for_host_slot as wait_for_shared_cooldown
+
+    crawl_ctx = current_crawl_context.get(None)
+    if not wait_for_shared_cooldown(
+        url,
+        crawl_delay=0.0,
+        default_delay=0.0,
+        deadline=crawl_ctx.deadline if crawl_ctx else None,
+    ):
+        return False
+
     host = urlparse(url).netloc.lower()
     now = time.monotonic()
     with _HOST_LOCK:
