@@ -21,6 +21,8 @@ _MAX_ROBOTS_BYTES = 500 * 1024
 # Cache entries: (expires_at, parser, unavailable_allows, failure_reason).
 _CACHE: dict[str, tuple[float, RobotFileParser | None, bool, str | None]] = {}
 _CACHE_LOCK = threading.RLock()
+_HOST_NEXT_ALLOWED: dict[str, float] = {}
+_HOST_RATE_LOCK = threading.Lock()
 
 
 def _origin(url: str) -> str:
@@ -50,6 +52,37 @@ def _retry_after_ttl(headers: Any) -> int:
         except (TypeError, ValueError, OverflowError):
             delay = 0.0
     return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
+
+
+def wait_for_host_slot(
+    url: str,
+    *,
+    crawl_delay: float = 0.0,
+    default_delay: float = 1.0,
+    deadline: float | None = None,
+) -> bool:
+    """Serialize requests per origin and honor robots Crawl-delay when present.
+
+    The default one-second spacing matches the existing shared-crawler policy.
+    Deadline values use the CrawlContext wall-clock epoch convention.
+    """
+    try:
+        origin = _origin(url)
+    except ValueError:
+        return False
+
+    interval = max(float(default_delay), max(0.0, float(crawl_delay or 0.0)))
+    with _HOST_RATE_LOCK:
+        now_mono = time.monotonic()
+        next_allowed = max(now_mono, _HOST_NEXT_ALLOWED.get(origin, now_mono))
+        wait_seconds = next_allowed - now_mono
+        if deadline is not None and time.time() + wait_seconds >= deadline:
+            return False
+        _HOST_NEXT_ALLOWED[origin] = next_allowed + interval
+
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+    return deadline is None or time.time() < deadline
 
 
 def _cached_policy(
@@ -108,6 +141,11 @@ def check_robots(
     if entry is None:
         robots_url = f"{origin}/robots.txt"
         try:
+            from core.crawl_context import current_crawl_context
+            crawl_ctx = current_crawl_context.get(None)
+            crawl_deadline = crawl_ctx.deadline if crawl_ctx else None
+            if not wait_for_host_slot(robots_url, deadline=crawl_deadline):
+                raise TimeoutError("deadline_exceeded_before_robots_request")
             response = get_response(
                 robots_url,
                 headers={"User-Agent": user_agent},
@@ -195,3 +233,5 @@ def clear_robots_cache() -> None:
     """Clear the process-wide robots cache; intended for deterministic tests."""
     with _CACHE_LOCK:
         _CACHE.clear()
+    with _HOST_RATE_LOCK:
+        _HOST_NEXT_ALLOWED.clear()
