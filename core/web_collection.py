@@ -411,21 +411,22 @@ def _render_with_browser(
                     except ValueError:
                         route.abort("blockedbyclient")
                         return
-                elif request.resource_type == "document":
-                    route.abort("blockedbyclient")
-                    return
-                if request.resource_type == "document":
-                    if _domain(request.url) not in browser_allowed_domains:
-                        route.abort("blockedbyclient")
-                        return
                     allowed, _, crawl_delay = check_robots(request.url)
                     if not allowed:
                         route.abort("blockedbyclient")
                         return
                     deadline = crawl_ctx.deadline if crawl_ctx else None
+                    if request.resource_type == "document":
+                        if _domain(request.url) not in browser_allowed_domains:
+                            route.abort("blockedbyclient")
+                            return
+                        default_delay = 1.0
+                    else:
+                        default_delay = 0.0
                     if not wait_for_host_slot(
                         request.url,
                         crawl_delay=crawl_delay,
+                        default_delay=default_delay,
                         deadline=deadline,
                     ):
                         if crawl_ctx:
@@ -433,6 +434,9 @@ def _render_with_browser(
                                 crawl_ctx.stop_reasons.add("deadline")
                         route.abort("blockedbyclient")
                         return
+                elif request.resource_type == "document":
+                    route.abort("blockedbyclient")
+                    return
                 route.continue_()
 
             page.route("**/*", guard_document_navigation)
