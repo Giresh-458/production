@@ -12,7 +12,7 @@ from dataclasses import dataclass, asdict
 import requests
 from bs4 import BeautifulSoup
 from core.http_client import get_response, canonicalize_url
-from core.robots_policy import check_robots
+from core.robots_policy import check_robots, wait_for_host_slot
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -118,22 +118,15 @@ class SharedCrawlManager:
 
     def _throttle_domain(
         self,
-        domain: str,
+        url: str,
         deadline: float | None = None,
         minimum_delay: float = 0.0,
     ) -> bool:
-        interval = max(1.0, float(minimum_delay or 0.0))
-        with self.lock:
-            now = time.time()
-            next_allowed = max(now, self.domain_last_fetch.get(domain, 0.0) + interval)
-            sleep_time = next_allowed - now
-            self.domain_last_fetch[domain] = next_allowed
-
-        if deadline is not None and time.time() + sleep_time >= deadline:
-            return False
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        return deadline is None or time.time() < deadline
+        return wait_for_host_slot(
+            url,
+            crawl_delay=minimum_delay,
+            deadline=deadline,
+        )
 
     def fetch(self, url: str, bypass_cache: bool = False) -> CrawlResult:
         from core.source_registry import current_force_source_refresh
@@ -216,13 +209,12 @@ class SharedCrawlManager:
         from concurrent.futures import TimeoutError as FuturesTimeoutError
         from core.crawl_context import current_crawl_context
         
-        domain = urlparse(url).netloc.lower()
         sem = self._get_domain_semaphore(url)
         
         with sem:
             ctx_obj = current_crawl_context.get(None)
             deadline = ctx_obj.deadline if ctx_obj else None
-            if not self._throttle_domain(domain, deadline=deadline, minimum_delay=crawl_delay):
+            if not self._throttle_domain(url, deadline=deadline, minimum_delay=crawl_delay):
                 return CrawlResult(
                     canonical_url=url, final_url=url, status_code=0,
                     content_type="", title="", html="", clean_text="",
@@ -344,7 +336,7 @@ class SharedCrawlManager:
                     from core.crawl_context import current_crawl_context
                     crawl_ctx = current_crawl_context.get(None)
                     if not self._throttle_domain(
-                        parsed.netloc.lower(),
+                        next_url,
                         deadline=crawl_ctx.deadline if crawl_ctx else None,
                         minimum_delay=redirect_crawl_delay,
                     ):
@@ -423,7 +415,7 @@ class SharedCrawlManager:
                         from core.crawl_context import current_crawl_context
                         crawl_ctx = current_crawl_context.get(None)
                         if not self._throttle_domain(
-                            urlparse(request.url).netloc.lower(),
+                            request.url,
                             deadline=crawl_ctx.deadline if crawl_ctx else None,
                             minimum_delay=browser_crawl_delay,
                         ):
