@@ -128,8 +128,9 @@ def _safe_redirect_target(
     """Resolve and validate an HTTP redirect before issuing the next request.
 
     Redirects to non-HTTP schemes, credential-bearing URLs, local hostnames,
-    and non-global IP literals are rejected. DNS names are not resolved here;
-    the crawler's robots policy is checked separately before each hop.
+    and non-global IP literals are rejected. A narrowly scoped loopback opt-in
+    exists for controlled local tests; production callers must leave it disabled.
+    DNS names are not resolved here; robots policy is checked separately per hop.
     """
     if not location or not str(location).strip():
         raise ValueError("redirect_missing_location")
