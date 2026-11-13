@@ -4,6 +4,7 @@ from core import recursive_collection
 def test_recursive_children_are_checked_before_fetch(monkeypatch):
     requested = []
     monkeypatch.setattr(recursive_collection, "_sitemap_links", lambda *a, **k: [])
+    monkeypatch.setattr(recursive_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         recursive_collection,
         "check_robots",
@@ -69,6 +70,7 @@ def test_recursive_redirect_checks_robots_before_requesting_target(monkeypatch):
         return RedirectResponse()
 
     monkeypatch.setattr("core.http_client.get_response", fake_get_response)
+    monkeypatch.setattr(recursive_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         recursive_collection,
         "check_robots",
@@ -93,6 +95,7 @@ def test_recursive_redirect_checks_robots_before_requesting_target(monkeypatch):
 
 
 def test_sitemap_discovery_stops_when_root_is_disallowed(monkeypatch):
+    monkeypatch.setattr(recursive_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         recursive_collection,
         "check_robots",
