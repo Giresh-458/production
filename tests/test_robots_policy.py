@@ -150,3 +150,52 @@ def test_robots_file_itself_is_not_blocked_by_its_own_rules(monkeypatch):
     allowed, reason, _ = robots_policy.check_robots("https://example.test/robots.txt")
     assert allowed is True
     assert reason is None
+
+
+
+def test_matching_user_agent_groups_are_combined(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(
+            text=(
+                "User-agent: RIF\nDisallow: /one\n"
+                "User-agent: 3.1\nDisallow: /two\n"
+                "User-agent: *\nAllow: /"
+            )
+        ),
+    )
+    assert robots_policy.check_robots("https://example.test/one")[0] is False
+    assert robots_policy.check_robots("https://example.test/two")[0] is False
+    assert robots_policy.check_robots("https://example.test/other")[0] is True
+
+
+def test_robots_rules_match_path_not_query(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(
+            text="User-agent: RIF\nDisallow: /public?secret"
+        ),
+    )
+    allowed, _, _ = robots_policy.check_robots(
+        "https://example.test/public?secret"
+    )
+    assert allowed is True
+
+
+def test_robots_percent_encoding_matches_uri_octets(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(
+            text="User-agent: RIF\nDisallow: /caf%C3%A9\nDisallow: /a%2Fb"
+        ),
+    )
+    assert robots_policy.check_robots("https://example.test/café")[0] is False
+    assert robots_policy.check_robots("https://example.test/caf%C3%A9")[0] is False
+    assert robots_policy.check_robots("https://example.test/a%2Fb")[0] is False
+    assert robots_policy.check_robots("https://example.test/a/b")[0] is True
