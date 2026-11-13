@@ -1,3 +1,5 @@
+import pytest
+
 from core import recursive_collection
 
 
@@ -132,4 +134,28 @@ def test_recursive_crawler_rejects_private_and_local_urls():
     assert recursive_collection._is_crawlable_url("http://127.0.0.1/private") is False
     assert recursive_collection._is_crawlable_url("http://169.254.169.254/latest/meta-data/") is False
     assert recursive_collection._is_crawlable_url("http://localhost/private") is False
+
+def test_recursive_pdf_extraction_failure_is_reported_and_response_closed(monkeypatch):
+    class FakeResponse:
+        content = b"not a valid PDF"
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    response = FakeResponse()
+    monkeypatch.setattr(
+        recursive_collection,
+        "_get_response_with_robots",
+        lambda *args, **kwargs: response,
+    )
+
+    with pytest.raises(ValueError, match="pdf_extraction_failed"):
+        recursive_collection._fetch_recursive_page(
+            "https://example.test/report.pdf",
+            fetch_html=lambda url: "",
+            extract_page_text=lambda html: ("", ""),
+        )
+
+    assert response.closed is True
 
