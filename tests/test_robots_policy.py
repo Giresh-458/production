@@ -42,16 +42,25 @@ def test_robots_404_is_unavailable_and_may_allow(monkeypatch):
     assert delay == 0.0
 
 
-def test_robots_429_is_fail_closed(monkeypatch):
+def test_robots_429_is_fail_closed_and_respects_retry_after_cache(monkeypatch):
     robots_policy.clear_robots_cache()
+    calls = []
 
     def rate_limited(*args, **kwargs):
+        calls.append(args[0])
         FakeResponse(429, headers={"Retry-After": "120"}).raise_for_status()
 
     monkeypatch.setattr(robots_policy, "get_response", rate_limited)
     allowed, reason, _ = robots_policy.check_robots("https://example.test/open")
     assert allowed is False
     assert "429" in reason
+    assert "Retry-After=120" in reason
+
+    # The 429 response is cached for at least the server-requested wait.
+    second_allowed, second_reason, _ = robots_policy.check_robots("https://example.test/other")
+    assert second_allowed is False
+    assert second_reason == reason
+    assert len(calls) == 1
 
 
 def test_robots_server_error_is_fail_closed(monkeypatch):
@@ -76,3 +85,10 @@ def test_robots_network_error_is_fail_closed(monkeypatch):
     allowed, reason, _ = robots_policy.check_robots("https://example.test/open")
     assert allowed is False
     assert "could not be fetched" in reason
+
+
+
+def test_robots_policy_rejects_urls_with_credentials():
+    allowed, reason, _ = robots_policy.check_robots("https://user:secret@example.test/private")
+    assert allowed is False
+    assert "credential-free" in reason
