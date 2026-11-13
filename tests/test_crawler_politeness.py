@@ -245,3 +245,32 @@ def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch, erro
     assert result.failed_urls == []
     assert result.opportunities[0]["type"] == "pdf"
     assert result.opportunities[0]["content"] == "Verified PDF text"
+
+def test_crawl4ai_host_waiter_honors_shared_429_cooldown(monkeypatch):
+    _clear_caches()
+    calls = []
+
+    def deny_until_cooldown_expires(url, **kwargs):
+        calls.append((url, kwargs))
+        return False
+
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        deny_until_cooldown_expires,
+    )
+
+    assert crawl4ai_web._wait_for_host_slot(
+        "https://rate-limited.example.test/resource",
+        delay_seconds=1.0,
+    ) is False
+    assert calls == [
+        (
+            "https://rate-limited.example.test/resource",
+            {
+                "crawl_delay": 0.0,
+                "default_delay": 0.0,
+                "deadline": None,
+            },
+        )
+    ]
+
