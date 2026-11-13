@@ -577,7 +577,10 @@ def collect_source(
             if response is None:
                 continue
             if response.status_code < 200 or response.status_code >= 300:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                finally:
+                    _close_response(response)
                 raise RuntimeError(f"Unexpected HTTP status {response.status_code}")
             if ctx:
                 with ctx.lock:
