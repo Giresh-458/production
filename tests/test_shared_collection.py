@@ -255,3 +255,35 @@ def test_shared_http_fetch_rejects_private_redirect_before_request(mock_db, monk
     assert "redirect_to_non_public_ip" in result.error
     assert requested == ["https://example.test/start"]
 
+def test_js_shell_is_reported_as_failure_when_browser_fallback_is_unavailable(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.HAS_PLAYWRIGHT",
+        False,
+    )
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: CrawlResult(
+            canonical_url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/html",
+            title="JavaScript required",
+            html="<html><body>Please enable JavaScript to view this page.</body></html>",
+            clean_text="Please enable JavaScript to view this page.",
+            content_hash="",
+            fetch_method="http",
+            from_cache=False,
+        ),
+    )
+
+    result = mock_db.fetch(
+        "https://example.test/js-shell",
+        bypass_cache=True,
+    )
+
+    assert result.status_code == 200
+    assert result.error == "browser_fallback_unavailable: Playwright is not installed"
+    assert result.html == ""
+    assert result.fetch_method == "error"
+
