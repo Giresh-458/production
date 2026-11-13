@@ -304,3 +304,32 @@ def test_crawl4ai_robots_fetch_does_not_recursively_check_redirect_target(monkey
     assert len(observed) == 1
     assert observed[0][1]["check_redirect_robots"] is False
 
+def test_crawl4ai_pdf_with_no_extractable_text_is_failure_and_closes_response(monkeypatch):
+    class FakePage:
+        def extract_text(self):
+            return ""
+
+    class FakeReader:
+        def __init__(self, stream):
+            self.pages = [FakePage()]
+
+    class FakeResponse:
+        content = b"fake-pdf"
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    response = FakeResponse()
+    monkeypatch.setattr(crawl4ai_web, "PdfReader", FakeReader)
+    monkeypatch.setattr(crawl4ai_web, "get_response", lambda *args, **kwargs: response)
+
+    result = crawl4ai_web._fetch_pdf("https://example.test/scanned.pdf")
+
+    assert result["success"] is False
+    assert result["error"] == "pdf_contains_no_extractable_text"
+    assert result["content"] == ""
+    assert response.closed is True
+
