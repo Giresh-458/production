@@ -169,3 +169,24 @@ def test_robots_file_itself_is_implicitly_allowed(monkeypatch):
     allowed, reason, _ = robots_policy.check_robots("https://example.test/robots.txt")
     assert allowed is True
     assert reason is None
+
+
+
+def test_robots_policy_is_shared_across_collector_local_caches(monkeypatch):
+    robots_policy.clear_robots_cache()
+    calls = []
+
+    def fake_get_response(*args, **kwargs):
+        calls.append(args[0])
+        return FakeResponse(text="User-agent: RIF\nAllow: /")
+
+    monkeypatch.setattr(robots_policy, "get_response", fake_get_response)
+    first_cache = {}
+    second_cache = {}
+    assert robots_policy.check_robots(
+        "https://shared.example/path", cache=first_cache
+    )[0] is True
+    assert robots_policy.check_robots(
+        "https://shared.example/other", cache=second_cache
+    )[0] is True
+    assert calls == ["https://shared.example/robots.txt"]
