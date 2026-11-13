@@ -3,7 +3,7 @@ import sqlite3
 import hashlib
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, Future
