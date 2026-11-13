@@ -194,9 +194,10 @@ def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
 
         def __init__(self):
             self.url = url
+            self.closed = False
 
         def close(self):
-            pass
+            self.closed = True
 
         def raise_for_status(self):
             pass
@@ -210,6 +211,12 @@ def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
         lambda *args, **kwargs: [],
     )
 
+    response = InvalidPDFResponse()
+    monkeypatch.setattr(
+        "core.web_collection.get_response",
+        lambda target, **kwargs: response,
+    )
+
     result = collect_source(
         url,
         keywords=(),
@@ -217,6 +224,7 @@ def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
         max_pages=1,
     )
 
+    assert response.closed is True
     assert result.pages == []
     assert any(
         "pdf_extraction_failed" in str(item.get("reason", ""))
