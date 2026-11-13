@@ -276,7 +276,11 @@ def _get_browser_context():
         _pw_local.browser = _pw_local.playwright.chromium.launch(headless=True)
     return _pw_local.browser.new_context(user_agent="RIF/3.1 (+research-intelligence-pipeline)")
 
-def _render_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
+def _render_with_browser(
+    url: str,
+    *,
+    allowed_domains: set[str] | None = None,
+) -> tuple[str, str, list[tuple[str, str]], str] | None:
     """Render a JS shell without bypassing robots policy or the active deadline."""
     try:
         from core.crawl_context import current_crawl_context
@@ -290,6 +294,7 @@ def _render_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str
             return None
 
         browser_ctx = _get_browser_context()
+        browser_allowed_domains = allowed_domains or {_domain(url)}
         page = browser_ctx.new_page()
         try:
             timeout_ms = max(1, int(min(30.0, remaining) * 1000))
@@ -507,7 +512,7 @@ def collect_source(
                             ctx.js_shells_detected += 1
                             ctx.browser_attempts += 1
                             ctx.browser_escalations += 1
-                    rendered = _render_with_browser(final_url)
+                    rendered = _render_with_browser(final_url, allowed_domains=allowed)
                     used_playwright = True
                     if ctx: 
                         with ctx.lock: ctx.playwright_used += 1
@@ -551,7 +556,7 @@ def collect_source(
                 with ctx.lock:
                     ctx.browser_attempts += 1
                     ctx.browser_escalations += 1
-            rendered = _render_with_browser(url)
+            rendered = _render_with_browser(url, allowed_domains=allowed)
             used_playwright = True
             if ctx:
                 with ctx.lock: ctx.playwright_used += 1
