@@ -7,6 +7,9 @@ from core.crawl_context import CrawlContext, current_crawl_context
 from requests.models import Response
 
 def test_deadline_expires_during_retry(monkeypatch):
+    from core.robots_policy import clear_robots_cache, wait_for_host_slot
+    clear_robots_cache()
+    url = "http://example.com"
     ctx = CrawlContext(deadline=time.time() + 0.1)
     token = current_crawl_context.set(ctx)
     try:
@@ -17,7 +20,8 @@ def test_deadline_expires_during_retry(monkeypatch):
         mock_session.get.return_value = mock_resp
         
         with pytest.raises(TimeoutError, match="Deadline exceeded during retry sleep"):
-            get_response("http://example.com", session=mock_session)
+            get_response(url, session=mock_session)
+        assert wait_for_host_slot(url, deadline=time.time() + 0.1) is False
     finally:
         current_crawl_context.reset(token)
 
