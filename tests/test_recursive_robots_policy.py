@@ -47,7 +47,7 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
         fetch_html=lambda url: "",
         extract_page_text=extract_text,
         config=recursive_collection.RecursiveCollectionConfig(
-            max_depth=1,
+            max_depth=2,
             max_pages=5,
             allowed_domains={"example.test"},
             relevance_threshold=0,
