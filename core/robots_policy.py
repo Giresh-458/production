@@ -235,9 +235,10 @@ def wait_for_host_slot(
     default_delay: float = 1.0,
     deadline: float | None = None,
 ) -> bool:
-    """Serialize requests per origin and honor robots Crawl-delay when present.
+    """Serialize requests per origin and honor robots Crawl-delay and 429 cooldowns.
 
-    The default one-second spacing matches the existing shared-crawler policy.
+    A worker never sleeps more than five minutes for a single host slot. Longer
+    server cooldowns are deferred and reported as rate-limited, not bypassed.
     Deadline values use the CrawlContext wall-clock epoch convention.
     """
     try:
@@ -245,12 +246,25 @@ def wait_for_host_slot(
     except ValueError:
         return False
 
+    from core.crawl_context import current_crawl_context
+    crawl_ctx = current_crawl_context.get(None)
+    if deadline is None and crawl_ctx:
+        deadline = crawl_ctx.deadline
+
     interval = max(float(default_delay), max(0.0, float(crawl_delay or 0.0)))
     with _HOST_RATE_LOCK:
         now_mono = time.monotonic()
         next_allowed = max(now_mono, _HOST_NEXT_ALLOWED.get(origin, now_mono))
         wait_seconds = next_allowed - now_mono
         if deadline is not None and time.time() + wait_seconds >= deadline:
+            if crawl_ctx:
+                with crawl_ctx.lock:
+                    crawl_ctx.stop_reasons.add("deadline")
+            return False
+        if wait_seconds > 300.0:
+            if crawl_ctx:
+                with crawl_ctx.lock:
+                    crawl_ctx.stop_reasons.add("rate_limited")
             return False
         _HOST_NEXT_ALLOWED[origin] = next_allowed + interval
 
@@ -329,7 +343,7 @@ def check_robots(
             crawl_ctx = current_crawl_context.get(None)
             crawl_deadline = crawl_ctx.deadline if crawl_ctx else None
             if not wait_for_host_slot(robots_url, deadline=crawl_deadline):
-                raise TimeoutError("deadline_exceeded_before_robots_request")
+                raise TimeoutError("host_wait_unavailable_before_robots_request")
             response = get_response(
                 robots_url,
                 headers={"User-Agent": user_agent},
@@ -369,7 +383,9 @@ def check_robots(
                     reason,
                 )
         except Exception as exc:
-            if isinstance(exc, TimeoutError) and "deadline" in str(exc).lower():
+            if isinstance(exc, TimeoutError) and (
+                "deadline" in str(exc).lower() or "rate_limit" in str(exc).lower()
+            ):
                 # A run deadline is not a robots.txt server failure. Do not
                 # poison the process-wide policy cache for a later run.
                 return False, str(exc), 0.0
