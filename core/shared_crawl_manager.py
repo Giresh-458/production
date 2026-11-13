@@ -305,7 +305,21 @@ class SharedCrawlManager:
                         return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
                 else:
                     LOGGER.warning(f"Browser fallback needed for {url}, but Playwright not installed.")
-            
+                    if not result.error and self._needs_browser(result.html, result.status_code):
+                        return CrawlResult(
+                            canonical_url=result.canonical_url,
+                            final_url=result.final_url,
+                            status_code=result.status_code,
+                            content_type=result.content_type,
+                            title=result.title,
+                            html="",
+                            clean_text="",
+                            content_hash="",
+                            fetch_method="error",
+                            from_cache=False,
+                            error="browser_fallback_unavailable: Playwright is not installed",
+                        )
+
             return result
 
     @staticmethod
