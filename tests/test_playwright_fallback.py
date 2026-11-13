@@ -12,6 +12,8 @@ class MockResponse:
         self.status_code = status_code
         self.url = url
         self.headers = {"Content-Type": "text/html"}
+    def close(self):
+        pass
     def raise_for_status(self):
         if self.status_code >= 400:
             import requests
@@ -132,3 +134,32 @@ def test_playwright_multiple_worker_threads():
     for res in results:
         assert res.fetch_method == "browser"
         assert "JS rendered" in res.html
+
+
+
+def test_web_collection_checks_robots_before_following_redirect(monkeypatch):
+    from core.web_collection import collect_source
+
+    calls = []
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "/private"}
+        url = "http://example.com/start"
+        content = b""
+        def close(self):
+            pass
+
+    def fake_get_response(url, *args, **kwargs):
+        calls.append((url, kwargs.get("allow_redirects")))
+        return RedirectResponse()
+
+    monkeypatch.setattr("core.web_collection.get_response", fake_get_response)
+    monkeypatch.setattr(
+        "core.web_collection.check_robots",
+        lambda url, **kwargs: (False, "robots disallow", 0.0)
+        if url.endswith("/private") else (True, None, 0.0),
+    )
+    result = collect_source("http://example.com/start", keywords=())
+    assert result.pages == []
+    assert any(item["reason"] == "robots_disallow_redirect" for item in result.failed_urls)
+    assert calls == [("http://example.com/start", False)]
