@@ -1,4 +1,5 @@
 import pytest
+import requests
 from core.crawl_context import CrawlContext, current_crawl_context
 from core.web_collection import collect_source
 from core.shared_crawl_manager import SharedCrawlManager
@@ -20,7 +21,12 @@ def mock_get_response(url, *args, **kwargs):
     if "js-required" in url:
         return MockResponse(b"<html><body>Please enable JavaScript to view this page.</body></html>", 200, url)
     elif "bot-challenge" in url:
-        raise Exception("403 Forbidden - Cloudflare")
+        raise requests.ConnectionError("simulated connection reset")
+    elif "rate-limited" in url:
+        response = requests.Response()
+        response.status_code = 429
+        response.headers["Retry-After"] = "120"
+        raise requests.HTTPError("429 Too Many Requests", response=response)
     return MockResponse(b"<html><body>Static content</body></html>", 200, url)
 
 def mock_render_with_browser(url):
@@ -68,12 +74,17 @@ def test_web_collection_playwright_fallback():
         assert "JS rendered content" in res.pages[0].text
         assert res.pages[0].is_playwright is True
         
-        # 2. Failure case: challenge, browser fails
+        # 2. Transport failure may use one bounded browser fallback.
         res = collect_source("http://example.com/bot-challenge/fail-browser", keywords=())
         assert ctx.playwright_used == 2
         assert ctx.playwright_fallback_failed == 1
         assert len(res.pages) == 0
         assert len(res.failed_urls) > 0
+
+        # 3. HTTP 429 is authoritative and must never trigger browser fallback.
+        res = collect_source("http://example.com/rate-limited", keywords=())
+        assert ctx.playwright_used == 2
+        assert any("429" in item["reason"] for item in res.failed_urls)
         
     finally:
         current_crawl_context.reset(token)
@@ -94,11 +105,17 @@ def test_shared_crawl_manager_playwright_fallback():
         assert ctx.playwright_used == 1
         assert ctx.playwright_fallback_failed == 0
         
-        # Failed fallback
+        # Transport failure may use one bounded browser fallback.
         res2 = manager.fetch("http://example.com/bot-challenge/fail-browser", bypass_cache=True)
         assert res2.error == "Browser crashed"
         assert ctx.playwright_used == 2
         assert ctx.playwright_fallback_failed == 1
+
+        # HTTP 429 must be returned directly; browser fallback is forbidden.
+        res3 = manager.fetch("http://example.com/rate-limited", bypass_cache=True)
+        assert res3.status_code == 429
+        assert res3.retry_after == "120"
+        assert ctx.playwright_used == 2
     finally:
         current_crawl_context.reset(token)
 
