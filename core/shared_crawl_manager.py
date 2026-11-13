@@ -415,7 +415,14 @@ class SharedCrawlManager:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                 self.pw_local.playwright = sync_playwright().start()
-                self.pw_local.browser = self.pw_local.playwright.chromium.launch(headless=True)
+                launch_timeout_ms = (
+                    max(1, int(min(30.0, timeout_seconds) * 1000))
+                    if timeout_seconds is not None else 30_000
+                )
+                self.pw_local.browser = self.pw_local.playwright.chromium.launch(
+                    headless=True,
+                    timeout=launch_timeout_ms,
+                )
 
             remaining = (
                 timeout_seconds - (time.monotonic() - started)
