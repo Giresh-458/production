@@ -10,9 +10,9 @@ from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from urllib import robotparser
 
 from core.http_client import canonicalize_url, get_response
+from core.robots_policy import check_robots
 
 
 @dataclass(slots=True)
@@ -140,33 +140,29 @@ def _metadata(structured: list[dict[str, Any]]) -> tuple[str | None, str | None]
 
 
 
-def _robots_allowed(root_url: str, target_url: str, user_agent: str = "RIF/3.1",
-                    cache: dict[str, robotparser.RobotFileParser | None] | None = None,
-                    timeout: float = 5.0, fail_open: bool = True) -> bool:
-    try:
-        parsed = urlparse(root_url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
-        if cache is not None and origin in cache:
-            rp = cache[origin]
-            return True if rp is None else rp.can_fetch(user_agent, target_url)
+def _robots_allowed(
+    root_url: str,
+    target_url: str,
+    user_agent: str = "RIF/3.1",
+    cache: dict[str, Any] | None = None,
+    timeout: float = 5.0,
+    fail_open: bool = False,
+) -> bool:
+    """Enforce robots.txt for the target origin.
 
-        import urllib.request
-        rp = robotparser.RobotFileParser()
-        robots_url = f"{origin}/robots.txt"
-        try:
-            with urllib.request.urlopen(robots_url, timeout=timeout) as resp:
-                raw = resp.read(64_000).decode("utf-8", errors="replace")
-            rp.parse(raw.splitlines())
-        except Exception:
-            if cache is not None:
-                cache[origin] = None
-            return fail_open
-
-        if cache is not None:
-            cache[origin] = rp
-        return rp.can_fetch(user_agent, target_url)
-    except Exception:
-        return fail_open
+    The legacy fail_open argument remains accepted for call compatibility but
+    cannot override the fail-closed handling of server/network failures.
+    RFC 9309 permits access when robots.txt is unavailable (4xx), except that
+    HTTP 429 is treated conservatively as a rate-limit signal.
+    """
+    del root_url, fail_open
+    allowed, _, _ = check_robots(
+        target_url,
+        user_agent=user_agent,
+        timeout=timeout,
+        cache=cache,
+    )
+    return allowed
 
 
 def _extract_discovery_urls(base_url: str, html: str, robots_text: str = "") -> list[str]:
@@ -340,7 +336,7 @@ def collect_source(
     seen: set[str] = set()
     hashes: set[str] = set()
     queue: list[tuple[float, str, int, str | None, str]] = [(999.0, root_url, 0, None, "root")]
-    robots_cache: dict[str, robotparser.RobotFileParser | None] = {}
+    robots_cache: dict[str, Any] = {}
     robots_text_cache: dict[str, str] = {}
 
     def push(url: str, depth: int, parent: str | None, source: str, score: float) -> None:
