@@ -50,6 +50,9 @@ class RobotsPolicy:
     sitemaps: tuple[str, ...] = ()
 
     def decision(self, user_agent: str, url: str) -> tuple[bool, float]:
+        # RFC 9309 explicitly allows the robots.txt URI itself.
+        if urlsplit(url).path == "/robots.txt":
+            return True, 0.0
         agent = str(user_agent or "*").lower()
         matching = [
             group
@@ -91,7 +94,7 @@ class RobotsPolicy:
 def _normalize_percent_encoding(value: str) -> str:
     # RFC 9309 requires non-ASCII octets to be UTF-8 percent-encoded before
     # comparison. Keep reserved octets encoded, but decode unreserved octets.
-    encoded = quote(value, safe="/%:@!$&'()*+,;=-._~*")
+    encoded = quote(value, safe="/%:@!    encoded = quote(value, safe="/%:@!$&'()*+,;=-._~*")'()*+,;=?-._~*")
 
     def replace(match: re.Match[str]) -> str:
         byte = int(match.group(1), 16)
@@ -103,8 +106,10 @@ def _normalize_percent_encoding(value: str) -> str:
 
 def _normalize_target(url: str) -> str:
     parsed = urlsplit(url)
-    # Matching applies to the URI path component, not its query or fragment.
-    return _normalize_percent_encoding(parsed.path or "/")
+    target = parsed.path or "/"
+    if parsed.query:
+        target += "?" + parsed.query
+    return _normalize_percent_encoding(target)
 
 
 def _compile_rule(pattern: str, allowed: bool) -> _Rule | None:
@@ -156,8 +161,6 @@ def _parse_robots(text: str) -> RobotsPolicy:
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].strip()
         if not line:
-            if agents:
-                finish_group()
             continue
         if ":" not in line:
             continue
@@ -165,10 +168,11 @@ def _parse_robots(text: str) -> RobotsPolicy:
         directive = name.strip().lower()
         value = value.strip()
         if directive == "user-agent":
+            if not value or (value != "*" and not re.fullmatch(r"[A-Za-z_-]+", value)):
+                continue
             if rules:
                 finish_group()
-            if value:
-                agents.append(value)
+            agents.append(value)
         elif directive in {"allow", "disallow"}:
             if agents:
                 rule = _compile_rule(value, allowed=(directive == "allow"))
