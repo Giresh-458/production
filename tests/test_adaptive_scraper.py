@@ -25,6 +25,7 @@ def test_unknown_site_discovers_sitemap_and_relevant_deep_page(monkeypatch):
 
     monkeypatch.setattr(web_collection, "get_response", fake_get)
     monkeypatch.setattr(web_collection, "_robots_allowed", lambda *args, **kwargs: True)
+    monkeypatch.setattr(web_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
     monkeypatch.setattr("core.robots_policy.check_robots", lambda *args, **kwargs: (True, None, 0.0))
     monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     monkeypatch.setattr(web_collection, "_extract_with_trafilatura", lambda *args, **kwargs: None)
