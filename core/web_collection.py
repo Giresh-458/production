@@ -564,7 +564,10 @@ def collect_source(
                     reason += f": retry_after={retry_after}"
                 failed.append({"url": url, "reason": reason})
                 continue
-            if not isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+            if (
+                not isinstance(exc, (requests.ConnectionError, requests.Timeout))
+                or isinstance(exc, (requests.exceptions.ProxyError, requests.exceptions.SSLError))
+            ):
                 failed.append({"url": url, "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
                 continue
             if ctx and ctx.check_limits():
