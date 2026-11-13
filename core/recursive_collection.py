@@ -387,7 +387,7 @@ def _get_response_with_robots(
             close_response()
         if not location:
             raise RuntimeError(f"HTTP {response.status_code} redirect missing Location")
-        next_url = canonicalize_url(urljoin(current_url, location))
+        next_url = _safe_redirect_target(current_url, location)
         parsed = urlparse(next_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
             raise ValueError("redirect_to_invalid_or_unsafe_url")
