@@ -54,7 +54,6 @@ class RobotsPolicy:
         if urlsplit(url).path == "/robots.txt":
             return True, 0.0
         agent = str(user_agent or "*").lower()
-        product_token = re.split(r"[/\s]", agent, maxsplit=1)[0]
         matching = [
             group
             for group in self.groups
@@ -95,21 +94,7 @@ class RobotsPolicy:
 def _normalize_percent_encoding(value: str) -> str:
     # RFC 9309 requires non-ASCII octets to be UTF-8 percent-encoded before
     # comparison. Keep reserved octets encoded, but decode unreserved octets.
-    encoded = quote(value, safe="/%:@!def _normalize_percent_encoding(value: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        byte = int(match.group(1), 16)
-        char = chr(byte)
-        return char if char in _UNRESERVED else f"%{byte:02X}"
-
-    return re.sub(r"%([0-9A-Fa-f]{2})", replace, value)
-
-
-def _normalize_target(url: str) -> str:
-    parsed = urlsplit(url)
-    target = parsed.path or "/"
-    if parsed.query:
-        target += "?" + parsed.query
-    return _normalize_percent_encoding(target)'()*+,;=-._~*")
+    encoded = quote(value, safe="/%:@!$&'()*+,;=-._~*")
 
     def replace(match: re.Match[str]) -> str:
         byte = int(match.group(1), 16)
