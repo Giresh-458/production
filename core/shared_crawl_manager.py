@@ -65,6 +65,7 @@ class SharedCrawlManager:
         # Per-domain throttling
         self.domain_locks: Dict[str, threading.Semaphore] = {}
         self.domain_last_fetch: Dict[str, float] = {}
+        self.robots_cache: Dict[str, Any] = {}
         
         # Initialize Playwright thread-local
         self.pw_local = threading.local()
@@ -165,7 +166,19 @@ class SharedCrawlManager:
                 self.in_flight[canonical] = fut
                 
         if fut_to_await:
-            return fut_to_await.result()
+            from core.crawl_context import current_crawl_context
+            waiter_context = current_crawl_context.get(None)
+            wait_timeout = None
+            if waiter_context and waiter_context.deadline:
+                wait_timeout = max(0.0, waiter_context.deadline - time.time())
+            try:
+                return fut_to_await.result(timeout=wait_timeout)
+            except TimeoutError:
+                return CrawlResult(
+                    canonical_url=canonical, final_url=canonical, status_code=0,
+                    content_type="", title="", html="", clean_text="", content_hash="",
+                    fetch_method="error", from_cache=False, error="deadline_exceeded_waiting_for_inflight_fetch"
+                )
 
         # Execute fetch outside the global lock, but manage domain concurrency
         try:
@@ -203,6 +216,16 @@ class SharedCrawlManager:
         
         with sem:
             self._throttle_domain(domain)
+
+            # Apply the same robots policy to direct SharedCrawlManager fetches
+            # that the adaptive web collector applies to recursive pages.
+            from core.web_collection import _robots_allowed
+            if not _robots_allowed(url, url, cache=self.robots_cache):
+                return CrawlResult(
+                    canonical_url=url, final_url=url, status_code=0,
+                    content_type="", title="", html="", clean_text="", content_hash="",
+                    fetch_method="robots", from_cache=False, error="robots_disallow"
+                )
             
             ctx_obj = current_crawl_context.get(None)
             timeout = None
@@ -223,6 +246,20 @@ class SharedCrawlManager:
             except FuturesTimeoutError:
                 return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
             
+            # Do not escalate explicit rate-limit or service-unavailable responses
+            # to a browser. get_response already applies bounded retry/backoff.
+            if result.status_code in (429, 503):
+                return result
+
+            # Check redirect policy before accepting the fetched content.
+            if not result.error and result.final_url:
+                if not _robots_allowed(result.final_url, result.final_url, cache=self.robots_cache):
+                    return CrawlResult(
+                        canonical_url=url, final_url=result.final_url, status_code=result.status_code,
+                        content_type=result.content_type, title="", html="", clean_text="", content_hash="",
+                        fetch_method="robots", from_cache=False, error="robots_disallow_after_redirect"
+                    )
+
             # Check if JS fallback is needed
             if result.error or self._needs_browser(result.html, result.status_code):
                 if HAS_PLAYWRIGHT:
@@ -236,10 +273,20 @@ class SharedCrawlManager:
                     if ctx_obj and ctx_obj.deadline:
                         timeout = max(0.1, ctx_obj.deadline - time.time())
 
+                    http_status = result.status_code
                     ctx2 = contextvars.copy_context()
                     browser_future = self.browser_pool.submit(ctx2.run, self._do_browser_fetch, url)
                     try:
                         result = browser_future.result(timeout=timeout)
+                        if result.error and not result.status_code:
+                            result.status_code = http_status
+                        if not result.error and result.final_url:
+                            if not _robots_allowed(result.final_url, result.final_url, cache=self.robots_cache):
+                                result = CrawlResult(
+                                    canonical_url=url, final_url=result.final_url, status_code=result.status_code,
+                                    content_type=result.content_type, title="", html="", clean_text="", content_hash="",
+                                    fetch_method="robots", from_cache=False, error="robots_disallow_after_browser_redirect"
+                                )
                         if result.error:
                             if ctx_obj:
                                 with ctx_obj.lock: ctx_obj.browser_failures += 1
@@ -258,7 +305,9 @@ class SharedCrawlManager:
             return result
 
     def _needs_browser(self, html: str, status_code: int) -> bool:
-        if status_code in (403, 429, 503):
+        # A 403 may be an anti-bot challenge; 429/503 are server-side
+        # throttling/availability signals and must not trigger browser retries.
+        if status_code == 403:
             return True
         html_lower = html.lower()
         if "enable javascript" in html_lower or "enable js" in html_lower or "javascript is required" in html_lower:
@@ -289,8 +338,11 @@ class SharedCrawlManager:
                 content_hash=content_hash, fetch_method="http", from_cache=False
             )
         except Exception as e:
+            response = getattr(e, "response", None)
+            status_code = int(getattr(response, "status_code", 0) or 0)
+            final_url = str(getattr(response, "url", "") or url)
             return CrawlResult(
-                canonical_url=url, final_url=url, status_code=0,
+                canonical_url=url, final_url=final_url, status_code=status_code,
                 content_type="", title="", html="", clean_text="",
                 content_hash="", fetch_method="http", from_cache=False, error=str(e)
             )
@@ -311,9 +363,18 @@ class SharedCrawlManager:
             
             page = self.pw_local.browser.new_page()
             try:
-                response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # wait a moment for JS to render
-                page.wait_for_timeout(2000)
+                from core.crawl_context import current_crawl_context
+                ctx_obj = current_crawl_context.get(None)
+                goto_timeout_ms = 30000
+                if ctx_obj and ctx_obj.deadline:
+                    goto_timeout_ms = max(1, min(30000, int((ctx_obj.deadline - time.time()) * 1000)))
+                response = page.goto(url, wait_until="domcontentloaded", timeout=goto_timeout_ms)
+                # Wait only within the remaining global crawl deadline.
+                render_wait_ms = 2000
+                if ctx_obj and ctx_obj.deadline:
+                    render_wait_ms = max(0, min(2000, int((ctx_obj.deadline - time.time()) * 1000)))
+                if render_wait_ms:
+                    page.wait_for_timeout(render_wait_ms)
                 html = page.content()
                 title = page.title()
                 final_url = page.url
