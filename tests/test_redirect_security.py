@@ -9,21 +9,27 @@ def test_authorized_redirect_allowed(monkeypatch):
     }
 
     class Response:
-        def __init__(self, url, text):
+        def __init__(self, url, text, status_code=200, headers=None):
             self.url = url
             self.text = text
             self.content = text.encode()
-            self.headers = {"Content-Type": "text/html"}
+            self.status_code = status_code
+            self.headers = headers or {"Content-Type": "text/html"}
+        def close(self):
+            pass
 
     def fake_get(url, **kwargs):
         if url == "https://polygon.technology/village/startups":
-            return Response("https://hadronfc.com/", pages["https://hadronfc.com/"])
+            return Response(url, "", 302, {"Location": "https://hadronfc.com/"})
         elif url == "https://hadronfc.com/":
             return Response(url, pages[url])
         raise urllib.error.URLError("unavailable")
 
     monkeypatch.setattr(web_collection, "get_response", fake_get)
     monkeypatch.setattr(web_collection, "_robots_allowed", lambda *a, **k: True)
+    monkeypatch.setattr(web_collection, "check_robots", lambda *a, **k: (True, None, 0.0))
+    monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr(web_collection, "get_robots_sitemaps", lambda *a, **k: [])
 
     result = web_collection.collect_source(
         "https://polygon.technology/village/startups",
@@ -49,7 +55,7 @@ def test_unauthorized_redirect_rejected(monkeypatch):
 
     def fake_get(url, **kwargs):
         if url == "https://polygon.technology/village/startups":
-            return Response("https://evil.example/", pages["https://evil.example/"])
+            return Response(url, "", 302, {"Location": "https://evil.example/"})
         elif url == "https://evil.example/":
             return Response(url, pages[url])
         raise urllib.error.URLError("unavailable")
