@@ -29,6 +29,12 @@ def mock_get_response(url, *args, **kwargs):
         response.status_code = 429
         response.headers["Retry-After"] = "120"
         raise requests.HTTPError("429 Too Many Requests", response=response)
+    elif "challenge-page" in url:
+        return MockResponse(
+            b"<html><title>Just a moment...</title><body>Cloudflare challenge Ray ID 123</body></html>",
+            200,
+            url,
+        )
     return MockResponse(b"<html><body>Static content</body></html>", 200, url)
 
 def mock_render_with_browser(url, **kwargs):
@@ -89,7 +95,12 @@ def test_web_collection_playwright_fallback():
         res = collect_source("http://example.com/rate-limited", keywords=())
         assert ctx.playwright_used == 2
         assert any("429" in item["reason"] for item in res.failed_urls)
-        
+
+        # 4. Anti-bot challenge pages are rejected, not browser-escalated.
+        res = collect_source("http://example.com/challenge-page", keywords=())
+        assert ctx.playwright_used == 2
+        assert any("challenge" in item["reason"].lower() for item in res.failed_urls)
+
     finally:
         current_crawl_context.reset(token)
 
@@ -119,6 +130,11 @@ def test_shared_crawl_manager_playwright_fallback():
         res3 = manager.fetch("http://example.com/rate-limited", bypass_cache=True)
         assert res3.status_code == 429
         assert res3.retry_after == "120"
+        assert ctx.playwright_used == 2
+
+        # Anti-bot challenge pages must not be retried with a browser.
+        res4 = manager.fetch("http://example.com/challenge-page", bypass_cache=True)
+        assert res4.error == "anti_bot_challenge_detected"
         assert ctx.playwright_used == 2
     finally:
         current_crawl_context.reset(token)
