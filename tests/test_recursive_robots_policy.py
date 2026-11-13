@@ -186,19 +186,24 @@ def test_recursive_failure_report_preserves_http_429_retry_after(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(FakeHTTPError()),
     )
 
-    _, review = recursive_collection.collect_recursive_pages_with_review(
-        root_url="https://example.test/",
-        root_name="test",
-        initial_html="<html><body>root</body></html>",
-        fetch_html=lambda url: "",
-        extract_page_text=lambda html: ("Root", "Root page evidence."),
-        config=recursive_collection.RecursiveCollectionConfig(
-            max_depth=2,
-            max_pages=5,
-            allowed_domains={"example.test"},
-            relevance_threshold=0,
-        ),
-    )
+    from core.crawl_context import current_crawl_context
+    context_token = current_crawl_context.set(None)
+    try:
+        _, review = recursive_collection.collect_recursive_pages_with_review(
+            root_url="https://example.test/",
+            root_name="test",
+            initial_html="<html><body>root</body></html>",
+            fetch_html=lambda url: "",
+            extract_page_text=lambda html: ("Root", "Root page evidence."),
+            config=recursive_collection.RecursiveCollectionConfig(
+                max_depth=2,
+                max_pages=5,
+                allowed_domains={"example.test"},
+                relevance_threshold=0,
+            ),
+        )
+    finally:
+        current_crawl_context.reset(context_token)
 
     assert any(
         item["url"] == "https://example.test/child"
