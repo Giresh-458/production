@@ -480,12 +480,16 @@ class SharedCrawlManager:
                 # including redirects, before the browser requests that document.
                 def guard_document_navigation(route):
                     request = route.request
-                    if request.resource_type == "document":
+                    if request.url.lower().startswith(("http://", "https://")):
                         try:
                             _safe_redirect_target(url, request.url)
                         except ValueError:
                             route.abort("blockedbyclient")
                             return
+                    elif request.resource_type == "document":
+                        route.abort("blockedbyclient")
+                        return
+                    if request.resource_type == "document":
                         allowed, _, browser_crawl_delay = check_robots(request.url)
                         if not allowed:
                             route.abort("blockedbyclient")
