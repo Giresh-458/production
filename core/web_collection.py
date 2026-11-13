@@ -403,12 +403,18 @@ def _render_with_browser(
 
             def guard_document_navigation(route):
                 request = route.request
-                if request.resource_type == "document":
+                if request.url.lower().startswith(("http://", "https://")):
                     try:
-                        _safe_redirect_target(url, request.url, allow_loopback=allow_loopback)
+                        _safe_redirect_target(
+                            url, request.url, allow_loopback=allow_loopback
+                        )
                     except ValueError:
                         route.abort("blockedbyclient")
                         return
+                elif request.resource_type == "document":
+                    route.abort("blockedbyclient")
+                    return
+                if request.resource_type == "document":
                     if _domain(request.url) not in browser_allowed_domains:
                         route.abort("blockedbyclient")
                         return
