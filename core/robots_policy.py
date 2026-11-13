@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import re
 import threading
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
-from urllib.robotparser import RobotFileParser
-from typing import Any
 
 from core.http_client import get_response
 
@@ -17,12 +17,169 @@ _SUCCESS_TTL_SECONDS = 24 * 60 * 60
 _FAILURE_TTL_SECONDS = 60
 _UNAVAILABLE_TTL_SECONDS = 60 * 60
 _MAX_ROBOTS_BYTES = 500 * 1024
+_UNRESERVED = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+)
 
-# Cache entries: (expires_at, parser, unavailable_allows, failure_reason).
-_CACHE: dict[str, tuple[float, RobotFileParser | None, bool, str | None]] = {}
+# Cache entries: (expires_at, parsed_policy, unavailable_allows, failure_reason).
+_CACHE: dict[str, tuple[float, "RobotsPolicy | None", bool, str | None]] = {}
 _CACHE_LOCK = threading.RLock()
 _HOST_NEXT_ALLOWED: dict[str, float] = {}
 _HOST_RATE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True)
+class _Rule:
+    pattern: str
+    allowed: bool
+    regex: re.Pattern[str]
+    specificity: int
+
+
+@dataclass(frozen=True)
+class _Group:
+    user_agents: tuple[str, ...]
+    rules: tuple[_Rule, ...]
+    crawl_delay: float
+
+
+@dataclass(frozen=True)
+class RobotsPolicy:
+    groups: tuple[_Group, ...]
+
+    def decision(self, user_agent: str, url: str) -> tuple[bool, float]:
+        agent = str(user_agent or "*").lower()
+        product_token = re.split(r"[/\s]", agent, maxsplit=1)[0]
+        matching: list[tuple[int, _Group]] = []
+        for group in self.groups:
+            for token in group.user_agents:
+                token = token.lower()
+                if token != "*" and token and token in agent:
+                    matching.append((len(token), group))
+        if matching:
+            best_length = max(length for length, _ in matching)
+            selected = [group for length, group in matching if length == best_length]
+        else:
+            selected = [
+                group for group in self.groups if "*" in group.user_agents
+            ]
+
+        if not selected:
+            return True, 0.0
+
+        target = _normalize_target(url)
+        matching_rules = [
+            rule
+            for group in selected
+            for rule in group.rules
+            if rule.regex.match(target)
+        ]
+        crawl_delay = max((group.crawl_delay for group in selected), default=0.0)
+        if not matching_rules:
+            return True, crawl_delay
+
+        best_specificity = max(rule.specificity for rule in matching_rules)
+        best_rules = [
+            rule for rule in matching_rules if rule.specificity == best_specificity
+        ]
+        # RFC 9309: the most specific matching rule wins; when equally specific
+        # Allow and Disallow rules conflict, prefer Allow.
+        return any(rule.allowed for rule in best_rules), crawl_delay
+
+
+def _normalize_percent_encoding(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        byte = int(match.group(1), 16)
+        char = chr(byte)
+        return char if char in _UNRESERVED else f"%{byte:02X}"
+
+    return re.sub(r"%([0-9A-Fa-f]{2})", replace, value)
+
+
+def _normalize_target(url: str) -> str:
+    parsed = urlsplit(url)
+    target = parsed.path or "/"
+    if parsed.query:
+        target += "?" + parsed.query
+    return _normalize_percent_encoding(target)
+
+
+def _compile_rule(pattern: str, allowed: bool) -> _Rule | None:
+    value = _normalize_percent_encoding(pattern.strip())
+    if not value:
+        # Empty Disallow has no effect; empty Allow allows everything.
+        return None
+    anchored = value.endswith("$")
+    if anchored:
+        value = value[:-1]
+    pieces = ["^"]
+    for char in value:
+        pieces.append(".*" if char == "*" else re.escape(char))
+    if anchored:
+        pieces.append("$")
+    try:
+        compiled = re.compile("".join(pieces))
+    except re.error:
+        return None
+    return _Rule(
+        pattern=value,
+        allowed=allowed,
+        regex=compiled,
+        specificity=len(value.encode("utf-8")),
+    )
+
+
+def _parse_robots(text: str) -> RobotsPolicy:
+    groups: list[_Group] = []
+    agents: list[str] = []
+    rules: list[_Rule] = []
+    crawl_delay = 0.0
+
+    def finish_group() -> None:
+        nonlocal agents, rules, crawl_delay
+        if agents:
+            groups.append(
+                _Group(
+                    user_agents=tuple(agents),
+                    rules=tuple(rules),
+                    crawl_delay=crawl_delay,
+                )
+            )
+        agents = []
+        rules = []
+        crawl_delay = 0.0
+
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            if agents:
+                finish_group()
+            continue
+        if ":" not in line:
+            continue
+        name, value = line.split(":", 1)
+        directive = name.strip().lower()
+        value = value.strip()
+        if directive == "user-agent":
+            if rules:
+                finish_group()
+            if value:
+                agents.append(value)
+        elif directive in {"allow", "disallow"}:
+            if agents:
+                rule = _compile_rule(value, allowed=(directive == "allow"))
+                if rule is not None:
+                    rules.append(rule)
+        elif directive == "crawl-delay" and agents:
+            try:
+                parsed_delay = float(value)
+                if parsed_delay >= 0:
+                    crawl_delay = max(crawl_delay, parsed_delay)
+            except (TypeError, ValueError, OverflowError):
+                pass
+
+    finish_group()
+    return RobotsPolicy(tuple(groups))
 
 
 def _origin(url: str) -> str:
@@ -35,23 +192,6 @@ def _origin(url: str) -> str:
     ):
         raise ValueError("robots policy requires a credential-free absolute HTTP(S) URL")
     return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
-
-
-def _retry_after_ttl(headers: Any) -> int:
-    """Keep a robots 429 cached until its Retry-After time, within 24 hours."""
-    raw = str((headers or {}).get("Retry-After", "")).strip()
-    delay = 0.0
-    if raw.isdigit():
-        delay = float(raw)
-    elif raw:
-        try:
-            retry_at = parsedate_to_datetime(raw)
-            if retry_at.tzinfo is None:
-                retry_at = retry_at.replace(tzinfo=UTC)
-            delay = (retry_at - datetime.now(UTC)).total_seconds()
-        except (TypeError, ValueError, OverflowError):
-            delay = 0.0
-    return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
 
 
 def defer_host(url: str, delay_seconds: float) -> None:
@@ -99,10 +239,24 @@ def wait_for_host_slot(
     return deadline is None or time.time() < deadline
 
 
-def _cached_policy(
-    origin: str,
-    cache: dict[str, tuple[float, RobotFileParser | None, bool, str | None]] | None,
-) -> tuple[float, RobotFileParser | None, bool, str | None] | None:
+def _retry_after_ttl(headers) -> int:
+    """Keep a robots 429 cached until its Retry-After time, within 24 hours."""
+    raw = str((headers or {}).get("Retry-After", "")).strip()
+    delay = 0.0
+    if raw.isdigit():
+        delay = float(raw)
+    elif raw:
+        try:
+            retry_at = parsedate_to_datetime(raw)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            delay = (retry_at - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            delay = 0.0
+    return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
+
+
+def _cached_policy(origin: str, cache=None):
     store = cache if cache is not None else _CACHE
     lock = _CACHE_LOCK if cache is None else None
     if lock:
@@ -119,11 +273,7 @@ def _cached_policy(
     return None
 
 
-def _store_policy(
-    origin: str,
-    entry: tuple[float, RobotFileParser | None, bool, str | None],
-    cache: dict[str, tuple[float, RobotFileParser | None, bool, str | None]] | None,
-) -> None:
+def _store_policy(origin: str, entry, cache=None) -> None:
     store = cache if cache is not None else _CACHE
     if cache is None:
         with _CACHE_LOCK:
@@ -137,14 +287,14 @@ def check_robots(
     *,
     user_agent: str = "RIF/3.1",
     timeout: float = 5.0,
-    cache: dict[str, tuple[float, RobotFileParser | None, bool, str | None]] | None = None,
+    cache: dict[str, tuple[float, RobotsPolicy | None, bool, str | None]] | None = None,
 ) -> tuple[bool, str | None, float]:
-    """Return (allowed, reason, crawl_delay) using RFC 9309 failure semantics.
+    """Return (allowed, reason, crawl_delay) under RFC 9309 failure semantics.
 
-    A successful robots.txt response is parsed and enforced. HTTP 4xx means
-    robots.txt is unavailable and may be treated as allowing access, except
-    429, which is a rate-limit signal and is deliberately fail-closed. HTTP
-    5xx, network errors, malformed responses and parsing failures fail closed.
+    Successful rules are enforced with longest-match specificity and Allow
+    winning equal-specificity conflicts. HTTP 4xx makes robots.txt unavailable
+    and permits access except for 429, which is fail-closed. HTTP 5xx, network
+    errors and malformed policy responses fail closed.
     """
     try:
         origin = _origin(url)
@@ -170,12 +320,10 @@ def check_robots(
             if 200 <= status < 300:
                 raw = response.content[:_MAX_ROBOTS_BYTES]
                 text = raw.decode("utf-8-sig", errors="replace")
-                parser = RobotFileParser()
-                parser.set_url(robots_url)
-                parser.parse(text.splitlines())
+                policy = _parse_robots(text)
                 entry = (
                     time.monotonic() + _SUCCESS_TTL_SECONDS,
-                    parser,
+                    policy,
                     False,
                     None,
                 )
@@ -233,22 +381,21 @@ def check_robots(
                 )
         _store_policy(origin, entry, cache)
 
-    _, parser, unavailable_allows, failure_reason = entry
-    if parser is None:
+    _, policy, unavailable_allows, failure_reason = entry
+    if policy is None:
         if unavailable_allows:
             return True, None, 0.0
         return False, failure_reason or "robots.txt policy unavailable", 0.0
 
     try:
-        allowed = parser.can_fetch(user_agent, url)
-        delay = parser.crawl_delay(user_agent) or 0
-        return allowed, None if allowed else "robots.txt disallows this URL", float(delay)
+        allowed, delay = policy.decision(user_agent, url)
+        return allowed, None if allowed else "robots.txt disallows this URL", delay
     except Exception as exc:
         return False, f"robots.txt policy could not be evaluated: {type(exc).__name__}", 0.0
 
 
 def clear_robots_cache() -> None:
-    """Clear the process-wide robots cache; intended for deterministic tests."""
+    """Clear process-wide robots and host-rate state; intended for deterministic tests."""
     with _CACHE_LOCK:
         _CACHE.clear()
     with _HOST_RATE_LOCK:
