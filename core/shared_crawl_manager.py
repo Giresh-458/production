@@ -435,8 +435,12 @@ class SharedCrawlManager:
             )
             if remaining <= 0.5:
                 raise TimeoutError("deadline_exceeded_before_browser_navigation")
-            page = self.pw_local.browser.new_page()
+            browser_context = self.pw_local.browser.new_context(
+                user_agent="RIF/3.1 (+research-intelligence-pipeline)"
+            )
+            page = None
             try:
+                page = browser_context.new_page()
                 remaining = (
                     timeout_seconds - (time.monotonic() - started)
                     if timeout_seconds is not None else 30.0
@@ -510,7 +514,9 @@ class SharedCrawlManager:
                     content_hash=content_hash, fetch_method="browser", from_cache=False,
                 )
             finally:
-                page.close()
+                if page is not None:
+                    page.close()
+                browser_context.close()
         except Exception as exc:
             return CrawlResult(
                 canonical_url=url, final_url=url, status_code=0,
