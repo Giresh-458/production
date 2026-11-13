@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 from typing import Any
@@ -23,9 +25,31 @@ _CACHE_LOCK = threading.RLock()
 
 def _origin(url: str) -> str:
     parsed = urlsplit(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("robots policy requires an absolute HTTP(S) URL")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError("robots policy requires a credential-free absolute HTTP(S) URL")
     return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+def _retry_after_ttl(headers: Any) -> int:
+    """Keep a robots 429 cached until its Retry-After time, within 24 hours."""
+    raw = str((headers or {}).get("Retry-After", "")).strip()
+    delay = 0.0
+    if raw.isdigit():
+        delay = float(raw)
+    elif raw:
+        try:
+            retry_at = parsedate_to_datetime(raw)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            delay = (retry_at - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            delay = 0.0
+    return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
 
 
 def _cached_policy(
@@ -112,9 +136,14 @@ def check_robots(
                     None,
                 )
             else:
+                headers = getattr(response, "headers", {}) or {}
+                retry_after = headers.get("Retry-After") if status == 429 else None
                 reason = f"robots.txt returned HTTP {status}"
+                if retry_after:
+                    reason += f"; Retry-After={retry_after}"
+                ttl = _retry_after_ttl(headers) if status == 429 else _FAILURE_TTL_SECONDS
                 entry = (
-                    time.monotonic() + _FAILURE_TTL_SECONDS,
+                    time.monotonic() + ttl,
                     None,
                     False,
                     reason,
@@ -130,13 +159,18 @@ def check_robots(
                     None,
                 )
             else:
+                headers = getattr(response, "headers", {}) or {}
+                retry_after = headers.get("Retry-After") if status == 429 else None
                 reason = (
                     f"robots.txt returned HTTP {status}"
                     if status is not None
                     else f"robots.txt could not be fetched: {type(exc).__name__}"
                 )
+                if retry_after:
+                    reason += f"; Retry-After={retry_after}"
+                ttl = _retry_after_ttl(headers) if status == 429 else _FAILURE_TTL_SECONDS
                 entry = (
-                    time.monotonic() + _FAILURE_TTL_SECONDS,
+                    time.monotonic() + ttl,
                     None,
                     False,
                     reason,
