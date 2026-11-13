@@ -443,22 +443,32 @@ def get_response(
 def fetch_text(url: str, *, session: Any | None = None, headers: dict[str, str] | None = None,
                timeout: tuple[float, float] = (8.0, 20.0), retries: int = 1) -> tuple[str, str]:
     response = get_response(url, session=session, headers=headers, timeout=timeout, retries=retries)
-    content_type = str(response.headers.get("Content-Type", "")).lower()
-    if content_type and not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain", "application/xml", "text/xml", "application/json")):
-        raise ValueError(f"Unexpected content type for {url}: {content_type}")
-    return response.text, str(response.url)
+    try:
+        content_type = str(response.headers.get("Content-Type", "")).lower()
+        if content_type and not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain", "application/xml", "text/xml", "application/json")):
+            raise ValueError(f"Unexpected content type for {url}: {content_type}")
+        return response.text, str(response.url)
+    finally:
+        close_response = getattr(response, "close", None)
+        if callable(close_response):
+            close_response()
 
 
 def fetch_json(url: str, *, session: Any | None = None, headers: dict[str, str] | None = None,
                params: dict[str, Any] | None = None, timeout: tuple[float, float] = (8.0, 20.0), retries: int = 1) -> tuple[dict[str, Any], str]:
     response = get_response(url, session=session, headers=headers, params=params, timeout=timeout, retries=retries)
     try:
-        data = response.json()
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
-    return data, str(response.url)
+        try:
+            data = response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
+        return data, str(response.url)
+    finally:
+        close_response = getattr(response, "close", None)
+        if callable(close_response):
+            close_response()
 
 
 def post_multipart_json(
