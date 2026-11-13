@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 
-from core.robots_policy import check_robots
+from core.robots_policy import check_robots, wait_for_host_slot
 from xml.etree import ElementTree as ET
 
 from core.http_client import canonicalize_url
@@ -358,9 +358,17 @@ def _get_response_with_robots(
     current_url = canonicalize_url(url)
     redirect_statuses = {301, 302, 303, 307, 308}
     for _ in range(11):
-        allowed, reason, _ = check_robots(current_url)
+        allowed, reason, crawl_delay = check_robots(current_url)
         if not allowed:
             raise PermissionError(reason or "robots.txt disallows this URL")
+        from core.crawl_context import current_crawl_context
+        crawl_ctx = current_crawl_context.get(None)
+        if not wait_for_host_slot(
+            current_url,
+            crawl_delay=crawl_delay,
+            deadline=crawl_ctx.deadline if crawl_ctx else None,
+        ):
+            raise TimeoutError("deadline_exceeded_before_recursive_request")
         response = get_response(
             current_url,
             timeout=timeout,
@@ -628,7 +636,7 @@ def collect_recursive_pages_with_review(
         if current_depth >= config.max_depth:
             continue
         if not current_html:
-            allowed, robots_reason, _ = check_robots(current_url)
+            allowed, robots_reason, crawl_delay = check_robots(current_url)
             if not allowed:
                 skipped_links.append(
                     RecursiveLinkDecision(
@@ -639,6 +647,23 @@ def collect_recursive_pages_with_review(
                         depth=current_depth,
                         action="skipped",
                         reason=f"robots_disallow: {robots_reason or 'policy denied'}",
+                    )
+                )
+                continue
+            if not wait_for_host_slot(
+                current_url,
+                crawl_delay=crawl_delay,
+                deadline=ctx.deadline if ctx else None,
+            ):
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason="deadline_exceeded_before_request",
                     )
                 )
                 continue
@@ -689,7 +714,7 @@ def collect_recursive_pages_with_review(
                 continue
             child_url = canonicalize_url(child_url)
             seen_urls.add(child_url)
-            allowed, robots_reason, _ = check_robots(child_url)
+            allowed, robots_reason, crawl_delay = check_robots(child_url)
             if not allowed:
                 skipped_links.append(
                     RecursiveLinkDecision(
@@ -700,6 +725,23 @@ def collect_recursive_pages_with_review(
                         depth=current_depth + 1,
                         action="skipped",
                         reason=f"robots_disallow: {robots_reason or 'policy denied'}",
+                    )
+                )
+                continue
+            if not wait_for_host_slot(
+                child_url,
+                crawl_delay=crawl_delay,
+                deadline=ctx.deadline if ctx else None,
+            ):
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason="deadline_exceeded_before_request",
                     )
                 )
                 continue
