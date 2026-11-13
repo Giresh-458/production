@@ -116,10 +116,16 @@ class SharedCrawlManager:
                 self.domain_locks[domain] = threading.Semaphore(2)
             return self.domain_locks[domain]
 
-    def _throttle_domain(self, domain: str, deadline: float | None = None) -> bool:
+    def _throttle_domain(
+        self,
+        domain: str,
+        deadline: float | None = None,
+        minimum_delay: float = 0.0,
+    ) -> bool:
+        interval = max(1.0, float(minimum_delay or 0.0))
         with self.lock:
             now = time.time()
-            next_allowed = max(now, self.domain_last_fetch.get(domain, 0.0) + 1.0)
+            next_allowed = max(now, self.domain_last_fetch.get(domain, 0.0) + interval)
             sleep_time = next_allowed - now
             self.domain_last_fetch[domain] = next_allowed
 
@@ -135,7 +141,7 @@ class SharedCrawlManager:
 
         # Check policy before cache lookup: a cached page must not bypass the
         # origin's current robots.txt rules.
-        allowed, robots_reason, _ = check_robots(canonical)
+        allowed, robots_reason, crawl_delay = check_robots(canonical)
         if not allowed:
             return CrawlResult(
                 canonical_url=canonical, final_url=canonical, status_code=0,
@@ -181,7 +187,7 @@ class SharedCrawlManager:
 
         # Execute fetch outside the global lock, but manage domain concurrency
         try:
-            result = self._execute_fetch(canonical)
+            result = self._execute_fetch(canonical, crawl_delay=crawl_delay)
             
             # Save to caches
             if not result.error:
@@ -204,7 +210,7 @@ class SharedCrawlManager:
                 if canonical in self.in_flight:
                     del self.in_flight[canonical]
 
-    def _execute_fetch(self, url: str) -> CrawlResult:
+    def _execute_fetch(self, url: str, crawl_delay: float = 0.0) -> CrawlResult:
         import contextvars
         import time
         from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -216,7 +222,7 @@ class SharedCrawlManager:
         with sem:
             ctx_obj = current_crawl_context.get(None)
             deadline = ctx_obj.deadline if ctx_obj else None
-            if not self._throttle_domain(domain, deadline=deadline):
+            if not self._throttle_domain(domain, deadline=deadline, minimum_delay=crawl_delay):
                 return CrawlResult(
                     canonical_url=url, final_url=url, status_code=0,
                     content_type="", title="", html="", clean_text="",
@@ -327,7 +333,7 @@ class SharedCrawlManager:
                     parsed = urlparse(next_url)
                     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
                         raise ValueError("redirect_to_invalid_or_unsafe_url")
-                    allowed, reason, _ = check_robots(next_url)
+                    allowed, reason, redirect_crawl_delay = check_robots(next_url)
                     if not allowed:
                         return CrawlResult(
                             canonical_url=url, final_url=next_url, status_code=0,
@@ -335,6 +341,14 @@ class SharedCrawlManager:
                             content_hash="", fetch_method="http", from_cache=False,
                             error=f"robots_disallow_redirect: {reason or 'robots policy denied redirect'}",
                         )
+                    from core.crawl_context import current_crawl_context
+                    crawl_ctx = current_crawl_context.get(None)
+                    if not self._throttle_domain(
+                        parsed.netloc.lower(),
+                        deadline=crawl_ctx.deadline if crawl_ctx else None,
+                        minimum_delay=redirect_crawl_delay,
+                    ):
+                        raise TimeoutError("deadline_exceeded_before_redirect_request")
                     current_url = next_url
                     continue
 
@@ -402,8 +416,17 @@ class SharedCrawlManager:
                 def guard_document_navigation(route):
                     request = route.request
                     if request.resource_type == "document":
-                        allowed, _, _ = check_robots(request.url)
+                        allowed, _, browser_crawl_delay = check_robots(request.url)
                         if not allowed:
+                            route.abort("blockedbyclient")
+                            return
+                        from core.crawl_context import current_crawl_context
+                        crawl_ctx = current_crawl_context.get(None)
+                        if not self._throttle_domain(
+                            urlparse(request.url).netloc.lower(),
+                            deadline=crawl_ctx.deadline if crawl_ctx else None,
+                            minimum_delay=browser_crawl_delay,
+                        ):
                             route.abort("blockedbyclient")
                             return
                     route.continue_()
