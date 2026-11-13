@@ -82,6 +82,9 @@ class _RedirectResponse:
     def close(self):
         self.closed = True
 
+    def json(self):
+        return {"ok": True}
+
     def raise_for_status(self):
         if self.status_code >= 400:
             raise requests.HTTPError(
@@ -401,5 +404,144 @@ def test_get_response_closes_response_when_http_status_is_rejected():
             retries=0,
         )
 
+    assert response.closed is True
+
+@pytest.mark.parametrize(
+    "helper,kwargs",
+    [
+        ("post_json", {"json_body": {"query": "test"}}),
+        (
+            "post_multipart_json",
+            {"fields": {"query": (None, "test", "text/plain")}},
+        ),
+    ],
+)
+def test_api_post_helpers_reject_redirects_without_following(
+    monkeypatch, helper, kwargs
+):
+    import core.http_client as http_client
+
+    redirect = _RedirectResponse(
+        302,
+        headers={"Location": "https://attacker.example.test/collect"},
+        url="https://api.example.test/search",
+    )
+    requested = []
+
+    class Session:
+        def post(self, url, **options):
+            requested.append((url, options.get("allow_redirects")))
+            return redirect
+
+    monkeypatch.setattr(http_client, "_get_session", lambda: Session())
+
+    with pytest.raises(requests.HTTPError, match="Unexpected redirect"):
+        getattr(http_client, helper)(
+            "https://api.example.test/search",
+            retries=0,
+            **kwargs,
+        )
+
+    assert requested == [("https://api.example.test/search", False)]
+    assert redirect.closed is True
+
+
+@pytest.mark.parametrize(
+    "helper,kwargs",
+    [
+        ("post_json", {"json_body": {"query": "test"}}),
+        (
+            "post_multipart_json",
+            {"fields": {"query": (None, "test", "text/plain")}},
+        ),
+    ],
+)
+def test_api_post_helpers_defer_429_and_reserve_retry_slot(
+    monkeypatch, helper, kwargs
+):
+    import core.http_client as http_client
+
+    responses = [
+        _RedirectResponse(
+            429,
+            headers={"Retry-After": "3"},
+            url="https://api.example.test/search",
+        ),
+        _RedirectResponse(
+            200,
+            body=b'{"ok": true}',
+            url="https://api.example.test/search",
+        ),
+    ]
+    requested = []
+    deferred = []
+    waited = []
+
+    class Session:
+        def post(self, url, **options):
+            requested.append((url, options.get("allow_redirects")))
+            return responses.pop(0)
+
+    monkeypatch.setattr(http_client, "_get_session", lambda: Session())
+    monkeypatch.setattr(
+        http_client,
+        "_retry_delay",
+        lambda response, attempt: 0.0,
+    )
+    monkeypatch.setattr(
+        http_client,
+        "_defer_rate_limited_host",
+        lambda url, response, attempt, delay_seconds=None: deferred.append(
+            (url, attempt, delay_seconds)
+        ),
+    )
+    monkeypatch.setattr(http_client, "_sleep_or_abort", lambda delay: None)
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        lambda url, **options: waited.append(url) or True,
+    )
+
+    data, final_url = getattr(http_client, helper)(
+        "https://api.example.test/search",
+        retries=1,
+        **kwargs,
+    )
+
+    assert data == {"ok": True}
+    assert final_url == "https://api.example.test/search"
+    assert requested == [
+        ("https://api.example.test/search", False),
+        ("https://api.example.test/search", False),
+    ]
+    assert deferred == [
+        ("https://api.example.test/search", 0, 0.0),
+    ]
+    assert waited == ["https://api.example.test/search"]
+
+
+def test_post_json_does_not_retry_non_retryable_http_errors(monkeypatch):
+    import core.http_client as http_client
+
+    response = _RedirectResponse(
+        404,
+        url="https://api.example.test/missing",
+    )
+    requested = []
+
+    class Session:
+        def post(self, url, **options):
+            requested.append(url)
+            return response
+
+    monkeypatch.setattr(http_client, "_get_session", lambda: Session())
+
+    with pytest.raises(requests.HTTPError):
+        http_client.post_json(
+            "https://api.example.test/missing",
+            json_body={},
+            retries=2,
+        )
+
+    assert requested == ["https://api.example.test/missing"]
     assert response.closed is True
 
