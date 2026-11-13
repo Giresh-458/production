@@ -18,6 +18,7 @@ class DummyResp:
     text = "<html><body>" + ("<p>Long text so it does not fallback to browser.</p>" * 20) + "<a href='/research/1'>1</a><a href='/research/2'>2</a></body></html>"
     headers = {"Content-Type": "text/html"}
     content = text.encode()
+    status_code = 200
 
 @pytest.fixture(autouse=True)
 def apply_global_mocks():
