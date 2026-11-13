@@ -68,7 +68,7 @@ def test_recursive_redirect_checks_robots_before_requesting_target(monkeypatch):
         calls.append((url, kwargs.get("allow_redirects")))
         return RedirectResponse()
 
-    monkeypatch.setattr("core.recursive_collection.get_response", fake_get_response)
+    monkeypatch.setattr("core.http_client.get_response", fake_get_response)
     monkeypatch.setattr(
         recursive_collection,
         "check_robots",
@@ -100,7 +100,7 @@ def test_sitemap_discovery_stops_when_root_is_disallowed(monkeypatch):
     )
     calls = []
     monkeypatch.setattr(
-        "core.recursive_collection.get_response",
+        "core.http_client.get_response",
         lambda *args, **kwargs: calls.append(args[0]),
     )
 
