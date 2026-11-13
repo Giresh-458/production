@@ -194,43 +194,106 @@ def _extract_discovery_urls(base_url: str, html: str, robots_text: str = "") -> 
     return list(dict.fromkeys(canonicalize_url(u) for u in urls if u))
 
 
-def _sitemap_urls(sitemap_url: str, *, limit: int = 200, allowed_origin: str | None = None, depth: int = 0, max_depth: int = 3) -> list[str]:
+def _sitemap_urls(
+    sitemap_url: str,
+    *,
+    limit: int = 200,
+    allowed_origin: str | None = None,
+    depth: int = 0,
+    max_depth: int = 3,
+    robots_cache: dict[str, Any] | None = None,
+) -> list[str]:
     if depth >= max_depth:
         return []
     parsed = urlparse(sitemap_url)
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
         return []
-    
+
     current_origin = f"{parsed.scheme}://{parsed.netloc}"
     if allowed_origin is None:
         allowed_origin = current_origin
     if current_origin != allowed_origin:
         return []
-        
+
     try:
-        response = get_response(sitemap_url, timeout=(5.0, 15.0), retries=1)
+        current_url = canonicalize_url(sitemap_url)
+        redirect_statuses = {301, 302, 303, 307, 308}
+        for _ in range(11):
+            allowed, _, crawl_delay = check_robots(current_url, cache=robots_cache)
+            if not allowed:
+                return []
+            if not wait_for_host_slot(current_url, crawl_delay=crawl_delay):
+                return []
+            response = get_response(
+                current_url,
+                timeout=(5.0, 15.0),
+                retries=1,
+                allow_redirects=False,
+            )
+            if response.status_code not in redirect_statuses:
+                break
+            location = response.headers.get("Location")
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+            if not location:
+                return []
+            next_url = canonicalize_url(urljoin(current_url, location))
+            next_parsed = urlparse(next_url)
+            if (
+                next_parsed.scheme not in ("http", "https")
+                or not next_parsed.netloc
+                or next_parsed.username
+                or next_parsed.password
+                or f"{next_parsed.scheme}://{next_parsed.netloc}" != allowed_origin
+            ):
+                return []
+            current_url = next_url
+        else:
+            return []
+
+        if response.status_code < 200 or response.status_code >= 300:
+            response.raise_for_status()
+            return []
+        final_url = canonicalize_url(str(response.url or current_url))
+        final_parsed = urlparse(final_url)
+        if f"{final_parsed.scheme}://{final_parsed.netloc}" != allowed_origin:
+            return []
         text = response.text
     except Exception:
         return []
     if "<html" in text[:500].lower():
         return []
-        
+
     try:
         import defusedxml.ElementTree as ET
     except ImportError:
         import xml.etree.ElementTree as ET
-        
+
     try:
         root = ET.fromstring(text)
     except Exception:
         return []
-        
+
     tag = root.tag.lower().split("}")[-1]
-    locs = [str(el.text).strip() for el in root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text]
+    locs = [
+        str(el.text).strip()
+        for el in root.iter()
+        if el.tag.lower().split("}")[-1] == "loc" and el.text
+    ]
     if tag == "sitemapindex":
         out: list[str] = []
         for child in locs[:20]:
-            out.extend(_sitemap_urls(child, limit=max(1, limit - len(out)), allowed_origin=allowed_origin, depth=depth + 1, max_depth=max_depth))
+            out.extend(
+                _sitemap_urls(
+                    child,
+                    limit=max(1, limit - len(out)),
+                    allowed_origin=allowed_origin,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    robots_cache=robots_cache,
+                )
+            )
             if len(out) >= limit:
                 break
         return out[:limit]
@@ -677,7 +740,12 @@ def collect_source(
                 if hint.endswith("/robots.txt"):
                     continue
                 if "sitemap" in urlparse(hint).path.lower():
-                    for discovered_url in _sitemap_urls(hint, limit=max_pages * 6, allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"):
+                    for discovered_url in _sitemap_urls(
+                        hint,
+                        limit=max_pages * 6,
+                        allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}",
+                        robots_cache=robots_cache,
+                    ):
                         s = _score(discovered_url, "sitemap", keywords)
                         if s > 0.0:
                             push(discovered_url, 0, final_url, "sitemap", s + 1.0)
