@@ -581,20 +581,29 @@ def collect_source(
             content_type = str(response.headers.get("Content-Type", "")).lower()
             final_url = canonicalize_url(str(response.url or current_url))
             if not _robots_allowed(root_url, final_url, cache=robots_cache):
+                response.close()
                 failed.append({"url": final_url, "reason": "robots_disallow_redirect_target"})
                 continue
             if _domain(final_url) not in allowed:
+                response.close()
                 raise ValueError("redirected_to_untrusted_domain")
-            response_text = str(getattr(response, "text", "") or "")
+            is_pdf = "pdf" in content_type or final_url.lower().endswith(".pdf")
+            if is_pdf:
+                response_text = ""
+            else:
+                try:
+                    response_text = str(getattr(response, "text", "") or "")
+                finally:
+                    response.close()
             is_json = (
                 "json" in content_type
                 or final_url.lower().endswith(".json")
                 or response_text.lstrip().startswith(("{", "["))
             )
-            if not ("html" in content_type or "pdf" in content_type or final_url.lower().endswith(".pdf") or is_json):
+            if not ("html" in content_type or is_pdf or is_json):
                 failed.append({"url": url, "reason": f"unsupported_content_type:{content_type or 'unknown'}"})
                 continue
-            if "pdf" in content_type or final_url.lower().endswith(".pdf"):
+            if is_pdf:
                 text = _pdf_text(response)
                 title = Path(urlparse(final_url).path).stem.replace("_", " ").replace("-", " ").strip()
                 links: list[tuple[str, str]] = []
