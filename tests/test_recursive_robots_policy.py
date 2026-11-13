@@ -159,3 +159,50 @@ def test_recursive_pdf_extraction_failure_is_reported_and_response_closed(monkey
 
     assert response.closed is True
 
+def test_recursive_failure_report_preserves_http_429_retry_after(monkeypatch):
+    class FakeHTTPError(Exception):
+        def __init__(self):
+            super().__init__("429 Too Many Requests")
+            self.response = type(
+                "Response",
+                (),
+                {
+                    "status_code": 429,
+                    "headers": {"Retry-After": "120"},
+                },
+            )()
+
+    monkeypatch.setattr(recursive_collection, "_sitemap_links", lambda *args, **kwargs: [])
+    monkeypatch.setattr(recursive_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(recursive_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        recursive_collection,
+        "extract_ranked_links",
+        lambda **kwargs: [("https://example.test/child", 9.0, "grant")],
+    )
+    monkeypatch.setattr(
+        recursive_collection,
+        "_fetch_recursive_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FakeHTTPError()),
+    )
+
+    _, review = recursive_collection.collect_recursive_pages_with_review(
+        root_url="https://example.test/",
+        root_name="test",
+        initial_html="<html><body>root</body></html>",
+        fetch_html=lambda url: "",
+        extract_page_text=lambda html: ("Root", "Root page evidence."),
+        config=recursive_collection.RecursiveCollectionConfig(
+            max_depth=2,
+            max_pages=5,
+            allowed_domains={"example.test"},
+            relevance_threshold=0,
+        ),
+    )
+
+    assert any(
+        item["url"] == "https://example.test/child"
+        and item["reason"] == "http_status_429: retry_after=120"
+        for item in review["skipped_links"]
+    )
+
