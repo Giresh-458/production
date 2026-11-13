@@ -36,3 +36,21 @@ def test_http_500_can_retry():
         result=get_response('https://example.com/transient', retries=1)
         assert result.status_code == 200
         assert get.call_count == 2
+
+
+
+def test_http_date_retry_after_beyond_wait_budget_is_not_ignored():
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+    from core.http_client import _retry_delay
+
+    response = Mock()
+    response.headers = {
+        "Retry-After": format_datetime(datetime.now(UTC) + timedelta(seconds=600), usegmt=True)
+    }
+    try:
+        _retry_delay(response, 0)
+    except RuntimeError as exc:
+        assert "too long to wait" in str(exc)
+    else:
+        raise AssertionError("An oversized HTTP-date Retry-After must not be replaced with backoff")
