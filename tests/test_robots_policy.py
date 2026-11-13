@@ -144,3 +144,28 @@ def test_deadline_does_not_poison_robots_policy_cache(monkeypatch):
     allowed, reason, _ = robots_policy.check_robots("https://deadline.example/open")
     assert allowed is True
     assert calls == ["https://deadline.example/robots.txt"]
+
+
+
+def test_blank_lines_do_not_terminate_user_agent_group(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(
+            text="User-agent: RIF\n\nDisallow: /private"
+        ),
+    )
+    assert robots_policy.check_robots("https://example.test/private")[0] is False
+
+
+def test_robots_file_itself_is_implicitly_allowed(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(text="User-agent: *\nDisallow: /"),
+    )
+    allowed, reason, _ = robots_policy.check_robots("https://example.test/robots.txt")
+    assert allowed is True
+    assert reason is None
