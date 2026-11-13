@@ -215,6 +215,9 @@ class SharedCrawlManager:
             ctx_obj = current_crawl_context.get(None)
             deadline = ctx_obj.deadline if ctx_obj else None
             if not self._throttle_domain(url, deadline=deadline, minimum_delay=crawl_delay):
+                if ctx_obj:
+                    with ctx_obj.lock:
+                        ctx_obj.stop_reasons.add("deadline")
                 return CrawlResult(
                     canonical_url=url, final_url=url, status_code=0,
                     content_type="", title="", html="", clean_text="",
@@ -353,6 +356,9 @@ class SharedCrawlManager:
                         deadline=crawl_ctx.deadline if crawl_ctx else None,
                         minimum_delay=redirect_crawl_delay,
                     ):
+                        if crawl_ctx:
+                            with crawl_ctx.lock:
+                                crawl_ctx.stop_reasons.add("deadline")
                         raise TimeoutError("deadline_exceeded_before_redirect_request")
                     current_url = next_url
                     continue
@@ -450,6 +456,9 @@ class SharedCrawlManager:
                             deadline=crawl_ctx.deadline if crawl_ctx else None,
                             minimum_delay=browser_crawl_delay,
                         ):
+                            if crawl_ctx:
+                                with crawl_ctx.lock:
+                                    crawl_ctx.stop_reasons.add("deadline")
                             route.abort("blockedbyclient")
                             return
                     route.continue_()
