@@ -170,3 +170,29 @@ def test_deadline_expires_while_waiting_for_domain_slot(mock_db, monkeypatch):
         current_crawl_context.reset(token)
     assert result.error == "deadline_exceeded_before_request"
     assert called == []
+
+
+
+def test_http_redirect_target_is_checked_against_robots(mock_db, monkeypatch):
+    from core.shared_crawl_manager import check_robots
+
+    requested = []
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "https://example.test/private"}
+        def close(self):
+            pass
+
+    def fake_get_response(url, **kwargs):
+        requested.append((url, kwargs.get("allow_redirects")))
+        return RedirectResponse()
+
+    monkeypatch.setattr("core.shared_crawl_manager.get_response", fake_get_response)
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda url, **kwargs: (False, "robots disallow", 0.0)
+        if url.endswith("/private") else (True, None, 0.0),
+    )
+    result = mock_db._do_http_fetch("https://example.test/start")
+    assert "robots_disallow_redirect" in result.error
+    assert requested == [("https://example.test/start", False)]
