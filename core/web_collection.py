@@ -243,7 +243,7 @@ def _sitemap_urls(
                 close_response()
             if not location:
                 return []
-            next_url = canonicalize_url(urljoin(current_url, location))
+            next_url = _safe_redirect_target(current_url, location)
             next_parsed = urlparse(next_url)
             if (
                 next_parsed.scheme not in ("http", "https")
@@ -386,6 +386,11 @@ def _render_with_browser(
             def guard_document_navigation(route):
                 request = route.request
                 if request.resource_type == "document":
+                    try:
+                        _safe_redirect_target(url, request.url)
+                    except ValueError:
+                        route.abort("blockedbyclient")
+                        return
                     if _domain(request.url) not in browser_allowed_domains:
                         route.abort("blockedbyclient")
                         return
@@ -411,6 +416,7 @@ def _render_with_browser(
             if response is not None and not 200 <= response.status < 300:
                 return None
             final_url = page.url
+            _safe_redirect_target(url, final_url)
             if not check_robots(final_url)[0]:
                 return None
             if crawl_ctx and crawl_ctx.deadline:
@@ -526,7 +532,7 @@ def collect_source(
                     close_response()
                 if not location:
                     raise ValueError(f"HTTP {response.status_code} redirect missing Location")
-                next_url = canonicalize_url(urljoin(current_url, location))
+                next_url = _safe_redirect_target(current_url, location)
                 parsed_next = urlparse(next_url)
                 if (
                     parsed_next.scheme not in {"http", "https"}
