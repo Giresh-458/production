@@ -248,7 +248,7 @@ class SharedCrawlManager:
             transport_failure = (
                 result.status_code == 0
                 and bool(result.error)
-                and result.error.startswith(("ConnectionError:", "Timeout:"))
+                and result.error.startswith(("ConnectionError:", "Timeout:", "ConnectTimeout:", "ReadTimeout:"))
             )
             if transport_failure or (
                 not result.error and self._needs_browser(result.html, result.status_code)
