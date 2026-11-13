@@ -40,6 +40,8 @@ def mock_render_with_browser(url, **kwargs):
 def patch_network(monkeypatch):
     monkeypatch.setattr("core.web_collection.get_response", mock_get_response)
     monkeypatch.setattr("core.web_collection.check_robots", lambda *a, **k: (True, None, 0.0))
+    monkeypatch.setattr("core.web_collection.wait_for_host_slot", lambda *a, **k: True)
+    monkeypatch.setattr("core.shared_crawl_manager.SharedCrawlManager._throttle_domain", lambda *a, **k: True)
     monkeypatch.setattr("core.web_collection._render_with_browser", mock_render_with_browser)
     # Also patch for shared_crawl_manager
     monkeypatch.setattr("core.shared_crawl_manager.get_response", mock_get_response)
