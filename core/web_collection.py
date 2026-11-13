@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from core.http_client import canonicalize_url, get_response
-from core.robots_policy import check_robots, wait_for_host_slot
+from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
 
 
 @dataclass(slots=True)
@@ -402,7 +402,6 @@ def collect_source(
     hashes: set[str] = set()
     queue: list[tuple[float, str, int, str | None, str]] = [(999.0, root_url, 0, None, "root")]
     robots_cache: dict[str, Any] = {}
-    robots_text_cache: dict[str, str] = {}
 
     def push(url: str, depth: int, parent: str | None, source: str, score: float) -> None:
         url = canonicalize_url(url)
@@ -672,16 +671,9 @@ def collect_source(
         # conservative: only explicitly advertised sitemaps/feeds are followed.
         if depth == 0 and "html" in content_type:
             # Read robots once for explicit Sitemap directives. Failure is non-fatal.
-            domain_key = _domain(final_url)
-            if domain_key not in robots_text_cache:
-                try:
-                    import urllib.request
-                    origin = f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"
-                    with urllib.request.urlopen(f"{origin}/robots.txt", timeout=5) as rr:
-                        robots_text_cache[domain_key] = rr.read(64_000).decode("utf-8", errors="replace")
-                except Exception:
-                    robots_text_cache[domain_key] = ""
-            for hint in _extract_discovery_urls(final_url, html, robots_text_cache.get(domain_key, "")):
+            sitemap_directives = get_robots_sitemaps(final_url, cache=robots_cache)
+            robots_text = "\n".join(f"Sitemap: {sitemap}" for sitemap in sitemap_directives)
+            for hint in _extract_discovery_urls(final_url, html, robots_text):
                 if hint.endswith("/robots.txt"):
                     continue
                 if "sitemap" in urlparse(hint).path.lower():
