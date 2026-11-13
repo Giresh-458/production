@@ -15,6 +15,7 @@ def test_unknown_site_discovers_sitemap_and_relevant_deep_page(monkeypatch):
             self.url = url
             self.text = text
             self.content = text.encode()
+            self.status_code = 200
             self.headers = {"Content-Type": content_type}
 
     def fake_get(url, **kwargs):
@@ -84,6 +85,7 @@ def test_collect_source_accepts_json_api_dataset_response(monkeypatch):
         url = "https://api.example.org/nrg_cb_em.json"
         text = __import__("json").dumps(payload)
         content = text.encode("utf-8")
+        status_code = 200
         headers = {"Content-Type": "application/json; charset=utf-8"}
 
     monkeypatch.setattr(web_collection, "get_response", lambda *args, **kwargs: Response())
