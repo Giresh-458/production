@@ -291,6 +291,9 @@ def _render_with_browser(
             if crawl_ctx and crawl_ctx.deadline else 30.0
         )
         if remaining <= 0.1:
+            if crawl_ctx:
+                with crawl_ctx.lock:
+                    crawl_ctx.stop_reasons.add("deadline")
             return None
 
         browser_ctx = _get_browser_context()
@@ -300,6 +303,9 @@ def _render_with_browser(
             if crawl_ctx and crawl_ctx.deadline:
                 remaining = crawl_ctx.deadline - __import__("time").time()
             if remaining <= 0.5:
+                if crawl_ctx:
+                    with crawl_ctx.lock:
+                        crawl_ctx.stop_reasons.add("deadline")
                 return None
             timeout_ms = max(1, int(min(30.0, remaining) * 1000))
             page.set_default_navigation_timeout(timeout_ms)
@@ -410,6 +416,9 @@ def collect_source(
             crawl_delay=crawl_delay,
             deadline=ctx.deadline if ctx else None,
         ):
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("deadline")
             failed.append({"url": url, "reason": "deadline_exceeded_before_request"})
             continue
 
@@ -454,6 +463,9 @@ def collect_source(
                     crawl_delay=redirect_crawl_delay,
                     deadline=ctx.deadline if ctx else None,
                 ):
+                    if ctx:
+                        with ctx.lock:
+                            ctx.stop_reasons.add("deadline")
                     failed.append({"url": next_url, "reason": "deadline_exceeded_before_redirect"})
                     response = None
                     break
