@@ -56,3 +56,17 @@ def test_effective_timeout_scaling():
         assert eff[1] <= 1.0
     finally:
         current_crawl_context.reset(token)
+
+
+
+def test_expired_deadline_prevents_network_request():
+    ctx = CrawlContext(deadline=time.time() - 0.01)
+    token = current_crawl_context.set(ctx)
+    try:
+        mock_session = Mock()
+        with pytest.raises(TimeoutError, match="Deadline exceeded before HTTP request"):
+            get_response("https://example.test/expired", session=mock_session)
+        mock_session.get.assert_not_called()
+        assert "deadline" in ctx.stop_reasons
+    finally:
+        current_crawl_context.reset(token)
