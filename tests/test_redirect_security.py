@@ -1,74 +1,81 @@
-import pytest
-import urllib.error
-import core.web_collection as web_collection
+from core import web_collection
 
-def test_authorized_redirect_allowed(monkeypatch):
-    pages = {
-        "https://polygon.technology/village/startups": "<html><title>Redirecting</title></html>",
-        "https://hadronfc.com/": "<html><title>Hadron Founders Club</title><body>Apply now.</body></html>"
-    }
 
-    class Response:
-        def __init__(self, url, text, status_code=200, headers=None):
-            self.url = url
-            self.text = text
-            self.content = text.encode()
-            self.status_code = status_code
-            self.headers = headers or {"Content-Type": "text/html"}
-        def close(self):
-            pass
+class Response:
+    def __init__(self, url, text="", status_code=200, headers=None):
+        self.url = url
+        self.text = text
+        self.content = text.encode()
+        self.status_code = status_code
+        self.headers = headers or {"Content-Type": "text/html"}
+        self.closed = False
 
-    def fake_get(url, **kwargs):
-        if url == "https://polygon.technology/village/startups":
-            return Response(url, "", 302, {"Location": "https://hadronfc.com/"})
-        elif url == "https://hadronfc.com/":
-            return Response(url, pages[url])
-        raise urllib.error.URLError("unavailable")
+    def close(self):
+        self.closed = True
 
-    monkeypatch.setattr(web_collection, "get_response", fake_get)
+
+def _patch_policy(monkeypatch):
     monkeypatch.setattr(web_collection, "_robots_allowed", lambda *a, **k: True)
     monkeypatch.setattr(web_collection, "check_robots", lambda *a, **k: (True, None, 0.0))
     monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *a, **k: True)
     monkeypatch.setattr(web_collection, "get_robots_sitemaps", lambda *a, **k: [])
 
-    result = web_collection.collect_source(
-        "https://polygon.technology/village/startups",
-        keywords=("apply",),
-        allowed_domains=("hadronfc.com",)
-    )
 
-    assert len(result.pages) == 1
-    assert result.pages[0].url == "https://hadronfc.com/"
-
-def test_unauthorized_redirect_rejected(monkeypatch):
+def test_authorized_redirect_allowed(monkeypatch):
     pages = {
-        "https://polygon.technology/village/startups": "<html><title>Redirecting</title></html>",
-        "https://evil.example/": "<html><title>Evil</title><body>Apply now.</body></html>"
+        "https://hadronfc.com/": "<html><head><title>Hadron</title></head><body><h1>Hadron</h1><p>Particle physics research.</p></body></html>"
     }
-
-    class Response:
-        def __init__(self, url, text):
-            self.url = url
-            self.text = text
-            self.content = text.encode()
-            self.headers = {"Content-Type": "text/html"}
+    requested = []
 
     def fake_get(url, **kwargs):
-        if url == "https://polygon.technology/village/startups":
-            return Response(url, "", 302, {"Location": "https://evil.example/"})
-        elif url == "https://evil.example/":
-            return Response(url, pages[url])
-        raise urllib.error.URLError("unavailable")
+        requested.append(url)
+        if url == "https://polygon.technology/":
+            return Response(
+                url,
+                status_code=302,
+                headers={"Location": "https://hadronfc.com/"},
+            )
+        return Response(url, pages[url])
 
     monkeypatch.setattr(web_collection, "get_response", fake_get)
-    monkeypatch.setattr(web_collection, "_robots_allowed", lambda *a, **k: True)
-    monkeypatch.setattr(web_collection, "_render_with_browser", lambda *a, **k: ("Evil", "Apply now.", [], "https://evil.example/"))
+    _patch_policy(monkeypatch)
 
     result = web_collection.collect_source(
-        "https://polygon.technology/village/startups",
-        keywords=("apply",),
-        allowed_domains=("hadronfc.com",) # authorized hadronfc, but it redirected to evil.example
+        "https://polygon.technology/",
+        keywords=("research", "particle"),
+        allowed_domains={"hadronfc.com"},
+        max_depth=0,
+        max_pages=1,
     )
 
-    assert len(result.pages) == 0
-    assert any("redirected_to_untrusted_domain" in f["reason"] for f in result.failed_urls)
+    assert requested == ["https://polygon.technology/", "https://hadronfc.com/"]
+    assert any(page.url == "https://hadronfc.com/" for page in result.pages)
+
+
+def test_unauthorized_redirect_rejected(monkeypatch):
+    requested = []
+
+    def fake_get(url, **kwargs):
+        requested.append(url)
+        return Response(
+            url,
+            status_code=302,
+            headers={"Location": "https://evil.example/"},
+        )
+
+    monkeypatch.setattr(web_collection, "get_response", fake_get)
+    _patch_policy(monkeypatch)
+
+    result = web_collection.collect_source(
+        "https://polygon.technology/",
+        keywords=("research",),
+        allowed_domains={"hadronfc.com"},
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert requested == ["https://polygon.technology/"]
+    assert any(
+        "redirected_to_untrusted_domain" in str(item.get("reason", ""))
+        for item in result.failed_urls
+    )
