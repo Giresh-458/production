@@ -486,23 +486,35 @@ class SharedCrawlManager:
                         except ValueError:
                             route.abort("blockedbyclient")
                             return
-                    elif request.resource_type == "document":
-                        route.abort("blockedbyclient")
-                        return
-                    if request.resource_type == "document":
                         allowed, _, browser_crawl_delay = check_robots(request.url)
                         if not allowed:
                             route.abort("blockedbyclient")
                             return
                         from core.crawl_context import current_crawl_context
+                        from core.robots_policy import wait_for_host_slot
                         crawl_ctx = current_crawl_context.get(None)
-                        if not self._throttle_domain(
-                            request.url,
-                            deadline=crawl_ctx.deadline if crawl_ctx else None,
-                            minimum_delay=browser_crawl_delay,
-                        ):
+                        deadline = crawl_ctx.deadline if crawl_ctx else None
+                        if request.resource_type == "document":
+                            throttled = self._throttle_domain(
+                                request.url,
+                                deadline=deadline,
+                                minimum_delay=browser_crawl_delay,
+                            )
+                        elif browser_crawl_delay > 0:
+                            throttled = wait_for_host_slot(
+                                request.url,
+                                crawl_delay=browser_crawl_delay,
+                                default_delay=0.0,
+                                deadline=deadline,
+                            )
+                        else:
+                            throttled = True
+                        if not throttled:
                             route.abort("blockedbyclient")
                             return
+                    elif request.resource_type == "document":
+                        route.abort("blockedbyclient")
+                        return
                     route.continue_()
 
                 page.route("**/*", guard_document_navigation)
