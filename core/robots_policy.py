@@ -47,6 +47,7 @@ class _Group:
 @dataclass(frozen=True)
 class RobotsPolicy:
     groups: tuple[_Group, ...]
+    sitemaps: tuple[str, ...] = ()
 
     def decision(self, user_agent: str, url: str) -> tuple[bool, float]:
         # RFC 9309: robots.txt itself is not subject to the rules it contains.
@@ -154,6 +155,7 @@ def _parse_robots(text: str) -> RobotsPolicy:
     agents: list[str] = []
     rules: list[_Rule] = []
     crawl_delay = 0.0
+    sitemaps: list[str] = []
 
     def finish_group() -> None:
         nonlocal agents, rules, crawl_delay
@@ -190,6 +192,16 @@ def _parse_robots(text: str) -> RobotsPolicy:
                 rule = _compile_rule(value, allowed=(directive == "allow"))
                 if rule is not None:
                     rules.append(rule)
+        elif directive == "sitemap" and value:
+            sitemap_url = value.strip()
+            parsed_sitemap = urlsplit(sitemap_url)
+            if (
+                parsed_sitemap.scheme in {"http", "https"}
+                and parsed_sitemap.netloc
+                and not parsed_sitemap.username
+                and not parsed_sitemap.password
+            ):
+                sitemaps.append(sitemap_url)
         elif directive == "crawl-delay" and agents:
             try:
                 parsed_delay = float(value)
@@ -199,7 +211,7 @@ def _parse_robots(text: str) -> RobotsPolicy:
                 pass
 
     finish_group()
-    return RobotsPolicy(tuple(groups))
+    return RobotsPolicy(tuple(groups), tuple(dict.fromkeys(sitemaps)))
 
 
 def _origin(url: str) -> str:
@@ -437,6 +449,27 @@ def check_robots(
         return allowed, None if allowed else "robots.txt disallows this URL", delay
     except Exception as exc:
         return False, f"robots.txt policy could not be evaluated: {type(exc).__name__}", 0.0
+
+
+def get_robots_sitemaps(
+    url: str,
+    *,
+    user_agent: str = "RIF/3.1",
+    timeout: float = 5.0,
+    cache: dict[str, tuple[float, RobotsPolicy | None, bool, str | None]] | None = None,
+) -> list[str]:
+    """Return Sitemap directives from the cached robots policy without refetching it."""
+    try:
+        origin = _origin(url)
+    except ValueError:
+        return []
+    entry = _cached_policy(origin, cache)
+    if entry is None:
+        check_robots(url, user_agent=user_agent, timeout=timeout, cache=cache)
+        entry = _cached_policy(origin, cache)
+    if entry is None or entry[1] is None:
+        return []
+    return list(entry[1].sitemaps)
 
 
 def clear_robots_cache() -> None:
