@@ -92,3 +92,16 @@ def test_robots_policy_rejects_urls_with_credentials():
     allowed, reason, _ = robots_policy.check_robots("https://user:secret@example.test/private")
     assert allowed is False
     assert "credential-free" in reason
+
+
+
+def test_rate_limit_cooldown_blocks_new_requests_until_deadline(monkeypatch):
+    import time
+
+    robots_policy.clear_robots_cache()
+    url = "https://example.test/limited"
+    robots_policy.defer_host(url, 120.0)
+    assert robots_policy.wait_for_host_slot(
+        url,
+        deadline=time.time() + 0.1,
+    ) is False
