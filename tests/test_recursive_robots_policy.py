@@ -38,6 +38,8 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
     )
 
     def extract_text(html, **kwargs):
+        if "root" in html:
+            return "Root", "Unique root-page text for deterministic content deduplication."
         return "Child", "This is enough source-backed content for a deterministic crawler test."
 
     from core.crawl_context import current_crawl_context
