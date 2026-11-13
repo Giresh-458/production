@@ -626,7 +626,7 @@ def collect_source(
                 "we're verifying your browser" in c
             )
 
-        if _is_challenge(text, title):
+        if _is_challenge(text, title, html):
             failed.append({"url": url, "reason": "anti-bot/challenge detected"})
             continue
 
