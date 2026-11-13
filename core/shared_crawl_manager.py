@@ -243,8 +243,16 @@ class SharedCrawlManager:
                 return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
             
             # Browser rendering is only a rendering fallback. It must never
-            # bypass HTTP access controls, rate limits or transport failures.
-            if not result.error and self._needs_browser(result.html, result.status_code):
+            # bypass HTTP access controls or rate limits. A transport failure
+            # may use one bounded browser attempt; HTTP errors never may.
+            transport_failure = (
+                result.status_code == 0
+                and bool(result.error)
+                and result.error.startswith(("ConnectionError:", "Timeout:"))
+            )
+            if transport_failure or (
+                not result.error and self._needs_browser(result.html, result.status_code)
+            ):
                 if HAS_PLAYWRIGHT:
                     LOGGER.info(f"Falling back to browser fetch for {url}")
                     if ctx_obj:
