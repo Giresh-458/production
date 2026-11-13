@@ -338,11 +338,11 @@ def _render_with_browser(
         return None
 
 def render_page_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Render one page with the optional Playwright fallback.
+    """Render one page after a JS-shell or transport failure.
 
-    Intended for servers that reject ordinary HTTP clients (for example 403)
-    while still serving the page to a normal browser. Robots policy is checked
-    by callers because this function is a low-level renderer.
+    HTTP status responses such as 401, 403, 404 and 429 are not retried through
+    a browser. Top-level document navigation is checked against robots.txt and
+    remains within the configured origin/domain.
     """
     return _render_with_browser(url)
 
@@ -363,8 +363,8 @@ def collect_source(
 
     Strategy: robots-aware HTTP -> structured/sitemap discovery -> scored links
     -> PDF extraction -> optional Trafilatura extraction -> optional Playwright
-    only when the static response is empty/JS-shell-like. It is intentionally
-    domain-bound and keeps provenance for every page.
+    only for a successful JS shell or a transport failure, never after an HTTP
+    status response. It is intentionally domain-bound and keeps provenance.
     """
     root_url = canonicalize_url(root_url)
     allowed = {_domain(root_url)}
