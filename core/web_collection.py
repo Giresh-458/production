@@ -310,9 +310,14 @@ def _pdf_text(response: Any) -> str:
         from io import BytesIO
         from pypdf import PdfReader
         reader = PdfReader(BytesIO(response.content))
-        return "\n".join((page.extract_text() or "") for page in reader.pages[:30])
-    except Exception:
-        return ""
+        text = "\n".join((page.extract_text() or "") for page in reader.pages[:30]).strip()
+    except Exception as exc:
+        raise ValueError(
+            f"pdf_extraction_failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not text:
+        raise ValueError("pdf_contains_no_extractable_text")
+    return text
 
 
 def _extract_with_trafilatura(html: str, url: str) -> tuple[str, str] | None:
