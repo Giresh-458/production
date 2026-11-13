@@ -307,9 +307,15 @@ def _sitemap_urls(
 
 def _pdf_text(response: Any) -> str:
     try:
+        pdf_bytes = response.content
+    finally:
+        close_response = getattr(response, "close", None)
+        if callable(close_response):
+            close_response()
+    try:
         from io import BytesIO
         from pypdf import PdfReader
-        reader = PdfReader(BytesIO(response.content))
+        reader = PdfReader(BytesIO(pdf_bytes))
         text = "\n".join((page.extract_text() or "") for page in reader.pages[:30]).strip()
     except Exception as exc:
         raise ValueError(
