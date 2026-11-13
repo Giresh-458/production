@@ -453,10 +453,28 @@ def classify_github_item(title: str, body: str, labels: list[str] | None = None)
 
 
 def _github_repo_parts(url: str) -> tuple[str, str] | None:
-    match = re.search(r"github\.com/([^/]+)/([^/#?]+)", url)
-    if not match:
+    """Parse only genuine GitHub repository URLs, never lookalike hosts."""
+    try:
+        parsed = urlparse(str(url).strip())
+    except ValueError:
         return None
-    return match.group(1), match.group(2).removesuffix(".git")
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or (parsed.hostname or "").lower() not in {"github.com", "www.github.com"}
+        or parsed.username
+        or parsed.password
+    ):
+        return None
+    segments = [part for part in parsed.path.split("/") if part]
+    if len(segments) < 2:
+        return None
+    owner, repository = segments[:2]
+    repository = repository.removesuffix(".git")
+    if not owner or not repository or owner in {".", ".."} or repository in {".", ".."}:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repository):
+        return None
+    return owner, repository
 
 
 def fetch_github_snapshot(source: OpenSourceSource) -> tuple[str, dict[str, object]]:
