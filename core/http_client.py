@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import random
 import time
 import threading
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.parse import urlsplit, urlunsplit, urljoin, parse_qsl, urlencode
 
 LOGGER = logging.getLogger("rif.http")
 
@@ -117,6 +118,54 @@ def _sleep_or_abort(delay: float) -> None:
             raise TimeoutError("Deadline exceeded during retry sleep")
     time.sleep(delay)
 
+def _safe_redirect_target(current_url: str, location: str | None) -> str:
+    """Resolve and validate an HTTP redirect before issuing the next request.
+
+    Redirects to non-HTTP schemes, credential-bearing URLs, local hostnames,
+    and non-global IP literals are rejected. DNS names are not resolved here;
+    the crawler's robots policy is checked separately before each hop.
+    """
+    if not location or not str(location).strip():
+        raise ValueError("redirect_missing_location")
+    target = canonicalize_url(urljoin(current_url, str(location).strip()))
+    parsed = urlsplit(target)
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("redirect_to_invalid_or_unsafe_url")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError("redirect_to_invalid_or_unsafe_url") from exc
+
+    host = parsed.hostname.rstrip(".").casefold()
+    if (
+        host == "localhost"
+        or host.endswith((".localhost", ".local"))
+        or host in {"metadata", "metadata.google.internal"}
+    ):
+        raise ValueError("redirect_to_local_or_metadata_host")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError("redirect_to_non_public_ip")
+    return target
+
+
+def _url_origin(url: str) -> tuple[str, str, int]:
+    parsed = urlsplit(url)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port or (443 if scheme == "https" else 80)
+    return scheme, host, port
+
+
 def get_response(
     url: str,
     *,
@@ -127,8 +176,9 @@ def get_response(
     retries: int = 1,
     expected_status: tuple[int, ...] = (200,),
     allow_redirects: bool = True,
+    check_redirect_robots: bool = True,
 ) -> Any:
-    """Fetch a live URL predictably."""
+    """Fetch a live URL with bounded retries and policy-checked redirects."""
     client = session or _get_session()
     merged_headers = dict(DEFAULT_HEADERS)
     if headers:
@@ -136,25 +186,82 @@ def get_response(
 
     last_exc: Exception | None = None
     target = canonicalize_url(url)
-    MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB
+    max_response_bytes = 10 * 1024 * 1024
+    max_redirects = 10
+    redirect_statuses = {301, 302, 303, 307, 308}
 
     from core.crawl_context import current_crawl_context
     ctx = current_crawl_context.get(None)
 
     for attempt in range(retries + 1):
-        if ctx: ctx.http_requests += 1
+        request_url = target
+        request_params = params
+        request_headers = dict(merged_headers)
+        redirects_followed = 0
         try:
-            effective_timeout = _apply_context_timeout(timeout)
-            response = client.get(
-                target,
-                params=params,
-                headers=merged_headers,
-                timeout=effective_timeout,
-                allow_redirects=allow_redirects,
-                stream=True
-            )
+            while True:
+                if ctx:
+                    ctx.http_requests += 1
+                effective_timeout = _apply_context_timeout(timeout)
+                response = client.get(
+                    request_url,
+                    params=request_params,
+                    headers=request_headers,
+                    timeout=effective_timeout,
+                    allow_redirects=False,
+                    stream=True,
+                )
+                request_params = None
+
+                status = int(response.status_code)
+                if allow_redirects and status in redirect_statuses:
+                    if redirects_followed >= max_redirects:
+                        response.close()
+                        raise requests.TooManyRedirects(
+                            f"Exceeded {max_redirects} redirects while fetching {target}"
+                        )
+                    location = response.headers.get("Location")
+                    response.close()
+                    next_url = _safe_redirect_target(request_url, location)
+
+                    if _url_origin(request_url) != _url_origin(next_url):
+                        # Do not forward caller-supplied credentials to another origin.
+                        request_headers = {
+                            key: value
+                            for key, value in request_headers.items()
+                            if key.casefold() not in {
+                                "authorization",
+                                "cookie",
+                                "proxy-authorization",
+                            }
+                        }
+
+                    crawl_delay = 0.0
+                    if check_redirect_robots:
+                        from core.robots_policy import check_robots
+                        allowed, reason, crawl_delay = check_robots(next_url)
+                        if not allowed:
+                            raise PermissionError(
+                                f"robots_disallow_redirect: {reason or 'robots policy denied redirect'}"
+                            )
+
+                    from core.robots_policy import wait_for_host_slot
+                    if not wait_for_host_slot(
+                        next_url,
+                        crawl_delay=crawl_delay,
+                        deadline=ctx.deadline if ctx else None,
+                    ):
+                        raise TimeoutError(
+                            "rate_limit_cooldown_or_deadline_before_redirect_request"
+                        )
+
+                    request_url = next_url
+                    redirects_followed += 1
+                    continue
+                break
+
             content_length = int(response.headers.get("Content-Length", 0) or 0)
-            if content_length > MAX_RESPONSE_BYTES:
+            if content_length > max_response_bytes:
                 response.close()
                 raise ValueError(f"Response too large: {content_length} bytes")
             chunks: list[bytes] = []
@@ -162,7 +269,6 @@ def get_response(
             try:
                 iterator = response.iter_content(chunk_size=64 * 1024)
                 for chunk in iterator:
-                    from core.crawl_context import current_crawl_context
                     ctx = current_crawl_context.get(None)
                     if ctx and ctx.check_limits():
                         response.close()
@@ -170,9 +276,11 @@ def get_response(
                     if not chunk:
                         continue
                     total += len(chunk)
-                    if total > MAX_RESPONSE_BYTES:
+                    if total > max_response_bytes:
                         response.close()
-                        raise ValueError(f"Response exceeded {MAX_RESPONSE_BYTES} byte limit")
+                        raise ValueError(
+                            f"Response exceeded {max_response_bytes} byte limit"
+                        )
                     chunks.append(chunk)
                 response._content = b"".join(chunks)
                 response._content_consumed = True
@@ -181,29 +289,42 @@ def get_response(
                 if not isinstance(raw_body, (bytes, bytearray)):
                     raw_body = b""
                 body = bytes(raw_body)
-                if len(body) > MAX_RESPONSE_BYTES:
+                if len(body) > max_response_bytes:
                     response.close()
-                    raise ValueError(f"Response exceeded {MAX_RESPONSE_BYTES} byte limit")
+                    raise ValueError(
+                        f"Response exceeded {max_response_bytes} byte limit"
+                    )
                 response._content = body
                 response._content_consumed = True
 
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
-                try:
+                if response.status_code == 429:
+                    try:
+                        delay = _retry_delay(response, attempt)
+                    except RuntimeError:
+                        _defer_rate_limited_host(request_url, response, attempt)
+                        response.close()
+                        raise
+                    _defer_rate_limited_host(
+                        request_url, response, attempt, delay_seconds=delay
+                    )
+                else:
                     delay = _retry_delay(response, attempt)
-                except RuntimeError:
-                    if response.status_code == 429:
-                        _defer_rate_limited_host(target, response, attempt)
-                    raise
-                LOGGER.warning("Transient HTTP %s for %s; retrying in %.1fs", response.status_code, target, delay)
+                LOGGER.warning(
+                    "Transient HTTP %s for %s; retrying in %.1fs",
+                    response.status_code,
+                    request_url,
+                    delay,
+                )
+                response.close()
                 try:
                     _sleep_or_abort(delay)
                 except TimeoutError:
-                    if response.status_code == 429:
-                        _defer_rate_limited_host(target, response, attempt, delay)
                     raise
                 continue
+
             if response.status_code == 429:
-                _defer_rate_limited_host(target, response, attempt)
+                _defer_rate_limited_host(request_url, response, attempt)
             if response.status_code not in expected_status:
                 response.raise_for_status()
             return response
@@ -212,21 +333,43 @@ def get_response(
             raise
         except TimeoutError as exc:
             last_exc = exc
-            if str(exc) == "Deadline exceeded before HTTP request":
+            message = str(exc).casefold()
+            if (
+                "deadline exceeded" in message
+                or "rate_limit" in message
+                or "cooldown" in message
+            ):
                 raise
             if attempt < retries:
                 delay = min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25)
-                LOGGER.warning("Request timed out for %s (%s); retrying in %.1fs", target, exc, delay)
+                LOGGER.warning(
+                    "Request timed out for %s (%s); retrying in %.1fs",
+                    target,
+                    exc,
+                    delay,
+                )
                 _sleep_or_abort(delay)
                 continue
             raise
         except requests.RequestException as exc:
             last_exc = exc
-            if isinstance(exc, (requests.exceptions.InvalidURL, requests.exceptions.InvalidSchema, requests.exceptions.MissingSchema)):
+            if isinstance(
+                exc,
+                (
+                    requests.exceptions.InvalidURL,
+                    requests.exceptions.InvalidSchema,
+                    requests.exceptions.MissingSchema,
+                ),
+            ):
                 raise
             if attempt < retries:
                 delay = min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25)
-                LOGGER.warning("Network fetch failed for %s (%s); retrying in %.1fs", target, exc, delay)
+                LOGGER.warning(
+                    "Network fetch failed for %s (%s); retrying in %.1fs",
+                    target,
+                    exc,
+                    delay,
+                )
                 _sleep_or_abort(delay)
                 continue
             raise
