@@ -678,10 +678,10 @@ def collect_source(
                             ctx.browser_attempts += 1
                             ctx.browser_escalations += 1
                     rendered = _render_with_browser(
-                    final_url,
-                    allowed_domains=allowed,
-                    allow_loopback=allow_loopback_for_tests,
-                )
+                        final_url,
+                        allowed_domains=allowed,
+                        allow_loopback=allow_loopback_for_tests,
+                    )
                     used_playwright = True
                     if ctx: 
                         with ctx.lock: ctx.playwright_used += 1
