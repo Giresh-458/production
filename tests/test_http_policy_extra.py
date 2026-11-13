@@ -373,3 +373,25 @@ def test_get_response_blocks_cross_origin_redirect_when_session_auth_is_configur
 
     assert requested == ["https://start.example.test/resource"]
 
+def test_get_response_closes_response_when_http_status_is_rejected():
+    from core.http_client import get_response
+
+    response = _RedirectResponse(
+        403,
+        body=b"forbidden",
+        url="https://example.test/forbidden",
+    )
+
+    class Session:
+        def get(self, url, **kwargs):
+            return response
+
+    with pytest.raises(requests.HTTPError):
+        get_response(
+            "https://example.test/forbidden",
+            session=Session(),
+            retries=0,
+        )
+
+    assert response.closed is True
+
