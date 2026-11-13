@@ -206,6 +206,7 @@ def _sitemap_urls(
     depth: int = 0,
     max_depth: int = 3,
     robots_cache: dict[str, Any] | None = None,
+    allow_loopback: bool = False,
 ) -> list[str]:
     if depth >= max_depth:
         return []
@@ -243,7 +244,7 @@ def _sitemap_urls(
                 close_response()
             if not location:
                 return []
-            next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback_for_tests)
+            next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback)
             next_parsed = urlparse(next_url)
             if (
                 next_parsed.scheme not in ("http", "https")
@@ -297,6 +298,7 @@ def _sitemap_urls(
                     depth=depth + 1,
                     max_depth=max_depth,
                     robots_cache=robots_cache,
+                    allow_loopback=allow_loopback,
                 )
             )
             if len(out) >= limit:
@@ -795,6 +797,7 @@ def collect_source(
                         limit=max_pages * 6,
                         allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}",
                         robots_cache=robots_cache,
+                        allow_loopback=allow_loopback_for_tests,
                     ):
                         s = _score(discovered_url, "sitemap", keywords)
                         if s > 0.0:
