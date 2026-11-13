@@ -276,3 +276,27 @@ def test_crawl4ai_host_waiter_honors_shared_429_cooldown(monkeypatch):
         )
     ]
 
+def test_crawl4ai_robots_fetch_does_not_recursively_check_redirect_target(monkeypatch):
+    _clear_caches()
+    observed = []
+
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "User-agent: *\nAllow: /\n"
+
+    def fake_get_response(url, **kwargs):
+        observed.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr("core.crawl4ai_web.get_response", fake_get_response)
+
+    allowed, delay, reason = crawl4ai_web._get_robots_policy(
+        "https://robots-redirect.example.test/call"
+    )
+
+    assert allowed is True
+    assert delay >= 1.0
+    assert reason is None
+    assert len(observed) == 1
+    assert observed[0][1]["check_redirect_robots"] is False
+
