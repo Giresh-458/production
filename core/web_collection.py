@@ -297,6 +297,10 @@ def _render_with_browser(
         browser_allowed_domains = allowed_domains or {_domain(url)}
         page = browser_ctx.new_page()
         try:
+            if crawl_ctx and crawl_ctx.deadline:
+                remaining = crawl_ctx.deadline - __import__("time").time()
+            if remaining <= 0.5:
+                return None
             timeout_ms = max(1, int(min(30.0, remaining) * 1000))
             page.set_default_navigation_timeout(timeout_ms)
 
