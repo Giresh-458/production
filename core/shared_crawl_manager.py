@@ -358,55 +358,59 @@ class SharedCrawlManager:
                     retries=2,
                     allow_redirects=False,
                 )
-                status = int(response.status_code)
-                if status in redirect_statuses:
-                    location = response.headers.get("Location")
-                    response.close()
-                    if not location:
-                        raise RuntimeError(f"HTTP {status} redirect missing Location header")
-                    next_url = _safe_redirect_target(current_url, location)
-                    allowed, reason, redirect_crawl_delay = check_robots(next_url)
-                    if not allowed:
-                        return CrawlResult(
-                            canonical_url=url, final_url=next_url, status_code=0,
-                            content_type="", title="", html="", clean_text="",
-                            content_hash="", fetch_method="http", from_cache=False,
-                            error=f"robots_disallow_redirect: {reason or 'robots policy denied redirect'}",
-                        )
-                    from core.crawl_context import current_crawl_context
-                    crawl_ctx = current_crawl_context.get(None)
-                    if not self._throttle_domain(
-                        next_url,
-                        deadline=crawl_ctx.deadline if crawl_ctx else None,
-                        minimum_delay=redirect_crawl_delay,
-                    ):
-                        raise TimeoutError("host_wait_unavailable_before_redirect_request")
-                    current_url = next_url
-                    continue
+                try:
+                    status = int(response.status_code)
+                    if status in redirect_statuses:
+                        location = response.headers.get("Location")
+                        if not location:
+                            raise RuntimeError(f"HTTP {status} redirect missing Location header")
+                        next_url = _safe_redirect_target(current_url, location)
+                        allowed, reason, redirect_crawl_delay = check_robots(next_url)
+                        if not allowed:
+                            return CrawlResult(
+                                canonical_url=url, final_url=next_url, status_code=0,
+                                content_type="", title="", html="", clean_text="",
+                                content_hash="", fetch_method="http", from_cache=False,
+                                error=f"robots_disallow_redirect: {reason or 'robots policy denied redirect'}",
+                            )
+                        from core.crawl_context import current_crawl_context
+                        crawl_ctx = current_crawl_context.get(None)
+                        if not self._throttle_domain(
+                            next_url,
+                            deadline=crawl_ctx.deadline if crawl_ctx else None,
+                            minimum_delay=redirect_crawl_delay,
+                        ):
+                            raise TimeoutError("host_wait_unavailable_before_redirect_request")
+                        current_url = next_url
+                        continue
 
-                if status < 200 or status >= 300:
-                    response.raise_for_status()
-                    raise RuntimeError(f"Unexpected HTTP status {status}")
-                html = response.text
-                final_url = str(response.url or current_url)
-                ctype = response.headers.get("Content-Type", "")
-                soup = BeautifulSoup(html, "html.parser")
-                title_tag = soup.find("title")
-                title = title_tag.get_text(strip=True) if title_tag else ""
-                clean_text = soup.get_text(separator=" ", strip=True)
-                content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
-                if self._is_anti_bot_challenge(html, title, clean_text):
+                    if status < 200 or status >= 300:
+                        response.raise_for_status()
+                        raise RuntimeError(f"Unexpected HTTP status {status}")
+                    html = response.text
+                    final_url = str(response.url or current_url)
+                    ctype = response.headers.get("Content-Type", "")
+                    soup = BeautifulSoup(html, "html.parser")
+                    title_tag = soup.find("title")
+                    title = title_tag.get_text(strip=True) if title_tag else ""
+                    clean_text = soup.get_text(separator=" ", strip=True)
+                    content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
+                    if self._is_anti_bot_challenge(html, title, clean_text):
+                        return CrawlResult(
+                            canonical_url=url, final_url=final_url, status_code=status,
+                            content_type=ctype, title=title, html="", clean_text="",
+                            content_hash="", fetch_method="http", from_cache=False,
+                            error="anti_bot_challenge_detected",
+                        )
                     return CrawlResult(
                         canonical_url=url, final_url=final_url, status_code=status,
-                        content_type=ctype, title=title, html="", clean_text="",
-                        content_hash="", fetch_method="http", from_cache=False,
-                        error="anti_bot_challenge_detected",
+                        content_type=ctype, title=title, html=html, clean_text=clean_text,
+                        content_hash=content_hash, fetch_method="http", from_cache=False,
                     )
-                return CrawlResult(
-                    canonical_url=url, final_url=final_url, status_code=status,
-                    content_type=ctype, title=title, html=html, clean_text=clean_text,
-                    content_hash=content_hash, fetch_method="http", from_cache=False,
-                )
+                finally:
+                    close_response = getattr(response, "close", None)
+                    if callable(close_response):
+                        close_response()
 
             raise RuntimeError("too_many_redirects")
         except requests.HTTPError as exc:
