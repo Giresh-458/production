@@ -105,3 +105,35 @@ def test_rate_limit_cooldown_blocks_new_requests_until_deadline(monkeypatch):
         url,
         deadline=time.time() + 0.1,
     ) is False
+
+
+
+def test_deadline_does_not_poison_robots_policy_cache(monkeypatch):
+    robots_policy.clear_robots_cache()
+    calls = []
+
+    monkeypatch.setattr(
+        robots_policy,
+        "wait_for_host_slot",
+        lambda *args, **kwargs: False,
+    )
+    allowed, reason, _ = robots_policy.check_robots("https://deadline.example/open")
+    assert allowed is False
+    assert "deadline" in reason.lower()
+
+    monkeypatch.setattr(
+        robots_policy,
+        "wait_for_host_slot",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: (
+            calls.append(args[0])
+            or FakeResponse(text="User-agent: RIF\nAllow: /")
+        ),
+    )
+    allowed, reason, _ = robots_policy.check_robots("https://deadline.example/open")
+    assert allowed is True
+    assert calls == ["https://deadline.example/robots.txt"]
