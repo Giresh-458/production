@@ -551,7 +551,9 @@ def collect_source(
                     close_response()
                 if not location:
                     raise ValueError(f"HTTP {response.status_code} redirect missing Location")
-                next_url = _safe_redirect_target(current_url, location)
+                next_url = _safe_redirect_target(
+                    current_url, location, allow_loopback=allow_loopback_for_tests
+                )
                 parsed_next = urlparse(next_url)
                 if (
                     parsed_next.scheme not in {"http", "https"}
@@ -675,7 +677,11 @@ def collect_source(
                             ctx.js_shells_detected += 1
                             ctx.browser_attempts += 1
                             ctx.browser_escalations += 1
-                    rendered = _render_with_browser(final_url, allowed_domains=allowed)
+                    rendered = _render_with_browser(
+                    final_url,
+                    allowed_domains=allowed,
+                    allow_loopback=allow_loopback_for_tests,
+                )
                     used_playwright = True
                     if ctx: 
                         with ctx.lock: ctx.playwright_used += 1
