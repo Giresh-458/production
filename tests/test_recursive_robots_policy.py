@@ -23,9 +23,19 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
         ],
     )
 
-    def fetch_html(url):
+    def fake_fetch_recursive_page(url, fetch_html, extract_page_text):
         requested.append(url)
-        return "<html><body>Allowed child content.</body></html>"
+        return (
+            "Child",
+            "This is enough source-backed content for a deterministic crawler test.",
+            "<html><body>Allowed child content.</body></html>",
+        )
+
+    monkeypatch.setattr(
+        recursive_collection,
+        "_fetch_recursive_page",
+        fake_fetch_recursive_page,
+    )
 
     def extract_text(html, **kwargs):
         return "Child", "This is enough source-backed content for a deterministic crawler test."
@@ -34,7 +44,7 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
         root_url="https://example.test/",
         root_name="test",
         initial_html="<html><body>root</body></html>",
-        fetch_html=fetch_html,
+        fetch_html=lambda url: "",
         extract_page_text=extract_text,
         config=recursive_collection.RecursiveCollectionConfig(
             max_depth=1,
