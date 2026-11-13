@@ -215,11 +215,16 @@ class SharedCrawlManager:
             ctx_obj = current_crawl_context.get(None)
             deadline = ctx_obj.deadline if ctx_obj else None
             if not self._throttle_domain(url, deadline=deadline, minimum_delay=crawl_delay):
+                wait_error = (
+                    "deadline_exceeded_before_request"
+                    if ctx_obj and "deadline" in ctx_obj.stop_reasons
+                    else "rate_limit_cooldown_exceeds_safe_wait"
+                )
                 return CrawlResult(
                     canonical_url=url, final_url=url, status_code=0,
                     content_type="", title="", html="", clean_text="",
                     content_hash="", fetch_method="error", from_cache=False,
-                    error="host_wait_unavailable_before_request",
+                    error=wait_error,
                 )
 
             timeout = None
