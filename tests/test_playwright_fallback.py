@@ -31,9 +31,11 @@ def mock_render_with_browser(url):
 @pytest.fixture(autouse=True)
 def patch_network(monkeypatch):
     monkeypatch.setattr("core.web_collection.get_response", mock_get_response)
+    monkeypatch.setattr("core.web_collection.check_robots", lambda *a, **k: (True, None, 0.0))
     monkeypatch.setattr("core.web_collection._render_with_browser", mock_render_with_browser)
     # Also patch for shared_crawl_manager
     monkeypatch.setattr("core.shared_crawl_manager.get_response", mock_get_response)
+    monkeypatch.setattr("core.shared_crawl_manager.check_robots", lambda *a, **k: (True, None, 0.0))
     
     # Mock Playwright installation check
     monkeypatch.setattr("core.shared_crawl_manager.HAS_PLAYWRIGHT", True)
@@ -49,7 +51,7 @@ def patch_network(monkeypatch):
             )
         return CrawlResult(
             canonical_url=url, final_url=url, status_code=200,
-            content_type="text/html", title="Rendered Title", html="<html><body>JS rendered content</body></html>", 
+            content_type="text/html", title="Rendered Title", html="<html><body>JS rendered content</body></html>",
             clean_text="JS rendered content", content_hash="abc", fetch_method="browser", from_cache=False
         )
     monkeypatch.setattr("core.shared_crawl_manager.SharedCrawlManager._do_browser_fetch", mock_do_browser_fetch)
