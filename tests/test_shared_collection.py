@@ -63,7 +63,7 @@ def test_f_fallback_playwright(mock_db, monkeypatch):
     monkeypatch.setattr(mock_db, "_do_http_fetch", fetch_http_side_effect)
     
     called_pw = [False]
-    def fetch_pw_side_effect(url):
+    def fetch_pw_side_effect(url, *args, **kwargs):
         called_pw[0] = True
         return CrawlResult("http://test.com", "http://test.com", 200, "text/html", "title", "html", "text", "hash", "playwright", False)
         
