@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from core.http_client import canonicalize_url, get_response
+from core.http_client import canonicalize_url, get_response, _safe_redirect_target
 from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
 
 
@@ -49,6 +49,10 @@ def _is_crawlable_url(url: str) -> bool:
         if any(ch.isspace() for ch in url):
             return False
         if parsed.username or parsed.password:
+            return False
+        try:
+            _safe_redirect_target(url, url)
+        except ValueError:
             return False
         path = parsed.path.lower()
         blocked = (
