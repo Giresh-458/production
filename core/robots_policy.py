@@ -54,6 +54,20 @@ def _retry_after_ttl(headers: Any) -> int:
     return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
 
 
+def defer_host(url: str, delay_seconds: float) -> None:
+    """Apply an origin-wide cooldown after an HTTP 429 response."""
+    try:
+        origin = _origin(url)
+    except ValueError:
+        return
+    delay = max(0.0, min(float(delay_seconds), float(_SUCCESS_TTL_SECONDS)))
+    with _HOST_RATE_LOCK:
+        _HOST_NEXT_ALLOWED[origin] = max(
+            _HOST_NEXT_ALLOWED.get(origin, 0.0),
+            time.monotonic() + delay,
+        )
+
+
 def wait_for_host_slot(
     url: str,
     *,
