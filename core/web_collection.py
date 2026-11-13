@@ -305,13 +305,17 @@ def _sitemap_urls(
     return [canonicalize_url(x) for x in locs[:limit]]
 
 
+def _close_response(response: Any) -> None:
+    close_response = getattr(response, "close", None)
+    if callable(close_response):
+        close_response()
+
+
 def _pdf_text(response: Any) -> str:
     try:
         pdf_bytes = response.content
     finally:
-        close_response = getattr(response, "close", None)
-        if callable(close_response):
-            close_response()
+        _close_response(response)
     try:
         from io import BytesIO
         from pypdf import PdfReader
@@ -581,11 +585,11 @@ def collect_source(
             content_type = str(response.headers.get("Content-Type", "")).lower()
             final_url = canonicalize_url(str(response.url or current_url))
             if not _robots_allowed(root_url, final_url, cache=robots_cache):
-                response.close()
+                _close_response(response)
                 failed.append({"url": final_url, "reason": "robots_disallow_redirect_target"})
                 continue
             if _domain(final_url) not in allowed:
-                response.close()
+                _close_response(response)
                 raise ValueError("redirected_to_untrusted_domain")
             is_pdf = "pdf" in content_type or final_url.lower().endswith(".pdf")
             if is_pdf:
@@ -594,7 +598,7 @@ def collect_source(
                 try:
                     response_text = str(getattr(response, "text", "") or "")
                 finally:
-                    response.close()
+                    _close_response(response)
             is_json = (
                 "json" in content_type
                 or final_url.lower().endswith(".json")
