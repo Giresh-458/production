@@ -362,6 +362,7 @@ def check_robots(
                 headers={"User-Agent": user_agent},
                 timeout=(max(0.1, timeout), max(0.1, timeout)),
                 retries=0,
+                check_redirect_robots=False,
             )
             status = int(response.status_code)
             if 200 <= status < 300:
