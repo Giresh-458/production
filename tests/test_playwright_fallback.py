@@ -188,10 +188,12 @@ def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
 
     class InvalidPDFResponse:
         status_code = 200
-        url = url
         headers = {"Content-Type": "application/pdf"}
         content = b"not a PDF"
         text = ""
+
+        def __init__(self):
+            self.url = url
 
         def close(self):
             pass
