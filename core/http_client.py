@@ -225,16 +225,39 @@ def get_response(
                     next_url = _safe_redirect_target(request_url, location)
 
                     if _url_origin(request_url) != _url_origin(next_url):
-                        # Do not forward caller-supplied credentials to another origin.
+                        # A configured session-level auth object cannot be safely
+                        # forwarded or temporarily mutated on a shared session.
+                        if getattr(client, "auth", None) is not None:
+                            raise PermissionError(
+                                "cross_origin_redirect_blocked_for_authenticated_session"
+                            )
+
+                        def is_sensitive_header(name: str) -> bool:
+                            lowered = name.casefold().replace("_", "-")
+                            return any(
+                                marker in lowered
+                                for marker in (
+                                    "authorization",
+                                    "proxy-authorization",
+                                    "cookie",
+                                    "api-key",
+                                    "access-token",
+                                    "auth-token",
+                                    "client-secret",
+                                    "credential",
+                                )
+                            )
+
                         request_headers = {
                             key: value
                             for key, value in request_headers.items()
-                            if key.casefold() not in {
-                                "authorization",
-                                "cookie",
-                                "proxy-authorization",
-                            }
+                            if not is_sensitive_header(key)
                         }
+                        # requests merges per-request headers with session headers;
+                        # explicitly suppress any sensitive session defaults too.
+                        for key in (getattr(client, "headers", {}) or {}):
+                            if is_sensitive_header(str(key)):
+                                request_headers[str(key)] = None
 
                     crawl_delay = 0.0
                     if check_redirect_robots:
@@ -321,6 +344,15 @@ def get_response(
                     _sleep_or_abort(delay)
                 except TimeoutError:
                     raise
+                if response.status_code == 429:
+                    from core.robots_policy import wait_for_host_slot
+                    if not wait_for_host_slot(
+                        request_url,
+                        deadline=ctx.deadline if ctx else None,
+                    ):
+                        raise TimeoutError(
+                            "rate_limit_cooldown_or_deadline_before_retry"
+                        )
                 continue
 
             if response.status_code == 429:
