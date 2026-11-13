@@ -430,10 +430,7 @@ def collect_source(
             crawl_delay=crawl_delay,
             deadline=ctx.deadline if ctx else None,
         ):
-            if ctx:
-                with ctx.lock:
-                    ctx.stop_reasons.add("deadline")
-            failed.append({"url": url, "reason": "deadline_exceeded_before_request"})
+            failed.append({"url": url, "reason": "host_wait_unavailable_before_request"})
             continue
 
         if ctx:
@@ -477,10 +474,7 @@ def collect_source(
                     crawl_delay=redirect_crawl_delay,
                     deadline=ctx.deadline if ctx else None,
                 ):
-                    if ctx:
-                        with ctx.lock:
-                            ctx.stop_reasons.add("deadline")
-                    failed.append({"url": next_url, "reason": "deadline_exceeded_before_redirect"})
+                    failed.append({"url": next_url, "reason": "host_wait_unavailable_before_redirect"})
                     response = None
                     break
                 current_url = next_url
