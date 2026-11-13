@@ -182,3 +182,42 @@ def test_web_collection_checks_robots_before_following_redirect(monkeypatch):
     assert result.pages == []
     assert any(item["reason"] == "robots_disallow_redirect" for item in result.failed_urls)
     assert calls == [("http://example.com/start", False)]
+
+def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
+    url = "https://example.com/reports/unreadable.pdf"
+
+    class InvalidPDFResponse:
+        status_code = 200
+        url = url
+        headers = {"Content-Type": "application/pdf"}
+        content = b"not a PDF"
+        text = ""
+
+        def close(self):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(
+        "core.web_collection.get_response",
+        lambda target, **kwargs: InvalidPDFResponse(),
+    )
+    monkeypatch.setattr(
+        "core.web_collection.get_robots_sitemaps",
+        lambda *args, **kwargs: [],
+    )
+
+    result = collect_source(
+        url,
+        keywords=(),
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert result.pages == []
+    assert any(
+        "pdf_extraction_failed" in str(item.get("reason", ""))
+        for item in result.failed_urls
+    )
+
