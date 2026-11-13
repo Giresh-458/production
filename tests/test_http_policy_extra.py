@@ -580,3 +580,19 @@ def test_fetch_json_closes_response_after_parse_failure(monkeypatch):
 
     assert response.closed is True
 
+def test_redirect_helper_loopback_opt_in_does_not_allow_private_networks():
+    import core.http_client as http_client
+
+    assert http_client._safe_redirect_target(
+        "http://127.0.0.1:8000/",
+        "/health",
+        allow_loopback=True,
+    ) == "http://127.0.0.1:8000/health"
+
+    with pytest.raises(ValueError, match="non_public_ip"):
+        http_client._safe_redirect_target(
+            "http://192.168.1.10:8000/",
+            "/health",
+            allow_loopback=True,
+        )
+
