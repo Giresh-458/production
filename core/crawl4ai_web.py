@@ -968,7 +968,13 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
 
     try:
         response = get_response(url, timeout=(8.0, 30.0), retries=2)
-        reader = PdfReader(BytesIO(response.content))
+        try:
+            pdf_bytes = response.content
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+        reader = PdfReader(BytesIO(pdf_bytes))
         total_pages = len(reader.pages)
 
         if max_pdf_pages is not None and total_pages > max_pdf_pages:
@@ -979,7 +985,17 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
             truncated = False
 
         pages_processed = len(pages_to_process)
-        content = "\n".join((page.extract_text() or "") for page in pages_to_process)
+        content = "\n".join((page.extract_text() or "") for page in pages_to_process).strip()
+        if not content:
+            return {
+                "success": False,
+                "error": "pdf_contains_no_extractable_text",
+                "url": url,
+                "content": "",
+                "total_pages": total_pages,
+                "pages_processed": pages_processed,
+                "truncated": truncated,
+            }
 
         return {
             "success": True,
