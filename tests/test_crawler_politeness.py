@@ -11,6 +11,8 @@ def _clear_caches():
         crawl4ai_web._ROBOTS_CACHE.clear()
     with crawl4ai_web._HOST_LOCK:
         crawl4ai_web._HOST_LAST_REQUEST.clear()
+    from core.robots_policy import clear_robots_cache
+    clear_robots_cache()
 
 
 @pytest.mark.parametrize("url", [
