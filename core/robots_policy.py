@@ -343,7 +343,16 @@ def check_robots(
             crawl_ctx = current_crawl_context.get(None)
             crawl_deadline = crawl_ctx.deadline if crawl_ctx else None
             if not wait_for_host_slot(robots_url, deadline=crawl_deadline):
-                raise TimeoutError("host_wait_unavailable_before_robots_request")
+                deadline_exhausted = (
+                    crawl_deadline is not None
+                    and time.time() >= crawl_deadline
+                )
+                reason = (
+                    "deadline_exceeded_before_robots_request"
+                    if deadline_exhausted
+                    else "rate_limit_cooldown_exceeds_safe_wait"
+                )
+                raise TimeoutError(reason)
             response = get_response(
                 robots_url,
                 headers={"User-Agent": user_agent},
