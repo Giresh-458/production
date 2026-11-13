@@ -518,6 +518,17 @@ def collect_source(
                     text = better[1]
                 
                 def _needs_browser(h, t):
+                    challenge_text = (h + " " + t).lower()
+                    if (
+                        ("cloudflare" in challenge_text and ("ray id" in challenge_text or "challenge" in challenge_text))
+                        or ("verify you are" in challenge_text and "human" in challenge_text)
+                        or ("just a moment" in challenge_text and "enable javascript" in challenge_text)
+                        or "pardon our interruption" in challenge_text
+                        or "vercel security checkpoint" in challenge_text
+                        or "checking if the site connection is secure" in challenge_text
+                        or "we're verifying your browser" in challenge_text
+                    ):
+                        return False
                     if len(t.strip()) >= 800: return False
                     headings = len(re.findall(r"<h[1-6][^>]*>", h, re.I))
                     s_bytes = sum(len(m) for m in re.findall(r"<script[^>]*>.*?</script>", h, re.I | re.S))
