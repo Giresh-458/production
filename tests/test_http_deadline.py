@@ -70,3 +70,24 @@ def test_expired_deadline_prevents_network_request():
         assert "deadline" in ctx.stop_reasons
     finally:
         current_crawl_context.reset(token)
+
+
+
+def test_final_429_defers_origin_for_retry_after():
+    from core.robots_policy import clear_robots_cache, wait_for_host_slot
+
+    clear_robots_cache()
+    url = "https://rate-limit.example/resource"
+    response = Response()
+    response.status_code = 429
+    response.headers = {"Retry-After": "120"}
+    response._content = b""
+    response._content_consumed = True
+    response.url = url
+
+    mock_session = Mock()
+    mock_session.get.return_value = response
+    with pytest.raises(requests.HTTPError):
+        get_response(url, session=mock_session, retries=0)
+
+    assert wait_for_host_slot(url, deadline=time.time() + 0.1) is False
