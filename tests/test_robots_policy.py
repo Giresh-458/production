@@ -1,0 +1,78 @@
+import requests
+
+from core import robots_policy
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, text="", headers=None, url="https://example.test/robots.txt"):
+        self.status_code = status_code
+        self.content = text.encode("utf-8")
+        self.headers = headers or {}
+        self.url = url
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            response = requests.Response()
+            response.status_code = self.status_code
+            response.headers.update(self.headers)
+            raise requests.HTTPError(f"HTTP {self.status_code}", response=response)
+
+
+def test_successful_robots_rules_are_enforced(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: FakeResponse(text="User-agent: RIF\nDisallow: /private\nAllow: /private/public"),
+    )
+    assert robots_policy.check_robots("https://example.test/private/file")[0] is False
+    assert robots_policy.check_robots("https://example.test/private/public/info")[0] is True
+
+
+def test_robots_404_is_unavailable_and_may_allow(monkeypatch):
+    robots_policy.clear_robots_cache()
+
+    def missing(*args, **kwargs):
+        FakeResponse(404).raise_for_status()
+
+    monkeypatch.setattr(robots_policy, "get_response", missing)
+    allowed, reason, delay = robots_policy.check_robots("https://example.test/open")
+    assert allowed is True
+    assert reason is None
+    assert delay == 0.0
+
+
+def test_robots_429_is_fail_closed(monkeypatch):
+    robots_policy.clear_robots_cache()
+
+    def rate_limited(*args, **kwargs):
+        FakeResponse(429, headers={"Retry-After": "120"}).raise_for_status()
+
+    monkeypatch.setattr(robots_policy, "get_response", rate_limited)
+    allowed, reason, _ = robots_policy.check_robots("https://example.test/open")
+    assert allowed is False
+    assert "429" in reason
+
+
+def test_robots_server_error_is_fail_closed(monkeypatch):
+    robots_policy.clear_robots_cache()
+
+    def unavailable(*args, **kwargs):
+        FakeResponse(503).raise_for_status()
+
+    monkeypatch.setattr(robots_policy, "get_response", unavailable)
+    allowed, reason, _ = robots_policy.check_robots("https://example.test/open")
+    assert allowed is False
+    assert "503" in reason
+
+
+def test_robots_network_error_is_fail_closed(monkeypatch):
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(
+        robots_policy,
+        "get_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.ConnectionError("offline")),
+    )
+    allowed, reason, _ = robots_policy.check_robots("https://example.test/open")
+    assert allowed is False
+    assert "could not be fetched" in reason
