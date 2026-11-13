@@ -109,17 +109,24 @@ def test_rate_limit_cooldown_blocks_new_requests_until_deadline(monkeypatch):
 
 
 def test_deadline_does_not_poison_robots_policy_cache(monkeypatch):
+    import time
+    from core.crawl_context import CrawlContext, current_crawl_context
+
     robots_policy.clear_robots_cache()
     calls = []
-
-    monkeypatch.setattr(
-        robots_policy,
-        "wait_for_host_slot",
-        lambda *args, **kwargs: False,
-    )
-    allowed, reason, _ = robots_policy.check_robots("https://deadline.example/open")
-    assert allowed is False
-    assert "deadline" in reason.lower()
+    ctx = CrawlContext(deadline=time.time() - 1.0)
+    token = current_crawl_context.set(ctx)
+    try:
+        monkeypatch.setattr(
+            robots_policy,
+            "wait_for_host_slot",
+            lambda *args, **kwargs: False,
+        )
+        allowed, reason, _ = robots_policy.check_robots("https://deadline.example/open")
+        assert allowed is False
+        assert "deadline" in reason.lower()
+    finally:
+        current_crawl_context.reset(token)
 
     monkeypatch.setattr(
         robots_policy,
