@@ -83,6 +83,7 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
             retries=2,
             expected_status=(200, *range(400, 500)),
+            check_redirect_robots=False,
         )
         status_code = int(response.status_code)
         if status_code == 429:
