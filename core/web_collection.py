@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from core.http_client import canonicalize_url, get_response
-from core.robots_policy import check_robots
+from core.robots_policy import check_robots, wait_for_host_slot
 
 
 @dataclass(slots=True)
@@ -400,8 +400,17 @@ def collect_source(
         if not _robots_allowed(root_url, url, cache=robots_cache):
             failed.append({"url": url, "reason": "robots_disallow"})
             continue
-            
-        if ctx: ctx.add_page(0)
+        _, _, crawl_delay = check_robots(url, cache=robots_cache)
+        if not wait_for_host_slot(
+            url,
+            crawl_delay=crawl_delay,
+            deadline=ctx.deadline if ctx else None,
+        ):
+            failed.append({"url": url, "reason": "deadline_exceeded_before_request"})
+            continue
+
+        if ctx:
+            ctx.add_page(0)
         used_playwright = False
         try:
             # Follow redirects one hop at a time so each destination is
@@ -433,6 +442,15 @@ def collect_source(
                     raise ValueError("redirected_to_untrusted_domain")
                 if not _robots_allowed(root_url, next_url, cache=robots_cache):
                     failed.append({"url": next_url, "reason": "robots_disallow_redirect"})
+                    response = None
+                    break
+                _, _, redirect_crawl_delay = check_robots(next_url, cache=robots_cache)
+                if not wait_for_host_slot(
+                    next_url,
+                    crawl_delay=redirect_crawl_delay,
+                    deadline=ctx.deadline if ctx else None,
+                ):
+                    failed.append({"url": next_url, "reason": "deadline_exceeded_before_redirect"})
                     response = None
                     break
                 current_url = next_url
