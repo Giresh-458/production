@@ -41,7 +41,7 @@ def patch_network(monkeypatch):
     monkeypatch.setattr("core.shared_crawl_manager.HAS_PLAYWRIGHT", True)
     
     # Mock _do_browser_fetch to avoid launching real browsers in unit tests
-    def mock_do_browser_fetch(self, url):
+    def mock_do_browser_fetch(self, url, timeout_seconds=None):
         from core.shared_crawl_manager import CrawlResult
         if "fail-browser" in url:
             return CrawlResult(
