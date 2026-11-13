@@ -473,19 +473,21 @@ def post_multipart_json(
     """POST multipart form fields and require a JSON-object response.
 
     Each form part maps to (filename, value, content_type). Do not set Content-Type
-    manually: requests must generate the multipart boundary.
+    manually: requests must generate the multipart boundary. Redirects are rejected
+    so API credentials and form data are never forwarded to another origin.
     """
     client = _get_session()
     merged = dict(DEFAULT_HEADERS)
     merged.update(headers or {})
     target = canonicalize_url(url)
     import requests as _requests
-
     from core.crawl_context import current_crawl_context
+    from core.robots_policy import wait_for_host_slot
 
     for attempt in range(retries + 1):
+        ctx = current_crawl_context.get(None)
+        response = None
         try:
-            ctx = current_crawl_context.get(None)
             if ctx:
                 ctx.http_requests += 1
             response = client.post(
@@ -494,8 +496,14 @@ def post_multipart_json(
                 files=fields,
                 headers=merged,
                 timeout=_apply_context_timeout(timeout),
-                allow_redirects=True,
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                raise _requests.HTTPError(
+                    f"Unexpected redirect from API POST {target}: HTTP {response.status_code}",
+                    response=response,
+                )
+
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
                 try:
                     delay = _retry_delay(response, attempt)
@@ -503,44 +511,101 @@ def post_multipart_json(
                     if response.status_code == 429:
                         _defer_rate_limited_host(target, response, attempt)
                     raise
-                try:
-                    _sleep_or_abort(delay)
-                except TimeoutError:
-                    if response.status_code == 429:
-                        _defer_rate_limited_host(target, response, attempt, delay)
-                    raise
+                if response.status_code == 429:
+                    _defer_rate_limited_host(
+                        target, response, attempt, delay_seconds=delay
+                    )
+                response.close()
+                _sleep_or_abort(delay)
+                if response.status_code == 429 and not wait_for_host_slot(
+                    target, deadline=ctx.deadline if ctx else None
+                ):
+                    raise TimeoutError(
+                        "rate_limit_cooldown_or_deadline_before_retry"
+                    )
                 continue
+
             if response.status_code == 429:
                 _defer_rate_limited_host(target, response, attempt)
             response.raise_for_status()
-            content_length = int(response.headers.get("Content-Length", 0) or 0)
-            if content_length > 10 * 1024 * 1024:
-                raise ValueError(f"Response too large: {content_length} bytes")
+            content = response.content
+            if len(content) > 10 * 1024 * 1024:
+                raise ValueError("Response exceeded 10485760 byte limit")
             try:
                 data = response.json()
             except (ValueError, json.JSONDecodeError) as exc:
                 raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
             if not isinstance(data, dict):
-                raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
-            return data, str(response.url)
+                raise ValueError(
+                    f"Expected JSON object from {url}, got {type(data).__name__}"
+                )
+            response_url = str(response.url)
+            response.close()
+            return data, response_url
         except _requests.HTTPError:
+            if response is not None:
+                response.close()
             raise
-        except (_requests.RequestException, TimeoutError):
-            if attempt >= retries:
+        except (_requests.RequestException, TimeoutError) as exc:
+            if response is not None:
+                response.close()
+            if (
+                attempt >= retries
+                or "deadline exceeded" in str(exc).casefold()
+                or "rate_limit" in str(exc).casefold()
+            ):
                 raise
-            _sleep_or_abort(min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25))
+            _sleep_or_abort(
+                min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25)
+            )
+        except Exception:
+            if response is not None:
+                response.close()
+            raise
     raise RuntimeError(f"Unable to POST {target}")
 
 
-def post_json(url: str, *, json_body: dict[str, Any], headers: dict[str, str] | None = None, timeout: tuple[float,float]=(8.0,20.0), retries: int=1) -> tuple[dict[str,Any], str]:
-    client=_get_session(); merged=dict(DEFAULT_HEADERS); merged.update(headers or {})
-    merged["Content-Type"]="application/json"
-    target=canonicalize_url(url)
+def post_json(
+    url: str,
+    *,
+    json_body: dict[str, Any],
+    headers: dict[str, str] | None = None,
+    timeout: tuple[float, float] = (8.0, 20.0),
+    retries: int = 1,
+) -> tuple[dict[str, Any], str]:
+    """POST JSON to a read-only API endpoint with bounded retries.
+
+    Redirects are rejected so API credentials and request bodies are never
+    silently forwarded to a different endpoint.
+    """
+    client = _get_session()
+    merged = dict(DEFAULT_HEADERS)
+    merged.update(headers or {})
+    merged["Content-Type"] = "application/json"
+    target = canonicalize_url(url)
     import requests as _requests
-    for attempt in range(retries+1):
+    from core.crawl_context import current_crawl_context
+    from core.robots_policy import wait_for_host_slot
+
+    for attempt in range(retries + 1):
+        ctx = current_crawl_context.get(None)
+        response = None
         try:
-            effective_timeout = _apply_context_timeout(timeout)
-            response=client.post(target,json=json_body,headers=merged,timeout=effective_timeout,allow_redirects=True)
+            if ctx:
+                ctx.http_requests += 1
+            response = client.post(
+                target,
+                json=json_body,
+                headers=merged,
+                timeout=_apply_context_timeout(timeout),
+                allow_redirects=False,
+            )
+            if 300 <= response.status_code < 400:
+                raise _requests.HTTPError(
+                    f"Unexpected redirect from API POST {target}: HTTP {response.status_code}",
+                    response=response,
+                )
+
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
                 try:
                     delay = _retry_delay(response, attempt)
@@ -548,20 +613,50 @@ def post_json(url: str, *, json_body: dict[str, Any], headers: dict[str, str] | 
                     if response.status_code == 429:
                         _defer_rate_limited_host(target, response, attempt)
                     raise
-                try:
-                    _sleep_or_abort(delay)
-                except TimeoutError:
-                    if response.status_code == 429:
-                        _defer_rate_limited_host(target, response, attempt, delay)
-                    raise
+                if response.status_code == 429:
+                    _defer_rate_limited_host(
+                        target, response, attempt, delay_seconds=delay
+                    )
+                response.close()
+                _sleep_or_abort(delay)
+                if response.status_code == 429 and not wait_for_host_slot(
+                    target, deadline=ctx.deadline if ctx else None
+                ):
+                    raise TimeoutError(
+                        "rate_limit_cooldown_or_deadline_before_retry"
+                    )
                 continue
+
             if response.status_code == 429:
                 _defer_rate_limited_host(target, response, attempt)
             response.raise_for_status()
-            data=response.json()
-            if not isinstance(data,dict): raise ValueError(f"Expected JSON object from {url}")
-            return data,str(response.url)
-        except (_requests.RequestException, TimeoutError):
-            if attempt >= retries: raise
-            _sleep_or_abort(min(2.0**attempt,4.0)+random.uniform(0,.25))
+            content = response.content
+            if len(content) > 10 * 1024 * 1024:
+                raise ValueError("Response exceeded 10485760 byte limit")
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected JSON object from {url}")
+            response_url = str(response.url)
+            response.close()
+            return data, response_url
+        except _requests.HTTPError:
+            if response is not None:
+                response.close()
+            raise
+        except (_requests.RequestException, TimeoutError) as exc:
+            if response is not None:
+                response.close()
+            if (
+                attempt >= retries
+                or "deadline exceeded" in str(exc).casefold()
+                or "rate_limit" in str(exc).casefold()
+            ):
+                raise
+            _sleep_or_abort(
+                min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25)
+            )
+        except Exception:
+            if response is not None:
+                response.close()
+            raise
     raise RuntimeError(f"Unable to POST {target}")
