@@ -80,3 +80,32 @@ def test_unauthorized_redirect_rejected(monkeypatch):
         "redirected_to_untrusted_domain" in str(item.get("reason", ""))
         for item in result.failed_urls
     )
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/private",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://[::1]/private",
+        "http://localhost/private",
+    ],
+)
+def test_web_collection_rejects_private_root_before_network(monkeypatch, url):
+    requested = []
+    monkeypatch.setattr(
+        web_collection,
+        "get_response",
+        lambda target, **kwargs: requested.append(target),
+    )
+    _patch_policy(monkeypatch)
+
+    result = web_collection.collect_source(
+        url,
+        keywords=(),
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert result.pages == []
+    assert requested == []
+
