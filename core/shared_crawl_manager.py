@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict
 
 import requests
 from bs4 import BeautifulSoup
-from core.http_client import get_response, canonicalize_url
+from core.http_client import get_response, canonicalize_url, _safe_redirect_target
 from core.robots_policy import check_robots, wait_for_host_slot
 
 try:
@@ -131,6 +131,17 @@ class SharedCrawlManager:
     def fetch(self, url: str, bypass_cache: bool = False) -> CrawlResult:
         from core.source_registry import current_force_source_refresh
         canonical = canonicalize_url(url)
+        try:
+            # The shared manager is a public-web crawler, not a local-service
+            # client. Reject loopback, private, link-local, and metadata targets
+            # before even requesting robots.txt for them.
+            _safe_redirect_target(canonical, canonical)
+        except ValueError as exc:
+            return CrawlResult(
+                canonical_url=canonical, final_url=canonical, status_code=0,
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="security", from_cache=False, error=str(exc),
+            )
 
         # Check policy before cache lookup: a cached page must not bypass the
         # origin's current robots.txt rules.
@@ -339,10 +350,7 @@ class SharedCrawlManager:
                     response.close()
                     if not location:
                         raise RuntimeError(f"HTTP {status} redirect missing Location header")
-                    next_url = canonicalize_url(urljoin(current_url, location))
-                    parsed = urlparse(next_url)
-                    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
-                        raise ValueError("redirect_to_invalid_or_unsafe_url")
+                    next_url = _safe_redirect_target(current_url, location)
                     allowed, reason, redirect_crawl_delay = check_robots(next_url)
                     if not allowed:
                         return CrawlResult(
