@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import threading
+import requests
 from collections import deque
 from dataclasses import dataclass
 from html import unescape
@@ -276,21 +277,56 @@ def _get_browser_context():
     return _pw_local.browser.new_context(user_agent="RIF/3.1 (+research-intelligence-pipeline)")
 
 def _render_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Optional last-resort JS rendering; never required for the normal path."""
+    """Render a JS shell without bypassing robots policy or the active deadline."""
     try:
-        ctx = _get_browser_context()
-        page = ctx.new_page()
+        from core.crawl_context import current_crawl_context
+
+        crawl_ctx = current_crawl_context.get(None)
+        remaining = (
+            max(0.0, crawl_ctx.deadline - __import__("time").time())
+            if crawl_ctx and crawl_ctx.deadline else 30.0
+        )
+        if remaining <= 0.1:
+            return None
+
+        browser_ctx = _get_browser_context()
+        page = browser_ctx.new_page()
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            timeout_ms = max(1, int(min(30.0, remaining) * 1000))
+            page.set_default_navigation_timeout(timeout_ms)
+
+            def guard_document_navigation(route):
+                request = route.request
+                if request.resource_type == "document":
+                    allowed, _, _ = check_robots(request.url)
+                    if not allowed:
+                        route.abort("blockedbyclient")
+                        return
+                route.continue_()
+
+            page.route("**/*", guard_document_navigation)
+            response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            if response is not None and not 200 <= response.status < 300:
+                return None
+            final_url = page.url
+            if not check_robots(final_url)[0]:
+                return None
+            if crawl_ctx and crawl_ctx.deadline:
+                remaining = crawl_ctx.deadline - __import__("time").time()
+            if remaining <= 0:
+                return None
             try:
-                page.wait_for_load_state("networkidle", timeout=8000)
+                page.wait_for_load_state(
+                    "networkidle", timeout=max(1, int(min(8.0, remaining) * 1000))
+                )
             except Exception:
                 pass
+            if crawl_ctx and crawl_ctx.deadline and __import__("time").time() >= crawl_ctx.deadline:
+                return None
             html = page.content()
-            final_url = page.url
         finally:
             page.close()
-            ctx.close()
+            browser_ctx.close()
         title, text, _, links = _extract(html)
         return title, text, links, final_url
     except Exception:
@@ -363,11 +399,53 @@ def collect_source(
         if ctx: ctx.add_page(0)
         used_playwright = False
         try:
-            response = get_response(url, timeout=timeout, retries=2)
+            # Follow redirects one hop at a time so each destination is
+            # checked against its own robots.txt before it is requested.
+            current_url = url
+            redirect_statuses = {301, 302, 303, 307, 308}
+            for redirect_count in range(11):
+                response = get_response(
+                    current_url, timeout=timeout, retries=2, allow_redirects=False
+                )
+                if response.status_code not in redirect_statuses:
+                    break
+                location = response.headers.get("Location")
+                close_response = getattr(response, "close", None)
+                if callable(close_response):
+                    close_response()
+                if not location:
+                    raise ValueError(f"HTTP {response.status_code} redirect missing Location")
+                next_url = canonicalize_url(urljoin(current_url, location))
+                parsed_next = urlparse(next_url)
+                if (
+                    parsed_next.scheme not in {"http", "https"}
+                    or not parsed_next.netloc
+                    or parsed_next.username
+                    or parsed_next.password
+                ):
+                    raise ValueError("redirect_to_invalid_or_unsafe_url")
+                if not _same_domain(next_url, allowed):
+                    raise ValueError("redirected_to_untrusted_domain")
+                if not _robots_allowed(root_url, next_url, cache=robots_cache):
+                    failed.append({"url": next_url, "reason": "robots_disallow_redirect"})
+                    response = None
+                    break
+                current_url = next_url
+            else:
+                raise ValueError("too_many_redirects")
+            if response is None:
+                continue
+            if response.status_code < 200 or response.status_code >= 300:
+                response.raise_for_status()
+                raise RuntimeError(f"Unexpected HTTP status {response.status_code}")
             if ctx:
-                with ctx.lock: ctx.bytes_downloaded += len(response.content)
+                with ctx.lock:
+                    ctx.bytes_downloaded += len(response.content)
             content_type = str(response.headers.get("Content-Type", "")).lower()
-            final_url = canonicalize_url(str(response.url))
+            final_url = canonicalize_url(str(response.url or current_url))
+            if not _robots_allowed(root_url, final_url, cache=robots_cache):
+                failed.append({"url": final_url, "reason": "robots_disallow_redirect_target"})
+                continue
             if _domain(final_url) not in allowed:
                 raise ValueError("redirected_to_untrusted_domain")
             response_text = str(getattr(response, "text", "") or "")
@@ -452,13 +530,27 @@ def collect_source(
                         failed.append({"url": url, "reason": "browser_render_failed", "js_shell_detected": True})
                         continue
         except Exception as exc:
-            # Some public sites reject requests/urllib with 403/anti-bot rules
-            # but remain accessible to a real browser. Try Playwright once
-            # before declaring the source unavailable. This remains bounded and
-            # robots-aware because the robots check happened immediately above.
+            # HTTP responses (especially 429) are authoritative. Do not use a
+            # browser to retry, evade, or reinterpret an HTTP access decision.
+            http_response = getattr(exc, "response", None)
+            http_status = getattr(http_response, "status_code", None)
+            if http_status is not None:
+                retry_after = (getattr(http_response, "headers", {}) or {}).get("Retry-After")
+                reason = f"http_status_{http_status}"
+                if retry_after:
+                    reason += f": retry_after={retry_after}"
+                failed.append({"url": url, "reason": reason})
+                continue
+            if not isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+                failed.append({"url": url, "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
+                continue
+            if ctx and ctx.check_limits():
+                failed.append({"url": url, "reason": "deadline_exceeded_before_browser_fallback"})
+                continue
             if ctx:
-                with ctx.lock: ctx.browser_attempts += 1
-                with ctx.lock: ctx.browser_escalations += 1
+                with ctx.lock:
+                    ctx.browser_attempts += 1
+                    ctx.browser_escalations += 1
             rendered = _render_with_browser(url)
             used_playwright = True
             if ctx:
