@@ -275,6 +275,8 @@ def test_get_response_strips_sensitive_headers_on_cross_origin_redirect(monkeypa
         headers={
             "Authorization": "Bearer secret",
             "Cookie": "session=secret",
+            "X-API-Key": "api-secret",
+            "X-Auth-Token": "token-secret",
             "X-Research": "rif",
         },
         retries=0,
@@ -318,6 +320,11 @@ def test_429_retry_defers_host_before_retry(monkeypatch):
         lambda response, attempt: 0.0,
     )
     monkeypatch.setattr("core.http_client._sleep_or_abort", lambda delay: None)
+    waited = []
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        lambda url, **kwargs: waited.append(url) or True,
+    )
 
     response = get_response(
         "https://rate.example.test/resource",
@@ -333,4 +340,32 @@ def test_429_retry_defers_host_before_retry(monkeypatch):
     assert deferred == [
         ("https://rate.example.test/resource", 0, 0.0),
     ]
+    assert waited == ["https://rate.example.test/resource"]
+
+
+def test_get_response_blocks_cross_origin_redirect_when_session_auth_is_configured():
+    from core.http_client import get_response
+
+    requested = []
+    redirect = _RedirectResponse(
+        302,
+        headers={"Location": "https://other.example.test/final"},
+        url="https://start.example.test/resource",
+    )
+
+    class AuthenticatedSession:
+        auth = ("user", "password")
+
+        def get(self, url, **kwargs):
+            requested.append(url)
+            return redirect
+
+    with pytest.raises(PermissionError, match="authenticated_session"):
+        get_response(
+            "https://start.example.test/resource",
+            session=AuthenticatedSession(),
+            retries=0,
+        )
+
+    assert requested == ["https://start.example.test/resource"]
 
