@@ -48,6 +48,9 @@ class RobotsPolicy:
     groups: tuple[_Group, ...]
 
     def decision(self, user_agent: str, url: str) -> tuple[bool, float]:
+        # RFC 9309: robots.txt itself is not subject to the rules it contains.
+        if urlsplit(url).path == "/robots.txt":
+            return True, 0.0
         agent = str(user_agent or "*").lower()
         product_token = re.split(r"[/\s]", agent, maxsplit=1)[0]
         matching: list[tuple[int, _Group]] = []
