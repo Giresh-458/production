@@ -85,35 +85,40 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             expected_status=(200, *range(400, 500)),
             check_redirect_robots=False,
         )
-        status_code = int(response.status_code)
-        if status_code == 429:
-            raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
-        if 400 <= status_code < 500:
+        try:
+            status_code = int(response.status_code)
+            if status_code == 429:
+                raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
+            if 400 <= status_code < 500:
+                with _ROBOTS_LOCK:
+                    _ROBOTS_CACHE[origin] = (
+                        time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
+                        _DEFAULT_HOST_DELAY, None,
+                    )
+                return True, _DEFAULT_HOST_DELAY, None
+            if status_code != 200:
+                raise RuntimeError(f"robots.txt returned HTTP {status_code}")
+
+            parser = RobotFileParser(robots_url)
+            parser.parse(str(response.text or "").splitlines())
+            delays = [
+                float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
+                float(parser.crawl_delay("*") or 0.0),
+            ]
+            for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
+                if rate and rate.requests > 0:
+                    delays.append(float(rate.seconds) / float(rate.requests))
+            delay = max([_DEFAULT_HOST_DELAY, *delays])
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
-                    time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
-                    _DEFAULT_HOST_DELAY, None,
+                    time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
                 )
-            return True, _DEFAULT_HOST_DELAY, None
-        if status_code != 200:
-            raise RuntimeError(f"robots.txt returned HTTP {status_code}")
-
-        parser = RobotFileParser(robots_url)
-        parser.parse(str(response.text or "").splitlines())
-        delays = [
-            float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
-            float(parser.crawl_delay("*") or 0.0),
-        ]
-        for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
-            if rate and rate.requests > 0:
-                delays.append(float(rate.seconds) / float(rate.requests))
-        delay = max([_DEFAULT_HOST_DELAY, *delays])
-        with _ROBOTS_LOCK:
-            _ROBOTS_CACHE[origin] = (
-                time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
-            )
-        allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
-        return allowed, delay, None if allowed else "robots.txt disallows this URL"
+            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+            return allowed, delay, None if allowed else "robots.txt disallows this URL"
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
     except Exception as exc:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None)
