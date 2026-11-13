@@ -47,24 +47,28 @@ def _get_session() -> requests.Session:
     return client
 
 
+def _retry_after_seconds(response: Any) -> float | None:
+    raw = str(response.headers.get("Retry-After", "")).strip()
+    if not raw:
+        return None
+    try:
+        if raw.isdigit():
+            return min(float(int(raw)), 365.0 * 24 * 60 * 60)
+        retry_at = parsedate_to_datetime(raw)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        delay = (retry_at - datetime.now(UTC)).total_seconds()
+        return min(max(0.0, delay), 365.0 * 24 * 60 * 60)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _retry_delay(response: Any, attempt: int) -> float:
-    retry_after = str(response.headers.get("Retry-After", "")).strip()
-    if retry_after.isdigit():
-        delay = float(retry_after)
+    delay = _retry_after_seconds(response)
+    if delay is not None and delay > 0:
         if delay > 300.0:
             raise RuntimeError(f"Retry-After {delay}s is too long to wait. Aborting.")
         return delay
-    if retry_after:
-        try:
-            retry_at = parsedate_to_datetime(retry_after)
-        except (TypeError, ValueError, OverflowError):
-            retry_at = None
-        if retry_at is not None:
-            delay = (retry_at - datetime.now(UTC)).total_seconds()
-            if delay > 300.0:
-                raise RuntimeError(f"Retry-After {delay:.1f}s is too long to wait. Aborting.")
-            if delay > 0:
-                return delay
     return min(2.0 ** attempt, 8.0) + random.uniform(0.0, 0.25)
 
 
@@ -75,15 +79,13 @@ def _defer_rate_limited_host(
     delay_seconds: float | None = None,
 ) -> None:
     """Prevent subsequent requests to an origin before its 429 Retry-After."""
-    if delay_seconds is not None:
+    server_delay = _retry_after_seconds(response)
+    if server_delay is not None and server_delay > 0:
+        delay = server_delay
+    elif delay_seconds is not None:
         delay = delay_seconds
     else:
-        try:
-            delay = _retry_delay(response, attempt)
-        except RuntimeError:
-            # An excessive Retry-After is not shortened to a quick retry. Keep the
-            # host deferred for the maximum local cooldown and propagate the error.
-            delay = 24 * 60 * 60
+        delay = min(2.0 ** attempt, 8.0) + random.uniform(0.0, 0.25)
     from core.robots_policy import defer_host
     defer_host(url, delay)
 
