@@ -94,7 +94,7 @@ class RobotsPolicy:
 def _normalize_percent_encoding(value: str) -> str:
     # RFC 9309 requires non-ASCII octets to be UTF-8 percent-encoded before
     # comparison. Keep reserved octets encoded, but decode unreserved octets.
-    encoded = quote(value, safe="/%:@!    encoded = quote(value, safe="/%:@!$&'()*+,;=-._~*")'()*+,;=?-._~*")
+    encoded = quote(value, safe="/%:@!$&'()*+,;=?-._~*")
 
     def replace(match: re.Match[str]) -> str:
         byte = int(match.group(1), 16)
