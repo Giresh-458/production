@@ -126,3 +126,10 @@ def test_sitemap_discovery_stops_when_root_is_disallowed(monkeypatch):
 
     assert recursive_collection._sitemap_links("https://example.test/") == []
     assert calls == []
+
+def test_recursive_crawler_rejects_private_and_local_urls():
+    assert recursive_collection._is_crawlable_url("https://example.test/public") is True
+    assert recursive_collection._is_crawlable_url("http://127.0.0.1/private") is False
+    assert recursive_collection._is_crawlable_url("http://169.254.169.254/latest/meta-data/") is False
+    assert recursive_collection._is_crawlable_url("http://localhost/private") is False
+
