@@ -31,7 +31,7 @@ def mock_get_response(url, *args, **kwargs):
         raise requests.HTTPError("429 Too Many Requests", response=response)
     return MockResponse(b"<html><body>Static content</body></html>", 200, url)
 
-def mock_render_with_browser(url):
+def mock_render_with_browser(url, **kwargs):
     if "fail-browser" in url:
         return None
     return ("Rendered Title", "<html><body>JS rendered content</body></html>", [], url)
