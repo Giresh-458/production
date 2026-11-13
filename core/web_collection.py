@@ -325,7 +325,7 @@ def _extract_with_trafilatura(html: str, url: str) -> tuple[str, str] | None:
 
 _pw_local = threading.local()
 
-def _get_browser_context():
+def _get_browser_context(timeout_ms: int = 30_000):
     if not hasattr(_pw_local, "playwright"):
         from playwright.sync_api import sync_playwright
         import asyncio
@@ -337,7 +337,10 @@ def _get_browser_context():
             asyncio.set_event_loop(loop)
         
         _pw_local.playwright = sync_playwright().start()
-        _pw_local.browser = _pw_local.playwright.chromium.launch(headless=True)
+        _pw_local.browser = _pw_local.playwright.chromium.launch(
+            headless=True,
+            timeout=max(1, int(timeout_ms)),
+        )
     return _pw_local.browser.new_context(user_agent="RIF/3.1 (+research-intelligence-pipeline)")
 
 def _render_with_browser(
@@ -360,7 +363,9 @@ def _render_with_browser(
                     crawl_ctx.stop_reasons.add("deadline")
             return None
 
-        browser_ctx = _get_browser_context()
+        browser_ctx = _get_browser_context(
+            timeout_ms=max(1, int(min(30.0, remaining) * 1000))
+        )
         browser_allowed_domains = allowed_domains or {_domain(url)}
         page = browser_ctx.new_page()
         try:
