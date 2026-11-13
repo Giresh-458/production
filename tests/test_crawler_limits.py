@@ -24,6 +24,7 @@ def apply_global_mocks():
     with mock.patch("core.http_client.get_response", side_effect=lambda *a, **k: DummyResp()), \
          mock.patch("core.web_collection.get_response", side_effect=lambda *a, **k: DummyResp()), \
          mock.patch("core.recursive_collection._sitemap_links", side_effect=lambda *a, **k: []), \
+         mock.patch("core.recursive_collection.check_robots", side_effect=lambda *a, **k: (True, None, 0.0)), \
          mock.patch("core.web_collection._robots_allowed", side_effect=lambda *a, **k: True), \
          mock.patch("core.recursive_collection.extract_ranked_links", side_effect=lambda *a, **k: [("http://test.com/a", 999, "anchor")]):
         yield
