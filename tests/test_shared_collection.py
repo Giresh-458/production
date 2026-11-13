@@ -160,9 +160,15 @@ def test_deadline_expires_while_waiting_for_domain_slot(mock_db, monkeypatch):
 
     url = "https://example.test/deadline"
     domain = "example.test"
+    def wait_slot_fails_at_deadline(*args, **kwargs):
+        ctx = current_crawl_context.get(None)
+        if ctx:
+            ctx.stop_reasons.add("deadline")
+        return False
+
     monkeypatch.setattr(
         "core.shared_crawl_manager.wait_for_host_slot",
-        lambda *args, **kwargs: False,
+        wait_slot_fails_at_deadline,
     )
     ctx = CrawlContext(deadline=time.time() + 0.1)
     token = current_crawl_context.set(ctx)
