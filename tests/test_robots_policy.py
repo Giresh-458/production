@@ -206,3 +206,16 @@ def test_robots_percent_encoding_matches_uri_octets(monkeypatch):
     assert robots_policy.check_robots("https://example.test/caf%C3%A9")[0] is False
     assert robots_policy.check_robots("https://example.test/a%2Fb")[0] is False
     assert robots_policy.check_robots("https://example.test/a/b")[0] is True
+
+
+
+def test_host_slot_honors_robots_crawl_delay(monkeypatch):
+    calls = []
+    robots_policy.clear_robots_cache()
+    monkeypatch.setattr(robots_policy.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(robots_policy.time, "sleep", lambda seconds: calls.append(seconds))
+
+    url = "https://delay.example/resource"
+    assert robots_policy.wait_for_host_slot(url, crawl_delay=2.0) is True
+    assert robots_policy.wait_for_host_slot(url, crawl_delay=2.0) is True
+    assert calls == [2.0]
