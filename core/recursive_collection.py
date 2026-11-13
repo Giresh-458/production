@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 
-from core.robots_policy import check_robots, wait_for_host_slot
+from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
 from xml.etree import ElementTree as ET
 
 from core.http_client import canonicalize_url
@@ -410,24 +410,9 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
         parsed = urlparse(root_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
         allowed_domains = {_normalize_domain(root_url)}
-        candidates: list[str] = []
-        try:
-            robots_response = _get_response_with_robots(
-                f"{origin}/robots.txt",
-                timeout=(5.0, 5.0),
-                retries=0,
-                allowed_domains=allowed_domains,
-            )
-            robots_text = robots_response.text[:500 * 1024]
-            candidates.extend(
-                line.split(":", 1)[1].strip()
-                for line in robots_text.splitlines()
-                if line.lower().startswith("sitemap:")
-            )
-        except Exception:
-            pass
+        candidates = get_robots_sitemaps(root_url)
         if not candidates:
-            candidates.append(f"{origin}/sitemap.xml")
+            candidates = [f"{origin}/sitemap.xml"]
 
         candidates = [
             canonicalize_url(candidate)
