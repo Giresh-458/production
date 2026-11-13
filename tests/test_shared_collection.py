@@ -206,3 +206,52 @@ def test_http_redirect_target_is_checked_against_robots(mock_db, monkeypatch):
     result = mock_db._do_http_fetch("https://example.test/start")
     assert "robots_disallow_redirect" in result.error
     assert requested == [("https://example.test/start", False)]
+
+def test_shared_manager_rejects_private_initial_url_before_robots_or_network(mock_db, monkeypatch):
+    robots_calls = []
+    network_calls = []
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda *args, **kwargs: robots_calls.append(args[0]) or (True, None, 0.0),
+    )
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: network_calls.append(url),
+    )
+
+    result = mock_db.fetch(
+        "http://127.0.0.1/private",
+        bypass_cache=True,
+    )
+
+    assert result.fetch_method == "security"
+    assert "redirect_to_non_public_ip" in result.error
+    assert robots_calls == []
+    assert network_calls == []
+
+
+def test_shared_http_fetch_rejects_private_redirect_before_request(mock_db, monkeypatch):
+    requested = []
+
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+
+        def close(self):
+            pass
+
+    def fake_get_response(url, **kwargs):
+        requested.append(url)
+        return RedirectResponse()
+
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.get_response",
+        fake_get_response,
+    )
+
+    result = mock_db._do_http_fetch("https://example.test/start")
+
+    assert "redirect_to_non_public_ip" in result.error
+    assert requested == ["https://example.test/start"]
+
