@@ -68,14 +68,22 @@ def _retry_delay(response: Any, attempt: int) -> float:
     return min(2.0 ** attempt, 8.0) + random.uniform(0.0, 0.25)
 
 
-def _defer_rate_limited_host(url: str, response: Any, attempt: int) -> None:
+def _defer_rate_limited_host(
+    url: str,
+    response: Any,
+    attempt: int,
+    delay_seconds: float | None = None,
+) -> None:
     """Prevent subsequent requests to an origin before its 429 Retry-After."""
-    try:
-        delay = _retry_delay(response, attempt)
-    except RuntimeError:
-        # An excessive Retry-After is not shortened to a quick retry. Keep the
-        # host deferred for the maximum local cooldown and propagate the error.
-        delay = 24 * 60 * 60
+    if delay_seconds is not None:
+        delay = delay_seconds
+    else:
+        try:
+            delay = _retry_delay(response, attempt)
+        except RuntimeError:
+            # An excessive Retry-After is not shortened to a quick retry. Keep the
+            # host deferred for the maximum local cooldown and propagate the error.
+            delay = 24 * 60 * 60
     from core.robots_policy import defer_host
     defer_host(url, delay)
 
@@ -185,7 +193,12 @@ def get_response(
                         _defer_rate_limited_host(target, response, attempt)
                     raise
                 LOGGER.warning("Transient HTTP %s for %s; retrying in %.1fs", response.status_code, target, delay)
-                _sleep_or_abort(delay)
+                try:
+                    _sleep_or_abort(delay)
+                except TimeoutError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt, delay)
+                    raise
                 continue
             if response.status_code == 429:
                 _defer_rate_limited_host(target, response, attempt)
@@ -283,7 +296,12 @@ def post_multipart_json(
                     if response.status_code == 429:
                         _defer_rate_limited_host(target, response, attempt)
                     raise
-                _sleep_or_abort(delay)
+                try:
+                    _sleep_or_abort(delay)
+                except TimeoutError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt, delay)
+                    raise
                 continue
             if response.status_code == 429:
                 _defer_rate_limited_host(target, response, attempt)
@@ -323,7 +341,12 @@ def post_json(url: str, *, json_body: dict[str, Any], headers: dict[str, str] | 
                     if response.status_code == 429:
                         _defer_rate_limited_host(target, response, attempt)
                     raise
-                _sleep_or_abort(delay)
+                try:
+                    _sleep_or_abort(delay)
+                except TimeoutError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt, delay)
+                    raise
                 continue
             if response.status_code == 429:
                 _defer_rate_limited_host(target, response, attempt)
