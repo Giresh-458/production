@@ -313,8 +313,22 @@ def _render_with_browser(
             def guard_document_navigation(route):
                 request = route.request
                 if request.resource_type == "document":
-                    allowed, _, _ = check_robots(request.url)
+                    if _domain(request.url) not in browser_allowed_domains:
+                        route.abort("blockedbyclient")
+                        return
+                    allowed, _, crawl_delay = check_robots(request.url)
                     if not allowed:
+                        route.abort("blockedbyclient")
+                        return
+                    deadline = crawl_ctx.deadline if crawl_ctx else None
+                    if not wait_for_host_slot(
+                        request.url,
+                        crawl_delay=crawl_delay,
+                        deadline=deadline,
+                    ):
+                        if crawl_ctx:
+                            with crawl_ctx.lock:
+                                crawl_ctx.stop_reasons.add("deadline")
                         route.abort("blockedbyclient")
                         return
                 route.continue_()
