@@ -219,3 +219,25 @@ def test_host_slot_honors_robots_crawl_delay(monkeypatch):
     assert robots_policy.wait_for_host_slot(url, crawl_delay=2.0) is True
     assert robots_policy.wait_for_host_slot(url, crawl_delay=2.0) is True
     assert calls == [2.0]
+
+
+
+def test_sitemap_directives_are_reused_from_cached_robots_response(monkeypatch):
+    robots_policy.clear_robots_cache()
+    calls = []
+
+    def fake_get_response(*args, **kwargs):
+        calls.append(args[0])
+        return FakeResponse(
+            text=(
+                "User-agent: *\nAllow: /\n"
+                "Sitemap: https://example.test/sitemap.xml"
+            )
+        )
+
+    monkeypatch.setattr(robots_policy, "get_response", fake_get_response)
+    assert robots_policy.check_robots("https://example.test/")[0] is True
+    assert robots_policy.get_robots_sitemaps("https://example.test/") == [
+        "https://example.test/sitemap.xml"
+    ]
+    assert calls == ["https://example.test/robots.txt"]
