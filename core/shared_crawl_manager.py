@@ -292,10 +292,25 @@ class SharedCrawlManager:
             
             return result
 
+    @staticmethod
+    def _is_anti_bot_challenge(html: str, title: str, text: str) -> bool:
+        content = f"{html} {title} {text}".lower()
+        return bool(
+            ("cloudflare" in content and ("ray id" in content or "challenge" in content))
+            or ("verify you are" in content and "human" in content)
+            or ("just a moment" in content and "enable javascript" in content)
+            or "pardon our interruption" in content
+            or "vercel security checkpoint" in content
+            or "checking if the site connection is secure" in content
+            or "we're verifying your browser" in content
+        )
+
     def _needs_browser(self, html: str, status_code: int) -> bool:
         if not 200 <= status_code < 300:
             return False
         html_lower = html.lower()
+        if self._is_anti_bot_challenge(html, "", ""):
+            return False
         if "enable javascript" in html_lower or "enable js" in html_lower or "javascript is required" in html_lower:
             return True
         if "<noscript>" in html_lower and len(html) < 2000:
@@ -355,6 +370,13 @@ class SharedCrawlManager:
                 title = title_tag.get_text(strip=True) if title_tag else ""
                 clean_text = soup.get_text(separator=" ", strip=True)
                 content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
+                if self._is_anti_bot_challenge(html, title, clean_text):
+                    return CrawlResult(
+                        canonical_url=url, final_url=final_url, status_code=status,
+                        content_type=ctype, title=title, html="", clean_text="",
+                        content_hash="", fetch_method="http", from_cache=False,
+                        error="anti_bot_challenge_detected",
+                    )
                 return CrawlResult(
                     canonical_url=url, final_url=final_url, status_code=status,
                     content_type=ctype, title=title, html=html, clean_text=clean_text,
@@ -454,6 +476,13 @@ class SharedCrawlManager:
                 soup = BeautifulSoup(html, "html.parser")
                 clean_text = soup.get_text(separator=" ", strip=True)
                 content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
+                if self._is_anti_bot_challenge(html, title, clean_text):
+                    return CrawlResult(
+                        canonical_url=url, final_url=final_url, status_code=status,
+                        content_type="text/html", title=title, html="", clean_text="",
+                        content_hash="", fetch_method="browser", from_cache=False,
+                        error="anti_bot_challenge_detected",
+                    )
                 return CrawlResult(
                     canonical_url=url, final_url=final_url, status_code=status,
                     content_type="text/html", title=title, html=html, clean_text=clean_text,
