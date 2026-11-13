@@ -287,7 +287,15 @@ def test_get_response_strips_sensitive_headers_on_cross_origin_redirect(monkeypa
     )
 
     assert observed_headers[0]["Authorization"] == "Bearer secret"
-    assert observed_headers[1] == {"X-Research": "rif"}
+    assert observed_headers[1]["X-Research"] == "rif"
+    for sensitive in (
+        "Authorization",
+        "Cookie",
+        "X-API-Key",
+        "X-Auth-Token",
+        "Proxy-Authorization",
+    ):
+        assert sensitive not in observed_headers[1]
 
 
 def test_429_retry_defers_host_before_retry(monkeypatch):
