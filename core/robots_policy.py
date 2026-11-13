@@ -17,6 +17,7 @@ _SUCCESS_TTL_SECONDS = 24 * 60 * 60
 _FAILURE_TTL_SECONDS = 60
 _UNAVAILABLE_TTL_SECONDS = 60 * 60
 _MAX_ROBOTS_BYTES = 500 * 1024
+_MAX_RATE_LIMIT_COOLDOWN_SECONDS = 365 * 24 * 60 * 60
 _UNRESERVED = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
 )
@@ -219,7 +220,7 @@ def defer_host(url: str, delay_seconds: float) -> None:
         origin = _origin(url)
     except ValueError:
         return
-    delay = max(0.0, min(float(delay_seconds), float(_SUCCESS_TTL_SECONDS)))
+    delay = max(0.0, min(float(delay_seconds), float(_MAX_RATE_LIMIT_COOLDOWN_SECONDS)))
     with _HOST_RATE_LOCK:
         _HOST_NEXT_ALLOWED[origin] = max(
             _HOST_NEXT_ALLOWED.get(origin, 0.0),
@@ -272,7 +273,7 @@ def _retry_after_ttl(headers) -> int:
             delay = (retry_at - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError, OverflowError):
             delay = 0.0
-    return int(min(_SUCCESS_TTL_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
+    return int(min(_MAX_RATE_LIMIT_COOLDOWN_SECONDS, max(_FAILURE_TTL_SECONDS, delay)))
 
 
 def _cached_policy(origin: str, cache=None):
