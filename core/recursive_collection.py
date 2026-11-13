@@ -680,6 +680,15 @@ def collect_recursive_pages_with_review(
                 )
                 continue
             except Exception as exc:
+                http_response = getattr(exc, "response", None)
+                http_status = getattr(http_response, "status_code", None)
+                if http_status is not None:
+                    retry_after = (getattr(http_response, "headers", {}) or {}).get("Retry-After")
+                    failure_reason = f"http_status_{http_status}"
+                    if retry_after:
+                        failure_reason += f": retry_after={retry_after}"
+                else:
+                    failure_reason = f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}"
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=current_url,
@@ -688,7 +697,7 @@ def collect_recursive_pages_with_review(
                         score=parent_score,
                         depth=current_depth,
                         action="skipped",
-                        reason=f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}",
+                        reason=failure_reason,
                     )
                 )
                 continue
