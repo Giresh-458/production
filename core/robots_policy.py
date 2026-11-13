@@ -264,7 +264,12 @@ def wait_for_host_slot(
 
     if wait_seconds > 0:
         time.sleep(wait_seconds)
-    return deadline is None or time.time() < deadline
+    if deadline is not None and time.time() >= deadline:
+        if crawl_ctx:
+            with crawl_ctx.lock:
+                crawl_ctx.stop_reasons.add("deadline")
+        return False
+    return True
 
 
 def _retry_after_ttl(headers) -> int:
