@@ -100,6 +100,7 @@ def get_response(
     timeout: tuple[float, float] = (8.0, 20.0),
     retries: int = 1,
     expected_status: tuple[int, ...] = (200,),
+    allow_redirects: bool = True,
 ) -> Any:
     """Fetch a live URL predictably."""
     client = session or _get_session()
@@ -123,7 +124,7 @@ def get_response(
                 params=params,
                 headers=merged_headers,
                 timeout=effective_timeout,
-                allow_redirects=True,
+                allow_redirects=allow_redirects,
                 stream=True
             )
             content_length = int(response.headers.get("Content-Length", 0) or 0)
