@@ -482,7 +482,6 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
 def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_page_text: Callable[[str], tuple[str, str]]) -> tuple[str, str, str]:
     """Return title, text, raw HTML; supports PDFs as a free fallback."""
     if urlparse(url).path.lower().endswith(".pdf"):
-        from core.http_client import get_response
         response = _get_response_with_robots(
             url,
             timeout=(8.0, 25.0),
@@ -490,14 +489,22 @@ def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_pa
             allowed_domains={_normalize_domain(url)},
         )
         try:
+            pdf_bytes = response.content
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+        title = Path(urlparse(url).path).stem.replace("_", " ").replace("-", " ").strip()
+        try:
             from io import BytesIO
             from pypdf import PdfReader
-            reader = PdfReader(BytesIO(response.content))
-            text = "\n".join((page.extract_text() or "") for page in reader.pages[:30])
-            title = Path(urlparse(url).path).stem.replace("_", " ").replace("-", " ").strip()
-            return title, text, ""
-        except Exception:
-            return Path(urlparse(url).path).stem, "", ""
+            reader = PdfReader(BytesIO(pdf_bytes))
+            text = "\n".join((page.extract_text() or "") for page in reader.pages[:30]).strip()
+        except Exception as exc:
+            raise ValueError(f"pdf_extraction_failed: {type(exc).__name__}: {exc}") from exc
+        if not text:
+            raise ValueError("pdf_contains_no_extractable_text")
+        return title, text, ""
     html = fetch_html(url)
     import inspect
     if "url" in inspect.signature(extract_page_text).parameters:
