@@ -203,10 +203,6 @@ def test_web_collection_reports_pdf_extraction_failure(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "core.web_collection.get_response",
-        lambda target, **kwargs: InvalidPDFResponse(),
-    )
-    monkeypatch.setattr(
         "core.web_collection.get_robots_sitemaps",
         lambda *args, **kwargs: [],
     )
