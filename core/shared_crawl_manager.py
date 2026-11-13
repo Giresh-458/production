@@ -417,10 +417,19 @@ class SharedCrawlManager:
                 self.pw_local.playwright = sync_playwright().start()
                 self.pw_local.browser = self.pw_local.playwright.chromium.launch(headless=True)
 
+            remaining = (
+                timeout_seconds - (time.monotonic() - started)
+                if timeout_seconds is not None else 30.0
+            )
+            if remaining <= 0.5:
+                raise TimeoutError("deadline_exceeded_before_browser_navigation")
             page = self.pw_local.browser.new_page()
             try:
-                remaining = timeout_seconds if timeout_seconds is not None else 30.0
-                if remaining <= 0:
+                remaining = (
+                    timeout_seconds - (time.monotonic() - started)
+                    if timeout_seconds is not None else 30.0
+                )
+                if remaining <= 0.5:
                     raise TimeoutError("deadline_exceeded_before_browser_navigation")
                 navigation_timeout_ms = max(1, int(min(30.0, remaining) * 1000))
                 page.set_default_navigation_timeout(navigation_timeout_ms)
