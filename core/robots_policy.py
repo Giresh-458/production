@@ -50,9 +50,6 @@ class RobotsPolicy:
     sitemaps: tuple[str, ...] = ()
 
     def decision(self, user_agent: str, url: str) -> tuple[bool, float]:
-        # RFC 9309: robots.txt itself is not subject to the rules it contains.
-        if urlsplit(url).path == "/robots.txt":
-            return True, 0.0
         agent = str(user_agent or "*").lower()
         matching = [
             group
