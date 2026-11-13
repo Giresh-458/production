@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import ipaddress
+import socket
 import logging
 import random
 import time
@@ -149,10 +150,16 @@ def _safe_redirect_target(current_url: str, location: str | None) -> str:
         or host in {"metadata", "metadata.google.internal"}
     ):
         raise ValueError("redirect_to_local_or_metadata_host")
+    address = None
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        address = None
+        # inet_aton also recognizes legacy numeric IPv4 forms such as 127.1,
+        # 0177.0.0.1 and 0x7f000001 that some resolvers treat as loopback.
+        try:
+            address = ipaddress.ip_address(socket.inet_aton(host))
+        except OSError:
+            pass
     if address is not None and not address.is_global:
         raise ValueError("redirect_to_non_public_ip")
     return target
