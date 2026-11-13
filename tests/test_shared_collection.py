@@ -9,6 +9,7 @@ from core.shared_crawl_manager import SharedCrawlManager, CrawlResult
 @pytest.fixture
 def mock_db(tmp_path, monkeypatch):
     monkeypatch.setattr("core.shared_crawl_manager.check_robots", lambda *a, **k: (True, None, 0.0))
+    monkeypatch.setattr("core.shared_crawl_manager.wait_for_host_slot", lambda *a, **k: True)
     manager = SharedCrawlManager()
     manager.db_path = str(tmp_path / "shared_crawl_cache.db")
     manager._init_db()
@@ -159,7 +160,10 @@ def test_deadline_expires_while_waiting_for_domain_slot(mock_db, monkeypatch):
 
     url = "https://example.test/deadline"
     domain = "example.test"
-    mock_db.domain_last_fetch[domain] = time.time() + 5.0
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.wait_for_host_slot",
+        lambda *args, **kwargs: False,
+    )
     ctx = CrawlContext(deadline=time.time() + 0.1)
     token = current_crawl_context.set(ctx)
     called = []
