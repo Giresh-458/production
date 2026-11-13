@@ -52,6 +52,8 @@ def test_recursive_sitemap_discovery(monkeypatch):
         def __init__(self, text):
             self.text = text
             self.content = text.encode()
+            self.status_code = 200
+            self.url = "https://example.org/sitemap.xml"
             self.headers = {"Content-Type": "application/xml"}
 
     def fake_get(url, **kwargs):
@@ -60,6 +62,7 @@ def test_recursive_sitemap_discovery(monkeypatch):
         raise RuntimeError(url)
 
     monkeypatch.setattr("core.http_client.get_response", fake_get)
+    monkeypatch.setattr(recursive_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
     assert "https://example.org/rfp-2026.pdf" in recursive_collection._sitemap_links("https://example.org/")
 
 def test_collect_source_accepts_json_api_dataset_response(monkeypatch):
