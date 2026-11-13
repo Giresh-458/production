@@ -174,6 +174,10 @@ def test_get_response_rejects_robots_disallowed_redirect_before_request(monkeypa
     [
         "file:///etc/passwd",
         "http://127.0.0.1/admin",
+        "http://127.1/admin",
+        "http://2130706433/admin",
+        "http://0x7f000001/admin",
+        "http://0177.0.0.1/admin",
         "http://169.254.169.254/latest/meta-data/",
         "http://user:password@external.example.test/private",
         "http://localhost/private",
