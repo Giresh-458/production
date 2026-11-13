@@ -68,6 +68,18 @@ def _retry_delay(response: Any, attempt: int) -> float:
     return min(2.0 ** attempt, 8.0) + random.uniform(0.0, 0.25)
 
 
+def _defer_rate_limited_host(url: str, response: Any, attempt: int) -> None:
+    """Prevent subsequent requests to an origin before its 429 Retry-After."""
+    try:
+        delay = _retry_delay(response, attempt)
+    except RuntimeError:
+        # An excessive Retry-After is not shortened to a quick retry. Keep the
+        # host deferred for the maximum local cooldown and propagate the error.
+        delay = 24 * 60 * 60
+    from core.robots_policy import defer_host
+    defer_host(url, delay)
+
+
 def _apply_context_timeout(configured_timeout: float | tuple[float, float]) -> float | tuple[float, float]:
     from core.crawl_context import current_crawl_context
     ctx = current_crawl_context.get(None)
@@ -163,10 +175,17 @@ def get_response(
                 response._content_consumed = True
 
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
-                delay = _retry_delay(response, attempt)
+                try:
+                    delay = _retry_delay(response, attempt)
+                except RuntimeError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt)
+                    raise
                 LOGGER.warning("Transient HTTP %s for %s; retrying in %.1fs", response.status_code, target, delay)
                 _sleep_or_abort(delay)
                 continue
+            if response.status_code == 429:
+                _defer_rate_limited_host(target, response, attempt)
             if response.status_code not in expected_status:
                 response.raise_for_status()
             return response
@@ -245,8 +264,16 @@ def post_multipart_json(
                 allow_redirects=True,
             )
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
-                _sleep_or_abort(_retry_delay(response, attempt))
+                try:
+                    delay = _retry_delay(response, attempt)
+                except RuntimeError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt)
+                    raise
+                _sleep_or_abort(delay)
                 continue
+            if response.status_code == 429:
+                _defer_rate_limited_host(target, response, attempt)
             response.raise_for_status()
             content_length = int(response.headers.get("Content-Length", 0) or 0)
             if content_length > 10 * 1024 * 1024:
@@ -277,7 +304,16 @@ def post_json(url: str, *, json_body: dict[str, Any], headers: dict[str, str] | 
             effective_timeout = _apply_context_timeout(timeout)
             response=client.post(target,json=json_body,headers=merged,timeout=effective_timeout,allow_redirects=True)
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
-                _sleep_or_abort(_retry_delay(response,attempt)); continue
+                try:
+                    delay = _retry_delay(response, attempt)
+                except RuntimeError:
+                    if response.status_code == 429:
+                        _defer_rate_limited_host(target, response, attempt)
+                    raise
+                _sleep_or_abort(delay)
+                continue
+            if response.status_code == 429:
+                _defer_rate_limited_host(target, response, attempt)
             response.raise_for_status()
             data=response.json()
             if not isinstance(data,dict): raise ValueError(f"Expected JSON object from {url}")
