@@ -655,8 +655,46 @@ def collect_recursive_pages_with_review(
                     with ctx.lock:
                         ctx.urls_fetched += 1
                 _, _, current_html = _fetch_recursive_page(current_url, fetch_html, extract_page_text)
-                if ctx: ctx.add_page(len(current_html))
-            except Exception:
+                if ctx:
+                    ctx.add_page(len(current_html))
+            except PermissionError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"robots_disallow_redirect: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except TimeoutError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"deadline_or_timeout: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except Exception as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}",
+                    )
+                )
                 continue
 
         ranked_links = extract_ranked_links(
@@ -717,7 +755,7 @@ def collect_recursive_pages_with_review(
                         ctx.urls_fetched += 1
                 child_title, child_content, child_html = _fetch_recursive_page(child_url, fetch_html, extract_page_text)
                 if ctx: ctx.add_page(len(child_html) if child_html else 0)
-            except Exception:
+            except PermissionError as exc:
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=child_url,
@@ -726,7 +764,33 @@ def collect_recursive_pages_with_review(
                         score=score,
                         depth=current_depth + 1,
                         action="skipped",
-                        reason="fetch_failed",
+                        reason=f"robots_disallow_redirect: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except TimeoutError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=f"deadline_or_timeout: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except Exception as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}",
                     )
                 )
                 continue
