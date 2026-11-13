@@ -87,8 +87,11 @@ def _apply_context_timeout(configured_timeout: float | tuple[float, float]) -> f
         return configured_timeout
     
     now = time.time()
-    remaining = max(0.1, ctx.deadline - now)
-    
+    remaining = ctx.deadline - now
+    if remaining <= 0:
+        ctx.stop_reasons.add("deadline")
+        raise TimeoutError("Deadline exceeded before HTTP request")
+
     if isinstance(configured_timeout, tuple):
         conn_to, read_to = configured_timeout
         return (min(conn_to, remaining), min(read_to, remaining))
@@ -99,7 +102,7 @@ def _sleep_or_abort(delay: float) -> None:
     ctx = current_crawl_context.get(None)
     if ctx and ctx.deadline:
         now = time.time()
-        if now + delay > ctx.deadline:
+        if now + delay >= ctx.deadline:
             ctx.stop_reasons.add("deadline")
             raise TimeoutError("Deadline exceeded during retry sleep")
     time.sleep(delay)
@@ -192,7 +195,17 @@ def get_response(
         except requests.HTTPError as exc:
             last_exc = exc
             raise
-        except (requests.RequestException, TimeoutError) as exc:
+        except TimeoutError as exc:
+            last_exc = exc
+            if str(exc) == "Deadline exceeded before HTTP request":
+                raise
+            if attempt < retries:
+                delay = min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25)
+                LOGGER.warning("Request timed out for %s (%s); retrying in %.1fs", target, exc, delay)
+                _sleep_or_abort(delay)
+                continue
+            raise
+        except requests.RequestException as exc:
             last_exc = exc
             if isinstance(exc, (requests.exceptions.InvalidURL, requests.exceptions.InvalidSchema, requests.exceptions.MissingSchema)):
                 raise
