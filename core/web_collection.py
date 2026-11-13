@@ -614,8 +614,8 @@ def collect_source(
                 failed.append({"url": url, "reason": str(exc)[:240]})
                 continue
 
-        def _is_challenge(t: str, head: str) -> bool:
-            c = (t + " " + head).lower()
+        def _is_challenge(t: str, head: str, raw_html: str = "") -> bool:
+            c = (t + " " + head + " " + raw_html).lower()
             return bool(
                 ("verify you are" in c and "human" in c) or 
                 ("cloudflare" in c and "ray id" in c) or
