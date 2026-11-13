@@ -40,8 +40,11 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
     def extract_text(html, **kwargs):
         return "Child", "This is enough source-backed content for a deterministic crawler test."
 
-    pages, review = recursive_collection.collect_recursive_pages_with_review(
-        root_url="https://example.test/",
+    from core.crawl_context import current_crawl_context
+    context_token = current_crawl_context.set(None)
+    try:
+        pages, review = recursive_collection.collect_recursive_pages_with_review(
+            root_url="https://example.test/",
         root_name="test",
         initial_html="<html><body>root</body></html>",
         fetch_html=lambda url: "",
@@ -51,8 +54,10 @@ def test_recursive_children_are_checked_before_fetch(monkeypatch):
             max_pages=5,
             allowed_domains={"example.test"},
             relevance_threshold=0,
-        ),
-    )
+            ),
+        )
+    finally:
+        current_crawl_context.reset(context_token)
 
     assert requested == ["https://example.test/allowed"]
     assert [page.url for page in pages] == [
