@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from core.http_client import get_response
 
@@ -53,19 +53,19 @@ class RobotsPolicy:
             return True, 0.0
         agent = str(user_agent or "*").lower()
         product_token = re.split(r"[/\s]", agent, maxsplit=1)[0]
-        matching: list[tuple[int, _Group]] = []
-        for group in self.groups:
-            for token in group.user_agents:
-                token = token.lower()
-                if token != "*" and token and token in agent:
-                    matching.append((len(token), group))
-        if matching:
-            best_length = max(length for length, _ in matching)
-            selected = [group for length, group in matching if length == best_length]
-        else:
-            selected = [
-                group for group in self.groups if "*" in group.user_agents
-            ]
+        matching = [
+            group
+            for group in self.groups
+            if any(
+                token != "*" and token and token.lower() in agent
+                for token in group.user_agents
+            )
+        ]
+        # RFC 9309 requires all groups matching the crawler product token to
+        # be combined. The wildcard group is used only when none match.
+        selected = matching or [
+            group for group in self.groups if "*" in group.user_agents
+        ]
 
         if not selected:
             return True, 0.0
@@ -91,6 +91,9 @@ class RobotsPolicy:
 
 
 def _normalize_percent_encoding(value: str) -> str:
+    # RFC 9309 requires non-ASCII octets to be UTF-8 percent-encoded before
+    # comparison. Keep reserved octets encoded, but decode unreserved octets.
+    encoded = quote(value, safe="/%:@!def _normalize_percent_encoding(value: str) -> str:
     def replace(match: re.Match[str]) -> str:
         byte = int(match.group(1), 16)
         char = chr(byte)
@@ -104,7 +107,20 @@ def _normalize_target(url: str) -> str:
     target = parsed.path or "/"
     if parsed.query:
         target += "?" + parsed.query
-    return _normalize_percent_encoding(target)
+    return _normalize_percent_encoding(target)'()*+,;=-._~*")
+
+    def replace(match: re.Match[str]) -> str:
+        byte = int(match.group(1), 16)
+        char = chr(byte)
+        return char if char in _UNRESERVED else f"%{byte:02X}"
+
+    return re.sub(r"%([0-9A-Fa-f]{2})", replace, encoded)
+
+
+def _normalize_target(url: str) -> str:
+    parsed = urlsplit(url)
+    # Matching applies to the URI path component, not its query or fragment.
+    return _normalize_percent_encoding(parsed.path or "/")
 
 
 def _compile_rule(pattern: str, allowed: bool) -> _Rule | None:
