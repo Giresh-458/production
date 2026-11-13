@@ -5,6 +5,8 @@ import json
 import re
 import ast
 import urllib.parse
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -617,17 +619,17 @@ def build_normalized_collection_records(
                     call_ids = record.get("funding_call_ids", [])
                     explicit_id = record.get("funding_call_id")
 
-                    if explicit_id == target_funding_call_id:
-                        # Valid explicit ownership
-                        pass
-                    elif target_funding_call_id in call_ids:
-                        # Do not treat appearance in a broad multi-ID list as proof of ownership
-                        if len(call_ids) > 3:
-                            # Ambiguous: leave evidence unassigned / skip for this call
+                    if explicit_id:
+                        # A singular explicit owner is authoritative. A conflicting
+                        # multi-call list must never override it for another call.
+                        if explicit_id != target_funding_call_id:
                             continue
-                        else:
-                            # Legitimate shared evidence (e.g. 1-3 specific calls)
-                            record["funding_call_id"] = target_funding_call_id
+                    elif target_funding_call_id in call_ids:
+                        # Only a small, explicit shared-call list may be used when
+                        # there is no singular owner. Broad lists are ambiguous.
+                        if len(call_ids) > 3:
+                            continue
+                        record["funding_call_id"] = target_funding_call_id
                     else:
                         continue
 
@@ -730,7 +732,11 @@ def save_normalized_collection_records(
         errors=errors,
     )
     target_dir = output_dir / "normalized"
-    normalized_root = target_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Build the complete replacement beside the current output. The current
+    # normalized directory remains intact until every artifact and ledger write
+    # has completed successfully.
+    normalized_root = Path(tempfile.mkdtemp(prefix=".normalized-stage-", dir=str(output_dir)))
     deduped_records = {}
     for r in records:
         sid = r["evidence_id"]
@@ -759,11 +765,6 @@ def save_normalized_collection_records(
     records = list(deduped_records.values())
     if filter_func:
         records = [r for r in records if filter_func(r)]
-
-    import shutil
-    if normalized_root.exists():
-        shutil.rmtree(normalized_root)
-    normalized_root.mkdir(parents=True, exist_ok=True)
 
     records_path = normalized_root / "records.json"
     records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -878,11 +879,27 @@ def save_normalized_collection_records(
     errors_path = normalized_root / "errors.json"
     errors_path.write_text(json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    import shutil
+    backup_root = output_dir / f".normalized-backup-{uuid.uuid4().hex}"
+    try:
+        if target_dir.exists():
+            target_dir.replace(backup_root)
+        normalized_root.replace(target_dir)
+    except Exception:
+        if backup_root.exists() and not target_dir.exists():
+            backup_root.replace(target_dir)
+        if normalized_root.exists():
+            shutil.rmtree(normalized_root, ignore_errors=True)
+        raise
+    else:
+        if backup_root.exists():
+            shutil.rmtree(backup_root, ignore_errors=True)
+
     return {
-        "records": records_path,
-        "by_area": by_area_path,
-        "by_layer": by_layer_path,
-        "errors": errors_path,
+        "records": target_dir / "records.json",
+        "by_area": target_dir / "by_area.json",
+        "by_layer": target_dir / "by_layer.json",
+        "errors": target_dir / "errors.json",
     }
 
 
