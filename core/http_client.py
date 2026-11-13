@@ -56,14 +56,15 @@ def _retry_delay(response: Any, attempt: int) -> float:
         return delay
     if retry_after:
         try:
-            dt = parsedate_to_datetime(retry_after)
-            delay = (dt - datetime.now(UTC)).total_seconds()
+            retry_at = parsedate_to_datetime(retry_after)
+        except (TypeError, ValueError, OverflowError):
+            retry_at = None
+        if retry_at is not None:
+            delay = (retry_at - datetime.now(UTC)).total_seconds()
             if delay > 300.0:
-                raise RuntimeError(f"Retry-After {delay}s is too long to wait. Aborting.")
+                raise RuntimeError(f"Retry-After {delay:.1f}s is too long to wait. Aborting.")
             if delay > 0:
                 return delay
-        except Exception:
-            pass
     return min(2.0 ** attempt, 8.0) + random.uniform(0.0, 0.25)
 
 
