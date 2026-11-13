@@ -368,10 +368,7 @@ def _get_response_with_robots(
             crawl_delay=crawl_delay,
             deadline=crawl_ctx.deadline if crawl_ctx else None,
         ):
-            if crawl_ctx:
-                with crawl_ctx.lock:
-                    crawl_ctx.stop_reasons.add("deadline")
-            raise TimeoutError("deadline_exceeded_before_recursive_request")
+            raise TimeoutError("host_wait_unavailable_before_recursive_request")
         response = get_response(
             current_url,
             timeout=timeout,
