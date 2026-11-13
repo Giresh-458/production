@@ -19,6 +19,7 @@ def _patch_policy(monkeypatch):
     monkeypatch.setattr(web_collection, "check_robots", lambda *a, **k: (True, None, 0.0))
     monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *a, **k: True)
     monkeypatch.setattr(web_collection, "get_robots_sitemaps", lambda *a, **k: [])
+    monkeypatch.setattr(web_collection, "_extract_discovery_urls", lambda *a, **k: [])
 
 
 def test_authorized_redirect_allowed(monkeypatch):
