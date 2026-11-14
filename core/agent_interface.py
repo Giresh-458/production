@@ -133,6 +133,8 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
         errors.append("raw_content must be a non-empty string")
 
     shared_header = payload.get("shared_header", {})
+    if not isinstance(shared_header, dict):
+        shared_header = {}
     if shared_header.get("collection_mode") not in ALLOWED_MODES:
         errors.append("collection_mode must be one of configured_scan, manual_url, manual_text")
 
@@ -658,7 +660,7 @@ def build_intermediate_artifact_payload(
     )
     import hashlib
     content_hash = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
-    doc_id_seed = f"{source.strip()}|{title.strip()}"
+    doc_id_seed = f"{shared_header['source']}|{shared_header['title']}"
     document_identity = hashlib.sha256(doc_id_seed.encode("utf-8")).hexdigest()
 
     provenance["document_identity"] = document_identity
