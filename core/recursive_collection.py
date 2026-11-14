@@ -501,7 +501,7 @@ def collect_recursive_pages_with_review(
         if current_depth >= config.max_depth:
             continue
         if not current_html:
-            if not _robots_allowed(root_url, current_url, cache=robots_cache, fail_open=False):
+            if not _robots_allowed(current_url, current_url, cache=robots_cache, fail_open=False):
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=current_url, parent_url=parent_url, anchor_text="",
@@ -565,7 +565,7 @@ def collect_recursive_pages_with_review(
                 continue
             child_url = canonicalize_url(child_url)
             seen_urls.add(child_url)
-            if not _robots_allowed(root_url, child_url, cache=robots_cache, fail_open=False):
+            if not _robots_allowed(child_url, child_url, cache=robots_cache, fail_open=False):
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=child_url,
