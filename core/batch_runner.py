@@ -779,6 +779,8 @@ def execute_batch_run(
                 / "workflow"
                 / "source_refresh_plans"
             )
+        else:
+            plan_root = Path.cwd() / "outputs" / "source_refresh_plans"
         if plan_root is not None:
             plan_root.mkdir(parents=True, exist_ok=True)
             registry_sync["refresh_plan_paths"] = []
@@ -794,10 +796,6 @@ def execute_batch_run(
                     registry_sync["errors"].append(
                         f"source refresh plan rebuild failed for agent '{agent_name}': {exc}"
                     )
-        else:
-            registry_sync["errors"].append(
-                "source refresh plans were not written because no report or pipeline run directory was provided"
-            )
         registry_sync["status"] = "error" if registry_sync["errors"] else "success"
 
     task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
