@@ -310,19 +310,13 @@ def execute_batch_run(
     registry_sync_errors: list[str] = []
     registry_synced = False
     if execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
-        from core.source_registry import build_source_refresh_plan, sync_source_registry
+        from core.source_registry import sync_source_registry
         try:
             sync_source_registry()
             registry_synced = True
         except Exception as exc:
             registry_sync_errors.append(
                 f"source registry synchronization failed before parallel collection: {exc}"
-            )
-        try:
-            build_source_refresh_plan()
-        except Exception as exc:
-            registry_sync_errors.append(
-                f"source refresh plan preparation failed before parallel collection: {exc}"
             )
 
     tasks = build_batch_tasks(
