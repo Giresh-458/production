@@ -175,7 +175,7 @@ def test_configured_agent_fetch_html_propagates_shared_crawler_error(
                 html="",
             )
 
-    monkeypatch.setattr(SharedCrawlManager, "get", lambda: FakeManager())
+    monkeypatch.setattr(SharedCrawlManager, "get", lambda _cls: FakeManager())
     error_class = getattr(module, error_class_name)
 
     with pytest.raises(error_class, match="robots_disallow"):
