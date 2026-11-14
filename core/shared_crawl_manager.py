@@ -384,7 +384,7 @@ class SharedCrawlManager:
                 started = time.monotonic()
                 response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                 status = response.status if response else 200
-                if status in (401, 403, 429, 451, 503):
+                if status >= 400:
                     return CrawlResult(
                         canonical_url=url, final_url=page.url, status_code=status,
                         content_type="", title="", html="", clean_text="", content_hash="",
