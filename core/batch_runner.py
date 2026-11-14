@@ -317,17 +317,31 @@ def execute_batch_run(
         analysis_mode=analysis_mode,
     )
 
+    registry_prepared = bool((base_input_data or {}).get("defer_registry_sync", False))
     registry_sync_errors: list[str] = []
-    registry_synced = False
-    if execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
+    registry_synced_agents: list[str] = []
+    agent_names_for_registry = sorted({
+        str(task.get("agent_name") or "")
+        for task in tasks
+        if str(task.get("agent_name") or "")
+    })
+    if registry_prepared:
+        registry_synced_agents = list(agent_names_for_registry)
+    elif execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
         from core.source_registry import sync_source_registry
-        try:
-            sync_source_registry()
-            registry_synced = True
-        except Exception as exc:
-            registry_sync_errors.append(
-                f"source registry synchronization failed before parallel collection: {exc}"
-            )
+        for agent_name in agent_names_for_registry:
+            try:
+                sync_source_registry(agent_filter=agent_name)
+                registry_synced_agents.append(agent_name)
+            except Exception as exc:
+                registry_sync_errors.append(
+                    f"source registry synchronization failed for agent '{agent_name}' before parallel collection: {exc}"
+                )
+    registry_synced = (
+        len(registry_synced_agents) == len(agent_names_for_registry)
+        if (execution_mode == "parallel" or registry_prepared) and mode == "configured_scan"
+        else False
+    )
 
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
@@ -719,13 +733,21 @@ def execute_batch_run(
     # Parallel workers deliberately defer registry writes. Reconcile the
     # configured source set once, then mark only URLs that those workers
     # actually attempted; this avoids lost new sources and concurrent writes.
+    coordinator_registry_sync = (
+        mode == "configured_scan"
+        and (execution_mode == "parallel" or registry_prepared)
+    )
     registry_sync: Dict[str, Any] = {
-        "status": "per_task" if execution_mode == "sequential" else "pending",
-        "synced": registry_synced if execution_mode == "parallel" and mode == "configured_scan" else None,
+        "status": "pending" if coordinator_registry_sync else (
+            "per_task" if execution_mode == "sequential" and mode == "configured_scan"
+            else "not_required"
+        ),
+        "synced": registry_synced if coordinator_registry_sync else None,
+        "synced_agents": list(registry_synced_agents),
         "attempted_sources_marked": 0,
         "errors": list(registry_sync_errors),
     }
-    if execution_mode == "parallel" and mode == "configured_scan":
+    if coordinator_registry_sync:
         from core.source_registry import (
             build_source_refresh_plan,
             mark_agent_sources_checked,
@@ -748,13 +770,14 @@ def execute_batch_run(
                     registry_sync["errors"].append(
                         f"source refresh update failed for agent '{agent_name}': {exc}"
                     )
-        try:
-            build_source_refresh_plan()
-        except Exception as exc:
-            registry_sync["errors"].append(f"source refresh plan rebuild failed: {exc}")
+        for agent_name in agent_names_for_registry:
+            try:
+                build_source_refresh_plan(agent_filter=agent_name)
+            except Exception as exc:
+                registry_sync["errors"].append(
+                    f"source refresh plan rebuild failed for agent '{agent_name}': {exc}"
+                )
         registry_sync["status"] = "error" if registry_sync["errors"] else "success"
-    elif execution_mode == "parallel":
-        registry_sync["status"] = "not_required"
 
     task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
     task_results.sort(key=lambda item: task_order.get(item.get("task_id"), len(task_order)))
