@@ -551,7 +551,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, *, warning
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=("researcher", "faculty", "professor", "lab", "publication", "profile", "papers"), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-            collected_warnings.extend(collection_failure_warnings(source.name, result.failed_urls))
+            collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
         except Exception as exc:
             message = f"Source '{source.name}' collection failed: {exc}"
             LOGGER.warning(message)
