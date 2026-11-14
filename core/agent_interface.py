@@ -175,6 +175,22 @@ def _document_value(document: Any, field_name: str, default: Any = "") -> Any:
     return getattr(document, field_name, default)
 
 
+def _document_collected_at(document: Any) -> datetime:
+    """Use a source-provided aware collection time, otherwise the artifact save time."""
+    value = _document_value(document, "collected_at", None)
+    if isinstance(value, datetime):
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            return value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.tzinfo is not None and parsed.utcoffset() is not None:
+            return parsed
+    return datetime.now(UTC)
+
+
 def _document_title(document: Any) -> str:
     for field_name in (
         "title",
@@ -922,7 +938,7 @@ def finalize_collection_agent_response(
             source=source,
             content=content,
             metadata=metadata,
-            collected_at=started_at,
+            collected_at=_document_collected_at(document),
             allow_llm_refinement=allow_llm_refinement,
         )
 
@@ -950,6 +966,7 @@ def finalize_collection_agent_response(
         if run_id:
             artifact_payload["shared_header"]["run_id"] = run_id
 
+        artifact_payload["provenance"]["run_started_at"] = started_at.isoformat()
         artifact_payload["agent_specific_body"] = agent_specific_body
         collected_warnings.extend(area_warnings)
         quality_gate = artifact_payload["metadata"].get("quality_gate", {})
