@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from pathlib import Path
 
 from core.normalization import save_normalized_collection_records
@@ -131,3 +132,51 @@ def test_legacy_normalization_cache_is_rebuilt_when_skip_audit_is_missing(tmp_pa
     outputs = ensure_normalized_collection_records(run_root)
     assert outputs["skipped_artifacts"].exists()
     assert json.loads(outputs["records"].read_text(encoding="utf-8"))[0]["title"] == "Cache Audit Evidence"
+
+
+def test_failed_normalization_generation_preserves_previous_outputs(tmp_path: Path, monkeypatch):
+    from core import normalization
+
+    run_root = tmp_path / "atomic-normalization"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "signal.md").write_text(
+        _artifact(
+            title="Atomic Publication Evidence",
+            run_id="run-atomic-publication",
+        ),
+        encoding="utf-8",
+    )
+
+    paths = save_normalized_collection_records(intermediate, run_root)
+    normalized_root = run_root / "normalized"
+    published_names = (
+        "records.json",
+        "input_manifest.json",
+        "by_area.json",
+        "by_layer.json",
+        "evidence_ledger.db",
+        "errors.json",
+        "skipped_artifacts.json",
+    )
+    before = {
+        name: (normalized_root / name).read_bytes()
+        for name in published_names
+    }
+
+    original_write = normalization.atomic_write_json
+
+    def fail_during_staging(path, payload):
+        if Path(path).name == "by_area.json":
+            raise OSError("injected staging failure")
+        return original_write(path, payload)
+
+    monkeypatch.setattr(normalization, "atomic_write_json", fail_during_staging)
+    with pytest.raises(OSError, match="injected staging failure"):
+        save_normalized_collection_records(intermediate, run_root)
+
+    assert {
+        name: (normalized_root / name).read_bytes()
+        for name in published_names
+    } == before
+    assert not list(run_root.glob(".normalized.staging-*"))
