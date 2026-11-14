@@ -2189,3 +2189,40 @@ def test_parallel_batch_does_not_start_queued_tasks_after_deadline(tmp_path):
         task["status"] == "timeout_budget_exceeded"
         for task in report["tasks"]
     )
+
+
+def test_sequential_batch_isolates_agent_exceptions_and_continues(tmp_path):
+    from core.batch_runner import execute_batch_run
+
+    calls = []
+
+    def sometimes_fails(agent_name, mode, area, input_data, funding_context=None, funding_contexts=None):
+        calls.append(area)
+        if area == "RWA":
+            raise RuntimeError("fixture failure")
+        return {
+            "status": "success",
+            "items_processed": 1,
+            "items_saved": 1,
+            "outputs": [{"source": "https://example.org/esg"}],
+            "errors": [],
+            "warnings": [],
+            "metadata": {},
+        }
+
+    with patch("core.batch_runner.run_registered_agent", side_effect=sometimes_fails):
+        report = execute_batch_run(
+            agent_names=["lab"],
+            area_names=["RWA", "ESG"],
+            mode="configured_scan",
+            base_input_data={"pipeline_run_dir": str(tmp_path), "run_id": "run-isolation"},
+            execution_mode="sequential",
+            report_path=tmp_path / "sequential-report.json",
+        )
+
+    assert calls == ["RWA", "ESG"]
+    assert len(report["tasks"]) == 2
+    assert report["tasks"][0]["status"] == "error"
+    assert "fixture failure" in report["tasks"][0]["errors"][0]
+    assert report["tasks"][1]["status"] == "success"
+    assert report["status"] == "completed_with_errors"
