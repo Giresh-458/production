@@ -150,6 +150,8 @@ def test_failed_normalization_generation_preserves_previous_outputs(tmp_path: Pa
 
     paths = save_normalized_collection_records(intermediate, run_root)
     normalized_root = run_root / "normalized"
+    manifest = json.loads((normalized_root / "input_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 7
     published_names = (
         "records.json",
         "input_manifest.json",
