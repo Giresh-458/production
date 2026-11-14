@@ -331,7 +331,7 @@ def execute_batch_run(
 
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
-    run_id = started_at.isoformat()
+    run_id = str((base_input_data or {}).get("run_id") or started_at.isoformat())
     contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
     funding_call_ids = sorted({
         str(context.funding_call_id).strip()
@@ -441,7 +441,7 @@ def execute_batch_run(
 
     if dry_run:
         report = {
-            "generated_at": run_id,
+            "generated_at": started_at.isoformat(),
             "status": "dry_run",
             "config": {
                 "mode": mode,
