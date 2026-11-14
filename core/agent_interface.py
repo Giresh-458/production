@@ -860,6 +860,27 @@ def collection_failure_warnings(source_name: str, failures: Any) -> list[str]:
     ]
 
 
+def recursive_collection_failure_warnings(source_name: str, review: Any) -> list[str]:
+    """Report recursive crawl failures and explicit crawl-budget truncation."""
+    if not isinstance(review, dict):
+        return []
+    failure_prefixes = (
+        "robots_disallow",
+        "deadline_or_timeout",
+        "fetch_failed",
+        "empty_content",
+        "max_pages_reached",
+    )
+    skipped = review.get("skipped_links") or []
+    failures = [
+        item
+        for item in skipped
+        if isinstance(item, dict)
+        and str(item.get("reason") or "").strip().startswith(failure_prefixes)
+    ]
+    return collection_failure_warnings(source_name, failures)
+
+
 def finalize_collection_agent_response(
     *,
     agent: str,
