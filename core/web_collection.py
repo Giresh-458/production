@@ -546,6 +546,9 @@ def collect_source(
         remaining = effective_max_seconds - elapsed
         if remaining <= 0.1:
             truncation_reason = "source_max_seconds_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_seconds")
             failed.append({"url": queue[0][1], "reason": truncation_reason})
             break
         if ctx:
@@ -878,8 +881,14 @@ def collect_source(
     if queue and not truncation_reason and len(pages) >= page_limit:
         if effective_max_documents <= effective_max_pages and effective_max_documents == page_limit:
             truncation_reason = "source_max_documents_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_documents")
         else:
             truncation_reason = "source_max_pages_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_pages")
         failed.append({"url": queue[0][1], "reason": truncation_reason})
 
     return WebCollectionResult(root_url, pages, discovered, failed, structured_all)
