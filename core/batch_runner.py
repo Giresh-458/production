@@ -610,7 +610,7 @@ def execute_batch_run(
                 break
             result = run_task(task)
             finished_at = datetime.fromisoformat(result["finished_at"].replace("Z", "+00:00"))
-            if deadline and finished_at > deadline:
+            if deadline and finished_at > deadline and result.get("status") != "timeout_budget_exceeded":
                 result = timeout_result(
                     task,
                     result=result,
@@ -678,7 +678,7 @@ def execute_batch_run(
                         finished_at = datetime.fromisoformat(
                             result["finished_at"].replace("Z", "+00:00")
                         )
-                        if deadline and finished_at > deadline:
+                        if deadline and finished_at > deadline and result.get("status") != "timeout_budget_exceeded":
                             result = timeout_result(
                                 task,
                                 result=result,
