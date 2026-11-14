@@ -306,15 +306,21 @@ def _get_browser_context():
         _pw_local.browser = _pw_local.playwright.chromium.launch(headless=True)
     return _pw_local.browser.new_context(user_agent="RIF/3.1 (+research-intelligence-pipeline)")
 
-def _render_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Optional last-resort JS rendering; never required for the normal path."""
+def _render_with_browser(
+    url: str, *, timeout_ms: int = 30000
+) -> tuple[str, str, list[tuple[str, str]], str] | None:
+    """Render a JS shell only within the caller's remaining deadline."""
+    if timeout_ms <= 0:
+        return None
     try:
         ctx = _get_browser_context()
         page = ctx.new_page()
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            if response is not None and response.status in (401, 403, 429, 451, 503):
+                return None
             try:
-                page.wait_for_load_state("networkidle", timeout=8000)
+                page.wait_for_load_state("networkidle", timeout=min(8000, timeout_ms))
             except Exception:
                 pass
             html = page.content()
@@ -441,7 +447,11 @@ def collect_source(
                             ctx.js_shells_detected += 1
                             ctx.browser_attempts += 1
                             ctx.browser_escalations += 1
-                    rendered = _render_with_browser(final_url)
+                    remaining_ms = 30000
+                    if ctx and ctx.deadline:
+                        import time
+                        remaining_ms = int((ctx.deadline - time.time()) * 1000)
+                    rendered = _render_with_browser(final_url, timeout_ms=remaining_ms)
                     used_playwright = True
                     if ctx: 
                         with ctx.lock: ctx.playwright_used += 1
@@ -464,38 +474,17 @@ def collect_source(
                         failed.append({"url": url, "reason": "browser_render_failed", "js_shell_detected": True})
                         continue
         except Exception as exc:
-            # Some public sites reject requests/urllib with 403/anti-bot rules
-            # but remain accessible to a real browser. Try Playwright once
-            # before declaring the source unavailable. This remains bounded and
-            # robots-aware because the robots check happened immediately above.
-            if ctx:
-                with ctx.lock: ctx.browser_attempts += 1
-                with ctx.lock: ctx.browser_escalations += 1
-            rendered = _render_with_browser(url)
-            used_playwright = True
-            if ctx:
-                with ctx.lock: ctx.playwright_used += 1
-            if rendered and rendered[1].strip():
-                if ctx:
-                    with ctx.lock: ctx.browser_successes += 1
-                title, text, links, final_url = rendered
-                if _is_soft_404("", title, text):
-                    failed.append({"url": url, "reason": "SOFT_404"})
-                    continue
-                final_url = canonicalize_url(final_url or url)
-                if _domain(final_url) not in allowed:
-                    failed.append({"url": url, "reason": "browser_redirected_to_untrusted_domain"})
-                    continue
-                content_type = "text/html"
-                html = ""
-                structured = []
-            else:
-                if ctx:
-                    with ctx.lock: ctx.browser_failures += 1
-                if ctx:
-                    with ctx.lock: ctx.playwright_fallback_failed += 1
-                failed.append({"url": url, "reason": str(exc)[:240]})
-                continue
+            # Transport, authorization, rate-limit and server errors are not
+            # reasons to switch acquisition identity. Browser rendering is
+            # reserved for a successful HTTP response containing a JS shell.
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            reason = f"http_{status_code}" if status_code is not None else str(exc)
+            if status_code == 429:
+                retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("Retry-After")
+                if retry_after:
+                    reason = f"http_429_retry_after:{retry_after}"
+            failed.append({"url": url, "reason": reason[:240]})
+            continue
 
         def _is_challenge(t: str, head: str) -> bool:
             c = (t + " " + head).lower()
