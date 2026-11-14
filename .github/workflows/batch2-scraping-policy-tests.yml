@@ -23,6 +23,7 @@ on:
       - "agents/data_availability_agent.py"
       - "agents/hackathon_agent.py"
       - "agents/expert_agent.py"
+      - "agents/funding_agent.py"
       - "tests/test_batch2_scraping_policy.py"
       - "tests/test_crawler_limits.py"
       - "tests/test_http_deadline.py"
