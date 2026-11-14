@@ -341,9 +341,9 @@ def _render_with_browser(
 def render_page_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
     """Render one page with the optional Playwright fallback.
 
-    Intended for servers that reject ordinary HTTP clients (for example 403)
-    while still serving the page to a normal browser. Robots policy is checked
-    by callers because this function is a low-level renderer.
+    Intended only for a successful static response that is clearly a
+    JavaScript shell. HTTP authorization, rate-limit and server errors must not
+    be bypassed. Robots policy is checked by callers.
     """
     return _render_with_browser(url)
 
