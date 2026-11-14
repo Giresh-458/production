@@ -142,7 +142,17 @@ def _metadata(structured: list[dict[str, Any]]) -> tuple[str | None, str | None]
 
 def _robots_allowed(root_url: str, target_url: str, user_agent: str = "RIF/3.1",
                     cache: dict[str, robotparser.RobotFileParser | None] | None = None,
-                    timeout: float = 5.0, fail_open: bool = True) -> bool:
+                    timeout: float = 5.0, fail_open: bool = False) -> bool:
+    """Apply robots.txt before every page acquisition.
+
+    A missing robots.txt (404/410) permits crawling. Explicit 401/403 responses
+    deny crawling. Transport errors and other HTTP failures fail closed by
+    default and are deliberately not cached as an allow decision.
+    """
+    import time
+    import urllib.error
+    import urllib.request
+
     try:
         parsed = urlparse(root_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -150,16 +160,33 @@ def _robots_allowed(root_url: str, target_url: str, user_agent: str = "RIF/3.1",
             rp = cache[origin]
             return True if rp is None else rp.can_fetch(user_agent, target_url)
 
-        import urllib.request
+        from core.crawl_context import current_crawl_context
+        ctx = current_crawl_context.get(None)
+        effective_timeout = float(timeout)
+        if ctx and ctx.deadline:
+            remaining = ctx.deadline - time.time()
+            if remaining <= 0:
+                return False
+            effective_timeout = min(effective_timeout, remaining)
+
         rp = robotparser.RobotFileParser()
         robots_url = f"{origin}/robots.txt"
+        request = urllib.request.Request(
+            robots_url,
+            headers={"User-Agent": user_agent},
+        )
         try:
-            with urllib.request.urlopen(robots_url, timeout=timeout) as resp:
+            with urllib.request.urlopen(request, timeout=effective_timeout) as resp:
                 raw = resp.read(64_000).decode("utf-8", errors="replace")
             rp.parse(raw.splitlines())
+        except urllib.error.HTTPError as exc:
+            if exc.code in (404, 410):
+                rp.parse([])
+            elif exc.code in (401, 403):
+                rp.parse(["User-agent: *", "Disallow: /"])
+            else:
+                return fail_open
         except Exception:
-            if cache is not None:
-                cache[origin] = None
             return fail_open
 
         if cache is not None:
