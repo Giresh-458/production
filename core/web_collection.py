@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import threading
+import time
 import requests
 from collections import deque
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 
 from core.http_client import canonicalize_url, get_response, _safe_redirect_target
 from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
+from core.crawl_context import GLOBAL_MAX_PAGES, GLOBAL_MAX_DOCUMENTS, GLOBAL_MAX_SECONDS
 
 
 @dataclass(slots=True)
@@ -498,6 +500,23 @@ def collect_source(
     only for a successful JS shell or a transport failure, never after an HTTP
     status response. It is intentionally domain-bound and keeps provenance.
     """
+    if max_pages < 1:
+        raise ValueError("max_pages must be a positive integer")
+    if max_documents is not None and max_documents < 1:
+        raise ValueError("max_documents must be a positive integer when provided")
+    if max_seconds is not None and max_seconds < 1:
+        raise ValueError("max_seconds must be a positive integer when provided")
+    effective_max_pages = min(max_pages, GLOBAL_MAX_PAGES)
+    effective_max_documents = min(
+        max_documents if max_documents is not None else GLOBAL_MAX_DOCUMENTS,
+        GLOBAL_MAX_DOCUMENTS,
+    )
+    effective_max_seconds = min(
+        max_seconds if max_seconds is not None else GLOBAL_MAX_SECONDS,
+        GLOBAL_MAX_SECONDS,
+    )
+    page_limit = min(effective_max_pages, effective_max_documents)
+    started_at = time.monotonic()
     root_url = canonicalize_url(root_url)
     allowed = {_domain(root_url)}
     if allowed_domains:
@@ -518,11 +537,30 @@ def collect_source(
         queue.append((score, url, depth, parent, source))
         queue.sort(key=lambda x: (-x[0], x[2], x[1]))
 
-    while queue and len(pages) < max_pages:
+    truncation_reason = ""
+    while queue and len(pages) < page_limit:
         from core.crawl_context import current_crawl_context
         ctx = current_crawl_context.get(None)
-        if ctx and ctx.check_limits(source_max_pages=max_pages, source_max_documents=max_documents, source_max_seconds=max_seconds, source_max_depth=max_depth, current_depth=queue[0][2]):
+        elapsed = time.monotonic() - started_at
+        remaining = effective_max_seconds - elapsed
+        if remaining <= 0.1:
+            truncation_reason = "source_max_seconds_reached"
+            failed.append({"url": queue[0][1], "reason": truncation_reason})
             break
+        if ctx:
+            prior_reasons = set(ctx.stop_reasons)
+            if ctx.check_limits(
+                source_max_pages=effective_max_pages,
+                source_max_documents=effective_max_documents,
+                source_max_seconds=effective_max_seconds,
+                source_max_depth=min(max_depth, 3),
+                current_depth=queue[0][2],
+            ):
+                new_reasons = sorted(ctx.stop_reasons - prior_reasons)
+                reason = new_reasons[0] if new_reasons else "crawl_context_limit"
+                truncation_reason = f"crawl_limit_reached:{reason}"
+                failed.append({"url": queue[0][1], "reason": truncation_reason})
+                break
             
         score, url, depth, parent, source = queue.pop(0)
         if not _is_crawlable_url(url, allow_loopback=allow_loopback_for_tests) or url in seen or not _same_domain(url, allowed):
@@ -550,8 +588,12 @@ def collect_source(
             current_url = url
             redirect_statuses = {301, 302, 303, 307, 308}
             for redirect_count in range(11):
+                request_timeout = (
+                    max(0.1, min(timeout[0], remaining / 2)),
+                    max(0.1, min(timeout[1], remaining / 2)),
+                )
                 response = get_response(
-                    current_url, timeout=timeout, retries=2, allow_redirects=False
+                    current_url, timeout=request_timeout, retries=2, allow_redirects=False
                 )
                 if response.status_code not in redirect_statuses:
                     break
@@ -831,6 +873,13 @@ def collect_source(
             # modest relevance score to keep the crawl bounded.
             if s >= 1.5 or any(token in urlparse(child).path.lower() for token in ("/rfp", "/grant", "/fund", "/research", "/opportun", "/call", "/application", "/dataset", "/papers", "/project")):
                 push(child, depth + 1, final_url, anchor or "link", s)
+
+    if queue and not truncation_reason and len(pages) >= page_limit:
+        if effective_max_documents <= effective_max_pages and effective_max_documents == page_limit:
+            truncation_reason = "source_max_documents_reached"
+        else:
+            truncation_reason = "source_max_pages_reached"
+        failed.append({"url": queue[0][1], "reason": truncation_reason})
 
     return WebCollectionResult(root_url, pages, discovered, failed, structured_all)
 
