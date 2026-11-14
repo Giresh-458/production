@@ -506,7 +506,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, *, warning
                     max_documents=limits.get("max_documents"),
                     max_seconds=limits.get("max_seconds"),
                 )
-                collected_warnings.extend(collection_failure_warnings(source.name, result.failed_urls))
+                collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
                 pages = list(getattr(result, "pages", []) or [])
                 title = cleaned_text(str(getattr(pages[0], "title", "") or "")) if pages else source.name
                 page_texts = []
