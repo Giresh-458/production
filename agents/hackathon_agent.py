@@ -537,7 +537,7 @@ def infer_evidence_type(raw_type: str) -> str:
     return EVIDENCE_TYPE_MAP.get(raw_type, "Problem Statement")
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[HackathonDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[HackathonDocument]:
     import yaml
 
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
@@ -545,14 +545,18 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
     from core.crawl_context import current_crawl_context
 
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import recursive_collection_failure_warnings
     documents: list[HackathonDocument] = []
+    collected_warnings = warnings if warnings is not None else []
 
     for source in load_sources(sources_path):
         LOGGER.info("Collecting hackathon intelligence from %s", source.name)
         try:
             html = fetch_html(source.url)
         except HackathonAgentError as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
 
         from core.http_client import canonicalize_url
@@ -592,6 +596,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
             ),
         )
         save_recursive_review(review)
+        collected_warnings.extend(recursive_collection_failure_warnings(source.name, review))
+        if not pages:
+            collected_warnings.append(f"Source '{source.name}' produced no usable pages.")
 
         source_documents: list[HackathonDocument] = []
         for page in pages:
@@ -1157,13 +1164,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents: list[HackathonDocument] = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting hackathon agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1203,10 +1211,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished hackathon agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)
