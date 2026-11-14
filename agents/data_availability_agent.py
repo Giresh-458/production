@@ -469,13 +469,15 @@ def is_relevant(text: str, area_hint: str) -> bool:
     return any(keyword in lowered for keyword in AREA_KEYWORDS[normalized_area])
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[DataDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[DataDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[DataDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting data availability intelligence from %s", source.name)
         try:
@@ -487,7 +489,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
                 title = cleaned_text(str(getattr(structured, "title", "") or "")) or source.name
                 collected_url = str(getattr(structured, "url", "") or source.url)
                 if len(full_text) < 80:
-                    LOGGER.warning("Skipping %s: structured source returned no substantive source text.", source.name)
+                    message = f"Structured source '{source.name}' returned no substantive source text."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
                     continue
             else:
                 limits = limits_by_url.get(source.url, {})
@@ -502,6 +506,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
                     max_documents=limits.get("max_documents"),
                     max_seconds=limits.get("max_seconds"),
                 )
+                collected_warnings.extend(collection_failure_warnings(source.name, result.failed_urls))
                 pages = list(getattr(result, "pages", []) or [])
                 title = cleaned_text(str(getattr(pages[0], "title", "") or "")) if pages else source.name
                 page_texts = []
@@ -514,17 +519,23 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Da
                     page_title = cleaned_text(str(getattr(page, "title", "") or ""))
                     page_texts.append(cleaned_text(f"{page_title}\n{page_body}") if page_title else page_body)
                 if not page_texts:
-                    LOGGER.warning("Skipping %s: crawler returned no page with substantive extracted body text.", source.name)
+                    message = f"Crawler returned no substantive page text for source '{source.name}'."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
                     continue
                 # Source names/focus are metadata, not observations. Only actual
                 # extracted page bodies may enter the evidence bundle.
                 full_text = "\n\n".join(page_texts)
                 if len(full_text) < 80:
-                    LOGGER.warning("Skipping %s: extracted source text is too short.", source.name)
+                    message = f"Extracted source text for '{source.name}' was too short to use."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
                     continue
                 collected_url = str(getattr(pages[0], "url", "") or source.url)
         except Exception as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
         if not is_relevant(full_text, area_hint):
@@ -1043,13 +1054,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting data-availability agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1087,10 +1099,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished data_availability agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)
