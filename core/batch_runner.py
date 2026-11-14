@@ -325,7 +325,7 @@ def execute_batch_run(
         for task in tasks
         if str(task.get("agent_name") or "")
     })
-    if registry_prepared:
+    if registry_prepared and mode == "configured_scan":
         registry_synced_agents = list(agent_names_for_registry)
     elif execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
         from core.source_registry import sync_source_registry
