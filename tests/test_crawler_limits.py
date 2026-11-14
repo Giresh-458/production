@@ -501,3 +501,26 @@ def test_collect_source_enforces_time_budget_without_context(monkeypatch):
         item.get("reason") == "source_max_seconds_reached"
         for item in result.failed_urls
     )
+
+
+def test_collect_source_records_source_page_limit_in_context():
+    from core.crawl_context import current_crawl_context
+
+    context = CrawlContext()
+    context.begin_source()
+    token = current_crawl_context.set(context)
+    try:
+        result = collect_source(
+            "http://test.com/research",
+            keywords=(),
+            max_pages=1,
+            max_depth=2,
+        )
+        assert len(result.pages) == 1
+        assert "source_max_pages" in context.stop_reasons
+        assert any(
+            item.get("reason") == "source_max_pages_reached"
+            for item in result.failed_urls
+        )
+    finally:
+        current_crawl_context.reset(token)
