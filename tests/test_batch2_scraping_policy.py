@@ -67,6 +67,8 @@ def test_shared_crawler_checks_robots_before_cache():
         shared_crawler.SharedCrawlManager
     )
     manager.robots_cache = {}
+    manager.lock = threading.Lock()
+    manager.stats_unique_urls = 0
     manager._robots_allowed = lambda _url: False
     result = manager.fetch("https://example.org/research")
     assert result.error == "robots_disallow"
