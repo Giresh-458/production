@@ -180,3 +180,27 @@ def test_configured_agent_fetch_html_propagates_shared_crawler_error(
 
     with pytest.raises(error_class, match="robots_disallow"):
         module.fetch_html("https://example.org/research")
+
+
+def test_http_429_retries_using_retry_after(monkeypatch):
+    first = requests.Response()
+    first.status_code = 429
+    first.headers["Retry-After"] = "0"
+    first.url = "https://example.org/research"
+    second = requests.Response()
+    second.status_code = 200
+    second.headers["Content-Type"] = "text/plain"
+    second.url = "https://example.org/research"
+    second._content = b"ok"
+
+    session = type(
+        "FakeSession",
+        (),
+        {"get": staticmethod(lambda *args, **kwargs: next(responses))},
+    )()
+    responses = iter((first, second))
+    result = http_client.get_response(
+        "https://example.org/research", session=session, retries=1
+    )
+    assert result.status_code == 200
+    assert result.text == "ok"
