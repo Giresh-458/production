@@ -268,3 +268,28 @@ def test_funding_agent_does_not_browser_bypass_plain_http_403(monkeypatch):
 
     with pytest.raises(funding_agent.FundingAgentError, match="not a recognized JavaScript challenge"):
         funding_agent.fetch_html("https://example.org/research")
+
+
+def test_shared_crawler_deadline_bounds_domain_semaphore_wait():
+    import time
+
+    manager = shared_crawler.SharedCrawlManager.__new__(
+        shared_crawler.SharedCrawlManager
+    )
+
+    class BusySemaphore:
+        def acquire(self, timeout=None):
+            assert timeout is not None and timeout > 0
+            return False
+
+        def release(self):
+            pytest.fail("A semaphore that was not acquired must not be released")
+
+    manager._get_domain_semaphore = lambda _url: BusySemaphore()
+    token = current_crawl_context.set(CrawlContext(deadline=time.time() + 1.0))
+    try:
+        result = manager._execute_fetch("https://example.org/research")
+    finally:
+        current_crawl_context.reset(token)
+
+    assert result.error == "deadline_exceeded"
