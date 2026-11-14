@@ -457,6 +457,11 @@ def execute_batch_run(
         return report
 
     def run_task(task: Dict[str, Any]) -> Dict[str, Any]:
+        if deadline and datetime.now(UTC) >= deadline:
+            return timeout_result(
+                task,
+                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+            )
         LOGGER.info("Batch task starting: %s", task["task_id"])
         inp = dict(task.get("input_data") or {})
         # Preserve the orchestrator's run ID when present so persisted collector
