@@ -918,13 +918,5 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             agent=agent_name, layer=layer, mode=mode, area=area, errors=[str(exc)],
             started_at=started_at, finished_at=datetime.now(UTC),
         )
-xcept Exception as exc:
-        LOGGER.exception("Literature agent failed")
-        return create_error_response(
-            agent=agent_name, layer=layer, mode=mode, area=area, errors=[str(exc)],
-            started_at=started_at, finished_at=datetime.now(UTC),
-        )
-
-
 if __name__ == "__main__":
     raise SystemExit(main())
