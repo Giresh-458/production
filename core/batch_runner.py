@@ -525,19 +525,44 @@ def execute_batch_run(
             ctx = CrawlContext(deadline=deadline.timestamp() if deadline else None)
             token_crawl = current_crawl_context.set(ctx)
             
-            response = run_registered_agent(
-                agent_name=task["agent_name"],
-                mode=task["mode"],
-                area=task["area"],
-                input_data=inp,
-                funding_context=funding_context,
-                funding_contexts=funding_contexts,
-            )
+            try:
+                response = run_registered_agent(
+                    agent_name=task["agent_name"],
+                    mode=task["mode"],
+                    area=task["area"],
+                    input_data=inp,
+                    funding_context=funding_context,
+                    funding_contexts=funding_contexts,
+                )
+            except Exception as exc:
+                LOGGER.exception("Batch task agent invocation failed: %s", task["task_id"])
+                response = {
+                    "status": "error",
+                    "items_processed": 0,
+                    "items_saved": 0,
+                    "outputs": [],
+                    "errors": [f"agent invocation failed: {exc}"],
+                    "warnings": [],
+                    "metadata": {},
+                }
+            if not isinstance(response, dict):
+                response = {
+                    "status": "error",
+                    "items_processed": 0,
+                    "items_saved": 0,
+                    "outputs": [],
+                    "errors": ["agent returned a non-object response"],
+                    "warnings": [],
+                    "metadata": {},
+                }
             if ctx.stop_reasons:
                 response["stop_reasons"] = list(ctx.stop_reasons)
                 if response.get("status", "success") == "success":
                     response["status"] = "partial_limit"
-            response["metadata"] = response.get("metadata", {})
+            response_metadata = response.get("metadata")
+            if not isinstance(response_metadata, dict):
+                response_metadata = {}
+            response["metadata"] = response_metadata
             response["metadata"]["pages_fetched"] = ctx.pages_fetched
             response["metadata"]["documents_collected"] = ctx.documents_collected
             response["metadata"]["playwright_used"] = ctx.playwright_used
