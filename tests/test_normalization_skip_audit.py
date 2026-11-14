@@ -237,3 +237,48 @@ def test_normalization_cache_rebuilds_when_ledger_relationships_are_missing(tmp_
 
     assert after_claim_links == before_claim_links
     assert after_entity_links == before_entity_links
+
+
+def test_normalization_marks_tampered_modern_artifact_needs_review(tmp_path: Path):
+    from datetime import UTC, datetime
+
+    from core.agent_interface import (
+        build_intermediate_artifact_payload,
+        save_intermediate_markdown,
+    )
+    from core.normalization import normalize_intermediate_artifact
+
+    payload, _ = build_intermediate_artifact_payload(
+        agent="data_availability",
+        layer="Data Availability",
+        mode="manual_text",
+        area="RWA",
+        title="Verified dataset catalog",
+        source="https://example.org/verified-catalog",
+        content=(
+            "The dataset catalog documents data access, schema coverage, "
+            "update frequency, provenance, and benchmark reproducibility "
+            "for research teams."
+        ),
+        collected_at=datetime(2026, 11, 14, 10, 0, tzinfo=UTC),
+    )
+    payload["agent_specific_body"] = {
+        "source_type": "dataset_catalog",
+        "evidence_type": "dataset_listing",
+        "focus": "RWA",
+    }
+    payload["shared_header"]["funding_call_id"] = "CALL-PROVENANCE-CHECK-001"
+    payload["shared_header"]["funding_call_ids"] = ["CALL-PROVENANCE-CHECK-001"]
+    payload["shared_header"]["run_id"] = "run-provenance-check"
+
+    artifact_path = save_intermediate_markdown(payload=payload, output_dir=tmp_path)
+    original = artifact_path.read_text(encoding="utf-8")
+    assert "update frequency" in original
+    artifact_path.write_text(
+        original.replace("update frequency", "tampered update frequency", 1),
+        encoding="utf-8",
+    )
+
+    record = normalize_intermediate_artifact(artifact_path)
+    assert record["normalization_status"] == "NEEDS_REVIEW"
+    assert "provenance_content_hash_mismatch" in record["provenance_validation_issues"]
