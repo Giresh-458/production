@@ -249,7 +249,8 @@ class SharedCrawlManager:
             try:
                 result = http_future.result(timeout=timeout)
             except FuturesTimeoutError:
-                return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
+                http_future.cancel()
+                return self._deadline_error(url)
             
             # Only a successful HTTP response that clearly contains a JS shell
             # may trigger rendering. HTTP errors, rate limits and transport
