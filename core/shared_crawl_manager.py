@@ -65,6 +65,7 @@ class SharedCrawlManager:
         # Per-domain throttling
         self.domain_locks: Dict[str, threading.Semaphore] = {}
         self.domain_last_fetch: Dict[str, float] = {}
+        self.robots_cache: Dict[str, Any] = {}
         
         # Initialize Playwright thread-local
         self.pw_local = threading.local()
@@ -114,24 +115,35 @@ class SharedCrawlManager:
                 self.domain_locks[domain] = threading.Semaphore(2)
             return self.domain_locks[domain]
 
-    def _throttle_domain(self, domain: str):
-        sleep_time = 0
+    def _throttle_domain(self, domain: str, deadline: float | None = None) -> bool:
+        sleep_time = 0.0
         with self.lock:
             last = self.domain_last_fetch.get(domain, 0.0)
             now = time.time()
-            if now - last < 1.0: # 1 second delay between requests to same domain
+            if now - last < 1.0:
                 sleep_time = 1.0 - (now - last)
                 self.domain_last_fetch[domain] = now + sleep_time
             else:
                 self.domain_last_fetch[domain] = now
-                
+
         if sleep_time > 0:
+            if deadline is not None and time.time() + sleep_time >= deadline:
+                return False
             time.sleep(sleep_time)
+        return deadline is None or time.time() < deadline
 
     def fetch(self, url: str, bypass_cache: bool = False) -> CrawlResult:
         from core.source_registry import current_force_source_refresh
         canonical = canonicalize_url(url)
-        
+
+        # Robots policy applies to cached and live content alike.
+        if not self._robots_allowed(canonical):
+            return CrawlResult(
+                canonical_url=canonical, final_url=canonical, status_code=0,
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="robots", from_cache=False, error="robots_disallow",
+            )
+
         # Merge explicitly passed bypass_cache with global refresh flag
         bypass_cache = bypass_cache or current_force_source_refresh.get()
         
@@ -192,24 +204,40 @@ class SharedCrawlManager:
                 if canonical in self.in_flight:
                     del self.in_flight[canonical]
 
+    def _robots_allowed(self, url: str) -> bool:
+        from core.web_collection import _robots_allowed
+
+        return _robots_allowed(
+            url, url, cache=self.robots_cache, timeout=5.0, fail_open=False
+        )
+
+    def _deadline_error(self, url: str) -> CrawlResult:
+        return CrawlResult(
+            canonical_url=url, final_url=url, status_code=0, content_type="",
+            title="", html="", clean_text="", content_hash="",
+            fetch_method="error", from_cache=False, error="deadline_exceeded",
+        )
+
     def _execute_fetch(self, url: str) -> CrawlResult:
         import contextvars
         import time
         from concurrent.futures import TimeoutError as FuturesTimeoutError
         from core.crawl_context import current_crawl_context
-        
+
         domain = urlparse(url).netloc.lower()
         sem = self._get_domain_semaphore(url)
-        
+
         with sem:
-            self._throttle_domain(domain)
-            
             ctx_obj = current_crawl_context.get(None)
+            deadline = ctx_obj.deadline if ctx_obj and ctx_obj.deadline else None
+            if not self._throttle_domain(domain, deadline=deadline):
+                return self._deadline_error(url)
+
             timeout = None
-            if ctx_obj and ctx_obj.deadline:
-                timeout = max(0.1, ctx_obj.deadline - time.time())
-                if timeout <= 0.1:
-                    return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
+            if deadline is not None:
+                timeout = deadline - time.time()
+                if timeout <= 0:
+                    return self._deadline_error(url)
 
             # Try HTTP first
             if ctx_obj:
@@ -223,8 +251,10 @@ class SharedCrawlManager:
             except FuturesTimeoutError:
                 return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
             
-            # Check if JS fallback is needed
-            if result.error or self._needs_browser(result.html, result.status_code):
+            # Only a successful HTTP response that clearly contains a JS shell
+            # may trigger rendering. HTTP errors, rate limits and transport
+            # failures must remain visible to the caller.
+            if not result.error and self._needs_browser(result.html, result.status_code):
                 if HAS_PLAYWRIGHT:
                     LOGGER.info(f"Falling back to browser fetch for {url}")
                     if ctx_obj:
@@ -233,11 +263,14 @@ class SharedCrawlManager:
                         with ctx_obj.lock: ctx_obj.js_shells_detected += 1 if not result.error else 0
                         with ctx_obj.lock: ctx_obj.browser_escalations += 1
 
-                    if ctx_obj and ctx_obj.deadline:
-                        timeout = max(0.1, ctx_obj.deadline - time.time())
+                    if deadline is not None:
+                        timeout = deadline - time.time()
+                        if timeout <= 0:
+                            return self._deadline_error(url)
 
+                    browser_timeout_ms = max(1, int(timeout * 1000)) if timeout is not None else 30000
                     ctx2 = contextvars.copy_context()
-                    browser_future = self.browser_pool.submit(ctx2.run, self._do_browser_fetch, url)
+                    browser_future = self.browser_pool.submit(ctx2.run, self._do_browser_fetch, url, browser_timeout_ms)
                     try:
                         result = browser_future.result(timeout=timeout)
                         if result.error:
@@ -248,18 +281,19 @@ class SharedCrawlManager:
                             if ctx_obj:
                                 with ctx_obj.lock: ctx_obj.browser_successes += 1
                     except FuturesTimeoutError:
+                        browser_future.cancel()
                         if ctx_obj:
                             with ctx_obj.lock: ctx_obj.browser_failures += 1
                             with ctx_obj.lock: ctx_obj.playwright_fallback_failed += 1
-                        return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
+                        return self._deadline_error(url)
                 else:
                     LOGGER.warning(f"Browser fallback needed for {url}, but Playwright not installed.")
             
             return result
 
     def _needs_browser(self, html: str, status_code: int) -> bool:
-        if status_code in (403, 429, 503):
-            return True
+        if status_code != 200:
+            return False
         html_lower = html.lower()
         if "enable javascript" in html_lower or "enable js" in html_lower or "javascript is required" in html_lower:
             return True
@@ -288,6 +322,19 @@ class SharedCrawlManager:
                 content_type=ctype, title=title, html=html, clean_text=clean_text,
                 content_hash=content_hash, fetch_method="http", from_cache=False
             )
+        except requests.HTTPError as e:
+            response = e.response
+            status = response.status_code if response is not None else 0
+            retry_after = response.headers.get("Retry-After") if response is not None else None
+            error = f"http_{status}: {e}"
+            if status == 429 and retry_after:
+                error += f" (Retry-After: {retry_after})"
+            return CrawlResult(
+                canonical_url=url, final_url=str(getattr(response, "url", url)),
+                status_code=status, content_type=str(response.headers.get("Content-Type", "")) if response is not None else "",
+                title="", html="", clean_text="", content_hash="",
+                fetch_method="http", from_cache=False, error=error,
+            )
         except Exception as e:
             return CrawlResult(
                 canonical_url=url, final_url=url, status_code=0,
@@ -295,7 +342,7 @@ class SharedCrawlManager:
                 content_hash="", fetch_method="http", from_cache=False, error=str(e)
             )
 
-    def _do_browser_fetch(self, url: str) -> CrawlResult:
+    def _do_browser_fetch(self, url: str, timeout_ms: int = 30000) -> CrawlResult:
         try:
             if not hasattr(self.pw_local, "playwright"):
                 import asyncio
@@ -311,9 +358,17 @@ class SharedCrawlManager:
             
             page = self.pw_local.browser.new_page()
             try:
-                response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # wait a moment for JS to render
-                page.wait_for_timeout(2000)
+                response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                status = response.status if response else 200
+                if status in (401, 403, 429, 451, 503):
+                    return CrawlResult(
+                        canonical_url=url, final_url=page.url, status_code=status,
+                        content_type="", title="", html="", clean_text="", content_hash="",
+                        fetch_method="browser", from_cache=False,
+                        error=f"http_{status}_during_browser_fallback",
+                    )
+                # Keep the render wait inside the remaining request budget.
+                page.wait_for_timeout(min(2000, timeout_ms))
                 html = page.content()
                 title = page.title()
                 final_url = page.url
