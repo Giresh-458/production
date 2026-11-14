@@ -409,7 +409,7 @@ def collect_source(
         if not _is_crawlable_url(url) or url in seen or not _same_domain(url, allowed):
             continue
         seen.add(url)
-        if not _robots_allowed(root_url, url, cache=robots_cache):
+        if not _robots_allowed(url, url, cache=robots_cache, fail_open=False):
             failed.append({"url": url, "reason": "robots_disallow"})
             continue
             
