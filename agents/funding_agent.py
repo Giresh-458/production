@@ -660,22 +660,56 @@ def load_sources(sources_path: Path) -> list[FundingSource]:
 
 def fetch_html(url: str) -> str:
     from core.http_client import fetch_text
+    from core.web_collection import _robots_allowed
+
+    # Do not fetch first and check robots only after an error: policy applies to
+    # the original HTTP request as well as any optional rendering fallback.
+    if not _robots_allowed(url, url, fail_open=False):
+        raise FundingAgentError(f"Robots policy denied or could not verify access to {url}")
+
     try:
         text, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
         LOGGER.debug("Fetched %s -> %s", url, final_url)
         return text
     except Exception as exc:
-        # Anti-bot/403 pages can still be available through a real browser.
-        # Reuse the shared bounded Playwright fallback rather than silently
-        # discarding an otherwise valid public funding source.
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code != 403:
+            # In particular, HTTP 429 must never be retried through Playwright.
+            raise FundingAgentError(
+                f"Unable to fetch page {url}: HTTP {status_code}" if status_code else
+                f"Unable to fetch page {url}: {exc}"
+            ) from exc
+
+        body = str(getattr(response, "text", "") or "").lower()
+        challenge_markers = (
+            "enable javascript",
+            "javascript is required",
+            "cloudflare" if "challenge" in body else "__no_challenge__",
+            "checking if the site connection is secure",
+            "just a moment",
+        )
+        if not any(marker in body for marker in challenge_markers):
+            raise FundingAgentError(
+                f"Unable to fetch page {url}: HTTP 403 (not a recognized JavaScript challenge)"
+            ) from exc
+
+        # Browser rendering is restricted to an explicit 403 JavaScript
+        # challenge after robots permission was established above.
         try:
             from core.web_collection import render_page_with_browser
             rendered = render_page_with_browser(url)
             if rendered and rendered[1].strip():
                 title, text, links, final_url = rendered
                 from html import escape
-                link_html = " ".join(f'<a href="{escape(href, quote=True)}">{escape(label)}</a>' for href, label in links[:200])
-                return f"<html><head><title>{escape(title)}</title></head><body><h1>{escape(title)}</h1><p>{escape(text)}</p>{link_html}</body></html>"
+                link_html = " ".join(
+                    f'<a href="{escape(href, quote=True)}">{escape(label)}</a>'
+                    for href, label in links[:200]
+                )
+                return (
+                    f"<html><head><title>{escape(title)}</title></head><body>"
+                    f"<h1>{escape(title)}</h1><p>{escape(text)}</p>{link_html}</body></html>"
+                )
         except Exception as browser_exc:
             LOGGER.warning("Browser fallback failed for %s: %s", url, browser_exc)
         raise FundingAgentError(f"Unable to fetch page {url}: {exc}") from exc
