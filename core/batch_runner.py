@@ -307,6 +307,16 @@ def execute_batch_run(
         raise ValueError("execution_mode must be one of sequential, parallel")
 
     started_at = datetime.now(UTC)
+    tasks = build_batch_tasks(
+        agent_names=agent_names,
+        area_names=area_names,
+        mode=mode,
+        base_input_data=base_input_data,
+        default_limit=default_limit,
+        per_agent_limits=per_agent_limits,
+        analysis_mode=analysis_mode,
+    )
+
     registry_sync_errors: list[str] = []
     registry_synced = False
     if execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
@@ -318,16 +328,6 @@ def execute_batch_run(
             registry_sync_errors.append(
                 f"source registry synchronization failed before parallel collection: {exc}"
             )
-
-    tasks = build_batch_tasks(
-        agent_names=agent_names,
-        area_names=area_names,
-        mode=mode,
-        base_input_data=base_input_data,
-        default_limit=default_limit,
-        per_agent_limits=per_agent_limits,
-        analysis_mode=analysis_mode,
-    )
 
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
