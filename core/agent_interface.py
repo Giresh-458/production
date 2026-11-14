@@ -203,6 +203,8 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
             errors.append("provenance document_identity does not match source and title")
 
         call_ids = shared_header.get("funding_call_ids")
+        if shared_header.get("funding_call_id") and call_ids is None:
+            errors.append("shared metadata funding_call_ids is required when funding_call_id is set")
         if call_ids is not None:
             if (
                 not isinstance(call_ids, list)
