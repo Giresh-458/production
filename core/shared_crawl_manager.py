@@ -359,6 +359,7 @@ class SharedCrawlManager:
             
             page = self.pw_local.browser.new_page()
             try:
+                started = time.monotonic()
                 response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                 status = response.status if response else 200
                 if status in (401, 403, 429, 451, 503):
@@ -368,8 +369,10 @@ class SharedCrawlManager:
                         fetch_method="browser", from_cache=False,
                         error=f"http_{status}_during_browser_fallback",
                     )
-                # Keep the render wait inside the remaining request budget.
-                page.wait_for_timeout(min(2000, timeout_ms))
+                remaining_ms = timeout_ms - int((time.monotonic() - started) * 1000)
+                if remaining_ms <= 0:
+                    return self._deadline_error(url)
+                page.wait_for_timeout(min(2000, remaining_ms))
                 html = page.content()
                 title = page.title()
                 final_url = page.url
