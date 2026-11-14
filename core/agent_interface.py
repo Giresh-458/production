@@ -163,7 +163,17 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
             if field_name not in evidence_bundle:
                 errors.append(f"evidence_bundle missing required field: {field_name}")
 
-    if isinstance(shared_header, dict) and isinstance(payload.get("provenance"), dict) and isinstance(raw_content, str):
+    metadata_payload = payload.get("metadata")
+    modern_artifact = (
+        isinstance(metadata_payload, dict)
+        and metadata_payload.get("artifact_schema") == "shared-metadata-header-plus-agent-body-v1"
+    )
+    if (
+        modern_artifact
+        and isinstance(shared_header, dict)
+        and isinstance(payload.get("provenance"), dict)
+        and isinstance(raw_content, str)
+    ):
         provenance = payload["provenance"]
         expected_metadata = {
             "source_url": shared_header.get("source"),
