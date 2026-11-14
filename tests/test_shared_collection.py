@@ -7,11 +7,12 @@ from pathlib import Path
 from core.shared_crawl_manager import SharedCrawlManager, CrawlResult
 
 @pytest.fixture
-def mock_db(tmp_path):
+def mock_db(tmp_path, monkeypatch):
     manager = SharedCrawlManager()
     manager.db_path = str(tmp_path / "shared_crawl_cache.db")
     manager._init_db()
     SharedCrawlManager._instance = manager
+    monkeypatch.setattr(manager, "_robots_allowed", lambda _url: True)
     return manager
 
 def slow_fetch_func(url):
@@ -57,12 +58,12 @@ def test_d_inflight_deduplication(mock_db, monkeypatch):
 
 def test_f_fallback_playwright(mock_db, monkeypatch):
     def fetch_http_side_effect(url):
-        return CrawlResult(url, url, 403, "text/html", "title", "error", "error", "hash", "http", False)
+        return CrawlResult(url, url, 200, "text/html", "title", "<html>Please enable JavaScript</html>", "Please enable JavaScript", "hash", "http", False)
         
     monkeypatch.setattr(mock_db, "_do_http_fetch", fetch_http_side_effect)
     
     called_pw = [False]
-    def fetch_pw_side_effect(url):
+    def fetch_pw_side_effect(url, timeout_ms=30000):
         called_pw[0] = True
         return CrawlResult("http://test.com", "http://test.com", 200, "text/html", "title", "html", "text", "hash", "playwright", False)
         
