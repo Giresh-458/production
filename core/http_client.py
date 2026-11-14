@@ -76,7 +76,8 @@ def _apply_context_timeout(configured_timeout: float | tuple[float, float]) -> f
     now = time.time()
     remaining = ctx.deadline - now
     if remaining <= 0:
-        ctx.stop_reasons.add("deadline")
+        with ctx.lock:
+            ctx.stop_reasons.add("deadline")
         raise TimeoutError("Crawl deadline exceeded before HTTP request")
 
     if isinstance(configured_timeout, tuple):
