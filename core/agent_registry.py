@@ -179,13 +179,17 @@ def run_registered_agent(
         )
 
     LOGGER.info("Starting agent run: agent=%s mode=%s area=%s", normalized, mode, area)
+    registry_warnings: list[str] = []
 
     if mode == "configured_scan" and not bool(payload.get("defer_registry_sync", False)):
         try:
             sync_source_registry(agent_filter=normalized)
             build_source_refresh_plan(agent_filter=normalized)
-        except Exception:
+        except Exception as exc:
             LOGGER.exception("Failed to sync source registry for agent=%s", normalized)
+            registry_warnings.append(
+                f"Source registry synchronization failed for agent '{normalized}': {exc}"
+            )
 
     try:
         module = importlib.import_module(spec["module"])
@@ -255,7 +259,7 @@ def run_registered_agent(
         response.get("status"),
         len(response.get("outputs", [])),
     )
-    if mode == "configured_scan" and response.get("status") in {"success", "partial_success"}:
+    if mode == "configured_scan" and response.get("status") in {"success", "partial_success"} and not bool(payload.get("defer_registry_sync", False)):
         try:
             # Collect URLs of sources the agent actually attempted (succeeded or
             # failed) so that only those entries get their last_checked stamp.
@@ -281,6 +285,13 @@ def run_registered_agent(
                 attempted_urls=attempted_urls,
             )
             build_source_refresh_plan(agent_filter=normalized)
-        except Exception:
+        except Exception as exc:
             LOGGER.exception("Failed to update source refresh state for agent=%s", normalized)
+            registry_warnings.append(
+                f"Source refresh state update failed for agent '{normalized}': {exc}"
+            )
+    if registry_warnings:
+        response.setdefault("warnings", []).extend(registry_warnings)
+        if response.get("status") == "success":
+            response["status"] = "partial_success"
     return response
