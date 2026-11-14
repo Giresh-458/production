@@ -227,3 +227,20 @@ def test_funding_agent_never_uses_browser_fallback_for_http_429(monkeypatch):
 
     with pytest.raises(funding_agent.FundingAgentError, match="HTTP 429"):
         funding_agent.fetch_html("https://example.org/research")
+
+
+def test_robots_disallow_rule_is_respected(monkeypatch):
+    class RobotsResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _limit):
+            return b"User-agent: *\\nDisallow: /private\\n"
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: RobotsResponse())
+    assert web_collection._robots_allowed(
+        "https://example.org/", "https://example.org/private/call", cache={}
+    ) is False
