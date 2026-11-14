@@ -152,3 +152,44 @@ def test_lab_collection_refreshes_existing_pages_when_source_policy_selects_them
     assert refreshed is not None
     assert refreshed.pages[0].title == "Updated research"
     assert fetched == [existing_url]
+
+
+def test_lab_partial_page_failure_is_reported_without_discarding_successful_pages(monkeypatch):
+    import sqlite3
+
+    from agents import lab_agent
+
+    connection = sqlite3.connect(":memory:")
+    lab_agent.init_labs_db(connection)
+    source = lab_agent.LabSource(
+        name="Mixed Result Lab",
+        url="https://example.org/",
+        focus_pages=["/blocked", "/research"],
+    )
+    fetched = []
+
+    def fake_fetch(url):
+        fetched.append(url)
+        if url.endswith("/blocked"):
+            raise lab_agent.LabAgentError("HTTP 503")
+        return "<html><body>research</body></html>"
+
+    monkeypatch.setattr(lab_agent, "fetch_html", fake_fetch)
+    monkeypatch.setattr(
+        lab_agent,
+        "extract_page_text",
+        lambda _html: ("Research", "The laboratory publishes reproducible cryptography research."),
+    )
+    warnings = []
+
+    document = lab_agent.collect_lab_document(
+        source,
+        connection,
+        source_limits={"max_pages": 2, "max_seconds": 30},
+        warnings=warnings,
+    )
+
+    assert document is not None
+    assert [page.url for page in document.pages] == ["https://example.org/research"]
+    assert fetched == ["https://example.org/blocked", "https://example.org/research"]
+    assert any("HTTP 503" in warning for warning in warnings)
