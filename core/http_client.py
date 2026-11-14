@@ -74,8 +74,11 @@ def _apply_context_timeout(configured_timeout: float | tuple[float, float]) -> f
         return configured_timeout
     
     now = time.time()
-    remaining = max(0.1, ctx.deadline - now)
-    
+    remaining = ctx.deadline - now
+    if remaining <= 0:
+        ctx.stop_reasons.add("deadline")
+        raise TimeoutError("Crawl deadline exceeded before HTTP request")
+
     if isinstance(configured_timeout, tuple):
         conn_to, read_to = configured_timeout
         return (min(conn_to, remaining), min(read_to, remaining))
@@ -87,7 +90,8 @@ def _sleep_or_abort(delay: float) -> None:
     if ctx and ctx.deadline:
         now = time.time()
         if now + delay > ctx.deadline:
-            ctx.stop_reasons.add("deadline")
+            with ctx.lock:
+                ctx.stop_reasons.add("deadline")
             raise TimeoutError("Deadline exceeded during retry sleep")
     time.sleep(delay)
 
