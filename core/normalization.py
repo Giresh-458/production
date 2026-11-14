@@ -1305,7 +1305,88 @@ def _normalization_cache_ledger_matches_records(
                         return False
                 if actual_value != expected_value:
                     return False
-        return actual_ids == set(records_by_id)
+        if actual_ids != set(records_by_id):
+            return False
+
+        expected_claims: dict[str, tuple[str, str, str]] = {}
+        expected_evidence_claims: set[tuple[str, str, str]] = set()
+        expected_entities: dict[str, dict[str, Any]] = {}
+        expected_evidence_entities: set[tuple[str, str]] = set()
+
+        for evidence_id, record in records_by_id.items():
+            for claim in extract_claims(record.get("evidence_snippets") or []):
+                claim_id = str(claim.get("claim_id") or "")
+                if not claim_id:
+                    return False
+                expected_claims[claim_id] = (
+                    str(claim.get("claim_text") or ""),
+                    str(claim.get("claim_type") or ""),
+                    str(claim.get("problem_signature") or ""),
+                )
+                expected_evidence_claims.add((evidence_id, claim_id, "SUPPORTS"))
+
+            for entity_name in record.get("named_entities") or []:
+                if not isinstance(entity_name, str) or not entity_name.strip():
+                    continue
+                entity_id = hashlib.sha256(
+                    entity_name.lower().encode("utf-8")
+                ).hexdigest()[:16]
+                expected_entities[entity_id] = {
+                    "canonical_name": entity_name,
+                    "entity_type": "extracted_entity",
+                    "aliases": [entity_name],
+                    "external_ids": {},
+                }
+                expected_evidence_entities.add((evidence_id, entity_id))
+
+        actual_claim_rows = connection.execute(
+            "SELECT claim_id, claim_text, claim_type, problem_signature FROM claims"
+        ).fetchall()
+        actual_claims = {
+            str(row[0]): (str(row[1]), str(row[2]), str(row[3]))
+            for row in actual_claim_rows
+        }
+        if actual_claims != expected_claims:
+            return False
+
+        actual_evidence_claims = {
+            (str(row[0]), str(row[1]), str(row[2]))
+            for row in connection.execute(
+                "SELECT evidence_id, claim_id, claim_relationship FROM evidence_claims"
+            ).fetchall()
+        }
+        if actual_evidence_claims != expected_evidence_claims:
+            return False
+
+        actual_entity_rows = connection.execute(
+            "SELECT entity_id, canonical_name, entity_type, aliases, external_ids FROM entities"
+        ).fetchall()
+        actual_entities: dict[str, dict[str, Any]] = {}
+        for row in actual_entity_rows:
+            try:
+                aliases = json.loads(row[3])
+                external_ids = json.loads(row[4])
+            except (TypeError, ValueError):
+                return False
+            actual_entities[str(row[0])] = {
+                "canonical_name": str(row[1]),
+                "entity_type": str(row[2]),
+                "aliases": aliases,
+                "external_ids": external_ids,
+            }
+        if actual_entities != expected_entities:
+            return False
+
+        actual_evidence_entities = {
+            (str(row[0]), str(row[1]))
+            for row in connection.execute(
+                "SELECT evidence_id, entity_id FROM evidence_entities"
+            ).fetchall()
+        }
+        if actual_evidence_entities != expected_evidence_entities:
+            return False
+
+        return True
     except (OSError, sqlite3.Error, TypeError, ValueError, KeyError):
         return False
     finally:
