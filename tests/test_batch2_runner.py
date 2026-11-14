@@ -2056,3 +2056,136 @@ def test_batch2_runner_executes_from_repository_root_when_invoked_elsewhere(tmp_
     assert exit_code == 0
     assert captured["cwd"] == run_batch2.REPOSITORY_ROOT
     assert captured["output_root"] == tmp_path / "relative-output"
+
+
+def test_parallel_batch_reconciles_registry_and_preserves_multi_call_attribution(tmp_path):
+    from core.batch_runner import execute_batch_run
+
+    contexts = [_context("CALL-PARALLEL-001"), _context("CALL-PARALLEL-002")]
+    calls = []
+    registry_calls = {"sync": 0, "plan": 0, "marked": []}
+
+    def fake_run_registered_agent(
+        agent_name, mode, area, input_data, funding_context=None, funding_contexts=None
+    ):
+        calls.append(area)
+        output_dir = Path(input_data["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        artifact = output_dir / f"{area}.md"
+        artifact.write_text("collected", encoding="utf-8")
+        return {
+            "status": "success",
+            "items_processed": 1,
+            "items_saved": 1,
+            "outputs": [{
+                "source": f"https://example.org/{area}/index",
+                "markdown_path": str(artifact),
+            }],
+            "warnings": [f"detail fetch failed: https://example.org/{area}/detail"],
+            "errors": [],
+            "metadata": {"duration_seconds": 0.01},
+        }
+
+    def fake_mark(agent_name, *, attempted_urls=None, **kwargs):
+        registry_calls["marked"].append((agent_name, set(attempted_urls or set())))
+        return len(attempted_urls or set())
+
+    with (
+        patch("core.batch_runner.run_registered_agent", side_effect=fake_run_registered_agent),
+        patch("core.source_registry.sync_source_registry", side_effect=lambda: registry_calls.__setitem__("sync", registry_calls["sync"] + 1)),
+        patch("core.source_registry.mark_agent_sources_checked", side_effect=fake_mark),
+        patch("core.source_registry.build_source_refresh_plan", side_effect=lambda: registry_calls.__setitem__("plan", registry_calls["plan"] + 1)),
+    ):
+        report = execute_batch_run(
+            agent_names=["lab"],
+            area_names=["RWA", "ESG"],
+            mode="configured_scan",
+            base_input_data={
+                "pipeline_run_dir": str(tmp_path),
+                "run_id": "run-phase6-multi",
+            },
+            execution_mode="parallel",
+            max_workers=2,
+            timeout_budget_seconds=60,
+            report_path=tmp_path / "parallel-report.json",
+            funding_contexts=contexts,
+        )
+
+    assert sorted(calls) == ["ESG", "RWA"]
+    assert registry_calls["sync"] == 1
+    assert registry_calls["plan"] == 1
+    assert len(registry_calls["marked"]) == 1
+    agent_name, attempted = registry_calls["marked"][0]
+    assert agent_name == "lab"
+    assert attempted == {
+        "https://example.org/RWA/index",
+        "https://example.org/RWA/detail",
+        "https://example.org/ESG/index",
+        "https://example.org/ESG/detail",
+    }
+    assert report["registry_sync"]["status"] == "success"
+    assert report["registry_sync"]["attempted_sources_marked"] == 4
+    assert report["config"]["run_id"] == "run-phase6-multi"
+    assert report["config"]["funding_call_ids"] == [
+        "CALL-PARALLEL-001",
+        "CALL-PARALLEL-002",
+    ]
+    assert all(task["run_id"] == "run-phase6-multi" for task in report["tasks"])
+    assert all(
+        task["funding_call_ids"] == ["CALL-PARALLEL-001", "CALL-PARALLEL-002"]
+        for task in report["tasks"]
+    )
+
+
+def test_parallel_batch_does_not_start_queued_tasks_after_deadline(tmp_path):
+    import time
+
+    from core.batch_runner import execute_batch_run
+
+    calls = []
+
+    def slow_run_registered_agent(
+        agent_name, mode, area, input_data, funding_context=None, funding_contexts=None
+    ):
+        calls.append(area)
+        output_dir = Path(input_data["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        artifact = output_dir / f"{area}.md"
+        artifact.write_text("late output", encoding="utf-8")
+        time.sleep(1.2)
+        return {
+            "status": "success",
+            "items_processed": 1,
+            "items_saved": 1,
+            "outputs": [{
+                "source": f"https://example.org/{area}",
+                "markdown_path": str(artifact),
+            }],
+            "warnings": [],
+            "errors": [],
+            "metadata": {"duration_seconds": 1.2},
+        }
+
+    with (
+        patch("core.batch_runner.run_registered_agent", side_effect=slow_run_registered_agent),
+        patch("core.source_registry.sync_source_registry"),
+        patch("core.source_registry.mark_agent_sources_checked", return_value=0),
+        patch("core.source_registry.build_source_refresh_plan"),
+    ):
+        report = execute_batch_run(
+            agent_names=["lab"],
+            area_names=["RWA", "ESG"],
+            mode="configured_scan",
+            base_input_data={"pipeline_run_dir": str(tmp_path)},
+            execution_mode="parallel",
+            max_workers=1,
+            timeout_budget_seconds=1,
+            report_path=tmp_path / "deadline-report.json",
+        )
+
+    assert len(calls) == 1
+    assert len(report["tasks"]) == 2
+    assert all(
+        task["status"] == "timeout_budget_exceeded"
+        for task in report["tasks"]
+    )
