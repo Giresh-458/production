@@ -458,13 +458,15 @@ def is_relevant(text: str, area_hint: str) -> bool:
     return any(keyword in lowered for keyword in AREA_KEYWORDS[normalized_area])
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[RegulationDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[RegulationDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import recursive_collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[RegulationDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting regulation intelligence from %s", source.name)
         structured = collect_structured_source(source.url, source.source_type, area)
@@ -477,7 +479,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
         try:
             html = fetch_html(source.url)
         except RegulationAgentError as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -519,6 +523,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
             ),
         )
         save_recursive_review(review)
+        collected_warnings.extend(recursive_collection_failure_warnings(source.name, review))
+        if not pages:
+            collected_warnings.append(f"Source '{source.name}' produced no usable pages.")
         title, content = combine_recursive_pages(pages)
         full_text = cleaned_text(f"{title} {content}")
         area_hint = infer_configured_source_area(source, full_text, area)
@@ -1129,13 +1136,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting regulation agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1175,10 +1183,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished regulation agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)
