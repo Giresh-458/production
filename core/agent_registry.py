@@ -248,7 +248,7 @@ def run_registered_agent(
             items_saved=response.get("items_saved", 0) if isinstance(response, dict) else 0,
             outputs=response.get("outputs", []) if isinstance(response, dict) else [],
             errors=structure_errors,
-            warnings=["agent returned a non-standard response; wrapper normalized the failure"],
+            warnings=["agent returned a non-standard response; wrapper normalized the failure", *registry_warnings],
             started_at=started_at,
             finished_at=datetime.now(UTC),
         )
@@ -291,7 +291,10 @@ def run_registered_agent(
                 f"Source refresh state update failed for agent '{normalized}': {exc}"
             )
     if registry_warnings:
-        response.setdefault("warnings", []).extend(registry_warnings)
+        existing_warnings = response.get("warnings")
+        if not isinstance(existing_warnings, list):
+            existing_warnings = [str(existing_warnings)] if existing_warnings else []
+        response["warnings"] = existing_warnings + registry_warnings
         if response.get("status") == "success":
             response["status"] = "partial_success"
     return response
