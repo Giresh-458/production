@@ -467,7 +467,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, *, warning
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=('incident', 'exploit', 'vulnerability', 'postmortem', 'outage', 'attack'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-            collected_warnings.extend(collection_failure_warnings(source.name, result.failed_urls))
+            collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
             title = result.pages[0].title if result.pages else "Failure source"
             full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
