@@ -135,6 +135,8 @@ class SharedCrawlManager:
     def fetch(self, url: str, bypass_cache: bool = False) -> CrawlResult:
         from core.source_registry import current_force_source_refresh
         canonical = canonicalize_url(url)
+        with self.lock:
+            self.stats_unique_urls += 1
 
         # Robots policy applies to cached and live content alike.
         if not self._robots_allowed(canonical):
@@ -146,10 +148,9 @@ class SharedCrawlManager:
 
         # Merge explicitly passed bypass_cache with global refresh flag
         bypass_cache = bypass_cache or current_force_source_refresh.get()
-        
+
         fut_to_await = None
         with self.lock:
-            self.stats_unique_urls += 1
             # 1. Check in-flight
             if canonical in self.in_flight:
                 self.stats_in_flight_dedupes += 1
