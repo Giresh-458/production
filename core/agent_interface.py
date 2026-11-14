@@ -229,7 +229,7 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
 
 def _slugify_filename(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip().lower()).strip("-")
-    return slug or "item"
+    return (slug[:100].rstrip("-") or "item")
 
 
 def _document_value(document: Any, field_name: str, default: Any = "") -> Any:
