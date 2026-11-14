@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.db import db_connect
 from agents.utils import cleaned_text
-from core.source_registry import apply_refresh_policy, current_force_source_refresh, extract_yaml_limits
+from core.source_registry import apply_refresh_policy, extract_yaml_limits
 from core.llm_provider import generate as llm_generate
 from core.schemas import AREA_KEYWORDS
 from core.crawl_context import current_crawl_context, GLOBAL_MAX_PAGES, GLOBAL_MAX_SECONDS
@@ -268,7 +268,6 @@ def collect_lab_document(
     connection: sqlite3.Connection,
     *,
     source_limits: dict[str, Any] | None = None,
-    force_refresh: bool = False,
     warnings: list[str] | None = None,
 ) -> LabDocument | None:
     """Collect configured focus pages within source and run crawl budgets.
@@ -300,6 +299,7 @@ def collect_lab_document(
     started = time.monotonic()
     attempted_pages = 0
     pages: list[LabPage] = []
+    seen_page_urls: set[str] = set()
     stopped_by_limit = ""
 
     for focus_page in source.focus_pages:
@@ -319,10 +319,14 @@ def collect_lab_document(
                 break
 
         page_url = resolve_focus_url(source.url, focus_page)
-        if page_exists(connection, page_url) and not force_refresh:
-            LOGGER.info("Skipping already stored lab page %s", page_url)
+        if page_url in seen_page_urls:
             continue
+        seen_page_urls.add(page_url)
 
+        # load_sources() has already applied the registry refresh schedule. A
+        # source that reaches this function is due (or explicitly forced), so
+        # its persisted pages must be re-fetched rather than treated as eternal
+        # cache hits in lab_pages.
         attempted_pages += 1
         if crawl_context:
             # Count every outbound attempt against the global/source page budget,
@@ -447,7 +451,6 @@ def build_auto_documents(
     from core.http_client import canonicalize_url
 
     crawl_context = current_crawl_context.get(None)
-    force_refresh = current_force_source_refresh.get()
     documents: list[LabDocument] = []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting lab intelligence from %s", source.name)
@@ -470,7 +473,6 @@ def build_auto_documents(
             source,
             connection,
             source_limits=limits,
-            force_refresh=force_refresh,
             warnings=collected_warnings,
         )
         if document is not None and matches_lab_area(document, area):
