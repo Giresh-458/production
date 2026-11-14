@@ -94,3 +94,61 @@ def test_artifact_collection_timestamp_falls_back_for_naive_source_time():
 
     assert collected_at.tzinfo is not None
     assert before <= collected_at <= after
+
+
+def test_intermediate_artifact_rejects_tampered_provenance_and_unsafe_run_identity():
+    from datetime import datetime, timezone
+
+    from core.agent_interface import (
+        build_intermediate_artifact_payload,
+        validate_intermediate_artifact,
+    )
+
+    payload, _ = build_intermediate_artifact_payload(
+        agent="data_availability",
+        layer="Data Availability",
+        mode="manual_text",
+        area="RWA",
+        title="Dataset catalog evidence",
+        source="https://example.org/catalog",
+        content=(
+            "This source describes a reproducible dataset catalog for research. "
+            "It documents data access, schema coverage, update frequency, and "
+            "benchmark limitations for research teams."
+        ),
+        collected_at=datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc),
+    )
+    payload["agent_specific_body"] = {
+        "source_type": "dataset_catalog",
+        "evidence_type": "dataset_listing",
+        "focus": "RWA",
+    }
+    payload["shared_header"]["run_id"] = "run-2026-11-14"
+    payload["shared_header"]["funding_call_ids"] = ["CALL-001"]
+    payload["shared_header"]["funding_call_id"] = "CALL-001"
+
+    assert validate_intermediate_artifact(payload) == []
+
+    tampered_hash = dict(payload)
+    tampered_hash["provenance"] = dict(payload["provenance"])
+    tampered_hash["provenance"]["content_hash"] = "0" * 64
+    assert any(
+        "content_hash does not match raw_content" in error
+        for error in validate_intermediate_artifact(tampered_hash)
+    )
+
+    mismatched_time = dict(payload)
+    mismatched_time["provenance"] = dict(payload["provenance"])
+    mismatched_time["provenance"]["collected_at"] = "2026-11-13T10:00:00+00:00"
+    assert any(
+        "provenance 'collected_at' does not match shared metadata" in error
+        for error in validate_intermediate_artifact(mismatched_time)
+    )
+
+    unsafe_run = dict(payload)
+    unsafe_run["shared_header"] = dict(payload["shared_header"])
+    unsafe_run["shared_header"]["run_id"] = "../escape"
+    assert any(
+        "run_id contains unsafe path characters" in error
+        for error in validate_intermediate_artifact(unsafe_run)
+    )
