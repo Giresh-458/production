@@ -1,0 +1,53 @@
+name: Batch-2 Scraping Policy Tests
+
+on:
+  push:
+    branches:
+      - fix/batch2-scraping-infrastructure
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "core/http_client.py"
+      - "core/shared_crawl_manager.py"
+      - "core/web_collection.py"
+      - "core/recursive_collection.py"
+      - "core/crawl_context.py"
+      - "agents/lab_agent.py"
+      - "agents/company_agent.py"
+      - "agents/regulation_agent.py"
+      - "agents/opensource_agent.py"
+      - "agents/practitioner_agent.py"
+      - "agents/investment_agent.py"
+      - "agents/failure_agent.py"
+      - "agents/data_availability_agent.py"
+      - "agents/hackathon_agent.py"
+      - "agents/expert_agent.py"
+      - "tests/test_batch2_scraping_policy.py"
+      - "tests/test_crawler_limits.py"
+      - "tests/test_http_deadline.py"
+      - "tests/test_http_policy_extra.py"
+      - ".github/workflows/batch2-scraping-policy-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scraping-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+      - name: Run scraping policy and crawler limit regressions
+        run: |
+          python -m pytest tests/test_batch2_scraping_policy.py tests/test_crawler_limits.py tests/test_http_deadline.py tests/test_http_policy_extra.py -q
