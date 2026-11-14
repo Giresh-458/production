@@ -34,12 +34,14 @@ def patch_network(monkeypatch):
     monkeypatch.setattr("core.web_collection._render_with_browser", mock_render_with_browser)
     # Also patch for shared_crawl_manager
     monkeypatch.setattr("core.shared_crawl_manager.get_response", mock_get_response)
-    
+    monkeypatch.setattr("core.web_collection._robots_allowed", lambda *args, **kwargs: True)
+    monkeypatch.setattr("core.shared_crawl_manager.SharedCrawlManager._robots_allowed", lambda self, url: True)
+
     # Mock Playwright installation check
     monkeypatch.setattr("core.shared_crawl_manager.HAS_PLAYWRIGHT", True)
     
     # Mock _do_browser_fetch to avoid launching real browsers in unit tests
-    def mock_do_browser_fetch(self, url):
+    def mock_do_browser_fetch(self, url, timeout_ms=30000):
         from core.shared_crawl_manager import CrawlResult
         if "fail-browser" in url:
             return CrawlResult(
@@ -66,10 +68,10 @@ def test_web_collection_playwright_fallback():
         assert "JS rendered content" in res.pages[0].text
         assert res.pages[0].is_playwright is True
         
-        # 2. Failure case: challenge, browser fails
+        # 2. A forbidden/challenge response is not a reason to bypass HTTP policy.
         res = collect_source("http://example.com/bot-challenge/fail-browser", keywords=())
-        assert ctx.playwright_used == 2
-        assert ctx.playwright_fallback_failed == 1
+        assert ctx.playwright_used == 1
+        assert ctx.playwright_fallback_failed == 0
         assert len(res.pages) == 0
         assert len(res.failed_urls) > 0
         
@@ -92,11 +94,12 @@ def test_shared_crawl_manager_playwright_fallback():
         assert ctx.playwright_used == 1
         assert ctx.playwright_fallback_failed == 0
         
-        # Failed fallback
+        # A failed/forbidden HTTP acquisition must not be escalated to Playwright.
         res2 = manager.fetch("http://example.com/bot-challenge/fail-browser", bypass_cache=True)
-        assert res2.error == "Browser crashed"
-        assert ctx.playwright_used == 2
-        assert ctx.playwright_fallback_failed == 1
+        assert res2.error
+        assert "403 Forbidden" in res2.error
+        assert ctx.playwright_used == 1
+        assert ctx.playwright_fallback_failed == 0
     finally:
         current_crawl_context.reset(token)
 
