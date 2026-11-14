@@ -772,15 +772,16 @@ def execute_batch_run(
                     )
         plan_root = None
         if report_path is not None:
-            plan_root = Path(report_path).parent / "source_refresh_plans"
+            plan_root = Path(report_path).parent / "source_refresh_plans" / "post_collection"
         elif (base_input_data or {}).get("pipeline_run_dir"):
             plan_root = (
                 Path((base_input_data or {})["pipeline_run_dir"])
                 / "workflow"
                 / "source_refresh_plans"
+                / "post_collection"
             )
         else:
-            plan_root = Path.cwd() / "outputs" / "source_refresh_plans"
+            plan_root = Path.cwd() / "outputs" / "source_refresh_plans" / "post_collection"
         if plan_root is not None:
             plan_root.mkdir(parents=True, exist_ok=True)
             registry_sync["refresh_plan_paths"] = []
