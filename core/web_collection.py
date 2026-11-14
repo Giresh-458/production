@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 
 from core.http_client import canonicalize_url, get_response, _safe_redirect_target
 from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
-from core.crawl_context import GLOBAL_MAX_PAGES, GLOBAL_MAX_DOCUMENTS, GLOBAL_MAX_SECONDS
+from core.crawl_context import GLOBAL_MAX_PAGES, GLOBAL_MAX_DOCUMENTS, GLOBAL_MAX_SECONDS, GLOBAL_MAX_DEPTH
 
 
 @dataclass(slots=True)
@@ -515,6 +515,7 @@ def collect_source(
         max_seconds if max_seconds is not None else GLOBAL_MAX_SECONDS,
         GLOBAL_MAX_SECONDS,
     )
+    effective_max_depth = min(max_depth if max_depth is not None else GLOBAL_MAX_DEPTH, GLOBAL_MAX_DEPTH)
     page_limit = min(effective_max_pages, effective_max_documents)
     started_at = time.monotonic()
     root_url = canonicalize_url(root_url)
@@ -553,7 +554,7 @@ def collect_source(
                 source_max_pages=effective_max_pages,
                 source_max_documents=effective_max_documents,
                 source_max_seconds=effective_max_seconds,
-                source_max_depth=min(max_depth, 3),
+                source_max_depth=effective_max_depth,
                 current_depth=queue[0][2],
             ):
                 new_reasons = sorted(ctx.stop_reasons - prior_reasons)
