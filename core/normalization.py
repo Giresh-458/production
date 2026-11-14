@@ -536,8 +536,8 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         (
             candidate
             for value in (
-                provenance.get("source_url", ""),
                 shared_header.get("source", ""),
+                provenance.get("source_url", ""),
                 machine_metadata.get("source_url", ""),
                 source_hints.get("source_url", ""),
                 source_hints.get("url", ""),
@@ -623,8 +623,72 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     })
     source_id = extract_source_identity(title, source_url, canonical_url, identity_metadata)
 
-    # Needs review if lacking funding call id or source
-    needs_review = (not funding_call_id and not funding_call_ids) or not source_url
+    provenance_validation_issues: list[str] = []
+    modern_artifact = (
+        machine_metadata.get("artifact_schema")
+        == "shared-metadata-header-plus-agent-body-v1"
+    )
+    if modern_artifact:
+        expected_metadata = {
+            "source_url": shared_header.get("source"),
+            "agent_name": shared_header.get("agent_name"),
+            "agent_version": shared_header.get("agent_version"),
+            "collection_mode": shared_header.get("collection_mode"),
+            "collected_at": shared_header.get("collected_at"),
+        }
+        for field, expected_value in expected_metadata.items():
+            if provenance.get(field) != expected_value:
+                provenance_validation_issues.append(
+                    f"provenance_{field}_mismatch"
+                )
+
+        expected_content_hash = hashlib.sha256(
+            raw_content.strip().encode("utf-8")
+        ).hexdigest()
+        if provenance.get("content_hash") != expected_content_hash:
+            provenance_validation_issues.append("provenance_content_hash_mismatch")
+
+        source_identity_value = str(shared_header.get("source") or "").strip()
+        title_identity_value = str(shared_header.get("title") or "").strip()
+        expected_document_identity = hashlib.sha256(
+            f"{source_identity_value}|{title_identity_value}".encode("utf-8")
+        ).hexdigest()
+        if provenance.get("document_identity") != expected_document_identity:
+            provenance_validation_issues.append("provenance_document_identity_mismatch")
+
+        collected_at_value = str(shared_header.get("collected_at") or "").strip()
+        try:
+            parsed_collected_at = datetime.fromisoformat(
+                collected_at_value.replace("Z", "+00:00")
+            )
+            if parsed_collected_at.tzinfo is None or parsed_collected_at.utcoffset() is None:
+                raise ValueError("timestamp must include a timezone")
+        except (TypeError, ValueError, OverflowError):
+            provenance_validation_issues.append("collected_at_not_timezone_aware")
+
+        raw_ids_are_valid = (
+            isinstance(raw_call_ids, list)
+            and all(isinstance(value, str) and value.strip() for value in raw_call_ids)
+            and len(raw_call_ids) == len(set(raw_call_ids))
+        )
+        if raw_call_ids is not None and not raw_ids_are_valid:
+            provenance_validation_issues.append("funding_call_ids_invalid")
+        if funding_call_id and (
+            not raw_ids_are_valid or funding_call_id not in funding_call_ids
+        ):
+            provenance_validation_issues.append("funding_call_id_list_mismatch")
+        if len(funding_call_ids) != 1 and funding_call_id:
+            provenance_validation_issues.append("funding_call_id_not_unique")
+        if run_id and not re.fullmatch(r"[A-Za-z0-9._:+-]{1,160}", run_id):
+            provenance_validation_issues.append("run_id_invalid")
+
+    # Needs review if lacking funding call id or source, or if modern
+    # artifact provenance no longer matches the content and metadata.
+    needs_review = (
+        (not funding_call_id and not funding_call_ids)
+        or not source_url
+        or bool(provenance_validation_issues)
+    )
     normalization_status = "NEEDS_REVIEW" if needs_review else "NORMALIZED"
 
     # Keep observations from different collection layers distinct. They may
@@ -713,6 +777,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         ),
         "content_hash": content_hash,
         "normalization_status": normalization_status,
+        "provenance_validation_issues": provenance_validation_issues,
         "routed_research_area": research_area,
         "domain_relevance": domain_relevance,
     }
