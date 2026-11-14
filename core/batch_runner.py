@@ -231,7 +231,7 @@ def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[
             if source_url.startswith(("http://", "https://")):
                 source_urls.add(source_url)
     for warning in warnings:
-        for match in re.findall(r"https?://[^\\s)\\]>,]+", str(warning)):
+        for match in re.findall(r"https?://[^\s)\]>,]+", str(warning)):
             source_urls.add(match.rstrip(".,;"))
     return {
         "task_id": task["task_id"],
