@@ -355,5 +355,36 @@ class AllCollectionAgentTests(unittest.TestCase):
             failure_fallback(doc)
 
 
+    def test_hackathon_sources_do_not_repeat_identical_source_identity(self):
+        import yaml
+
+        source_path = Path("sources/hackathon_sources.yaml")
+        payload = yaml.safe_load(source_path.read_text(encoding="utf-8"))
+        entries = [
+            entry
+            for group in (payload.get("hackathon_sources") or {}).values()
+            if isinstance(group, list)
+            for entry in group
+            if isinstance(entry, dict)
+        ]
+        identities = [
+            (
+                str(entry.get("name", "")).strip().casefold(),
+                str(entry.get("type", "")).strip().casefold(),
+                str(entry.get("url", "")).strip().rstrip("/").casefold(),
+            )
+            for entry in entries
+        ]
+        self.assertEqual(len(identities), len(set(identities)))
+        smart_india = next(
+            entry for entry in entries if entry.get("name") == "Smart India Hackathon"
+        )
+        challenge_gov = next(
+            entry for entry in entries if entry.get("name") == "Challenge.gov"
+        )
+        self.assertIn("CPS", smart_india.get("focus", ""))
+        self.assertIn("resilience", challenge_gov.get("focus", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
