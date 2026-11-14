@@ -313,14 +313,19 @@ def _render_with_browser(
     if timeout_ms <= 0:
         return None
     try:
+        import time
+        started = time.monotonic()
         ctx = _get_browser_context()
         page = ctx.new_page()
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             if response is not None and response.status in (401, 403, 429, 451, 503):
                 return None
+            remaining_ms = timeout_ms - int((time.monotonic() - started) * 1000)
+            if remaining_ms <= 0:
+                return None
             try:
-                page.wait_for_load_state("networkidle", timeout=min(8000, timeout_ms))
+                page.wait_for_load_state("networkidle", timeout=min(8000, remaining_ms))
             except Exception:
                 pass
             html = page.content()
