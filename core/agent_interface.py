@@ -220,7 +220,7 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
         run_id = shared_header.get("run_id")
         if run_id is not None and (
             not isinstance(run_id, str)
-            or not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", run_id)
+            or not re.fullmatch(r"[A-Za-z0-9._:+-]{1,160}", run_id)
         ):
             errors.append("shared metadata run_id contains unsafe path characters")
 
