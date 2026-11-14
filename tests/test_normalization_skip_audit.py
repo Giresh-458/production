@@ -248,7 +248,10 @@ def test_normalization_marks_tampered_modern_artifact_needs_review(tmp_path: Pat
         build_intermediate_artifact_payload,
         save_intermediate_markdown,
     )
-    from core.normalization import normalize_intermediate_artifact
+    from core.normalization import (
+        build_normalized_collection_records,
+        normalize_intermediate_artifact,
+    )
 
     payload, _ = build_intermediate_artifact_payload(
         agent="data_availability",
@@ -284,3 +287,13 @@ def test_normalization_marks_tampered_modern_artifact_needs_review(tmp_path: Pat
     record = normalize_intermediate_artifact(artifact_path)
     assert record["normalization_status"] == "NEEDS_REVIEW"
     assert "provenance_content_hash_mismatch" in record["provenance_validation_issues"]
+
+    skipped = []
+    normalized = build_normalized_collection_records(
+        tmp_path,
+        target_funding_call_id="CALL-PROVENANCE-CHECK-001",
+        target_run_id="run-provenance-check",
+        skipped_artifacts=skipped,
+    )
+    assert normalized == []
+    assert skipped[0]["reason"] == "provenance_validation_failed"
