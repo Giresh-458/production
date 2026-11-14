@@ -244,3 +244,27 @@ def test_robots_disallow_rule_is_respected(monkeypatch):
     assert web_collection._robots_allowed(
         "https://example.org/", "https://example.org/private/call", cache={}
     ) is False
+
+
+def test_funding_agent_does_not_browser_bypass_plain_http_403(monkeypatch):
+    import importlib
+
+    funding_agent = importlib.import_module("agents.funding_agent")
+    denied = _http_error(403)
+    denied.response._content = b"Access denied"
+    monkeypatch.setattr(
+        web_collection, "_robots_allowed", lambda *args, **kwargs: True
+    )
+    monkeypatch.setattr(
+        http_client,
+        "fetch_text",
+        lambda *args, **kwargs: (_ for _ in ()).throw(denied),
+    )
+    monkeypatch.setattr(
+        web_collection,
+        "render_page_with_browser",
+        lambda *args, **kwargs: pytest.fail("Plain HTTP 403 must not trigger browser fallback"),
+    )
+
+    with pytest.raises(funding_agent.FundingAgentError, match="not a recognized JavaScript challenge"):
+        funding_agent.fetch_html("https://example.org/research")
