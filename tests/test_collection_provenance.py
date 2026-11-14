@@ -63,3 +63,34 @@ def test_provenance_trace(
     p = proposals[0]
     assert "FUNDING-A" in p["funding_call_ids"]
     
+
+
+def test_artifact_collection_timestamp_is_not_replaced_with_run_start():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from core.agent_interface import _document_collected_at
+
+    source_time = datetime(2026, 11, 12, 10, 30, tzinfo=timezone.utc)
+    assert _document_collected_at(
+        SimpleNamespace(collected_at=source_time)
+    ) == source_time
+    assert _document_collected_at(
+        SimpleNamespace(collected_at="2026-11-12T10:30:00Z")
+    ) == source_time
+
+
+def test_artifact_collection_timestamp_falls_back_for_naive_source_time():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from core.agent_interface import _document_collected_at
+
+    before = datetime.now(timezone.utc)
+    collected_at = _document_collected_at(
+        SimpleNamespace(collected_at="2026-11-12T10:30:00")
+    )
+    after = datetime.now(timezone.utc)
+
+    assert collected_at.tzinfo is not None
+    assert before <= collected_at <= after
