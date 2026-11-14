@@ -224,12 +224,20 @@ class SharedCrawlManager:
         from concurrent.futures import TimeoutError as FuturesTimeoutError
         from core.crawl_context import current_crawl_context
 
-        domain = urlparse(url).netloc.lower()
+        ctx_obj = current_crawl_context.get(None)
+        deadline = ctx_obj.deadline if ctx_obj and ctx_obj.deadline else None
         sem = self._get_domain_semaphore(url)
 
-        with sem:
-            ctx_obj = current_crawl_context.get(None)
-            deadline = ctx_obj.deadline if ctx_obj and ctx_obj.deadline else None
+        # Waiting for a per-domain slot is part of the same end-to-end deadline.
+        if deadline is None:
+            sem.acquire()
+        else:
+            remaining = deadline - time.time()
+            if remaining <= 0 or not sem.acquire(timeout=remaining):
+                return self._deadline_error(url)
+
+        try:
+            domain = urlparse(url).netloc.lower()
             if not self._throttle_domain(domain, deadline=deadline):
                 return self._deadline_error(url)
 
@@ -239,58 +247,72 @@ class SharedCrawlManager:
                 if timeout <= 0:
                     return self._deadline_error(url)
 
-            # Try HTTP first
             if ctx_obj:
                 with ctx_obj.lock:
                     ctx_obj.http_requests += 1
 
-            ctx = contextvars.copy_context()
-            http_future = self.http_pool.submit(ctx.run, self._do_http_fetch, url)
+            http_context = contextvars.copy_context()
+            http_future = self.http_pool.submit(
+                http_context.run, self._do_http_fetch, url
+            )
             try:
                 result = http_future.result(timeout=timeout)
             except FuturesTimeoutError:
                 http_future.cancel()
                 return self._deadline_error(url)
-            
-            # Only a successful HTTP response that clearly contains a JS shell
-            # may trigger rendering. HTTP errors, rate limits and transport
-            # failures must remain visible to the caller.
+
+            # Render only successful HTTP 200 JavaScript shells. Never use a
+            # browser to work around authorization, rate limits, server errors,
+            # or transport failures.
             if not result.error and self._needs_browser(result.html, result.status_code):
-                if HAS_PLAYWRIGHT:
-                    LOGGER.info(f"Falling back to browser fetch for {url}")
-                    if ctx_obj:
-                        with ctx_obj.lock: ctx_obj.browser_attempts += 1
-                        with ctx_obj.lock: ctx_obj.playwright_used += 1
-                        with ctx_obj.lock: ctx_obj.js_shells_detected += 1 if not result.error else 0
-                        with ctx_obj.lock: ctx_obj.browser_escalations += 1
+                if not HAS_PLAYWRIGHT:
+                    result.error = (
+                        "javascript_shell_requires_browser_but_playwright_not_installed"
+                    )
+                    return result
 
-                    if deadline is not None:
-                        timeout = deadline - time.time()
-                        if timeout <= 0:
-                            return self._deadline_error(url)
-
-                    browser_timeout_ms = max(1, int(timeout * 1000)) if timeout is not None else 30000
-                    ctx2 = contextvars.copy_context()
-                    browser_future = self.browser_pool.submit(ctx2.run, self._do_browser_fetch, url, browser_timeout_ms)
-                    try:
-                        result = browser_future.result(timeout=timeout)
-                        if result.error:
-                            if ctx_obj:
-                                with ctx_obj.lock: ctx_obj.browser_failures += 1
-                                with ctx_obj.lock: ctx_obj.playwright_fallback_failed += 1
-                        else:
-                            if ctx_obj:
-                                with ctx_obj.lock: ctx_obj.browser_successes += 1
-                    except FuturesTimeoutError:
-                        browser_future.cancel()
-                        if ctx_obj:
-                            with ctx_obj.lock: ctx_obj.browser_failures += 1
-                            with ctx_obj.lock: ctx_obj.playwright_fallback_failed += 1
+                if deadline is not None:
+                    timeout = deadline - time.time()
+                    if timeout <= 0:
                         return self._deadline_error(url)
-                else:
-                    LOGGER.warning(f"Browser fallback needed for {url}, but Playwright not installed.")
-            
+
+                browser_timeout_ms = (
+                    max(1, int(timeout * 1000)) if timeout is not None else 30000
+                )
+                if ctx_obj:
+                    with ctx_obj.lock:
+                        ctx_obj.browser_attempts += 1
+                        ctx_obj.playwright_used += 1
+                        ctx_obj.js_shells_detected += 1
+                        ctx_obj.browser_escalations += 1
+
+                browser_context = contextvars.copy_context()
+                browser_future = self.browser_pool.submit(
+                    browser_context.run,
+                    self._do_browser_fetch,
+                    url,
+                    browser_timeout_ms,
+                )
+                try:
+                    result = browser_future.result(timeout=timeout)
+                    if ctx_obj:
+                        with ctx_obj.lock:
+                            if result.error:
+                                ctx_obj.browser_failures += 1
+                                ctx_obj.playwright_fallback_failed += 1
+                            else:
+                                ctx_obj.browser_successes += 1
+                except FuturesTimeoutError:
+                    browser_future.cancel()
+                    if ctx_obj:
+                        with ctx_obj.lock:
+                            ctx_obj.browser_failures += 1
+                            ctx_obj.playwright_fallback_failed += 1
+                    return self._deadline_error(url)
+
             return result
+        finally:
+            sem.release()
 
     def _needs_browser(self, html: str, status_code: int) -> bool:
         if status_code != 200:
