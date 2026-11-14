@@ -123,7 +123,7 @@ def test_intermediate_artifact_rejects_tampered_provenance_and_unsafe_run_identi
         "evidence_type": "dataset_listing",
         "focus": "RWA",
     }
-    payload["shared_header"]["run_id"] = "run-2026-11-14"
+    payload["shared_header"]["run_id"] = "2026-11-14T09:15:30.123456+00:00"
     payload["shared_header"]["funding_call_ids"] = ["CALL-001"]
     payload["shared_header"]["funding_call_id"] = "CALL-001"
 
