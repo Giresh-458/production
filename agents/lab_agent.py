@@ -173,8 +173,12 @@ def save_lab_records(connection: sqlite3.Connection, document: LabDocument, anal
     for page in document.pages:
         connection.execute(
             """
-            INSERT OR IGNORE INTO lab_pages (lab_name, page_url, page_title, path, created_at)
+            INSERT INTO lab_pages (lab_name, page_url, page_title, path, created_at)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(page_url) DO UPDATE SET
+                lab_name=excluded.lab_name,
+                page_title=excluded.page_title,
+                path=excluded.path
             """,
             (document.name, page.url, page.title, str(output_path), timestamp),
         )
@@ -435,7 +439,10 @@ def build_auto_documents(
         raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise LabAgentError(f"Unable to read lab source limits from {sources_path}: {exc}") from exc
-    limits_by_url = extract_yaml_limits(raw_sources)
+    try:
+        limits_by_url = extract_yaml_limits(raw_sources)
+    except (TypeError, ValueError) as exc:
+        raise LabAgentError(f"Invalid lab source limits in {sources_path}: {exc}") from exc
 
     from core.http_client import canonicalize_url
 
