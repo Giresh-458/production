@@ -833,6 +833,33 @@ def _resolve_funding_call_ids(
     # may assign shared evidence to one or more calls.
     return assign_funding_calls(title, content, funding_contexts)
 
+def collection_failure_warnings(source_name: str, failures: Any) -> list[str]:
+    """Summarize failed source URLs without hiding successful pages from the same source."""
+    details: list[str] = []
+    for item in failures or []:
+        if isinstance(item, dict):
+            url = str(item.get("url") or item.get("source_url") or "").strip()
+            reason = str(item.get("reason") or item.get("error") or "collection failed").strip()
+        else:
+            url = ""
+            reason = str(item).strip()
+        if not url and not reason:
+            continue
+        detail = f"{url} ({reason})" if url else reason
+        details.append(detail[:280])
+
+    if not details:
+        return []
+    visible = details[:5]
+    remainder = len(details) - len(visible)
+    suffix = f"; and {remainder} more" if remainder else ""
+    return [
+        f"Source '{source_name}' had {len(details)} page(s) that could not be collected: "
+        + "; ".join(visible)
+        + suffix
+    ]
+
+
 def finalize_collection_agent_response(
     *,
     agent: str,
