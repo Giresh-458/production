@@ -497,6 +497,10 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     machine_metadata = artifact["machine_metadata"]
     raw_content = artifact["raw_content"]
     source_hints = machine_metadata.get("source_hints", {}) if isinstance(machine_metadata.get("source_hints"), dict) else {}
+    modern_artifact = (
+        machine_metadata.get("artifact_schema")
+        == "shared-metadata-header-plus-agent-body-v1"
+    )
 
     title = _coalesce(shared_header.get("title", ""), artifact["title"])
     agent_name = _clean(shared_header.get("agent_name", ""))
@@ -532,18 +536,25 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         if ":" in h1_title:
             area_candidates.append(h1_title.split(":", 1)[1].strip())
     research_area = next((normalize_area(value) for value in area_candidates if normalize_area(value) in ALLOWED_RESEARCH_AREAS), "Unscoped")
-    source_url = next(
+    source_values = (
         (
-            candidate
-            for value in (
-                shared_header.get("source", ""),
-                provenance.get("source_url", ""),
-                machine_metadata.get("source_url", ""),
-                source_hints.get("source_url", ""),
-                source_hints.get("url", ""),
-            )
-            if (candidate := _usable_source_url(value))
-        ),
+            shared_header.get("source", ""),
+            provenance.get("source_url", ""),
+            machine_metadata.get("source_url", ""),
+            source_hints.get("source_url", ""),
+            source_hints.get("url", ""),
+        )
+        if modern_artifact
+        else (
+            provenance.get("source_url", ""),
+            shared_header.get("source", ""),
+            machine_metadata.get("source_url", ""),
+            source_hints.get("source_url", ""),
+            source_hints.get("url", ""),
+        )
+    )
+    source_url = next(
+        (candidate for value in source_values if (candidate := _usable_source_url(value))),
         "",
     )
     canonical_url = canonicalize_url(source_url)
@@ -624,10 +635,6 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     source_id = extract_source_identity(title, source_url, canonical_url, identity_metadata)
 
     provenance_validation_issues: list[str] = []
-    modern_artifact = (
-        machine_metadata.get("artifact_schema")
-        == "shared-metadata-header-plus-agent-body-v1"
-    )
     if modern_artifact:
         expected_metadata = {
             "source_url": shared_header.get("source"),
