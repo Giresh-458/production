@@ -419,13 +419,15 @@ def is_relevant(text: str, area_hint: str) -> bool:
     return any(keyword in lowered for keyword in AREA_KEYWORDS[normalized_area])
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[InvestmentDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[InvestmentDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[InvestmentDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting investment intelligence from %s", source.name)
         try:
@@ -436,10 +438,13 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[In
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=('funding', 'investment', 'portfolio', 'thesis', 'venture', 'capital'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
+            collected_warnings.extend(collection_failure_warnings(source.name, result.failed_urls))
             title = result.pages[0].title if result.pages else "Investment source"
             full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
@@ -937,13 +942,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting investment agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -983,10 +989,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished investment agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)
