@@ -1,6 +1,7 @@
 import pytest
 from datetime import datetime, UTC, timedelta
 from typing import Any, Dict
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
 from core.batch_runner import execute_batch_run
@@ -71,3 +72,53 @@ def test_executor_non_cooperative_hangs(monkeypatch):
     # and future.cancel() does NOT kill them, it will hang for the full 2.0 seconds.
     assert duration >= 1.9, f"Expected non-cooperative executor to hang for ~2.0s, but finished in {duration}s"
     assert result["status"] == "completed_with_errors"
+
+
+
+@pytest.mark.parametrize("execution_mode", ["parallel", "sequential"])
+def test_late_collector_artifacts_are_quarantined_before_the_batch_returns(tmp_path, monkeypatch, execution_mode):
+    output_root = tmp_path / "batch-run"
+
+    def late_agent(*args, **kwargs):
+        input_data = kwargs["input_data"]
+        output_dir = __import__("pathlib").Path(input_data["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        artifact = output_dir / "late-artifact.md"
+        artifact.write_text("late output", encoding="utf-8")
+        time.sleep(0.6)
+        return {
+            "status": "success",
+            "outputs": [{"markdown_path": str(artifact)}],
+            "items_processed": 1,
+            "items_saved": 1,
+            "metadata": {},
+        }
+
+    monkeypatch.setattr("core.batch_runner.run_registered_agent", late_agent)
+    # Isolate this timeout regression from registry preflight overhead.
+    monkeypatch.setattr("core.source_registry.sync_source_registry", lambda **kwargs: None)
+    monkeypatch.setattr("core.source_registry.mark_agent_sources_checked", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("core.source_registry.build_source_refresh_plan", lambda **kwargs: None)
+    report = execute_batch_run(
+        agent_names=["lab"],
+        area_names=[None],
+        mode="configured_scan",
+        base_input_data={"pipeline_run_dir": str(output_root), "run_id": "late-test-run"},
+        execution_mode=execution_mode,
+        timeout_budget_seconds=0.5,
+        max_workers=1,
+        analysis_mode="collect_only",
+    )
+
+    assert report["tasks"][0]["status"] == "timeout_budget_exceeded"
+    assert report["tasks"][0]["outputs_count"] == 0
+    assert report["tasks"][0]["reported_outputs_count"] == 1
+    assert report["tasks"][0]["reported_items_processed"] == 1
+    assert report["tasks"][0]["reported_items_saved"] == 1
+    assert report["tasks"][0]["reported_output_paths"]
+    assert not (output_root / "intermediate" / "lab").exists()
+    quarantined_dir = Path(report["tasks"][0]["quarantined_output_dir"])
+    assert quarantined_dir.is_dir()
+    assert (quarantined_dir / "late-artifact.md").read_text(encoding="utf-8") == "late output"
+    assert report["tasks"][0]["quarantined_artifact_count"] == 1
+    assert report["tasks"][0].get("artifact_quarantine_error") is None

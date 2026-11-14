@@ -10,7 +10,8 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from core.collection_schemas import get_collection_schema, ordered_agent_body_items, validate_agent_specific_body
-from core.evidence import build_evidence_bundle
+from core.evidence import build_evidence_bundle, strip_collection_metadata
+from core.file_lock import atomic_write_text
 from core.quality import evaluate_collection_quality
 from core.recursive_collection import update_recursive_review
 from core.schemas import ALLOWED_MODES, ALLOWED_RESEARCH_AREAS, normalize_area, resolve_research_area, validate_response_structure
@@ -132,6 +133,8 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
         errors.append("raw_content must be a non-empty string")
 
     shared_header = payload.get("shared_header", {})
+    if not isinstance(shared_header, dict):
+        shared_header = {}
     if shared_header.get("collection_mode") not in ALLOWED_MODES:
         errors.append("collection_mode must be one of configured_scan, manual_url, manual_text")
 
@@ -160,18 +163,105 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
             if field_name not in evidence_bundle:
                 errors.append(f"evidence_bundle missing required field: {field_name}")
 
+    metadata_payload = payload.get("metadata")
+    modern_artifact = (
+        isinstance(metadata_payload, dict)
+        and metadata_payload.get("artifact_schema") == "shared-metadata-header-plus-agent-body-v1"
+    )
+    if (
+        modern_artifact
+        and isinstance(shared_header, dict)
+        and isinstance(payload.get("provenance"), dict)
+        and isinstance(raw_content, str)
+    ):
+        provenance = payload["provenance"]
+        expected_metadata = {
+            "source_url": shared_header.get("source"),
+            "agent_name": shared_header.get("agent_name"),
+            "agent_version": shared_header.get("agent_version"),
+            "collection_mode": shared_header.get("collection_mode"),
+            "collected_at": shared_header.get("collected_at"),
+        }
+        for provenance_field, expected_value in expected_metadata.items():
+            if provenance.get(provenance_field) != expected_value:
+                errors.append(
+                    f"provenance {provenance_field!r} does not match shared metadata"
+                )
+
+        collected_at = str(shared_header.get("collected_at") or "").strip()
+        try:
+            parsed_collected_at = datetime.fromisoformat(
+                collected_at.replace("Z", "+00:00")
+            )
+            if parsed_collected_at.tzinfo is None or parsed_collected_at.utcoffset() is None:
+                raise ValueError("timestamp must include a timezone")
+        except (TypeError, ValueError, OverflowError):
+            errors.append("shared metadata collected_at must be a timezone-aware ISO timestamp")
+
+        import hashlib
+
+        expected_content_hash = hashlib.sha256(raw_content.strip().encode("utf-8")).hexdigest()
+        if provenance.get("content_hash") != expected_content_hash:
+            errors.append("provenance content_hash does not match raw_content")
+
+        source_value = str(shared_header.get("source") or "").strip()
+        title_value = str(shared_header.get("title") or "").strip()
+        expected_identity = hashlib.sha256(
+            f"{source_value}|{title_value}".encode("utf-8")
+        ).hexdigest()
+        if provenance.get("document_identity") != expected_identity:
+            errors.append("provenance document_identity does not match source and title")
+
+        call_ids = shared_header.get("funding_call_ids")
+        if shared_header.get("funding_call_id") and call_ids is None:
+            errors.append("shared metadata funding_call_ids is required when funding_call_id is set")
+        if call_ids is not None:
+            if (
+                not isinstance(call_ids, list)
+                or any(not isinstance(item, str) or not item.strip() for item in call_ids)
+                or len(call_ids) != len(set(call_ids))
+            ):
+                errors.append("shared metadata funding_call_ids must be a unique list of non-empty strings")
+            elif len(call_ids) == 1 and shared_header.get("funding_call_id") != call_ids[0]:
+                errors.append("shared metadata funding_call_id does not match funding_call_ids")
+            elif len(call_ids) != 1 and shared_header.get("funding_call_id") is not None:
+                errors.append("shared metadata funding_call_id must be omitted unless exactly one call is assigned")
+
+        run_id = shared_header.get("run_id")
+        if run_id is not None and (
+            not isinstance(run_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9._:+-]{1,160}", run_id)
+        ):
+            errors.append("shared metadata run_id contains unsafe path characters")
+
     return errors
 
 
 def _slugify_filename(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip().lower()).strip("-")
-    return slug or "item"
+    return (slug[:100].rstrip("-") or "item")
 
 
 def _document_value(document: Any, field_name: str, default: Any = "") -> Any:
     if isinstance(document, dict):
         return document.get(field_name, default)
     return getattr(document, field_name, default)
+
+
+def _document_collected_at(document: Any) -> datetime:
+    """Use a source-provided aware collection time, otherwise the artifact save time."""
+    value = _document_value(document, "collected_at", None)
+    if isinstance(value, datetime):
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            return value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.tzinfo is not None and parsed.utcoffset() is not None:
+            return parsed
+    return datetime.now(UTC)
 
 
 def _document_title(document: Any) -> str:
@@ -198,7 +288,43 @@ def _document_source(document: Any, default_source: Optional[str] = None) -> str
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
-    return default_source or "Manual"
+
+    # Several collectors model a source as a document with a base_url and
+    # fetched page objects rather than a top-level url/source field. Preserve
+    # the actual fetched HTTP(S) page as provenance instead of silently
+    # labelling these records "Manual".
+    pages = _document_value(document, "pages", [])
+    manual_page_source = ""
+    if isinstance(pages, (list, tuple)):
+        for page in pages:
+            value = str(_document_value(page, "url", "")).strip()
+            parsed = urlparse(value)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                return value
+            if (
+                parsed.scheme == "manual"
+                and parsed.netloc
+                and parsed.path.strip("/")
+                and not parsed.query
+                and not parsed.fragment
+            ):
+                manual_page_source = value
+    value = str(_document_value(document, "base_url", "")).strip()
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return value
+    if (
+        parsed.scheme == "manual"
+        and parsed.netloc
+        and parsed.path.strip("/")
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        return value
+    # Preserve a collector's controlled manual:// identity rather than
+    # replacing it with the ambiguous placeholder "Manual". The downstream
+    # normalizer will still mark it NEEDS_REVIEW because it is not HTTP(S).
+    return manual_page_source or default_source or "Manual"
 
 
 def _document_area(document: Any, fallback_area: Optional[str]) -> Optional[str]:
@@ -215,6 +341,29 @@ def _document_content(document: Any) -> str:
         value = str(_document_value(document, field_name, "")).strip()
         if value:
             return value
+
+    # Lab and similar crawlers retain fetched pages as structured objects.
+    # Serialize the page evidence itself, not Python's dataclass/list repr,
+    # so the raw-content field remains useful and reproducible.
+    pages = _document_value(document, "pages", [])
+    if isinstance(pages, (list, tuple)) and pages:
+        page_blocks: list[str] = []
+        for page in pages:
+            title = str(_document_value(page, "title", "")).strip()
+            url = str(_document_value(page, "url", "")).strip()
+            content = str(_document_value(page, "content", "")).strip()
+            if not (title or url or content):
+                continue
+            block = []
+            if title:
+                block.append(f"Page title: {title}")
+            if url:
+                block.append(f"Source URL: {url}")
+            if content:
+                block.append(content)
+            page_blocks.append("\n".join(block))
+        if page_blocks:
+            return "\n\n".join(page_blocks)
 
     parts: list[str] = []
     if isinstance(document, dict):
@@ -352,25 +501,62 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
 
     raw = (str(content) + " " + str(title)).lower()
 
+    def normalized_identity(value: Any) -> str:
+        return " ".join(str(value or "").strip().casefold().split())
+
+    # A parent programme name or common application portal is not unique call
+    # ownership evidence when several selected calls share it. Only use these
+    # weaker identity signals when they identify exactly one active context.
+    identity_counts: dict[str, dict[str, int]] = {
+        "application_url": {},
+        "call_id": {},
+        "call_title": {},
+    }
+    for ctx in funding_contexts:
+        for field in identity_counts:
+            value = normalized_identity(getattr(ctx, field, ""))
+            if value:
+                identity_counts[field][value] = identity_counts[field].get(value, 0) + 1
+
+    def unique_identity(field: str, value: Any) -> bool:
+        key = normalized_identity(value)
+        return bool(key) and identity_counts[field].get(key, 0) == 1
+
     def has_explicit_identity(ctx: FundingCallContext) -> bool:
         funding_call_id = str(ctx.funding_call_id or "").strip()
         if funding_call_id and re.search(rf"\b{re.escape(funding_call_id.lower())}\b", raw):
             return True
 
         application_url = str(ctx.application_url or "").strip().lower()
-        if application_url and application_url in raw:
+        parsed_application_url = urlparse(application_url) if application_url else None
+        generic_application_paths = {
+            "", "/", "/apply", "/application", "/applications", "/submit",
+            "/funding", "/grants", "/opportunities",
+        }
+        normalized_application_path = (
+            parsed_application_url.path.casefold().rstrip("/") or "/"
+            if parsed_application_url else ""
+        )
+        application_path_is_specific = bool(
+            parsed_application_url
+            and (
+                normalized_application_path not in generic_application_paths
+                or bool(parsed_application_url.query)
+            )
+        )
+        if (
+            application_path_is_specific
+            and unique_identity("application_url", application_url)
+            and application_url in raw
+        ):
             return True
 
         call_id = str(ctx.call_id or "").strip()
-        if len(call_id) > 4 and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
+        if len(call_id) > 4 and unique_identity("call_id", call_id) and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
             return True
 
         call_title = str(ctx.call_title or "").strip().lower()
-        if len(call_title) > 15 and call_title in raw:
-            return True
-
-        program_name = str(ctx.program_name or "").strip().lower()
-        if len(program_name) > 15 and program_name in raw:
+        if len(call_title) > 15 and unique_identity("call_title", call_title) and call_title in raw:
             return True
 
         return False
@@ -420,10 +606,18 @@ def build_intermediate_artifact_payload(
     agent_version: str = INTERMEDIATE_ARTIFACT_VERSION,
     allow_llm_refinement: bool = False,
 ) -> tuple[Dict[str, Any], list[str]]:
+    # Normalize line endings once so the raw-content hash can be verified after
+    # Markdown serialization on Windows and POSIX without changing source text.
+    content = str(content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    evidence_content = (
+        content
+        if agent.strip().casefold() == "funding"
+        else strip_collection_metadata(content)
+    )
     normalized_area, area_warnings, area_scores = resolve_research_area(
         explicit_area=area,
         title=title,
-        raw_content=content,
+        raw_content=evidence_content,
         authoritative_explicit=bool(area),
     )
     machine_metadata = {
@@ -446,6 +640,7 @@ def build_intermediate_artifact_payload(
     }
     evidence_bundle = build_evidence_bundle(
         raw_content=content.strip(),
+        evidence_content=evidence_content,
         title=shared_header["title"],
         research_area=shared_header["research_area"],
         metadata=metadata or {},
@@ -471,20 +666,20 @@ def build_intermediate_artifact_payload(
         title=shared_header["title"],
         source=shared_header["source"],
         research_area=shared_header["research_area"],
-        raw_content=content.strip(),
+        raw_content=evidence_content,
         evidence_bundle=evidence_bundle,
         area_scores=area_scores,
     )
     import hashlib
     content_hash = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
-    doc_id_seed = f"{source.strip()}|{title.strip()}"
+    doc_id_seed = f"{shared_header['source']}|{shared_header['title']}"
     document_identity = hashlib.sha256(doc_id_seed.encode("utf-8")).hexdigest()
 
     provenance["document_identity"] = document_identity
     provenance["content_hash"] = content_hash
 
     problem_intelligence = extract_problem_intelligence(
-        content.strip(),
+        evidence_content,
         shared_header["title"],
         evidence_bundle,
         allow_llm_refinement=allow_llm_refinement,
@@ -644,7 +839,7 @@ def save_intermediate_markdown(
             "",
         ]
     )
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(output_path, "\n".join(lines))
     return output_path
 
 
@@ -686,20 +881,20 @@ def _rescue_required_agent_body(agent: str, document: Any, body: Dict[str, Any],
 
     defaults = {
         "source_type": value_map.get("source_type") or value_map.get("type") or "web_page",
-        "focus": value_map.get("focus") or area or "configured research domain",
+        "focus": value_map.get("focus") or area or "Not extracted from source",
         "evidence_type": value_map.get("evidence_type") or "web_source",
-        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Source organization",
-        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "External practitioner / industry source",
-        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Named expert not extracted",
-        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Source affiliation",
-        "role_hint": value_map.get("role_hint") or "Research / technical contributor",
+        "issuing_body": value_map.get("issuing_body") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "investor_or_organization": value_map.get("investor_or_organization") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "sponsor_or_organizer": value_map.get("sponsor_or_organizer") or value_map.get("organization") or value_map.get("name") or "Not stated in source",
+        "practitioner_role_hint": value_map.get("practitioner_role_hint") or "Not identified in source",
+        "expert_name_hint": value_map.get("expert_name_hint") or value_map.get("name") or "Not identified in source",
+        "affiliation_hint": value_map.get("affiliation_hint") or value_map.get("organization") or value_map.get("name") or "Not identified in source",
+        "role_hint": value_map.get("role_hint") or "Not stated in source",
     }
     for field in schema.fields:
         if not field.required or field.name in result:
             continue
-        result[field.name] = defaults.get(field.name, area or "Preserved live source evidence")
+        result[field.name] = defaults.get(field.name, area or "Not extracted from source")
     return result
 
 
@@ -726,6 +921,54 @@ def _resolve_funding_call_ids(
     # Only current text/source evidence matched against the active call contexts
     # may assign shared evidence to one or more calls.
     return assign_funding_calls(title, content, funding_contexts)
+
+def collection_failure_warnings(source_name: str, failures: Any) -> list[str]:
+    """Summarize failed source URLs without hiding successful pages from the same source."""
+    details: list[str] = []
+    for item in failures or []:
+        if isinstance(item, dict):
+            url = str(item.get("url") or item.get("source_url") or "").strip()
+            reason = str(item.get("reason") or item.get("error") or "collection failed").strip()
+        else:
+            url = ""
+            reason = str(item).strip()
+        if not url and not reason:
+            continue
+        detail = f"{url} ({reason})" if url else reason
+        details.append(detail[:280])
+
+    if not details:
+        return []
+    visible = details[:5]
+    remainder = len(details) - len(visible)
+    suffix = f"; and {remainder} more" if remainder else ""
+    return [
+        f"Source '{source_name}' had {len(details)} page(s) that could not be collected: "
+        + "; ".join(visible)
+        + suffix
+    ]
+
+
+def recursive_collection_failure_warnings(source_name: str, review: Any) -> list[str]:
+    """Report recursive crawl failures and explicit crawl-budget truncation."""
+    if not isinstance(review, dict):
+        return []
+    failure_prefixes = (
+        "robots_disallow",
+        "deadline_or_timeout",
+        "fetch_failed",
+        "empty_content",
+        "max_pages_reached",
+    )
+    skipped = review.get("skipped_links") or []
+    failures = [
+        item
+        for item in skipped
+        if isinstance(item, dict)
+        and str(item.get("reason") or "").strip().startswith(failure_prefixes)
+    ]
+    return collection_failure_warnings(source_name, failures)
+
 
 def finalize_collection_agent_response(
     *,
@@ -768,7 +1011,7 @@ def finalize_collection_agent_response(
             source=source,
             content=content,
             metadata=metadata,
-            collected_at=started_at,
+            collected_at=_document_collected_at(document),
             allow_llm_refinement=allow_llm_refinement,
         )
 
@@ -796,17 +1039,21 @@ def finalize_collection_agent_response(
         if run_id:
             artifact_payload["shared_header"]["run_id"] = run_id
 
+        artifact_payload["provenance"]["run_started_at"] = started_at.isoformat()
         artifact_payload["agent_specific_body"] = agent_specific_body
         collected_warnings.extend(area_warnings)
         quality_gate = artifact_payload["metadata"].get("quality_gate", {})
-        # Configured live scans are source collection, not final publication.
-        # Preserve useful fetched evidence even when a page is structurally thin
-        # or does not contain a literal "problem" phrase. The downstream stages
-        # can weight the quality metadata rather than losing the evidence entirely.
+        # Configured live scans preserve fetched pages in the intermediate
+        # audit trail, but a failed quality gate remains failed. The Batch-2
+        # mission gate will not promote these review-only artifacts to handoff.
         live_source_rescue = (
             mode == "configured_scan"
             and bool(source.strip().startswith(("http://", "https://")))
-            and len(content.strip()) >= 180
+            and len(
+                content.strip()
+                if agent.strip().casefold() == "funding"
+                else strip_collection_metadata(content).strip()
+            ) >= 180
             and agent != "adaptive_research"
         )
         if live_source_rescue and not quality_gate.get("passed", False):
@@ -831,17 +1078,31 @@ def finalize_collection_agent_response(
             )
             continue
         if live_source_rescue and not quality_gate.get("passed", False):
-            quality_gate["accepted_with_warnings"] = True
-            quality_gate["acceptance_reason"] = "configured live source preserved for evidence despite a soft collection-quality gate"
+            quality_gate["accepted_with_warnings"] = False
+            quality_gate["preserved_for_review"] = True
+            quality_gate["acceptance_reason"] = (
+                "configured live source retained for review only; failed quality gate "
+                "continues to block normalized handoff"
+            )
             artifact_payload["metadata"]["quality_gate"] = quality_gate
             collected_warnings.append(
-                f"Preserved '{artifact_payload['shared_header']['title']}' as live evidence despite soft quality gate: "
+                f"Retained '{artifact_payload['shared_header']['title']}' for review only; "
+                f"the quality gate still blocks handoff: "
                 f"{quality_gate.get('rejection_reason') or 'limited structure/signal'}."
             )
 
+        # Same title/source can legitimately have different source content
+        # versions within one run. Collapse only byte-identical content so a
+        # changed page is retained as a distinct evidence artifact.
+        content_hash = str(
+            artifact_payload.get("provenance", {}).get("content_hash") or ""
+        ).strip()
+        if not content_hash:
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         dedupe_key = (
-            artifact_payload["shared_header"]["title"].lower(),
-            artifact_payload["shared_header"]["source"].lower(),
+            artifact_payload["shared_header"]["title"].casefold(),
+            artifact_payload["shared_header"]["source"].casefold(),
+            content_hash,
         )
         score_map = artifact_payload["metadata"].get("area_normalization", {}).get("keyword_scores", {})
         selected_area = artifact_payload["shared_header"]["research_area"]

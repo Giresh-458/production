@@ -18,13 +18,16 @@ class DummyResp:
     text = "<html><body>" + ("<p>Long text so it does not fallback to browser.</p>" * 20) + "<a href='/research/1'>1</a><a href='/research/2'>2</a></body></html>"
     headers = {"Content-Type": "text/html"}
     content = text.encode()
+    status_code = 200
 
 @pytest.fixture(autouse=True)
 def apply_global_mocks():
     with mock.patch("core.http_client.get_response", side_effect=lambda *a, **k: DummyResp()), \
          mock.patch("core.web_collection.get_response", side_effect=lambda *a, **k: DummyResp()), \
          mock.patch("core.recursive_collection._sitemap_links", side_effect=lambda *a, **k: []), \
+         mock.patch("core.recursive_collection.check_robots", side_effect=lambda *a, **k: (True, None, 0.0)), \
          mock.patch("core.web_collection._robots_allowed", side_effect=lambda *a, **k: True), \
+         mock.patch("core.web_collection.wait_for_host_slot", side_effect=lambda *a, **k: True), \
          mock.patch("core.recursive_collection.extract_ranked_links", side_effect=lambda *a, **k: [("http://test.com/a", 999, "anchor")]):
         yield
 
@@ -453,3 +456,71 @@ def test_genuine_climate_call_manual_is_support_evidence_not_standalone_call():
     title = "Call Manual SME Market Expansion Call 2027 final v1.2 271026"
     assert crawler._is_supporting_document_record(url, title) is True
     assert crawler._is_climate_kic_noncall_timeline(url) is False
+
+
+def test_collect_source_reports_page_cap_truncation_without_context():
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=1,
+        max_depth=2,
+    )
+    assert len(result.pages) == 1
+    assert any(
+        item.get("reason") == "source_max_pages_reached"
+        for item in result.failed_urls
+    )
+
+
+def test_collect_source_enforces_document_cap_without_context():
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=10,
+        max_documents=1,
+        max_depth=2,
+    )
+    assert len(result.pages) == 1
+    assert any(
+        item.get("reason") == "source_max_documents_reached"
+        for item in result.failed_urls
+    )
+
+
+def test_collect_source_enforces_time_budget_without_context(monkeypatch):
+    ticks = iter([0.0, 2.0])
+    monkeypatch.setattr(core.web_collection.time, "monotonic", lambda: next(ticks))
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=10,
+        max_seconds=1,
+    )
+    assert result.pages == []
+    assert any(
+        item.get("reason") == "source_max_seconds_reached"
+        for item in result.failed_urls
+    )
+
+
+def test_collect_source_records_source_page_limit_in_context():
+    from core.crawl_context import current_crawl_context
+
+    context = CrawlContext()
+    context.begin_source()
+    token = current_crawl_context.set(context)
+    try:
+        result = collect_source(
+            "http://test.com/research",
+            keywords=(),
+            max_pages=1,
+            max_depth=2,
+        )
+        assert len(result.pages) == 1
+        assert "source_max_pages" in context.stop_reasons
+        assert any(
+            item.get("reason") == "source_max_pages_reached"
+            for item in result.failed_urls
+        )
+    finally:
+        current_crawl_context.reset(token)

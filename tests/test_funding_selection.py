@@ -5,6 +5,8 @@ from pathlib import Path
 
 from core.funding_selection import (
     ApplicantProfile,
+    FundingCallContext,
+    ScoredCall,
     ValidationResult,
     _extract_trl,
     validate_call,
@@ -305,3 +307,119 @@ def test_substantive_eligibility_accepts_explicit_legal_entity_geographic_limit(
         "in Member States, Iceland and Norway and associated countries."
     )
     assert has_substantive_eligibility_evidence(text) is True
+
+
+def test_funding_context_rebinds_legacy_research_context_id_only_when_source_evidence_matches():
+    canonical_id = "HORIZON-BRIDGING-2027-01"
+    legacy_context_id = "CALL-66BDE3BDCAB8"
+    source_url = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-01-12"
+    record = {
+        "call_id": canonical_id,
+        "title": "Large-Scale piloting of next-generation AI-driven digital platforms",
+        "source_url": source_url,
+        "application_url": source_url,
+        "status": "OPEN_CALL",
+        "eligibility": "Eligible applicants: universities and research organisations may apply.",
+        "research_context": {
+            "funding_call_id": legacy_context_id,
+            "domain": "ESG",
+            "technology_themes": ["ESG"],
+            "funding_priorities": ["Deployment"],
+            "target_outcomes": ["Deployment"],
+            "investigation_questions": ["What constraints does the call identify?"],
+            "inferred_challenges": ["High-risk dependencies"],
+            "evidence_refs": [source_url],
+            "inference_provenance": ["source_grounded_problem_extraction"],
+            "confidence": "Medium",
+            "research_intent": "research",
+            "research_intent_evidence": ["Integrate applied research in real-world pilots."],
+        },
+    }
+    scored = ScoredCall(
+        call_id=canonical_id,
+        record=record,
+        score=0.9,
+        validation=ValidationResult(True, ["source-grounded selected call"]),
+    )
+
+    context = FundingCallContext.from_scored_call(scored, "autonomous_live")
+    restored = FundingCallContext.from_dict(context.to_dict())
+
+    assert context.funding_call_id == canonical_id
+    assert context.research_context.funding_call_id == canonical_id
+    assert context.research_context_original_funding_call_id == legacy_context_id
+    assert restored.research_context.funding_call_id == canonical_id
+    assert restored.research_context_original_funding_call_id == legacy_context_id
+    from core.batch2 import validate_batch1_context
+    assert validate_batch1_context(context) == []
+
+
+def test_funding_context_refuses_research_context_id_rebind_without_matching_source_evidence():
+    canonical_id = "HORIZON-BRIDGING-2027-01"
+    record = {
+        "call_id": canonical_id,
+        "title": "Selected call",
+        "source_url": "https://example.org/call-a",
+        "application_url": "https://example.org/apply-a",
+        "research_context": {
+            "funding_call_id": "CALL-UNRELATED-999",
+            "domain": "ESG",
+            "technology_themes": [],
+            "funding_priorities": [],
+            "target_outcomes": [],
+            "investigation_questions": [],
+            "inferred_challenges": ["A documented challenge"],
+            "evidence_refs": ["https://example.org/unrelated-call"],
+            "inference_provenance": ["source_grounded_problem_extraction"],
+            "confidence": "Medium",
+        },
+    }
+    scored = ScoredCall(
+        call_id=canonical_id,
+        record=record,
+        score=0.9,
+        validation=ValidationResult(True, ["test"]),
+    )
+
+    with pytest.raises(ValueError, match="evidence references do not identify the selected call"):
+        FundingCallContext.from_scored_call(scored, "autonomous_live")
+
+
+def test_funding_context_rebind_accepts_legacy_scalar_evidence_reference():
+    canonical_id = "HORIZON-BRIDGING-2027-01"
+    legacy_context_id = "CALL-66BDE3BDCAB8"
+    source_url = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-BRIDGING-2027-01-12"
+    record = {
+        "call_id": canonical_id,
+        "title": "Large-Scale piloting of next-generation AI-driven digital platforms",
+        "source_url": source_url,
+        "application_url": source_url,
+        "status": "OPEN_CALL",
+        "eligibility": "Eligible applicants: universities and research organisations may apply.",
+        "research_context": {
+            "funding_call_id": legacy_context_id,
+            "domain": "ESG",
+            "technology_themes": ["ESG"],
+            "funding_priorities": ["Deployment"],
+            "target_outcomes": ["Deployment"],
+            "investigation_questions": ["What constraints does the call identify?"],
+            "inferred_challenges": ["High-risk dependencies"],
+            "evidence_refs": source_url,
+            "inference_provenance": ["source_grounded_problem_extraction"],
+            "confidence": "Medium",
+            "research_intent": "research",
+            "research_intent_evidence": ["Integrate applied research in real-world pilots."],
+        },
+    }
+    scored = ScoredCall(
+        call_id=canonical_id,
+        record=record,
+        score=0.9,
+        validation=ValidationResult(True, ["source-grounded selected call"]),
+    )
+
+    context = FundingCallContext.from_scored_call(scored, "autonomous_live")
+
+    assert context.funding_call_id == canonical_id
+    assert context.research_context.funding_call_id == canonical_id
+    assert context.research_context_original_funding_call_id == legacy_context_id

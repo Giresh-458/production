@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from core.funding_selection import FundingCallContext
 from core.funding_context import build_agent_specific_funding_context, current_funding_prompt_context, current_funding_queries, generate_funding_queries
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import yaml
 
@@ -361,6 +361,9 @@ def fetch_html(url: str) -> str:
     from core.shared_crawl_manager import SharedCrawlManager
     try:
         res = SharedCrawlManager.get().fetch(url)
+        if res.error:
+            LOGGER.warning("Crawl failed for %s: %s", url, res.error)
+            raise ExpertAgentError(f"Unable to fetch page {url}: {res.error}")
         if res.status_code and res.status_code >= 400:
             LOGGER.warning("HTTP %s for %s", res.status_code, url)
             raise ExpertAgentError(f"Unable to fetch page {url}: HTTP {res.status_code}")
@@ -407,6 +410,10 @@ def fetch_json_text(url: str) -> str:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -478,18 +485,27 @@ def is_relevant(text: str, area_hint: str) -> bool:
 def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDocument]:
     if not source.query_template:
         return []
-    terms = API_SEARCH_TERMS.get(area, []) if area else []
+    if area:
+        terms = API_SEARCH_TERMS.get(area, [])
+    else:
+        # Funding-driven Batch-2 scans are intentionally unscoped by the
+        # legacy RIF taxonomy; use the active call's queries for expert APIs.
+        terms = [
+            str(query).strip()
+            for query in (current_funding_queries.get() or [])
+            if str(query).strip()
+        ]
     documents: list[ExpertDocument] = []
     for term in terms[:2]:
-        query_url = source.query_template.replace("{query}", term.replace(" ", "%20"))
+        query_url = source.query_template.replace("{query}", quote_plus(term))
         LOGGER.info("Collecting expert intelligence from API %s with query '%s'", source.name, term)
         try:
             content = fetch_json_text(query_url)
         except ExpertAgentError as exc:
             LOGGER.warning("Skipping API source %s query '%s': %s", source.name, term, exc)
             continue
-        title = f"{source.name}: {term}"
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        title = "Expert API result"
+        full_text = cleaned_text(content)
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
             continue
@@ -498,7 +514,7 @@ def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDo
                 title=title,
                 source_type=infer_source_type(source.type),
                 evidence_type=infer_evidence_type(source.type),
-                expert_name_hint=infer_expert_name(title, full_text),
+                expert_name_hint=infer_expert_name("", full_text),
                 affiliation_hint=infer_affiliation(full_text, query_url),
                 role_hint="Expert",
                 area_hint=area_hint,
@@ -511,13 +527,15 @@ def build_api_documents(source: ExpertSource, area: str | None) -> list[ExpertDo
     return documents
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[ExpertDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[ExpertDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[ExpertDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         if not source.auto_collect:
             continue
@@ -533,11 +551,14 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ex
             if ctx: ctx.begin_source()
 
             result = collect_source(source.url, keywords=("researcher", "faculty", "professor", "lab", "publication", "profile", "papers"), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
+            collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
         except Exception as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
-        content = combine_pages(result, prefix=f"{source.name} {source.focus}")
-        title = result.pages[0].title if result.pages else source.name
+        content = combine_pages(result)
+        title = result.pages[0].title if result.pages else "Expert source"
         full_text = cleaned_text(content)
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
@@ -557,8 +578,8 @@ def build_manual_url_document(
 ) -> ExpertDocument:
     html = fetch_html(url)
     page_title, content = extract_page_text(html)
-    resolved_title = title or page_title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_title} {focus or ''} {content}")
+    resolved_title = page_title or title or cleaned_text(urlparse(url).netloc)
+    full_text = cleaned_text(f"{page_title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise ExpertAgentError("Manual URL content does not map to the selected research areas or expert signals.")
@@ -1057,13 +1078,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents: list[ExpertDocument] = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting expert agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1104,10 +1126,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished expert agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)

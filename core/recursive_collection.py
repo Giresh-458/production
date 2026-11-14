@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
+
+from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
 from xml.etree import ElementTree as ET
 
-from core.http_client import canonicalize_url
+from core.http_client import canonicalize_url, _safe_redirect_target
 
 
 @dataclass(slots=True)
@@ -112,6 +115,10 @@ def _is_crawlable_url(url: str) -> bool:
             return False
         if any(ch.isspace() for ch in url) or parsed.username or parsed.password:
             return False
+        try:
+            _safe_redirect_target(url, url)
+        except ValueError:
+            return False
         return not parsed.path.lower().endswith((
             ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".bmp",
             ".mp3", ".wav", ".ogg", ".mp4", ".webm", ".ogv", ".avi", ".mov",
@@ -120,6 +127,45 @@ def _is_crawlable_url(url: str) -> bool:
         ))
     except Exception:
         return False
+
+
+def source_focus_link_keywords(source_name: str, focus: str | None) -> tuple[str, ...]:
+    """Build a narrow recursive-link vocabulary for one configured source.
+
+    The global recursive vocabulary is intentionally broad for discovery, but
+    using it for every configured source can merge unrelated sibling pages
+    (for example, a MiCA page and a corporate-sustainability page on the same
+    publisher domain). Source names and focus phrases provide a safer boundary.
+    """
+    focus_text = str(focus or "").strip()
+    source_name_text = str(source_name or "").strip()
+    if not focus_text and not source_name_text:
+        return ()
+
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "in", "into", "is", "it", "of", "on", "or", "the", "their", "to",
+        "with", "within", "via", "using", "used", "use", "that", "this",
+        "these", "those", "which", "what", "where", "when", "how",
+    }
+    phrases: list[str] = []
+    tokens: list[str] = []
+    fragments = [source_name_text]
+    fragments.extend(
+        fragment.strip()
+        for fragment in re.split(r"[,;|]+", focus_text)
+        if fragment.strip()
+    )
+    for fragment in fragments:
+        normalized = " ".join(fragment.casefold().split())
+        if len(normalized) >= 3:
+            phrases.append(normalized)
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", normalized):
+            if token not in stop_words:
+                tokens.append(token)
+
+    # Preserve phrase priority and stable order while removing duplicates.
+    return tuple(dict.fromkeys([*phrases, *tokens]))
 
 
 def _score_link(url: str, anchor_text: str, keywords: tuple[str, ...]) -> int:
@@ -303,81 +349,162 @@ def update_recursive_review(
 
 
 
-def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
-    """Best-effort, origin-bound sitemap discovery.
+def _get_response_with_robots(
+    url: str,
+    *,
+    timeout: tuple[float, float] = (5.0, 15.0),
+    retries: int = 1,
+    allowed_domains: set[str] | None = None,
+):
+    """Fetch one URL while checking robots policy before every redirect hop."""
+    from core.http_client import get_response
 
-    Prefer Sitemap directives in robots.txt and use /sitemap.xml only as a
-    single conservative fallback. Never probe a list of guessed sitemap names.
-    """
+    current_url = canonicalize_url(url)
+    redirect_statuses = {301, 302, 303, 307, 308}
+    for _ in range(11):
+        allowed, reason, crawl_delay = check_robots(current_url)
+        if not allowed:
+            raise PermissionError(reason or "robots.txt disallows this URL")
+        from core.crawl_context import current_crawl_context
+        crawl_ctx = current_crawl_context.get(None)
+        if not wait_for_host_slot(
+            current_url,
+            crawl_delay=crawl_delay,
+            deadline=crawl_ctx.deadline if crawl_ctx else None,
+        ):
+            raise TimeoutError("host_wait_unavailable_before_recursive_request")
+        response = get_response(
+            current_url,
+            timeout=timeout,
+            retries=retries,
+            allow_redirects=False,
+        )
+        if response.status_code not in redirect_statuses:
+            return response
+        location = response.headers.get("Location")
+        close_response = getattr(response, "close", None)
+        if callable(close_response):
+            close_response()
+        if not location:
+            raise RuntimeError(f"HTTP {response.status_code} redirect missing Location")
+        next_url = _safe_redirect_target(current_url, location)
+        parsed = urlparse(next_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+            raise ValueError("redirect_to_invalid_or_unsafe_url")
+        if allowed_domains and _normalize_domain(next_url) not in allowed_domains:
+            raise ValueError("redirected_to_untrusted_domain")
+        current_url = next_url
+    raise RuntimeError("too_many_redirects")
+
+
+def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
+    """Discover same-origin sitemap URLs without bypassing robots or redirects."""
     try:
-        from core.http_client import get_response
         from core.crawl_context import current_crawl_context
         import time
-        
+
         ctx = current_crawl_context.get(None)
-        
-        def _check_deadline():
-            if ctx and ctx.deadline and time.time() >= ctx.deadline:
-                return True
-            return False
+        if ctx and ctx.deadline and time.time() >= ctx.deadline:
+            ctx.stop_reasons.add("deadline")
+            return []
+        root_allowed, _, _ = check_robots(root_url)
+        if not root_allowed:
+            return []
 
         parsed = urlparse(root_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
-        candidates: list[str] = []
-        try:
-            if not _check_deadline():
-                import urllib.request
-                with urllib.request.urlopen(f"{origin}/robots.txt", timeout=5) as rr:
-                    robots = rr.read(64_000).decode("utf-8", errors="replace")
-                candidates.extend(line.split(":", 1)[1].strip() for line in robots.splitlines() if line.lower().startswith("sitemap:"))
-        except Exception:
-            pass
+        allowed_domains = {_normalize_domain(root_url)}
+        candidates = get_robots_sitemaps(root_url)
         if not candidates:
-            candidates.append(f"{origin}/sitemap.xml")
-        candidates = [canonicalize_url(u) for u in candidates if u and urlparse(u).scheme in {"http", "https"} and _normalize_domain(u) == _normalize_domain(root_url)]
+            candidates = [f"{origin}/sitemap.xml"]
+
+        candidates = [
+            canonicalize_url(candidate)
+            for candidate in candidates
+            if candidate
+            and urlparse(candidate).scheme in {"http", "https"}
+            and _normalize_domain(candidate) in allowed_domains
+        ]
         out: list[str] = []
         for candidate in candidates[:3]:
-            if _check_deadline():
+            if ctx and ctx.deadline and time.time() >= ctx.deadline:
+                ctx.stop_reasons.add("deadline")
                 break
             try:
-                response = get_response(candidate, timeout=(5.0, 15.0), retries=1)
+                response = _get_response_with_robots(
+                    candidate,
+                    timeout=(5.0, 15.0),
+                    retries=1,
+                    allowed_domains=allowed_domains,
+                )
                 root = ET.fromstring(response.text)
             except Exception:
                 continue
-            locs = [str(el.text).strip() for el in root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text]
+            locs = [
+                str(element.text).strip()
+                for element in root.iter()
+                if element.tag.lower().split("}")[-1] == "loc" and element.text
+            ]
             if root.tag.lower().split("}")[-1] == "sitemapindex":
                 for child in locs[:10]:
-                    if _check_deadline():
+                    if ctx and ctx.deadline and time.time() >= ctx.deadline:
+                        ctx.stop_reasons.add("deadline")
                         break
-                    if _normalize_domain(child) != _normalize_domain(root_url):
+                    if _normalize_domain(child) not in allowed_domains:
                         continue
                     try:
-                        child_response = get_response(child, timeout=(5.0, 15.0), retries=1)
+                        child_response = _get_response_with_robots(
+                            child,
+                            timeout=(5.0, 15.0),
+                            retries=1,
+                            allowed_domains=allowed_domains,
+                        )
                         child_root = ET.fromstring(child_response.text)
-                        locs.extend(str(el.text).strip() for el in child_root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text)
+                        locs.extend(
+                            str(element.text).strip()
+                            for element in child_root.iter()
+                            if element.tag.lower().split("}")[-1] == "loc" and element.text
+                        )
                     except Exception:
                         continue
             out.extend(locs)
             if len(out) >= limit:
                 break
-        return list(dict.fromkeys(canonicalize_url(u) for u in out if u))[:limit]
+        return list(dict.fromkeys(
+            canonicalize_url(candidate)
+            for candidate in out
+            if candidate and _normalize_domain(candidate) in allowed_domains
+        ))[:limit]
     except Exception:
         return []
+
 
 def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_page_text: Callable[[str], tuple[str, str]]) -> tuple[str, str, str]:
     """Return title, text, raw HTML; supports PDFs as a free fallback."""
     if urlparse(url).path.lower().endswith(".pdf"):
-        from core.http_client import get_response
-        response = get_response(url, timeout=(8.0, 25.0), retries=2)
+        response = _get_response_with_robots(
+            url,
+            timeout=(8.0, 25.0),
+            retries=2,
+            allowed_domains={_normalize_domain(url)},
+        )
+        try:
+            pdf_bytes = response.content
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+        title = Path(urlparse(url).path).stem.replace("_", " ").replace("-", " ").strip()
         try:
             from io import BytesIO
             from pypdf import PdfReader
-            reader = PdfReader(BytesIO(response.content))
-            text = "\n".join((page.extract_text() or "") for page in reader.pages[:30])
-            title = Path(urlparse(url).path).stem.replace("_", " ").replace("-", " ").strip()
-            return title, text, ""
-        except Exception:
-            return Path(urlparse(url).path).stem, "", ""
+            reader = PdfReader(BytesIO(pdf_bytes))
+            text = "\n".join((page.extract_text() or "") for page in reader.pages[:30]).strip()
+        except Exception as exc:
+            raise ValueError(f"pdf_extraction_failed: {type(exc).__name__}: {exc}") from exc
+        if not text:
+            raise ValueError("pdf_contains_no_extractable_text")
+        return title, text, ""
     html = fetch_html(url)
     import inspect
     if "url" in inspect.signature(extract_page_text).parameters:
@@ -390,7 +517,10 @@ def _fetch_recursive_page(url: str, fetch_html: Callable[[str], str], extract_pa
         doc = bare_extraction(html, url=url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
         better_title = str(getattr(doc, "title", "") or "") if doc else ""
-        if len(better) > max(400, len(content) * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in content.splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(content) * 0.35):
             content = better
             title = better_title or title
     except Exception:
@@ -441,9 +571,12 @@ def collect_recursive_pages_with_review(
         from trafilatura import bare_extraction
         doc = bare_extraction(initial_html, url=root_url, include_comments=True, include_tables=True)
         better = str(getattr(doc, "text", "") or "") if doc else ""
-        root_title = str(getattr(doc, "title", "") or "") or root_title
-        if len(better) > max(400, len(root_content or "") * 0.35):
+        has_structured_headings = any(
+            line.lstrip().startswith("##") for line in (root_content or "").splitlines()
+        )
+        if not has_structured_headings and len(better) > max(400, len(root_content or "") * 0.35):
             root_content = better
+            root_title = str(getattr(doc, "title", "") or "") or root_title
     except Exception:
         pass
     trimmed_root = (root_content or "").strip()[: config.char_limit_per_page]
@@ -499,12 +632,74 @@ def collect_recursive_pages_with_review(
         if current_depth >= config.max_depth:
             continue
         if not current_html:
+            allowed, robots_reason, _ = check_robots(current_url)
+            if not allowed:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"robots_disallow: {robots_reason or 'policy denied'}",
+                    )
+                )
+                continue
             try:
-                if ctx: 
-                    with ctx.lock: ctx.urls_fetched += 1
+                if ctx:
+                    with ctx.lock:
+                        ctx.urls_fetched += 1
                 _, _, current_html = _fetch_recursive_page(current_url, fetch_html, extract_page_text)
-                if ctx: ctx.add_page(len(current_html))
-            except Exception:
+                if ctx:
+                    ctx.add_page(len(current_html))
+            except PermissionError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"robots_disallow_redirect: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except TimeoutError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=f"deadline_or_timeout: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except Exception as exc:
+                http_response = getattr(exc, "response", None)
+                http_status = getattr(http_response, "status_code", None)
+                if http_status is not None:
+                    retry_after = (getattr(http_response, "headers", {}) or {}).get("Retry-After")
+                    failure_reason = f"http_status_{http_status}"
+                    if retry_after:
+                        failure_reason += f": retry_after={retry_after}"
+                else:
+                    failure_reason = f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}"
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url,
+                        parent_url=parent_url or root_url,
+                        anchor_text="",
+                        score=parent_score,
+                        depth=current_depth,
+                        action="skipped",
+                        reason=failure_reason,
+                    )
+                )
                 continue
 
         ranked_links = extract_ranked_links(
@@ -545,12 +740,8 @@ def collect_recursive_pages_with_review(
                 continue
             child_url = canonicalize_url(child_url)
             seen_urls.add(child_url)
-            try:
-                if ctx: 
-                    with ctx.lock: ctx.urls_fetched += 1
-                child_title, child_content, child_html = _fetch_recursive_page(child_url, fetch_html, extract_page_text)
-                if ctx: ctx.add_page(len(child_html) if child_html else 0)
-            except Exception:
+            allowed, robots_reason, _ = check_robots(child_url)
+            if not allowed:
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=child_url,
@@ -559,7 +750,61 @@ def collect_recursive_pages_with_review(
                         score=score,
                         depth=current_depth + 1,
                         action="skipped",
-                        reason="fetch_failed",
+                        reason=f"robots_disallow: {robots_reason or 'policy denied'}",
+                    )
+                )
+                continue
+            try:
+                if ctx:
+                    with ctx.lock:
+                        ctx.urls_fetched += 1
+                child_title, child_content, child_html = _fetch_recursive_page(child_url, fetch_html, extract_page_text)
+                if ctx: ctx.add_page(len(child_html) if child_html else 0)
+            except PermissionError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=f"robots_disallow_redirect: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except TimeoutError as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=f"deadline_or_timeout: {str(exc)[:160]}",
+                    )
+                )
+                continue
+            except Exception as exc:
+                http_response = getattr(exc, "response", None)
+                http_status = getattr(http_response, "status_code", None)
+                if http_status is not None:
+                    retry_after = (getattr(http_response, "headers", {}) or {}).get("Retry-After")
+                    failure_reason = f"http_status_{http_status}"
+                    if retry_after:
+                        failure_reason += f": retry_after={retry_after}"
+                else:
+                    failure_reason = f"fetch_failed: {type(exc).__name__}: {str(exc)[:120]}"
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=failure_reason,
                     )
                 )
                 continue

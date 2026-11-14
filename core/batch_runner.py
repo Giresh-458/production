@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+import stat
 import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
@@ -16,6 +19,96 @@ LOGGER = logging.getLogger(__name__)
 
 BATCH_REPORT_PATH = Path("outputs/workflow/batch_run_report.json")
 FULL_COLLECTION_REPORT_PATH = Path("outputs/workflow/full_collection_run_report.json")
+
+
+def _is_redirected_path(path: Path) -> bool:
+    """Reject symlinks, junctions/reparse points, and paths through redirected parents."""
+    try:
+        if path.is_symlink():
+            return True
+        try:
+            stat_result = path.lstat()
+        except FileNotFoundError:
+            return Path(os.path.abspath(path)) != path.resolve()
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        if int(getattr(stat_result, "st_file_attributes", 0) or 0) & reparse_flag:
+            return True
+        return Path(os.path.abspath(path)) != path.resolve()
+    except (OSError, RuntimeError):
+        return True
+
+
+def _count_quarantined_markdown(path: Path) -> int:
+    """Count regular Markdown files without following links inside quarantine."""
+    if _is_redirected_path(path):
+        return 0
+    if path.is_file():
+        return int(path.suffix.casefold() == ".md")
+    if not path.is_dir():
+        return 0
+    count = 0
+    for current, directory_names, file_names in os.walk(path, followlinks=False):
+        current_path = Path(current)
+        directory_names[:] = [
+            name for name in directory_names
+            if not _is_redirected_path(current_path / name)
+        ]
+        count += sum(
+            1 for name in file_names
+            if (current_path / name).suffix.casefold() == ".md"
+            and not _is_redirected_path(current_path / name)
+        )
+    return count
+
+
+def _quarantine_timed_out_output(
+    task: Dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path | None, int, str | None]:
+    """Preserve timed-out artifacts outside the active intermediate tree."""
+    pipeline_run_dir = (task.get("input_data") or {}).get("pipeline_run_dir")
+    if not pipeline_run_dir:
+        return None, 0, "pipeline_run_dir is unavailable; timed-out artifacts were left in place"
+
+    run_root = Path(pipeline_run_dir)
+    intermediate_root = run_root / "intermediate"
+    workflow_root = run_root / "workflow"
+    quarantine_root = workflow_root / "quarantined_intermediate" / "timeouts"
+    output_absolute = Path(os.path.abspath(output_dir))
+    intermediate_absolute = Path(os.path.abspath(intermediate_root))
+
+    # Never create a quarantine through a redirected run/intermediate/workflow
+    # parent. The output directory itself may be a symlink/junction: rename the
+    # link itself into quarantine rather than following its target.
+    for protected_root in (run_root, intermediate_root, output_dir.parent, workflow_root, quarantine_root):
+        if _is_redirected_path(protected_root):
+            return None, 0, f"refusing timeout quarantine through redirected path: {protected_root}"
+    if not output_absolute.is_relative_to(intermediate_absolute):
+        return None, 0, f"timed-out output path escapes the run intermediate root: {output_absolute}"
+    if not (output_dir.exists() or output_dir.is_symlink()):
+        return None, 0, None
+
+    agent_segment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(task.get("agent_name") or "agent")).strip("-.") or "agent"
+    task_segment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(task.get("task_id") or "task")).strip("-.") or "task"
+    destination_parent = quarantine_root / agent_segment
+    destination_parent.mkdir(parents=True, exist_ok=True)
+    if _is_redirected_path(destination_parent):
+        return None, 0, f"timeout quarantine destination is redirected: {destination_parent}"
+
+    destination = destination_parent / task_segment
+    suffix = 1
+    while destination.exists() or destination.is_symlink():
+        destination = destination_parent / f"{task_segment}-{suffix}"
+        suffix += 1
+
+    try:
+        # Source and destination are within the same run root, so rename keeps
+        # the artifact tree intact and does not follow a symlinked output root.
+        os.rename(output_dir, destination)
+    except OSError as exc:
+        return None, 0, f"could not preserve timed-out artifacts in quarantine: {exc}"
+
+    return destination, _count_quarantined_markdown(destination), None
 
 
 def _iso_now() -> str:
@@ -129,7 +222,24 @@ def build_batch_tasks(
 
 def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[str, Any]:
     outputs = response.get("outputs", []) if isinstance(response, dict) else []
+    if not isinstance(outputs, list):
+        outputs = []
     metadata = response.get("metadata", {}) if isinstance(response, dict) else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    raw_warnings = response.get("warnings", []) if isinstance(response, dict) else []
+    warnings = list(raw_warnings) if isinstance(raw_warnings, (list, tuple)) else (
+        [str(raw_warnings)] if raw_warnings else []
+    )
+    source_urls: set[str] = set()
+    for output in outputs if isinstance(outputs, list) else []:
+        if isinstance(output, dict):
+            source_url = str(output.get("source") or output.get("source_url") or "").strip()
+            if source_url.startswith(("http://", "https://")):
+                source_urls.add(source_url)
+    for warning in warnings:
+        for match in re.findall(r"https?://[^\s)\]>,]+", str(warning)):
+            source_urls.add(match.rstrip(".,;"))
     return {
         "task_id": task["task_id"],
         "agent_name": task["agent_name"],
@@ -139,8 +249,15 @@ def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[
         "items_processed": int(response.get("items_processed", 0) or 0),
         "items_saved": int(response.get("items_saved", 0) or 0),
         "outputs_count": len(outputs),
+        "output_paths": sorted({
+            str(item.get("markdown_path") or item.get("path") or "").strip()
+            for item in outputs
+            if isinstance(item, dict)
+            and str(item.get("markdown_path") or item.get("path") or "").strip()
+        }),
         "errors": list(response.get("errors", []) or []),
-        "warnings": list(response.get("warnings", []) or []),
+        "warnings": warnings,
+        "source_urls": sorted(source_urls),
         "duration_seconds": metadata.get("duration_seconds", 0),
         "stop_reasons": list(response.get("stop_reasons", metadata.get("stop_reasons", [])) or []),
         "metadata": {
@@ -200,13 +317,145 @@ def execute_batch_run(
         analysis_mode=analysis_mode,
     )
 
+    registry_prepared = bool((base_input_data or {}).get("defer_registry_sync", False))
+    registry_sync_errors: list[str] = []
+    registry_synced_agents: list[str] = []
+    agent_names_for_registry = sorted({
+        str(task.get("agent_name") or "")
+        for task in tasks
+        if str(task.get("agent_name") or "")
+    })
+    if registry_prepared and mode == "configured_scan":
+        registry_synced_agents = list(agent_names_for_registry)
+    elif execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
+        from core.source_registry import sync_source_registry
+        for agent_name in agent_names_for_registry:
+            try:
+                sync_source_registry(agent_filter=agent_name)
+                registry_synced_agents.append(agent_name)
+            except Exception as exc:
+                registry_sync_errors.append(
+                    f"source registry synchronization failed for agent '{agent_name}' before parallel collection: {exc}"
+                )
+    registry_synced = (
+        len(registry_synced_agents) == len(agent_names_for_registry)
+        if (execution_mode == "parallel" or registry_prepared) and mode == "configured_scan"
+        else False
+    )
+
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
-    run_id = started_at.isoformat()
+    run_id = str((base_input_data or {}).get("run_id") or started_at.isoformat())
+    contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
+    funding_call_ids = sorted({
+        str(context.funding_call_id).strip()
+        for context in contexts_to_process
+        if str(getattr(context, "funding_call_id", "") or "").strip()
+    })
+    tasks_per_agent: dict[str, int] = {}
+    for task in tasks:
+        agent_name = str(task.get("agent_name") or "")
+        tasks_per_agent[agent_name] = tasks_per_agent.get(agent_name, 0) + 1
+
+    def task_output_dir(task: Dict[str, Any]) -> Path | None:
+        pipeline_run_dir = (task.get("input_data") or {}).get("pipeline_run_dir")
+        if not pipeline_run_dir:
+            return None
+        output_dir = Path(pipeline_run_dir) / "intermediate" / task["agent_name"]
+        if tasks_per_agent.get(task["agent_name"], 0) > 1:
+            area_segment = re.sub(
+                r"[^A-Za-z0-9._-]+",
+                "-",
+                str(task.get("area") or "none"),
+            ).strip("-") or "none"
+            output_dir = output_dir / area_segment
+        return output_dir
+
+    task_output_dirs = {task["task_id"]: task_output_dir(task) for task in tasks}
+
+    def timeout_result(
+        task: Dict[str, Any],
+        *,
+        reason: str,
+        result: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        output_dir = task_output_dirs.get(task["task_id"])
+        quarantined_output_dir = None
+        quarantined_artifact_count = 0
+        quarantine_error = None
+        if output_dir is not None:
+            (
+                quarantined_output_dir,
+                quarantined_artifact_count,
+                quarantine_error,
+            ) = _quarantine_timed_out_output(task, output_dir)
+        timed_out = dict(result or {})
+        reported_outputs = timed_out.get("outputs")
+        if not isinstance(reported_outputs, list):
+            reported_outputs = []
+        raw_reported_paths = timed_out.get("output_paths")
+        if isinstance(raw_reported_paths, (list, tuple)):
+            reported_output_paths = [str(value) for value in raw_reported_paths if str(value)]
+        elif isinstance(raw_reported_paths, str) and raw_reported_paths.strip():
+            reported_output_paths = [raw_reported_paths.strip()]
+        else:
+            reported_output_paths = []
+        if not reported_output_paths:
+            reported_output_paths = [
+                str(item.get("markdown_path") or item.get("path") or "")
+                for item in reported_outputs
+                if isinstance(item, dict) and (item.get("markdown_path") or item.get("path"))
+            ]
+        try:
+            reported_outputs_count = int(timed_out.get("outputs_count", len(reported_outputs)) or 0)
+        except (TypeError, ValueError):
+            reported_outputs_count = len(reported_outputs) if isinstance(reported_outputs, list) else 0
+        try:
+            reported_items_processed = int(timed_out.get("items_processed", 0) or 0)
+        except (TypeError, ValueError):
+            reported_items_processed = 0
+        try:
+            reported_items_saved = int(timed_out.get("items_saved", 0) or 0)
+        except (TypeError, ValueError):
+            reported_items_saved = 0
+        timed_out.update({
+            "source_urls": [],
+            "task_id": task["task_id"],
+            "run_id": (task.get("input_data") or {}).get("run_id") or run_id,
+            "funding_call_ids": funding_call_ids,
+            "agent_name": task["agent_name"],
+            "mode": task["mode"],
+            "area": task["area"],
+            "status": "timeout_budget_exceeded",
+            "reported_items_processed": reported_items_processed,
+            "reported_items_saved": reported_items_saved,
+            "reported_outputs_count": reported_outputs_count,
+            "reported_output_paths": reported_output_paths,
+            "items_processed": 0,
+            "items_saved": 0,
+            "outputs_count": 0,
+            "output_paths": [],
+            "errors": list(timed_out.get("errors") or []) + [reason],
+            "warnings": list(timed_out.get("warnings") or []),
+            "duration_seconds": timed_out.get("duration_seconds", 0),
+            "finished_at": timed_out.get("finished_at") or datetime.now(UTC).isoformat(),
+            "output_dir": str(Path(os.path.abspath(output_dir))) if output_dir is not None else None,
+            "quarantined_output_dir": (
+                str(Path(os.path.abspath(quarantined_output_dir)))
+                if quarantined_output_dir is not None else None
+            ),
+            "quarantined_artifact_count": quarantined_artifact_count,
+        })
+        if quarantine_error:
+            timed_out["artifact_quarantine_error"] = quarantine_error
+            timed_out["errors"].append(
+                f"timed-out task artifacts were preserved in place because quarantine failed: {quarantine_error}"
+            )
+        return timed_out
 
     if dry_run:
         report = {
-            "generated_at": run_id,
+            "generated_at": started_at.isoformat(),
             "status": "dry_run",
             "config": {
                 "mode": mode,
@@ -217,7 +466,9 @@ def execute_batch_run(
                 "per_agent_limits": per_agent_limits or {},
                 "timeout_budget_seconds": timeout_budget_seconds,
                 "max_workers": max_workers,
+                "run_id": run_id,
                 "funding_call_id": funding_context.funding_call_id if funding_context else None,
+                "funding_call_ids": funding_call_ids,
             },
             "stats": {
                 "planned_tasks": len(tasks),
@@ -232,6 +483,11 @@ def execute_batch_run(
         return report
 
     def run_task(task: Dict[str, Any]) -> Dict[str, Any]:
+        if deadline and datetime.now(UTC) >= deadline:
+            return timeout_result(
+                task,
+                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+            )
         LOGGER.info("Batch task starting: %s", task["task_id"])
         inp = dict(task.get("input_data") or {})
         # Preserve the orchestrator's run ID when present so persisted collector
@@ -245,8 +501,9 @@ def execute_batch_run(
             inp["defer_registry_sync"] = True
         
         pipeline_run_dir = inp.get("pipeline_run_dir")
-        if pipeline_run_dir:
-            inp["output_dir"] = str(Path(pipeline_run_dir) / "intermediate" / task["agent_name"])
+        output_dir = task_output_dirs.get(task["task_id"])
+        if pipeline_run_dir and output_dir is not None:
+            inp["output_dir"] = str(output_dir)
 
         from core.source_registry import current_force_source_refresh, current_source_area
         token_refresh = current_force_source_refresh.set(bool(inp.get("force_refresh", False)))
@@ -254,8 +511,7 @@ def execute_batch_run(
         token_ctx = None
         token_q = None
         
-        # Combine contexts if multiple are provided, otherwise use single
-        contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
+        # Contexts are combined once for the agent's prompt and query routing.
         
         if contexts_to_process:
             from core.funding_context import build_agent_specific_funding_context, generate_funding_queries, current_funding_prompt_context, current_funding_queries
@@ -268,7 +524,7 @@ def execute_batch_run(
                 combined_queries.extend(generate_funding_queries(ctx))
                 
             token_ctx = current_funding_prompt_context.set(combined_prompt_ctx)
-            token_q = current_funding_queries.set(list(set(combined_queries)))
+            token_q = current_funding_queries.set(list(dict.fromkeys(combined_queries)))
             
         inp["deadline"] = deadline.timestamp() if deadline else None
 
@@ -277,19 +533,44 @@ def execute_batch_run(
             ctx = CrawlContext(deadline=deadline.timestamp() if deadline else None)
             token_crawl = current_crawl_context.set(ctx)
             
-            response = run_registered_agent(
-                agent_name=task["agent_name"],
-                mode=task["mode"],
-                area=task["area"],
-                input_data=inp,
-                funding_context=funding_context,
-                funding_contexts=funding_contexts,
-            )
+            try:
+                response = run_registered_agent(
+                    agent_name=task["agent_name"],
+                    mode=task["mode"],
+                    area=task["area"],
+                    input_data=inp,
+                    funding_context=funding_context,
+                    funding_contexts=funding_contexts,
+                )
+            except Exception as exc:
+                LOGGER.exception("Batch task agent invocation failed: %s", task["task_id"])
+                response = {
+                    "status": "error",
+                    "items_processed": 0,
+                    "items_saved": 0,
+                    "outputs": [],
+                    "errors": [f"agent invocation failed: {exc}"],
+                    "warnings": [],
+                    "metadata": {},
+                }
+            if not isinstance(response, dict):
+                response = {
+                    "status": "error",
+                    "items_processed": 0,
+                    "items_saved": 0,
+                    "outputs": [],
+                    "errors": ["agent returned a non-object response"],
+                    "warnings": [],
+                    "metadata": {},
+                }
             if ctx.stop_reasons:
                 response["stop_reasons"] = list(ctx.stop_reasons)
                 if response.get("status", "success") == "success":
                     response["status"] = "partial_limit"
-            response["metadata"] = response.get("metadata", {})
+            response_metadata = response.get("metadata")
+            if not isinstance(response_metadata, dict):
+                response_metadata = {}
+            response["metadata"] = response_metadata
             response["metadata"]["pages_fetched"] = ctx.pages_fetched
             response["metadata"]["documents_collected"] = ctx.documents_collected
             response["metadata"]["playwright_used"] = ctx.playwright_used
@@ -313,7 +594,12 @@ def execute_batch_run(
             current_force_source_refresh.reset(token_refresh)
             current_source_area.reset(token_area)
 
-        return _summarize_response(task, response)
+        summary = _summarize_response(task, response)
+        summary["run_id"] = inp.get("run_id")
+        summary["funding_call_ids"] = funding_call_ids
+        summary["finished_at"] = datetime.now(UTC).isoformat()
+        summary["output_dir"] = str(output_dir.resolve()) if output_dir is not None else None
+        return summary
 
     _wl_started = 0
     _wl_completed = 0
@@ -325,21 +611,20 @@ def execute_batch_run(
         for index, task in enumerate(tasks):
             if deadline and datetime.now(UTC) >= deadline:
                 for pending_task in tasks[index:]:
-                    task_results.append({
-                        "task_id": pending_task["task_id"],
-                        "agent_name": pending_task["agent_name"],
-                        "mode": pending_task["mode"],
-                        "area": pending_task["area"],
-                        "status": "timeout_budget_exceeded",
-                        "items_processed": 0,
-                        "items_saved": 0,
-                        "outputs_count": 0,
-                        "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start"],
-                        "warnings": [],
-                        "duration_seconds": 0,
-                    })
+                    task_results.append(timeout_result(
+                        pending_task,
+                        reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+                    ))
                 break
-            task_results.append(run_task(task))
+            result = run_task(task)
+            finished_at = datetime.fromisoformat(result["finished_at"].replace("Z", "+00:00"))
+            if deadline and finished_at > deadline and result.get("status") != "timeout_budget_exceeded":
+                result = timeout_result(
+                    task,
+                    result=result,
+                    reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                )
+            task_results.append(result)
     else:
         workers = max_workers or min(max(len(tasks), 1), 8)
         _wl_lock = threading.Lock()
@@ -364,40 +649,56 @@ def execute_batch_run(
             future_to_task = {executor.submit(tracked_run_task, task): task for task in tasks}
             pending = set(future_to_task.keys())
             while pending:
-                timeout = None
                 if deadline:
                     remaining = (deadline - datetime.now(UTC)).total_seconds()
                     if remaining <= 0:
+                        cancelled = set()
                         for future in list(pending):
-                            task = future_to_task[future]
-                            future.cancel()
-                            task_results.append({
-                                "task_id": task["task_id"],
-                                "agent_name": task["agent_name"],
-                                "mode": task["mode"],
-                                "area": task["area"],
-                                "status": "timeout_budget_exceeded",
-                                "items_processed": 0,
-                                "items_saved": 0,
-                                "outputs_count": 0,
-                                "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before completion"],
-                                "warnings": [],
-                                "duration_seconds": 0,
-                            })
-                        pending.clear()
-                        break
-                    timeout = remaining
+                            if future.cancel():
+                                task = future_to_task[future]
+                                task_results.append(timeout_result(
+                                    task,
+                                    reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start",
+                                ))
+                                cancelled.add(future)
+                        pending.difference_update(cancelled)
+                        if not pending:
+                            break
+                        # Running threads cannot be force-killed safely. Their
+                        # CrawlContext deadline asks them to stop; wait for their
+                        # actual completion so late artifacts can be removed.
+                        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    else:
+                        done, pending = wait(
+                            pending,
+                            timeout=remaining,
+                            return_when=FIRST_COMPLETED,
+                        )
+                        if not done:
+                            continue
+                else:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
 
-                done, pending = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
-                if not done and pending and deadline and datetime.now(UTC) >= deadline:
-                    continue
                 for future in done:
+                    task = future_to_task[future]
                     try:
-                        task_results.append(future.result())
+                        result = future.result()
+                        finished_at = datetime.fromisoformat(
+                            result["finished_at"].replace("Z", "+00:00")
+                        )
+                        if deadline and finished_at > deadline and result.get("status") != "timeout_budget_exceeded":
+                            result = timeout_result(
+                                task,
+                                result=result,
+                                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                            )
+                        task_results.append(result)
                     except Exception as exc:
-                        task = future_to_task[future]
-                        task_results.append({
+                        error_result = {
                             "task_id": task["task_id"],
+                            "run_id": (task.get("input_data") or {}).get("run_id") or run_id,
+                            "funding_call_ids": funding_call_ids,
+                            "source_urls": [],
                             "agent_name": task["agent_name"],
                             "mode": task["mode"],
                             "area": task["area"],
@@ -405,16 +706,101 @@ def execute_batch_run(
                             "items_processed": 0,
                             "items_saved": 0,
                             "outputs_count": 0,
+                            "output_paths": [],
                             "errors": [f"batch runner exception: {exc}"],
                             "warnings": [],
                             "duration_seconds": 0,
-                        })
+                            "finished_at": datetime.now(UTC).isoformat(),
+                            "output_dir": (
+                                str(task_output_dirs[task["task_id"]].resolve())
+                                if task_output_dirs.get(task["task_id"]) is not None else None
+                            ),
+                        }
+                        if deadline and datetime.fromisoformat(error_result["finished_at"]) > deadline:
+                            error_result = timeout_result(
+                                task,
+                                result=error_result,
+                                reason=f"batch timeout budget of {timeout_budget_seconds}s exceeded before task completion",
+                            )
+                        task_results.append(error_result)
             with _wl_lock:
                 _worker_active_after = _wl_started - _wl_completed
 
             _executor_shutdown_started = _time.time()
         # ThreadPoolExecutor.__exit__ calls shutdown(wait=True) here
         _executor_shutdown_finished = _time.time()
+
+    # Parallel workers deliberately defer registry writes. Reconcile the
+    # configured source set once, then mark only URLs that those workers
+    # actually attempted; this avoids lost new sources and concurrent writes.
+    coordinator_registry_sync = (
+        mode == "configured_scan"
+        and (execution_mode == "parallel" or registry_prepared)
+    )
+    registry_sync: Dict[str, Any] = {
+        "status": "pending" if coordinator_registry_sync else (
+            "per_task" if execution_mode == "sequential" and mode == "configured_scan"
+            else "not_required"
+        ),
+        "synced": registry_synced if coordinator_registry_sync else None,
+        "synced_agents": list(registry_synced_agents),
+        "attempted_sources_marked": 0,
+        "errors": list(registry_sync_errors),
+    }
+    if coordinator_registry_sync:
+        from core.source_registry import (
+            build_source_refresh_plan,
+            mark_agent_sources_checked,
+        )
+        for agent_name in sorted({str(task.get("agent_name") or "") for task in tasks}):
+            attempted_urls: set[str] = set()
+            for item in task_results:
+                if (
+                    item.get("agent_name") == agent_name
+                    and item.get("status") in {"success", "partial_success", "partial_limit"}
+                ):
+                    attempted_urls.update(item.get("source_urls") or [])
+            if attempted_urls:
+                try:
+                    registry_sync["attempted_sources_marked"] += mark_agent_sources_checked(
+                        agent_name,
+                        attempted_urls=attempted_urls,
+                    )
+                except Exception as exc:
+                    registry_sync["errors"].append(
+                        f"source refresh update failed for agent '{agent_name}': {exc}"
+                    )
+        plan_root = None
+        if report_path is not None:
+            plan_root = Path(report_path).parent / "source_refresh_plans" / "post_collection"
+        elif (base_input_data or {}).get("pipeline_run_dir"):
+            plan_root = (
+                Path((base_input_data or {})["pipeline_run_dir"])
+                / "workflow"
+                / "source_refresh_plans"
+                / "post_collection"
+            )
+        else:
+            plan_root = Path.cwd() / "outputs" / "source_refresh_plans" / "post_collection"
+        if plan_root is not None:
+            plan_root.mkdir(parents=True, exist_ok=True)
+            registry_sync["refresh_plan_paths"] = []
+            for agent_name in agent_names_for_registry:
+                try:
+                    plan_path = plan_root / f"{agent_name}.json"
+                    build_source_refresh_plan(
+                        agent_filter=agent_name,
+                        output_path=plan_path,
+                    )
+                    registry_sync["refresh_plan_paths"].append(str(plan_path.resolve()))
+                except Exception as exc:
+                    registry_sync["errors"].append(
+                        f"source refresh plan rebuild failed for agent '{agent_name}': {exc}"
+                    )
+        registry_sync["status"] = "error" if registry_sync["errors"] else "success"
+
+    task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
+    task_results.sort(key=lambda item: task_order.get(item.get("task_id"), len(task_order)))
 
     finished_at = datetime.now(UTC)
     status_counts: Dict[str, int] = {}
@@ -425,6 +811,7 @@ def execute_batch_run(
     total_outputs = 0
     total_saved = 0
     total_processed = 0
+    partial_tasks = 0
 
     for item in task_results:
         status = str(item.get("status", "unknown"))
@@ -434,6 +821,8 @@ def execute_batch_run(
         total_outputs += int(item.get("outputs_count", 0) or 0)
         total_saved += int(item.get("items_saved", 0) or 0)
         total_processed += int(item.get("items_processed", 0) or 0)
+        if status in {"partial_success", "partial_limit"}:
+            partial_tasks += 1
         if status == "timeout_budget_exceeded":
             timed_out += 1
         elif status == "error":
@@ -444,7 +833,7 @@ def execute_batch_run(
 
     report = {
         "generated_at": finished_at.isoformat(),
-        "status": "completed_with_errors" if error_tasks or timed_out else "completed",
+        "status": "completed_with_errors" if error_tasks or timed_out or registry_sync["errors"] else "completed",
         "config": {
             "mode": mode,
             "execution_mode": execution_mode,
@@ -454,8 +843,11 @@ def execute_batch_run(
             "per_agent_limits": per_agent_limits or {},
             "timeout_budget_seconds": timeout_budget_seconds,
             "max_workers": max_workers,
+            "run_id": run_id,
+            "funding_call_ids": funding_call_ids,
         },
         "metadata": {
+            "run_id": run_id,
             "started_at": started_at.isoformat(),
             "finished_at": finished_at.isoformat(),
             "duration_seconds": round((finished_at - started_at).total_seconds(), 3),
@@ -465,6 +857,7 @@ def execute_batch_run(
             "completed_tasks": completed,
             "timed_out_tasks": timed_out,
             "error_tasks": error_tasks,
+            "partial_tasks": partial_tasks,
             "total_items_processed": total_processed,
             "total_items_saved": total_saved,
             "total_outputs": total_outputs,
@@ -479,6 +872,8 @@ def execute_batch_run(
             "executor_shutdown_started": _executor_shutdown_started if execution_mode == "parallel" else None,
             "executor_shutdown_finished": _executor_shutdown_finished if execution_mode == "parallel" else None,
         },
+        "registry_sync": registry_sync,
+        "warnings": list(registry_sync["errors"]),
         "tasks": task_results,
     }
     saved = _save_batch_report(report, report_path)

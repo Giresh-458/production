@@ -245,6 +245,7 @@ class AllCollectionAgentTests(unittest.TestCase):
             set(COLLECTION_AGENTS) - {"funding"},
         )
 
+        tasks = []
         for name in sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS):
             with self.subTest(agent=name):
                 result = run_registered_agent(
@@ -256,7 +257,7 @@ class AllCollectionAgentTests(unittest.TestCase):
                         "title": f"Contract evidence for {name}",
                         "source_name": f"Contract test {name}",
                         "analysis_mode": "collect_only",
-                        "output_dir": str(root / name),
+                        "output_dir": str(root / "intermediate" / name),
                         "run_id": run_id,
                     },
                     funding_context=funding_context,
@@ -287,6 +288,34 @@ class AllCollectionAgentTests(unittest.TestCase):
                     run_id,
                     f"{name} artifact does not belong to the orchestrated run",
                 )
+                tasks.append({
+                    "agent_name": name,
+                    "status": result["status"],
+                    "outputs_count": len(result["outputs"]),
+                    "output_paths": [item["markdown_path"] for item in result["outputs"]],
+                    "errors": result["errors"],
+                    "warnings": result["warnings"],
+                })
+
+        from core.batch2 import audit_collector_artifacts
+
+        audited_tasks, audit = audit_collector_artifacts(
+            root,
+            tasks,
+            expected_agents=set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+            run_id=run_id,
+        )
+        self.assertEqual(audit["manifest_issues"], [])
+        self.assertEqual(audit["quarantined_artifacts"], [])
+        self.assertEqual(
+            sum(item["manual_input_artifacts"] for item in audit["agents"]),
+            11,
+        )
+        for task in audited_tasks:
+            self.assertTrue(
+                any("user-supplied inputs" in warning for warning in task["warnings"]),
+                task,
+            )
 
     def test_all_12_collection_schemas_exist_and_have_required_fields(self):
         for name in COLLECTION_AGENTS:
@@ -324,6 +353,69 @@ class AllCollectionAgentTests(unittest.TestCase):
         doc = FailureDocument("Bridge Incident", "Postmortem", "Incident Report", "RWA", "bridge exploit", "manual://x", TEXTS["failure"], "Manual")
         with self.assertRaisesRegex(ValueError, "synthetic fallback is disabled"):
             failure_fallback(doc)
+
+
+    def test_hackathon_sources_do_not_repeat_identical_source_identity(self):
+        import yaml
+
+        source_path = Path("sources/hackathon_sources.yaml")
+        payload = yaml.safe_load(source_path.read_text(encoding="utf-8"))
+        entries = [
+            entry
+            for group in (payload.get("hackathon_sources") or {}).values()
+            if isinstance(group, list)
+            for entry in group
+            if isinstance(entry, dict)
+        ]
+        identities = [
+            (
+                str(entry.get("name", "")).strip().casefold(),
+                str(entry.get("type", "")).strip().casefold(),
+                str(entry.get("url", "")).strip().rstrip("/").casefold(),
+            )
+            for entry in entries
+        ]
+        self.assertEqual(len(identities), len(set(identities)))
+        smart_india = next(
+            entry for entry in entries if entry.get("name") == "Smart India Hackathon"
+        )
+        challenge_gov = next(
+            entry for entry in entries if entry.get("name") == "Challenge.gov"
+        )
+        self.assertIn("CPS", smart_india.get("focus", ""))
+        self.assertIn("resilience", challenge_gov.get("focus", ""))
+
+
+    def test_collection_failure_helpers_surface_incomplete_pages_only(self):
+        from core.agent_interface import (
+            collection_failure_warnings,
+            recursive_collection_failure_warnings,
+        )
+
+        warnings = collection_failure_warnings(
+            "Test Source",
+            [
+                {"url": f"https://example.org/{index}", "reason": "HTTP 503"}
+                for index in range(7)
+            ],
+        )
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("7 page(s)", warnings[0])
+        self.assertIn("and 2 more", warnings[0])
+
+        recursive_warnings = recursive_collection_failure_warnings(
+            "Recursive Source",
+            {
+                "skipped_links": [
+                    {"url": "https://example.org/blocked", "reason": "robots_disallow: policy"},
+                    {"url": "https://example.org/failed", "reason": "fetch_failed: Timeout"},
+                    {"url": "https://example.org/duplicate", "reason": "already_seen_url"},
+                ]
+            },
+        )
+        self.assertEqual(len(recursive_warnings), 1)
+        self.assertIn("2 page(s)", recursive_warnings[0])
+        self.assertNotIn("already_seen_url", recursive_warnings[0])
 
 
 if __name__ == "__main__":

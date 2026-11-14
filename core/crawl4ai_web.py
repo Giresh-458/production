@@ -83,36 +83,42 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
             retries=2,
             expected_status=(200, *range(400, 500)),
+            check_redirect_robots=False,
         )
-        status_code = int(response.status_code)
-        if status_code == 429:
-            raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
-        if 400 <= status_code < 500:
+        try:
+            status_code = int(response.status_code)
+            if status_code == 429:
+                raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
+            if 400 <= status_code < 500:
+                with _ROBOTS_LOCK:
+                    _ROBOTS_CACHE[origin] = (
+                        time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
+                        _DEFAULT_HOST_DELAY, None,
+                    )
+                return True, _DEFAULT_HOST_DELAY, None
+            if status_code != 200:
+                raise RuntimeError(f"robots.txt returned HTTP {status_code}")
+
+            parser = RobotFileParser(robots_url)
+            parser.parse(str(response.text or "").splitlines())
+            delays = [
+                float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
+                float(parser.crawl_delay("*") or 0.0),
+            ]
+            for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
+                if rate and rate.requests > 0:
+                    delays.append(float(rate.seconds) / float(rate.requests))
+            delay = max([_DEFAULT_HOST_DELAY, *delays])
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
-                    time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
-                    _DEFAULT_HOST_DELAY, None,
+                    time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
                 )
-            return True, _DEFAULT_HOST_DELAY, None
-        if status_code != 200:
-            raise RuntimeError(f"robots.txt returned HTTP {status_code}")
-
-        parser = RobotFileParser(robots_url)
-        parser.parse(str(response.text or "").splitlines())
-        delays = [
-            float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
-            float(parser.crawl_delay("*") or 0.0),
-        ]
-        for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
-            if rate and rate.requests > 0:
-                delays.append(float(rate.seconds) / float(rate.requests))
-        delay = max([_DEFAULT_HOST_DELAY, *delays])
-        with _ROBOTS_LOCK:
-            _ROBOTS_CACHE[origin] = (
-                time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
-            )
-        allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
-        return allowed, delay, None if allowed else "robots.txt disallows this URL"
+            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+            return allowed, delay, None if allowed else "robots.txt disallows this URL"
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
     except Exception as exc:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None)
@@ -126,7 +132,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
 
 
 def _wait_for_host_slot(url: str, delay_seconds: float) -> bool:
-    """Reserve a per-host request slot without serializing unrelated hosts."""
+    """Reserve a local pacing slot and honor shared HTTP 429 cooldowns."""
+    from core.crawl_context import current_crawl_context
+    from core.robots_policy import wait_for_host_slot as wait_for_shared_cooldown
+
+    crawl_ctx = current_crawl_context.get(None)
+    if not wait_for_shared_cooldown(
+        url,
+        crawl_delay=0.0,
+        default_delay=0.0,
+        deadline=crawl_ctx.deadline if crawl_ctx else None,
+    ):
+        return False
+
     host = urlparse(url).netloc.lower()
     now = time.monotonic()
     with _HOST_LOCK:
@@ -955,7 +973,13 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
 
     try:
         response = get_response(url, timeout=(8.0, 30.0), retries=2)
-        reader = PdfReader(BytesIO(response.content))
+        try:
+            pdf_bytes = response.content
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+        reader = PdfReader(BytesIO(pdf_bytes))
         total_pages = len(reader.pages)
 
         if max_pdf_pages is not None and total_pages > max_pdf_pages:
@@ -966,7 +990,17 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
             truncated = False
 
         pages_processed = len(pages_to_process)
-        content = "\n".join((page.extract_text() or "") for page in pages_to_process)
+        content = "\n".join((page.extract_text() or "") for page in pages_to_process).strip()
+        if not content:
+            return {
+                "success": False,
+                "error": "pdf_contains_no_extractable_text",
+                "url": url,
+                "content": "",
+                "total_pages": total_pages,
+                "pages_processed": pages_processed,
+                "truncated": truncated,
+            }
 
         return {
             "success": True,

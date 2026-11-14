@@ -313,3 +313,118 @@ Quantum research system reliability and integration evidence for {title}.
     assert [record["title"] for record in records] == ["Current Run Evidence"]
     assert records[0]["run_id"] == run_id
 
+def test_normalization_algorithm_version_invalidates_existing_cache(tmp_path: Path):
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / "run_cache_version"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "signal.md").write_text("""# Versioned Evidence
+
+## Shared Metadata
+- Title: Versioned Evidence
+- Source: https://example.org/versioned-evidence
+- Layer: Literature
+- Collected At: 2026-11-05T10:00:00+00:00
+
+## Problem
+A source-backed result about reproducible research workflows.
+
+## Evidence Bundle
+### Evidence Snippets
+- The source reports a reproducible workflow result with measured evaluation details.
+""", encoding="utf-8")
+
+    save_normalized_collection_records(intermediate, run_root)
+    manifest_path = run_root / "normalized" / "input_manifest.json"
+    records_path = run_root / "normalized" / "records.json"
+
+    old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert old_manifest["schema_version"] == 7
+    old_manifest["schema_version"] = 5
+    manifest_path.write_text(json.dumps(old_manifest), encoding="utf-8")
+    records_path.write_text("[]", encoding="utf-8")
+
+    ensure_normalized_collection_records(run_root)
+
+    refreshed_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    refreshed_records = json.loads(records_path.read_text(encoding="utf-8"))
+    assert refreshed_manifest["schema_version"] == 7
+    assert [record["title"] for record in refreshed_records] == ["Versioned Evidence"]
+
+
+
+
+@pytest.mark.parametrize("cache_damage", ["missing_ledger", "corrupt_ledger", "tampered_provenance", "tampered_row", "recorded_error"])
+def test_normalization_cache_rebuilds_unhealthy_ledger_or_error_report(tmp_path, cache_damage):
+    import sqlite3
+    from core.normalization import save_normalized_collection_records
+
+    run_root = tmp_path / "outputs" / f"run_cache_{cache_damage}"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "signal.md").write_text(
+        """# Cache Integrity Signal
+
+## Shared Metadata
+- title: Cache Integrity Signal
+- source: https://example.org/cache-integrity
+- layer: Literature
+- collected_at: 2026-11-09T10:00:00+00:00
+
+## Problem Preview
+The source describes a reproducible research workflow and its measured evaluation.
+
+## Evidence Bundle
+### Evidence Snippets
+- The source describes a reproducible research workflow and its measured evaluation.
+""",
+        encoding="utf-8",
+    )
+
+    save_normalized_collection_records(intermediate, run_root)
+    normalized = run_root / "normalized"
+    ledger_path = normalized / "evidence_ledger.db"
+    errors_path = normalized / "errors.json"
+
+    if cache_damage == "missing_ledger":
+        ledger_path.unlink()
+    elif cache_damage == "corrupt_ledger":
+        ledger_path.write_text("not a SQLite database", encoding="utf-8")
+    elif cache_damage == "tampered_provenance":
+        connection = sqlite3.connect(str(ledger_path))
+        try:
+            row = connection.execute(
+                "SELECT evidence_id, provenance FROM canonical_evidence"
+            ).fetchone()
+            provenance = json.loads(row[1])
+            provenance["title_variants"] = ["tampered title"]
+            connection.execute(
+                "UPDATE canonical_evidence SET provenance = ? WHERE evidence_id = ?",
+                (json.dumps(provenance), row[0]),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+    elif cache_damage == "tampered_row":
+        connection = sqlite3.connect(str(ledger_path))
+        try:
+            connection.execute(
+                "UPDATE canonical_evidence SET title = ?",
+                ("Tampered canonical title",),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+    else:
+        errors_path.write_text(json.dumps(["previous normalization database error"]), encoding="utf-8")
+
+    ensure_normalized_collection_records(run_root)
+
+    assert json.loads(errors_path.read_text(encoding="utf-8")) == []
+    connection = sqlite3.connect(str(ledger_path))
+    try:
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert connection.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0] == 1
+    finally:
+        connection.close()

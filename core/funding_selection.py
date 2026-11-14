@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 from core.research_schemas import FundingResearchContext
 
 # Match the DB path used by funding_agent
@@ -34,6 +35,19 @@ class ScoredCall:
     record: dict[str, Any]
     score: float
     validation: ValidationResult
+
+
+
+
+def _normalized_evidence_url(value: Any) -> str:
+    """Normalize URL identity without changing case-sensitive paths or query values."""
+    try:
+        parsed = urlsplit(str(value or "").strip())
+    except ValueError:
+        return ""
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/") or "/", parsed.query, ""))
 
 
 def _coerce_research_context(value: Any) -> FundingResearchContext | None:
@@ -100,6 +114,9 @@ class FundingCallContext:
     # Optional for backward-compatible construction of in-memory contexts.
     opportunity_type: str | None = None
     research_context: FundingResearchContext | None = None
+    # Preserve the pre-canonical identifier when a source-grounded context is
+    # rebound to the selected call's canonical ID at the Batch-1/Batch-2 boundary.
+    research_context_original_funding_call_id: str | None = None
     
     @classmethod
     def from_scored_call(cls, scored: ScoredCall, mode: str, extra_reasons: list[str] = None) -> "FundingCallContext":
@@ -131,6 +148,57 @@ class FundingCallContext:
                     pass
             return [s]
 
+        raw_research_context = rec.get("research_context")
+        research_context_payload = None
+        if isinstance(raw_research_context, FundingResearchContext):
+            research_context_payload = dict(vars(raw_research_context))
+        elif isinstance(raw_research_context, dict):
+            research_context_payload = dict(raw_research_context)
+
+        original_research_context_id = None
+        if research_context_payload is not None:
+            canonical_call_id = str(scored.call_id or "").strip()
+            research_context_id = str(research_context_payload.get("funding_call_id") or "").strip()
+            if not canonical_call_id or not research_context_id:
+                raise ValueError(
+                    "A selected funding call and its research context must both have non-empty IDs."
+                )
+            if research_context_id != canonical_call_id:
+                raw_evidence_refs = research_context_payload.get("evidence_refs") or ()
+                if isinstance(raw_evidence_refs, str):
+                    evidence_refs = [raw_evidence_refs]
+                elif isinstance(raw_evidence_refs, (list, tuple, set)):
+                    evidence_refs = list(raw_evidence_refs)
+                else:
+                    evidence_refs = []
+                candidate_urls = (
+                    _clean_str(rec.get("source_url") or rec.get("url")),
+                    _clean_str(rec.get("application_url")),
+                )
+                evidence_url_ids = {
+                    _normalized_evidence_url(reference)
+                    for reference in evidence_refs
+                    if _normalized_evidence_url(reference)
+                }
+                matching_call_urls = {
+                    _normalized_evidence_url(candidate)
+                    for candidate in candidate_urls
+                    if _normalized_evidence_url(candidate)
+                }
+                if not evidence_url_ids.intersection(matching_call_urls):
+                    raise ValueError(
+                        "Research-context funding_call_id differs from the selected call, "
+                        "and its evidence references do not identify the selected call's "
+                        "source or application URL; refusing to reassign context identity."
+                    )
+                original_research_context_id = research_context_id
+                research_context_payload["funding_call_id"] = canonical_call_id
+
+        normalized_research_context = (
+            _coerce_research_context(research_context_payload)
+            if research_context_payload is not None else None
+        )
+
         return cls(
             funding_call_id=scored.call_id,
             funding_body=_clean_str(rec.get("funding_body")),
@@ -161,7 +229,8 @@ class FundingCallContext:
             selection_mode=mode,
             selection_score=scored.score,
             selection_reasons=scored.validation.reasons + (extra_reasons or []),
-            research_context=FundingResearchContext(**rec.get("research_context")) if rec.get("research_context") and isinstance(rec.get("research_context"), dict) else rec.get("research_context")
+            research_context=normalized_research_context,
+            research_context_original_funding_call_id=original_research_context_id,
         )
         
     def to_dict(self) -> dict[str, Any]:

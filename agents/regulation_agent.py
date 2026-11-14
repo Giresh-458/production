@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -118,6 +119,7 @@ class RegulationSource:
     focus: str
     source_type: str
     evidence_type: str
+    area: str | None = None
 
 
 @dataclass(slots=True)
@@ -347,6 +349,8 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             focus = cleaned_text(str(entry.get("focus", "")))
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
+            source_area_value = cleaned_text(str(entry.get("area") or ""))
+            source_area = source_area_value if source_area_value in AREA_KEYWORDS else None
             if name and url:
                 sources.append(
                     RegulationSource(
@@ -355,6 +359,7 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
                         focus=focus,
                         source_type=source_type,
                         evidence_type=evidence_type,
+                        area=source_area,
                     )
                 )
     if not sources:
@@ -366,6 +371,9 @@ def fetch_html(url: str) -> str:
     from core.shared_crawl_manager import SharedCrawlManager
     try:
         res = SharedCrawlManager.get().fetch(url)
+        if res.error:
+            LOGGER.warning("Crawl failed for %s: %s", url, res.error)
+            raise RegulationAgentError(f"Unable to fetch page {url}: {res.error}")
         if res.status_code and res.status_code >= 400:
             LOGGER.warning("HTTP %s for %s", res.status_code, url)
             raise RegulationAgentError(f"Unable to fetch page {url}: HTTP {res.status_code}")
@@ -397,6 +405,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -404,6 +416,26 @@ def infer_area(text: str, default: str = "Unscoped") -> str:
         if any(keyword in lowered for keyword in keywords):
             return area
     return default
+
+
+def infer_configured_source_area(
+    source: RegulationSource,
+    content: str,
+    explicit_area: str | None = None,
+) -> str:
+    """Prefer explicit source metadata over incidental terms in page bodies."""
+    if explicit_area:
+        return explicit_area
+    # A configured source-domain hint is not evidence of relevance when a
+    # funding mission is active; let the extracted page pass the mission query.
+    if current_funding_queries.get():
+        return "Unscoped"
+    if source.area:
+        return source.area
+    metadata_area = infer_area(cleaned_text(f"{source.name} {source.focus}"), "Unscoped")
+    if metadata_area != "Unscoped":
+        return metadata_area
+    return infer_area(cleaned_text(content), "Unscoped")
 
 
 def infer_constraint(text: str) -> str:
@@ -426,26 +458,30 @@ def is_relevant(text: str, area_hint: str) -> bool:
     return any(keyword in lowered for keyword in AREA_KEYWORDS[normalized_area])
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[RegulationDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[RegulationDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import recursive_collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[RegulationDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting regulation intelligence from %s", source.name)
         structured = collect_structured_source(source.url, source.source_type, area)
         if structured:
-            full_text = cleaned_text(f"{source.name} {source.focus} {structured.text}")
-            area_hint = area or infer_area(full_text, "Unscoped")
+            full_text = cleaned_text(f"{structured.title} {structured.text}")
+            area_hint = infer_configured_source_area(source, full_text, area)
             if is_relevant(full_text, area_hint):
                 documents.append(RegulationDocument(name=source.name, issuing_body=source.name, source_type=source.source_type, evidence_type=source.evidence_type, area_hint=area_hint, focus=source.focus, url=structured.url, title=structured.title, content=full_text, source_mode="Automatic"))
             continue
         try:
             html = fetch_html(source.url)
         except RegulationAgentError as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -481,15 +517,18 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Re
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        area_hint = area or infer_area(cleaned_text(f"{source.focus} {title} {content}"), "Unscoped")
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        collected_warnings.extend(recursive_collection_failure_warnings(source.name, review))
+        if not pages:
+            collected_warnings.append(f"Source '{source.name}' produced no usable pages.")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
+        area_hint = infer_configured_source_area(source, full_text, area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not technically relevant.", source.name)
             update_recursive_review(
@@ -535,6 +574,9 @@ def build_manual_url_document(
     area: str | None,
     focus: str | None,
 ) -> RegulationDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,
@@ -550,11 +592,11 @@ def build_manual_url_document(
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     resolved_name = name or title or urlparse(url).netloc
     resolved_body = issuing_body or cleaned_text(urlparse(url).netloc)
-    area_hint = area or infer_area(cleaned_text(f"{resolved_name} {focus or ''} {title} {content}"), "Unscoped")
-    full_text = cleaned_text(f"{resolved_name} {resolved_body} {focus or ''} {title} {content}")
+    full_text = cleaned_text(f"{title} {content}")
+    area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise RegulationAgentError("Manual URL content does not map to the selected research areas or technical policy signals.")
     return RegulationDocument(
@@ -1094,13 +1136,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting regulation agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1140,10 +1183,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished regulation agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)

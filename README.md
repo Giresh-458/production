@@ -8,7 +8,7 @@ RIF uses a structured, sequential pipeline to move from raw web data to structur
 
 1. **Context Initialization**: The orchestrator qualifies currently open funding calls, rejects non-research opportunities, and creates a strict `FundingCallContext` for each research-eligible call being processed.
 2. **Context-Driven Collection**: 11 downstream agents run in a bounded parallel batch (using headless browsers and fallback engines), filtering all signals through the active funding context. Irrelevant signals are discarded.
-3. **Data Normalization & Storage**: Extracted signals are normalized and saved into an intermediate SQLite ledger and Markdown artifacts for traceability.
+3. **Data Normalization & Storage**: Extracted signals are preserved as provenance-rich intermediate Markdown artifacts, then normalized per funding call into structured JSON indexes and a SQLite evidence ledger.
 4. **NLP Processing**:
    - **Tagging**: Normalizes research layers and domains.
    - **Clustering**: Groups conceptually identical problems via TF-IDF cosine similarity. (Note: LLM ambiguity resolution is supported but disabled for batch orchestrations to guarantee deterministic completion without API timeouts).
@@ -33,6 +33,14 @@ python run_pipeline.py
 # Compatibility alias for existing deployment scripts:
 python run_full_pipeline.py
 ```
+
+Batch-2 can also be executed independently from a previously saved Batch-1 context, without rerunning funding discovery:
+
+```powershell
+python scripts/pipeline_tools/run_batch2.py --funding-context-file "outputs/pipeline_run/<run_id>/workflow/funding_contexts.json" --profile refresh
+```
+
+Use `--dry-run` to inspect the planned 11-collector batch without fetching or normalizing evidence. See [Batch-2 collection and normalization](docs/BATCH2_COLLECTION_NORMALIZATION.md) for Windows setup, outputs, provenance rules, and runtime dependencies.
 
 The canonical runner provides:
 - Live source refresh by default (use `--scheduled-refresh` to opt into configured refresh schedules)

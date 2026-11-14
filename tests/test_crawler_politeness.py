@@ -11,6 +11,8 @@ def _clear_caches():
         crawl4ai_web._ROBOTS_CACHE.clear()
     with crawl4ai_web._HOST_LOCK:
         crawl4ai_web._HOST_LAST_REQUEST.clear()
+    from core.robots_policy import clear_robots_cache
+    clear_robots_cache()
 
 
 @pytest.mark.parametrize("url", [
@@ -90,6 +92,10 @@ def test_robots_network_failure_fails_closed(monkeypatch):
 
 def test_same_host_request_waits_for_minimum_delay(monkeypatch):
     _clear_caches()
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        lambda *args, **kwargs: True,
+    )
     times = iter([100.0, 100.8, 100.8])
     monkeypatch.setattr("core.crawl4ai_web.time.monotonic", lambda: next(times))
     sleeps = []
@@ -245,3 +251,85 @@ def test_browser_download_error_falls_back_to_direct_pdf_fetch(monkeypatch, erro
     assert result.failed_urls == []
     assert result.opportunities[0]["type"] == "pdf"
     assert result.opportunities[0]["content"] == "Verified PDF text"
+
+def test_crawl4ai_host_waiter_honors_shared_429_cooldown(monkeypatch):
+    _clear_caches()
+    calls = []
+
+    def deny_until_cooldown_expires(url, **kwargs):
+        calls.append((url, kwargs))
+        return False
+
+    monkeypatch.setattr(
+        "core.robots_policy.wait_for_host_slot",
+        deny_until_cooldown_expires,
+    )
+
+    assert crawl4ai_web._wait_for_host_slot(
+        "https://rate-limited.example.test/resource",
+        delay_seconds=1.0,
+    ) is False
+    assert calls == [
+        (
+            "https://rate-limited.example.test/resource",
+            {
+                "crawl_delay": 0.0,
+                "default_delay": 0.0,
+                "deadline": None,
+            },
+        )
+    ]
+
+def test_crawl4ai_robots_fetch_does_not_recursively_check_redirect_target(monkeypatch):
+    _clear_caches()
+    observed = []
+
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "User-agent: *\nAllow: /\n"
+
+    def fake_get_response(url, **kwargs):
+        observed.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr("core.crawl4ai_web.get_response", fake_get_response)
+
+    allowed, delay, reason = crawl4ai_web._get_robots_policy(
+        "https://robots-redirect.example.test/call"
+    )
+
+    assert allowed is True
+    assert delay >= 1.0
+    assert reason is None
+    assert len(observed) == 1
+    assert observed[0][1]["check_redirect_robots"] is False
+
+def test_crawl4ai_pdf_with_no_extractable_text_is_failure_and_closes_response(monkeypatch):
+    class FakePage:
+        def extract_text(self):
+            return ""
+
+    class FakeReader:
+        def __init__(self, stream):
+            self.pages = [FakePage()]
+
+    class FakeResponse:
+        content = b"fake-pdf"
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    response = FakeResponse()
+    monkeypatch.setattr(crawl4ai_web, "PdfReader", FakeReader)
+    monkeypatch.setattr(crawl4ai_web, "get_response", lambda *args, **kwargs: response)
+
+    result = crawl4ai_web._fetch_pdf("https://example.test/scanned.pdf")
+
+    assert result["success"] is False
+    assert result["error"] == "pdf_contains_no_extractable_text"
+    assert result["content"] == ""
+    assert response.closed is True
+

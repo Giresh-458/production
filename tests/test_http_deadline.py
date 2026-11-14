@@ -7,6 +7,9 @@ from core.crawl_context import CrawlContext, current_crawl_context
 from requests.models import Response
 
 def test_deadline_expires_during_retry(monkeypatch):
+    from core.robots_policy import clear_robots_cache, wait_for_host_slot
+    clear_robots_cache()
+    url = "http://example.com"
     ctx = CrawlContext(deadline=time.time() + 0.1)
     token = current_crawl_context.set(ctx)
     try:
@@ -17,7 +20,8 @@ def test_deadline_expires_during_retry(monkeypatch):
         mock_session.get.return_value = mock_resp
         
         with pytest.raises(TimeoutError, match="Deadline exceeded during retry sleep"):
-            get_response("http://example.com", session=mock_session)
+            get_response(url, session=mock_session)
+        assert wait_for_host_slot(url, deadline=time.time() + 0.1) is False
     finally:
         current_crawl_context.reset(token)
 
@@ -56,3 +60,38 @@ def test_effective_timeout_scaling():
         assert eff[1] <= 1.0
     finally:
         current_crawl_context.reset(token)
+
+
+
+def test_expired_deadline_prevents_network_request():
+    ctx = CrawlContext(deadline=time.time() - 0.01)
+    token = current_crawl_context.set(ctx)
+    try:
+        mock_session = Mock()
+        with pytest.raises(TimeoutError, match="Deadline exceeded before HTTP request"):
+            get_response("https://example.test/expired", session=mock_session)
+        mock_session.get.assert_not_called()
+        assert "deadline" in ctx.stop_reasons
+    finally:
+        current_crawl_context.reset(token)
+
+
+
+def test_final_429_defers_origin_for_retry_after():
+    from core.robots_policy import clear_robots_cache, wait_for_host_slot
+
+    clear_robots_cache()
+    url = "https://rate-limit.example/resource"
+    response = Response()
+    response.status_code = 429
+    response.headers = {"Retry-After": "120"}
+    response._content = b""
+    response._content_consumed = True
+    response.url = url
+
+    mock_session = Mock()
+    mock_session.get.return_value = response
+    with pytest.raises(requests.HTTPError):
+        get_response(url, session=mock_session, retries=0)
+
+    assert wait_for_host_slot(url, deadline=time.time() + 0.1) is False

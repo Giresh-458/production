@@ -32,6 +32,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -352,6 +353,9 @@ def fetch_html(url: str) -> str:
     from core.shared_crawl_manager import SharedCrawlManager
     try:
         res = SharedCrawlManager.get().fetch(url)
+        if res.error:
+            LOGGER.warning("Crawl failed for %s: %s", url, res.error)
+            raise CompanyAgentError(f"Unable to fetch page {url}: {res.error}")
         if res.status_code and res.status_code >= 400:
             LOGGER.warning("HTTP %s for %s", res.status_code, url)
             raise CompanyAgentError(f"Unable to fetch page {url}: HTTP {res.status_code}")
@@ -383,6 +387,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -464,13 +472,15 @@ def discover_company_candidates(query: str, limit: int = 10) -> list[CompanyDocu
     return documents
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[CompanyDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[CompanyDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import recursive_collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[CompanyDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         if area and source.area != area:
             continue
@@ -478,7 +488,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
         try:
             html = fetch_html(source.url)
         except CompanyAgentError as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -514,15 +526,18 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        full_text = cleaned_text(f"{source.name} {source.focus} {content}")
-        area_hint = area or source.area
+        collected_warnings.extend(recursive_collection_failure_warnings(source.name, review))
+        if not pages:
+            collected_warnings.append(f"Source '{source.name}' produced no usable pages.")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else source.area)
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the configured research areas.", source.name)
             update_recursive_review(
@@ -558,6 +573,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
 
 
 def build_manual_url_document(url: str, company_name: str | None, source_type: str | None, area: str | None, focus: str | None, funding_context: str = "") -> CompanyDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,
@@ -573,18 +591,18 @@ def build_manual_url_document(url: str, company_name: str | None, source_type: s
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=company_name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     name = company_name or cleaned_text(urlparse(url).netloc)
     source_type_value = source_type or "Enterprise adopter"
     focus_value = focus or title
-    area_hint = area or infer_area(cleaned_text(f"{name} {title} {content}"), "Unscoped")
+    area_hint = area or infer_area(cleaned_text(f"{title} {content}"), "Unscoped")
     document = CompanyDocument(
         company_name=name,
         url=url,
         source_type=source_type_value,
         focus=focus_value,
         area_hint=area_hint,
-        content=cleaned_text(f"{name} {focus_value} {title} {content}"),
+        content=cleaned_text(f"{title} {content}"),
         source_mode="Manual",
         title=title,
     )
@@ -1048,6 +1066,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting company agent run: mode=%s area=%s", mode, area)
 
@@ -1057,7 +1076,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             if payload.get("discover") and payload.get("funding_context"):
                 documents = discover_company_candidates(str(payload.get("funding_context")), int(payload.get("max_candidates", 10)))
             else:
-                documents = build_auto_documents(sources_path, area)
+                documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             company_name = payload.get("company_name") or infer_name_from_url(url, "Manual Company")
@@ -1097,10 +1116,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished company agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)

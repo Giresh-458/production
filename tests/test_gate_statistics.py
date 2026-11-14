@@ -6,17 +6,16 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_pipeline import main
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
 
 @patch('run_pipeline.execute_batch_run')
 @patch('run_pipeline.evaluate_collection_health')
-@patch('core.source_registry.sync_source_registry')
-@patch('core.source_registry.build_source_refresh_plan')
+@patch('run_pipeline.prepare_batch2_source_registry')
 def test_duplicate_mission_gate_statistics(
-    mock_build_source_refresh,
-    mock_sync_registry,
+    mock_prepare_registry,
     mock_evaluate_health,
     mock_execute_batch,
     mock_get_calls,
@@ -28,12 +27,17 @@ def test_duplicate_mission_gate_statistics(
 
     call_id = "CALL-TEST-DUPES"
     mock_evaluate_health.return_value = (True, 10)
+    mock_prepare_registry.return_value = {"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}
 
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Quantum Networking",
             "organization": "QOrg",
+            "source_url": f"https://funding.example.org/calls/{call_id}",
+            "application_url": f"https://funding.example.org/calls/{call_id}",
+            "eligibility": "Eligible applicants: research universities and technology organizations may apply.",
             "research_area": "DePIN", "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {
                 "funding_call_id": call_id, "research_intent": "research",
@@ -53,66 +57,63 @@ def test_duplicate_mission_gate_statistics(
     }
     mock_get_calls.return_value = ([selected_call["selected"]], [])
 
+    def fake_run_stage(agent, *args, **kwargs):
+        if agent == "funding":
+            return {"status": "success", "outputs": [selected_call["selected"]], "errors": []}
+        return {"status": "success", "outputs_count": 1, "outputs": []}
+
+    mock_run_stage.side_effect = fake_run_stage
+
     # Mock execute_batch_run to create intermediate files
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        intermediate_dir = root / "calls" / call_id / "intermediate"
+        run_id = kwargs["base_input_data"]["run_id"]
+        intermediate_dir = root / "intermediate" / "literature"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
+        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
 
         # 1. Accepted evidence (matches 'quantum') - copy 1
-        (intermediate_dir / "acc1.md").write_text("""# Signal
-## Shared Metadata
-- title: Quantum entanglement
-- source: https://example.org/quant
-- layer: Literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:00+00:00
-
-## Problem Preview
-Quantum entanglement networks.
-## Evidence Bundle
-### Evidence Snippets
-- Quantum entanglement networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Quantum entanglement",
+            source_url="https://example.org/quant",
+            content="Quantum entanglement networks.\n\nQuantum entanglement networks.",
+            research_area="DePIN",
+            evidence_snippets=["Quantum entanglement networks."],
+            collected_at="2026-08-24T10:00:00+00:00",
+        )
 
         # 2. Accepted evidence (matches 'quantum') - copy 2 (DUPLICATE source and title -> same evidence_id)
-        (intermediate_dir / "acc2.md").write_text("""# Signal
-## Shared Metadata
-- title: Quantum entanglement
-- source: https://example.org/quant
-- layer: Literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:01+00:00
-
-## Problem Preview
-Quantum entanglement networks part 2.
-## Evidence Bundle
-### Evidence Snippets
-- Quantum entanglement networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Quantum entanglement",
+            source_url="https://example.org/quant",
+            content="Quantum entanglement networks part 2.\n\nQuantum entanglement networks.",
+            research_area="DePIN",
+            evidence_snippets=["Quantum entanglement networks."],
+            collected_at="2026-08-24T10:00:01+00:00",
+        )
 
         # 3. Rejected evidence (no matching substantive keywords)
-        (intermediate_dir / "rej1.md").write_text("""# Signal
-## Shared Metadata
-- title: Classic networking
-- source: https://example.org/class
-- layer: Literature
-- funding_call_id: CALL-TEST-DUPES
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:02+00:00
-
-## Problem Preview
-Classic networking networks.
-## Evidence Bundle
-### Evidence Snippets
-- Classic networking networks.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Classic networking",
+            source_url="https://example.org/class",
+            content="Classic networking networks.\n\nClassic networking networks.",
+            research_area="DePIN",
+            evidence_snippets=["Classic networking networks."],
+            collected_at="2026-08-24T10:00:02+00:00",
+        )
 
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
-        run_id = kwargs["base_input_data"]["run_id"]
+        write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
             marker = f"- funding_call_id: {call_id}\n"
@@ -122,7 +123,10 @@ Classic networking networks.
                 )
                 artifact.write_text(artifact_text, encoding="utf-8")
 
-        return {"tasks": []}
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": len(list((root / "intermediate" / agent).glob("*.md")))}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
 
     mock_execute_batch.side_effect = fake_execute_batch
 

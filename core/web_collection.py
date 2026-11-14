@@ -4,15 +4,18 @@ import hashlib
 import json
 import re
 import threading
+import time
+import requests
 from collections import deque
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from urllib import robotparser
 
-from core.http_client import canonicalize_url, get_response
+from core.http_client import canonicalize_url, get_response, _safe_redirect_target
+from core.robots_policy import check_robots, get_robots_sitemaps, wait_for_host_slot
+from core.crawl_context import GLOBAL_MAX_PAGES, GLOBAL_MAX_DOCUMENTS, GLOBAL_MAX_SECONDS, GLOBAL_MAX_DEPTH
 
 
 @dataclass(slots=True)
@@ -39,7 +42,7 @@ class WebCollectionResult:
 
 
 
-def _is_crawlable_url(url: str) -> bool:
+def _is_crawlable_url(url: str, *, allow_loopback: bool = False) -> bool:
     """Reject malformed URLs and non-page assets before they reach the queue."""
     try:
         parsed = urlparse(url)
@@ -48,6 +51,10 @@ def _is_crawlable_url(url: str) -> bool:
         if any(ch.isspace() for ch in url):
             return False
         if parsed.username or parsed.password:
+            return False
+        try:
+            _safe_redirect_target(url, url, allow_loopback=allow_loopback)
+        except ValueError:
             return False
         path = parsed.path.lower()
         blocked = (
@@ -140,33 +147,29 @@ def _metadata(structured: list[dict[str, Any]]) -> tuple[str | None, str | None]
 
 
 
-def _robots_allowed(root_url: str, target_url: str, user_agent: str = "RIF/3.1",
-                    cache: dict[str, robotparser.RobotFileParser | None] | None = None,
-                    timeout: float = 5.0, fail_open: bool = True) -> bool:
-    try:
-        parsed = urlparse(root_url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
-        if cache is not None and origin in cache:
-            rp = cache[origin]
-            return True if rp is None else rp.can_fetch(user_agent, target_url)
+def _robots_allowed(
+    root_url: str,
+    target_url: str,
+    user_agent: str = "RIF/3.1",
+    cache: dict[str, Any] | None = None,
+    timeout: float = 5.0,
+    fail_open: bool = False,
+) -> bool:
+    """Enforce robots.txt for the target origin.
 
-        import urllib.request
-        rp = robotparser.RobotFileParser()
-        robots_url = f"{origin}/robots.txt"
-        try:
-            with urllib.request.urlopen(robots_url, timeout=timeout) as resp:
-                raw = resp.read(64_000).decode("utf-8", errors="replace")
-            rp.parse(raw.splitlines())
-        except Exception:
-            if cache is not None:
-                cache[origin] = None
-            return fail_open
-
-        if cache is not None:
-            cache[origin] = rp
-        return rp.can_fetch(user_agent, target_url)
-    except Exception:
-        return fail_open
+    The legacy fail_open argument remains accepted for call compatibility but
+    cannot override the fail-closed handling of server/network failures.
+    RFC 9309 permits access when robots.txt is unavailable (4xx), except that
+    HTTP 429 is treated conservatively as a rate-limit signal.
+    """
+    del root_url, fail_open
+    allowed, _, _ = check_robots(
+        target_url,
+        user_agent=user_agent,
+        timeout=timeout,
+        cache=cache,
+    )
+    return allowed
 
 
 def _extract_discovery_urls(base_url: str, html: str, robots_text: str = "") -> list[str]:
@@ -197,57 +200,138 @@ def _extract_discovery_urls(base_url: str, html: str, robots_text: str = "") -> 
     return list(dict.fromkeys(canonicalize_url(u) for u in urls if u))
 
 
-def _sitemap_urls(sitemap_url: str, *, limit: int = 200, allowed_origin: str | None = None, depth: int = 0, max_depth: int = 3) -> list[str]:
+def _sitemap_urls(
+    sitemap_url: str,
+    *,
+    limit: int = 200,
+    allowed_origin: str | None = None,
+    depth: int = 0,
+    max_depth: int = 3,
+    robots_cache: dict[str, Any] | None = None,
+    allow_loopback: bool = False,
+) -> list[str]:
     if depth >= max_depth:
         return []
     parsed = urlparse(sitemap_url)
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
         return []
-    
-    current_origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    current_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
     if allowed_origin is None:
         allowed_origin = current_origin
+    allowed_origin = allowed_origin.lower()
     if current_origin != allowed_origin:
         return []
-        
+
     try:
-        response = get_response(sitemap_url, timeout=(5.0, 15.0), retries=1)
+        current_url = canonicalize_url(sitemap_url)
+        redirect_statuses = {301, 302, 303, 307, 308}
+        for _ in range(11):
+            allowed, _, crawl_delay = check_robots(current_url, cache=robots_cache)
+            if not allowed:
+                return []
+            if not wait_for_host_slot(current_url, crawl_delay=crawl_delay):
+                return []
+            response = get_response(
+                current_url,
+                timeout=(5.0, 15.0),
+                retries=1,
+                allow_redirects=False,
+            )
+            if response.status_code not in redirect_statuses:
+                break
+            location = response.headers.get("Location")
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+            if not location:
+                return []
+            next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback)
+            next_parsed = urlparse(next_url)
+            if (
+                next_parsed.scheme not in ("http", "https")
+                or not next_parsed.netloc
+                or next_parsed.username
+                or next_parsed.password
+                or f"{next_parsed.scheme.lower()}://{next_parsed.netloc.lower()}" != allowed_origin
+            ):
+                return []
+            current_url = next_url
+        else:
+            return []
+
+        if response.status_code < 200 or response.status_code >= 300:
+            response.raise_for_status()
+            return []
+        final_url = canonicalize_url(str(response.url or current_url))
+        final_parsed = urlparse(final_url)
+        if f"{final_parsed.scheme.lower()}://{final_parsed.netloc.lower()}" != allowed_origin:
+            return []
         text = response.text
     except Exception:
         return []
     if "<html" in text[:500].lower():
         return []
-        
+
     try:
         import defusedxml.ElementTree as ET
     except ImportError:
         import xml.etree.ElementTree as ET
-        
+
     try:
         root = ET.fromstring(text)
     except Exception:
         return []
-        
+
     tag = root.tag.lower().split("}")[-1]
-    locs = [str(el.text).strip() for el in root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text]
+    locs = [
+        str(el.text).strip()
+        for el in root.iter()
+        if el.tag.lower().split("}")[-1] == "loc" and el.text
+    ]
     if tag == "sitemapindex":
         out: list[str] = []
         for child in locs[:20]:
-            out.extend(_sitemap_urls(child, limit=max(1, limit - len(out)), allowed_origin=allowed_origin, depth=depth + 1, max_depth=max_depth))
+            out.extend(
+                _sitemap_urls(
+                    child,
+                    limit=max(1, limit - len(out)),
+                    allowed_origin=allowed_origin,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    robots_cache=robots_cache,
+                    allow_loopback=allow_loopback,
+                )
+            )
             if len(out) >= limit:
                 break
         return out[:limit]
     return [canonicalize_url(x) for x in locs[:limit]]
 
 
+def _close_response(response: Any) -> None:
+    close_response = getattr(response, "close", None)
+    if callable(close_response):
+        close_response()
+
+
 def _pdf_text(response: Any) -> str:
+    try:
+        pdf_bytes = response.content
+    finally:
+        _close_response(response)
     try:
         from io import BytesIO
         from pypdf import PdfReader
-        reader = PdfReader(BytesIO(response.content))
-        return "\n".join((page.extract_text() or "") for page in reader.pages[:30])
-    except Exception:
-        return ""
+        reader = PdfReader(BytesIO(pdf_bytes))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages[:30]).strip()
+    except Exception as exc:
+        raise ValueError(
+            f"pdf_extraction_failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not text:
+        raise ValueError("pdf_contains_no_extractable_text")
+    return text
 
 
 def _extract_with_trafilatura(html: str, url: str) -> tuple[str, str] | None:
@@ -264,7 +348,7 @@ def _extract_with_trafilatura(html: str, url: str) -> tuple[str, str] | None:
 
 _pw_local = threading.local()
 
-def _get_browser_context():
+def _get_browser_context(timeout_ms: int = 30_000):
     if not hasattr(_pw_local, "playwright"):
         from playwright.sync_api import sync_playwright
         import asyncio
@@ -276,36 +360,122 @@ def _get_browser_context():
             asyncio.set_event_loop(loop)
         
         _pw_local.playwright = sync_playwright().start()
-        _pw_local.browser = _pw_local.playwright.chromium.launch(headless=True)
+        _pw_local.browser = _pw_local.playwright.chromium.launch(
+            headless=True,
+            timeout=max(1, int(timeout_ms)),
+        )
     return _pw_local.browser.new_context(user_agent="RIF/3.1 (+research-intelligence-pipeline)")
 
-def _render_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Optional last-resort JS rendering; never required for the normal path."""
+def _render_with_browser(
+    url: str,
+    *,
+    allowed_domains: set[str] | None = None,
+    allow_loopback: bool = False,
+) -> tuple[str, str, list[tuple[str, str]], str] | None:
+    """Render a JS shell without bypassing robots policy or the active deadline."""
     try:
-        ctx = _get_browser_context()
-        page = ctx.new_page()
+        from core.crawl_context import current_crawl_context
+
+        crawl_ctx = current_crawl_context.get(None)
+        remaining = (
+            max(0.0, crawl_ctx.deadline - __import__("time").time())
+            if crawl_ctx and crawl_ctx.deadline else 30.0
+        )
+        if remaining <= 0.1:
+            if crawl_ctx:
+                with crawl_ctx.lock:
+                    crawl_ctx.stop_reasons.add("deadline")
+            return None
+
+        browser_ctx = _get_browser_context(
+            timeout_ms=max(1, int(min(30.0, remaining) * 1000))
+        )
+        browser_allowed_domains = allowed_domains or {_domain(url)}
+        page = browser_ctx.new_page()
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            if crawl_ctx and crawl_ctx.deadline:
+                remaining = crawl_ctx.deadline - __import__("time").time()
+            if remaining <= 0.5:
+                if crawl_ctx:
+                    with crawl_ctx.lock:
+                        crawl_ctx.stop_reasons.add("deadline")
+                return None
+            timeout_ms = max(1, int(min(30.0, remaining) * 1000))
+            page.set_default_navigation_timeout(timeout_ms)
+
+            def guard_document_navigation(route):
+                request = route.request
+                if request.url.lower().startswith(("http://", "https://")):
+                    try:
+                        _safe_redirect_target(
+                            url, request.url, allow_loopback=allow_loopback
+                        )
+                    except ValueError:
+                        route.abort("blockedbyclient")
+                        return
+                    allowed, _, crawl_delay = check_robots(request.url)
+                    if not allowed:
+                        route.abort("blockedbyclient")
+                        return
+                    deadline = crawl_ctx.deadline if crawl_ctx else None
+                    if request.resource_type == "document":
+                        if _domain(request.url) not in browser_allowed_domains:
+                            route.abort("blockedbyclient")
+                            return
+                        default_delay = 1.0
+                    else:
+                        default_delay = 0.0
+                    if not wait_for_host_slot(
+                        request.url,
+                        crawl_delay=crawl_delay,
+                        default_delay=default_delay,
+                        deadline=deadline,
+                    ):
+                        if crawl_ctx:
+                            with crawl_ctx.lock:
+                                crawl_ctx.stop_reasons.add("deadline")
+                        route.abort("blockedbyclient")
+                        return
+                elif request.resource_type == "document":
+                    route.abort("blockedbyclient")
+                    return
+                route.continue_()
+
+            page.route("**/*", guard_document_navigation)
+            response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            if response is not None and not 200 <= response.status < 300:
+                return None
+            final_url = page.url
+            _safe_redirect_target(url, final_url, allow_loopback=allow_loopback)
+            if not check_robots(final_url)[0]:
+                return None
+            if crawl_ctx and crawl_ctx.deadline:
+                remaining = crawl_ctx.deadline - __import__("time").time()
+            if remaining <= 0:
+                return None
             try:
-                page.wait_for_load_state("networkidle", timeout=8000)
+                page.wait_for_load_state(
+                    "networkidle", timeout=max(1, int(min(8.0, remaining) * 1000))
+                )
             except Exception:
                 pass
+            if crawl_ctx and crawl_ctx.deadline and __import__("time").time() >= crawl_ctx.deadline:
+                return None
             html = page.content()
-            final_url = page.url
         finally:
             page.close()
-            ctx.close()
+            browser_ctx.close()
         title, text, _, links = _extract(html)
         return title, text, links, final_url
     except Exception:
         return None
 
 def render_page_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Render one page with the optional Playwright fallback.
+    """Render one page after a JS-shell or transport failure.
 
-    Intended for servers that reject ordinary HTTP clients (for example 403)
-    while still serving the page to a normal browser. Robots policy is checked
-    by callers because this function is a low-level renderer.
+    HTTP status responses such as 401, 403, 404 and 429 are not retried through
+    a browser. Top-level document navigation is checked against robots.txt and
+    remains within the configured origin/domain.
     """
     return _render_with_browser(url)
 
@@ -321,14 +491,35 @@ def collect_source(
     max_seconds: int | None = None,
     char_limit: int = 12000,
     timeout: tuple[float, float] = (8.0, 25.0),
+    allow_loopback_for_tests: bool = False,
 ) -> WebCollectionResult:
     """Adaptive, bounded, free web collection.
 
     Strategy: robots-aware HTTP -> structured/sitemap discovery -> scored links
     -> PDF extraction -> optional Trafilatura extraction -> optional Playwright
-    only when the static response is empty/JS-shell-like. It is intentionally
-    domain-bound and keeps provenance for every page.
+    only for a successful JS shell or a transport failure, never after an HTTP
+    status response. It is intentionally domain-bound and keeps provenance.
     """
+    if max_pages < 1:
+        raise ValueError("max_pages must be a positive integer")
+    if max_depth is not None and max_depth < 0:
+        raise ValueError("max_depth must be zero or a positive integer")
+    if max_documents is not None and max_documents < 1:
+        raise ValueError("max_documents must be a positive integer when provided")
+    if max_seconds is not None and max_seconds < 1:
+        raise ValueError("max_seconds must be a positive integer when provided")
+    effective_max_pages = min(max_pages, GLOBAL_MAX_PAGES)
+    effective_max_documents = min(
+        max_documents if max_documents is not None else GLOBAL_MAX_DOCUMENTS,
+        GLOBAL_MAX_DOCUMENTS,
+    )
+    effective_max_seconds = min(
+        max_seconds if max_seconds is not None else GLOBAL_MAX_SECONDS,
+        GLOBAL_MAX_SECONDS,
+    )
+    effective_max_depth = min(max_depth if max_depth is not None else GLOBAL_MAX_DEPTH, GLOBAL_MAX_DEPTH)
+    page_limit = min(effective_max_pages, effective_max_documents)
+    started_at = time.monotonic()
     root_url = canonicalize_url(root_url)
     allowed = {_domain(root_url)}
     if allowed_domains:
@@ -340,48 +531,167 @@ def collect_source(
     seen: set[str] = set()
     hashes: set[str] = set()
     queue: list[tuple[float, str, int, str | None, str]] = [(999.0, root_url, 0, None, "root")]
-    robots_cache: dict[str, robotparser.RobotFileParser | None] = {}
-    robots_text_cache: dict[str, str] = {}
+    robots_cache: dict[str, Any] = {}
 
     def push(url: str, depth: int, parent: str | None, source: str, score: float) -> None:
         url = canonicalize_url(url)
-        if not _is_crawlable_url(url) or url in seen or not _same_domain(url, allowed):
+        if not _is_crawlable_url(url, allow_loopback=allow_loopback_for_tests) or url in seen or not _same_domain(url, allowed):
             return
         queue.append((score, url, depth, parent, source))
         queue.sort(key=lambda x: (-x[0], x[2], x[1]))
 
-    while queue and len(pages) < max_pages:
+    truncation_reason = ""
+    while queue and len(pages) < page_limit:
         from core.crawl_context import current_crawl_context
         ctx = current_crawl_context.get(None)
-        if ctx and ctx.check_limits(source_max_pages=max_pages, source_max_documents=max_documents, source_max_seconds=max_seconds, source_max_depth=max_depth, current_depth=queue[0][2]):
+        elapsed = time.monotonic() - started_at
+        remaining = effective_max_seconds - elapsed
+        if remaining <= 0.1:
+            truncation_reason = "source_max_seconds_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_seconds")
+            failed.append({"url": queue[0][1], "reason": truncation_reason})
             break
+        if ctx:
+            prior_reasons = set(ctx.stop_reasons)
+            if ctx.check_limits(
+                source_max_pages=effective_max_pages,
+                source_max_documents=effective_max_documents,
+                source_max_seconds=effective_max_seconds,
+                source_max_depth=effective_max_depth,
+                current_depth=queue[0][2],
+            ):
+                new_reasons = sorted(ctx.stop_reasons - prior_reasons)
+                reason = new_reasons[0] if new_reasons else "crawl_context_limit"
+                truncation_reason = f"crawl_limit_reached:{reason}"
+                failed.append({"url": queue[0][1], "reason": truncation_reason})
+                break
             
         score, url, depth, parent, source = queue.pop(0)
-        if not _is_crawlable_url(url) or url in seen or not _same_domain(url, allowed):
+        if not _is_crawlable_url(url, allow_loopback=allow_loopback_for_tests) or url in seen or not _same_domain(url, allowed):
             continue
         seen.add(url)
         if not _robots_allowed(root_url, url, cache=robots_cache):
             failed.append({"url": url, "reason": "robots_disallow"})
             continue
-            
-        if ctx: ctx.add_page(0)
+        _, _, crawl_delay = check_robots(url, cache=robots_cache)
+        if not wait_for_host_slot(
+            url,
+            crawl_delay=crawl_delay,
+            deadline=ctx.deadline if ctx else None,
+        ):
+            failed.append({"url": url, "reason": "host_wait_unavailable_before_request"})
+            continue
+
+        if ctx:
+            ctx.add_page(0)
         used_playwright = False
+        html = ""
         try:
-            response = get_response(url, timeout=timeout, retries=2)
+            # Follow redirects one hop at a time so each destination is
+            # checked against its own robots.txt before it is requested.
+            current_url = url
+            redirect_statuses = {301, 302, 303, 307, 308}
+            for redirect_count in range(11):
+                request_timeout = (
+                    max(0.1, min(timeout[0], remaining / 2)),
+                    max(0.1, min(timeout[1], remaining / 2)),
+                )
+                response = get_response(
+                    current_url, timeout=request_timeout, retries=2, allow_redirects=False
+                )
+                if response.status_code not in redirect_statuses:
+                    break
+                location = response.headers.get("Location")
+                close_response = getattr(response, "close", None)
+                if callable(close_response):
+                    close_response()
+                if not location:
+                    raise ValueError(f"HTTP {response.status_code} redirect missing Location")
+                next_url = _safe_redirect_target(
+                    current_url, location, allow_loopback=allow_loopback_for_tests
+                )
+                parsed_next = urlparse(next_url)
+                if (
+                    parsed_next.scheme not in {"http", "https"}
+                    or not parsed_next.netloc
+                    or parsed_next.username
+                    or parsed_next.password
+                ):
+                    raise ValueError("redirect_to_invalid_or_unsafe_url")
+                if not _same_domain(next_url, allowed):
+                    raise ValueError("redirected_to_untrusted_domain")
+                if not _robots_allowed(root_url, next_url, cache=robots_cache):
+                    failed.append({"url": next_url, "reason": "robots_disallow_redirect"})
+                    response = None
+                    break
+                _, _, redirect_crawl_delay = check_robots(next_url, cache=robots_cache)
+                if not wait_for_host_slot(
+                    next_url,
+                    crawl_delay=redirect_crawl_delay,
+                    deadline=ctx.deadline if ctx else None,
+                ):
+                    failed.append({"url": next_url, "reason": "host_wait_unavailable_before_redirect"})
+                    response = None
+                    break
+                current_url = next_url
+            else:
+                raise ValueError("too_many_redirects")
+            if response is None:
+                continue
+            if response.status_code < 200 or response.status_code >= 300:
+                try:
+                    response.raise_for_status()
+                finally:
+                    _close_response(response)
+                raise RuntimeError(f"Unexpected HTTP status {response.status_code}")
             if ctx:
-                with ctx.lock: ctx.bytes_downloaded += len(response.content)
+                with ctx.lock:
+                    ctx.bytes_downloaded += len(response.content)
             content_type = str(response.headers.get("Content-Type", "")).lower()
-            final_url = canonicalize_url(str(response.url))
+            final_url = canonicalize_url(str(response.url or current_url))
+            if not _robots_allowed(root_url, final_url, cache=robots_cache):
+                _close_response(response)
+                failed.append({"url": final_url, "reason": "robots_disallow_redirect_target"})
+                continue
             if _domain(final_url) not in allowed:
+                _close_response(response)
                 raise ValueError("redirected_to_untrusted_domain")
-            if not ("html" in content_type or "pdf" in content_type or final_url.lower().endswith(".pdf")):
+            is_pdf = "pdf" in content_type or final_url.lower().endswith(".pdf")
+            if is_pdf:
+                response_text = ""
+            else:
+                try:
+                    response_text = str(getattr(response, "text", "") or "")
+                finally:
+                    _close_response(response)
+            is_json = (
+                "json" in content_type
+                or final_url.lower().endswith(".json")
+                or response_text.lstrip().startswith(("{", "["))
+            )
+            if not ("html" in content_type or is_pdf or is_json):
                 failed.append({"url": url, "reason": f"unsupported_content_type:{content_type or 'unknown'}"})
                 continue
-            if "pdf" in content_type or final_url.lower().endswith(".pdf"):
+            if is_pdf:
                 text = _pdf_text(response)
                 title = Path(urlparse(final_url).path).stem.replace("_", " ").replace("-", " ").strip()
                 links: list[tuple[str, str]] = []
                 structured: list[dict[str, Any]] = []
+            elif is_json:
+                try:
+                    payload = json.loads(response_text)
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    failed.append({"url": url, "reason": f"invalid_json_response:{str(exc)[:160]}"})
+                    continue
+                if isinstance(payload, dict):
+                    title = str(payload.get("label") or payload.get("title") or payload.get("id") or "JSON Data")
+                else:
+                    title = "JSON Data"
+                text = json.dumps(payload, ensure_ascii=False, indent=2)
+                links = []
+                structured = []
             else:
                 html = response.text
                 title, text, structured, links = _extract(html)
@@ -402,6 +712,17 @@ def collect_source(
                     text = better[1]
                 
                 def _needs_browser(h, t):
+                    challenge_text = (h + " " + t).lower()
+                    if (
+                        ("cloudflare" in challenge_text and ("ray id" in challenge_text or "challenge" in challenge_text))
+                        or ("verify you are" in challenge_text and "human" in challenge_text)
+                        or ("just a moment" in challenge_text and "enable javascript" in challenge_text)
+                        or "pardon our interruption" in challenge_text
+                        or "vercel security checkpoint" in challenge_text
+                        or "checking if the site connection is secure" in challenge_text
+                        or "we're verifying your browser" in challenge_text
+                    ):
+                        return False
                     if len(t.strip()) >= 800: return False
                     headings = len(re.findall(r"<h[1-6][^>]*>", h, re.I))
                     s_bytes = sum(len(m) for m in re.findall(r"<script[^>]*>.*?</script>", h, re.I | re.S))
@@ -414,7 +735,11 @@ def collect_source(
                             ctx.js_shells_detected += 1
                             ctx.browser_attempts += 1
                             ctx.browser_escalations += 1
-                    rendered = _render_with_browser(final_url)
+                    rendered = _render_with_browser(
+                        final_url,
+                        allowed_domains=allowed,
+                        allow_loopback=allow_loopback_for_tests,
+                    )
                     used_playwright = True
                     if ctx: 
                         with ctx.lock: ctx.playwright_used += 1
@@ -437,14 +762,35 @@ def collect_source(
                         failed.append({"url": url, "reason": "browser_render_failed", "js_shell_detected": True})
                         continue
         except Exception as exc:
-            # Some public sites reject requests/urllib with 403/anti-bot rules
-            # but remain accessible to a real browser. Try Playwright once
-            # before declaring the source unavailable. This remains bounded and
-            # robots-aware because the robots check happened immediately above.
+            # HTTP responses (especially 429) are authoritative. Do not use a
+            # browser to retry, evade, or reinterpret an HTTP access decision.
+            http_response = getattr(exc, "response", None)
+            http_status = getattr(http_response, "status_code", None)
+            if http_status is not None:
+                retry_after = (getattr(http_response, "headers", {}) or {}).get("Retry-After")
+                reason = f"http_status_{http_status}"
+                if retry_after:
+                    reason += f": retry_after={retry_after}"
+                failed.append({"url": url, "reason": reason})
+                continue
+            if (
+                not isinstance(exc, (requests.ConnectionError, requests.Timeout))
+                or isinstance(exc, (requests.exceptions.ProxyError, requests.exceptions.SSLError))
+            ):
+                failed.append({"url": url, "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
+                continue
+            if ctx and ctx.check_limits():
+                failed.append({"url": url, "reason": "deadline_exceeded_before_browser_fallback"})
+                continue
             if ctx:
-                with ctx.lock: ctx.browser_attempts += 1
-                with ctx.lock: ctx.browser_escalations += 1
-            rendered = _render_with_browser(url)
+                with ctx.lock:
+                    ctx.browser_attempts += 1
+                    ctx.browser_escalations += 1
+            rendered = _render_with_browser(
+                url,
+                allowed_domains=allowed,
+                allow_loopback=allow_loopback_for_tests,
+            )
             used_playwright = True
             if ctx:
                 with ctx.lock: ctx.playwright_used += 1
@@ -470,8 +816,8 @@ def collect_source(
                 failed.append({"url": url, "reason": str(exc)[:240]})
                 continue
 
-        def _is_challenge(t: str, head: str) -> bool:
-            c = (t + " " + head).lower()
+        def _is_challenge(t: str, head: str, raw_html: str = "") -> bool:
+            c = (t + " " + head + " " + raw_html).lower()
             return bool(
                 ("verify you are" in c and "human" in c) or 
                 ("cloudflare" in c and "ray id" in c) or
@@ -482,7 +828,7 @@ def collect_source(
                 "we're verifying your browser" in c
             )
 
-        if _is_challenge(text, title):
+        if _is_challenge(text, title, html):
             failed.append({"url": url, "reason": "anti-bot/challenge detected"})
             continue
 
@@ -504,26 +850,25 @@ def collect_source(
         # conservative: only explicitly advertised sitemaps/feeds are followed.
         if depth == 0 and "html" in content_type:
             # Read robots once for explicit Sitemap directives. Failure is non-fatal.
-            domain_key = _domain(final_url)
-            if domain_key not in robots_text_cache:
-                try:
-                    import urllib.request
-                    origin = f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"
-                    with urllib.request.urlopen(f"{origin}/robots.txt", timeout=5) as rr:
-                        robots_text_cache[domain_key] = rr.read(64_000).decode("utf-8", errors="replace")
-                except Exception:
-                    robots_text_cache[domain_key] = ""
-            for hint in _extract_discovery_urls(final_url, html, robots_text_cache.get(domain_key, "")):
+            sitemap_directives = get_robots_sitemaps(final_url, cache=robots_cache)
+            robots_text = "\n".join(f"Sitemap: {sitemap}" for sitemap in sitemap_directives)
+            for hint in _extract_discovery_urls(final_url, html, robots_text):
                 if hint.endswith("/robots.txt"):
                     continue
                 if "sitemap" in urlparse(hint).path.lower():
-                    for discovered_url in _sitemap_urls(hint, limit=max_pages * 6, allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"):
+                    for discovered_url in _sitemap_urls(
+                        hint,
+                        limit=max_pages * 6,
+                        allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}",
+                        robots_cache=robots_cache,
+                        allow_loopback=allow_loopback_for_tests,
+                    ):
                         s = _score(discovered_url, "sitemap", keywords)
                         if s > 0.0:
                             push(discovered_url, 0, final_url, "sitemap", s + 1.0)
                 else:
                     push(hint, 0, final_url, "feed", 2.0)
-        if depth >= max_depth:
+        if depth >= effective_max_depth:
             continue
         for href, anchor in links:
             child = canonicalize_url(urljoin(final_url, href))
@@ -534,6 +879,19 @@ def collect_source(
             # modest relevance score to keep the crawl bounded.
             if s >= 1.5 or any(token in urlparse(child).path.lower() for token in ("/rfp", "/grant", "/fund", "/research", "/opportun", "/call", "/application", "/dataset", "/papers", "/project")):
                 push(child, depth + 1, final_url, anchor or "link", s)
+
+    if queue and not truncation_reason and len(pages) >= page_limit:
+        if effective_max_documents <= effective_max_pages and effective_max_documents == page_limit:
+            truncation_reason = "source_max_documents_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_documents")
+        else:
+            truncation_reason = "source_max_pages_reached"
+            if ctx:
+                with ctx.lock:
+                    ctx.stop_reasons.add("source_max_pages")
+        failed.append({"url": queue[0][1], "reason": truncation_reason})
 
     return WebCollectionResult(root_url, pages, discovered, failed, structured_all)
 

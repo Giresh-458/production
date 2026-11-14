@@ -1,6 +1,6 @@
 import re
 from typing import Any, Dict, List, Optional
-from core.evidence import _paragraphs, _clean_line, PROBLEM_SIGNAL_TERMS
+from core.evidence import _paragraphs, _clean_line, strip_collection_metadata, PROBLEM_SIGNAL_TERMS
 from core.schemas import AREA_KEYWORDS, _keyword_occurrences, normalize_area
 import string
 
@@ -178,6 +178,12 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
     """
     value = re.sub(r"\s+", " ", str(text or "")).strip().lower()
     patterns = (
+        # Strategic-autonomy language in Horizon eligibility sections explains
+        # the geographic/control restriction; it is not a technical research
+        # problem statement for the funded project.
+        r"\bsafeguard the (?:union|european union)'?s strategic assets\b",
+        r"\btechnological dependency on a non[- ]eu source\b",
+        r"\bstrategic weaknesses, vulnerabilities and high[- ]risk dependencies\b",
         r"\bsubcontracting\b.{0,180}\b(?:proportionate|limited|limit|cap|must not exceed)\b",
         r"\b(?:eligible costs?|funding rate|grant amount|maximum funding|total budget|budget ceiling|"
         r"co[- ]funding|indirect costs?|overheads?)\b.{0,180}\b"
@@ -326,24 +332,60 @@ def _is_structured_problem_signal(text: str, *, title: str = "", research_area: 
 
     return False, ""
 
+def _funding_eligibility_text(content: str) -> str:
+    """Extract explicitly labelled eligibility sections/fields for problem-signal exclusion."""
+    text = str(content or "")
+    patterns = (
+        r"(?ims)^\s*(?:#{1,6}\s*)?eligibility(?:\s+conditions?)?\s*[:\-]\s*(.*?)(?=^\s*(?:#{1,6}\s*)?(?:description|scope|expected outcomes?|trl|technology readiness level|deadline|opening date|funding amount|evaluation criteria|call identifier|status)\s*[:\-]|\Z)",
+        r"(?ims)^\s*#{1,6}\s*eligibility(?:\s+&\s+conditions?)?\s*$\s*(.*?)(?=^\s*#{1,6}\s+|\Z)",
+    )
+    sections = []
+    for pattern in patterns:
+        sections.extend(match.group(1) for match in re.finditer(pattern, text))
+    return "\n".join(sections)
+
+
+def _is_funding_eligibility_fragment(candidate: str, eligibility_text: str, full_content: str) -> bool:
+    """Do not promote a risk phrase that occurs only inside an eligibility rule."""
+    candidate_text = re.sub(r"\s+", " ", str(candidate or "")).strip().casefold()
+    eligibility = re.sub(r"\s+", " ", str(eligibility_text or "")).strip().casefold()
+    full = re.sub(r"\s+", " ", str(full_content or "")).strip().casefold()
+    if not candidate_text or candidate_text not in eligibility:
+        return False
+    # If the same source wording is also present outside the eligibility section,
+    # preserve it as a potentially genuine technical problem signal.
+    return full.count(candidate_text) <= eligibility.count(candidate_text)
+
+
 def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict, *, allow_llm_refinement: bool = True, research_area: Optional[str] = None, agent_name: Optional[str] = None) -> dict:
-    paragraphs = _paragraphs(content)
+    evidence_content = (
+        content
+        if (agent_name or "").strip().lower() == "funding"
+        else strip_collection_metadata(content)
+    )
+    paragraphs = _paragraphs(evidence_content)
     if (agent_name or "").strip().lower() == "funding":
         heading_only = re.compile(
             r"(?im)^\s{0,3}#{1,6}\s+(?:scope|expected outcomes?|description|background|rationale|overview|"
             r"problem preview|research mission|focus area|source details|funding details|requirements|"
             r"deadlines|timeline|call documents|programme theme)\s*$"
         )
-        cleaned_content = heading_only.sub("", content or "")
+        cleaned_content = heading_only.sub("", evidence_content or "")
         paragraphs = []
         for raw_paragraph in _paragraphs(cleaned_content):
             paragraphs.extend(_funding_candidate_segments(raw_paragraph))
 
     candidates = []
+    funding_eligibility_text = (
+        _funding_eligibility_text(content)
+        if (agent_name or "").strip().lower() == "funding" else ""
+    )
 
     for para in paragraphs:
         if (agent_name or "").strip().lower() == "funding":
             para = _clean_funding_candidate_text(para)
+            if _is_funding_eligibility_fragment(para, funding_eligibility_text, evidence_content):
+                continue
         if _is_boilerplate(para):
             continue
         if (
@@ -435,7 +477,7 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
     if selected_problem is not None:
         assert len(problem_evidence) >= 1, "Invariant failed: selected_problem must have >= 1 evidence"
         if intelligence_mode == "deterministic":
-            found_in_content = any(selected_problem in ev for ev in problem_evidence) or selected_problem in content
+            found_in_content = any(selected_problem in ev for ev in problem_evidence) or selected_problem in evidence_content
             assert found_in_content, "Invariant failed: selected_problem must correspond to actual source text"
 
     return {

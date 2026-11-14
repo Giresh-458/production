@@ -12,10 +12,28 @@ on:
       - "tests/test_eu_query_budget.py"
       - "agents/funding_agent.py"
       - "core/crawl4ai_web.py"
+      - "core/http_client.py"
+      - "core/robots_policy.py"
       - "core/funding_selection.py"
       - "core/problem_extraction.py"
       - "tests/test_funding_output_quality.py"
       - "run_pipeline.py"
+      - "core/batch2.py"
+      - "core/batch_runner.py"
+      - "core/agent_interface.py"
+      - "core/normalization.py"
+      - "core/evidence.py"
+      - "core/evidence_ledger.py"
+      - "core/mission_gate.py"
+      - "core/quality.py"
+      - "core/recursive_collection.py"
+      - "core/web_collection.py"
+      - "core/file_lock.py"
+      - "scripts/pipeline_tools/run_batch2.py"
+      - "agents/*_agent.py"
+      - "sources/data_sources.yaml"
+      - "sources/regulation_sources.yaml"
+      - "sources/hackathon_sources.yaml"
       - "run_full_pipeline.py"
       - "tests/test_funding_selection.py"
       - "tests/test_funding_persistence_identity.py"
@@ -38,6 +56,14 @@ on:
       - "tests/test_funding_sources_config.py"
       - "tests/test_collection_completeness.py"
       - "tests/test_crawler_limits.py"
+      - "tests/test_crawler_politeness.py"
+      - "tests/test_http_policy_extra.py"
+      - "tests/test_robots_policy.py"
+      - "tests/test_redirect_security.py"
+      - "tests/test_recursive_robots_policy.py"
+      - "tests/test_playwright_fallback.py"
+      - "tests/test_real_local_js.py"
+      - "tests/test_shared_collection.py"
       - "tests/test_funding_quality.py"
       - "core/funding_quality.py"
       - ".github/workflows/eu-funding-tests.yml"
@@ -191,6 +217,7 @@ jobs:
           from core.problem_extraction import _is_objective_or_task_statement
           from core.schemas import normalize_area
           from run_pipeline import get_all_open_funding_calls, build__selected_call_context, _research_context_quality_reasons
+          from core.batch2 import validate_batch1_context
 
           output_dir = Path("outputs/ci_batch1_full_live")
           output_dir.mkdir(parents=True, exist_ok=True)
@@ -219,9 +246,10 @@ jobs:
           )
           handoff_contexts = []
           handoff_context_issues = []
+          ready_context_objects = []
           for record in selected:
               context = build__selected_call_context(record)
-              issues = []
+              issues = list(validate_batch1_context(context))
               if not context.call_title:
                   issues.append("missing_call_title")
               if context.status != "OPEN_CALL":
@@ -260,6 +288,30 @@ jobs:
                       "source_url": context.source_url,
                       "issues": list(dict.fromkeys(issues)),
                   })
+              else:
+                  ready_context_objects.append(context)
+
+          # Save one real, independently validated selected call for a bounded
+          # Batch-2 smoke. This is not a global Batch-1 acceptance attestation.
+          batch2_smoke_handoff_path = output_dir / "funding_contexts.json"
+          batch2_smoke_context = ready_context_objects[0] if ready_context_objects else None
+          if batch2_smoke_context is not None:
+              context_validation = {
+                  "status": "VALIDATED",
+                  "scope": "selected_contexts_only",
+                  "batch1_run_id": run_id,
+                  "validated_funding_call_ids": [batch2_smoke_context.funding_call_id],
+                  "blockers": [],
+                  "blocker_count": 0,
+              }
+              batch2_smoke_handoff_path.write_text(
+                  json.dumps({
+                      "batch1_run_id": run_id,
+                      "context_validation": context_validation,
+                      "funding_contexts": [batch2_smoke_context.to_dict()],
+                  }, indent=2, ensure_ascii=False),
+                  encoding="utf-8",
+              )
           today = datetime.now(timezone.utc).date()
           generic_title = re.compile(
               r"^(?:our programs?|programs?|how to apply|apply|funding|grants?|"
@@ -479,9 +531,15 @@ jobs:
               "funding_context_handoff": {
                   "ready": bool(selected) and not handoff_context_issues,
                   "selected_context_count": len(handoff_contexts),
-                  "ready_context_count": sum(1 for item in handoff_contexts if item["ready"]),
+                  "ready_context_count": len(ready_context_objects),
                   "contexts": handoff_contexts,
                   "issues": handoff_context_issues,
+                  "batch2_smoke_context_file": (
+                      str(batch2_smoke_handoff_path) if batch2_smoke_context is not None else None
+                  ),
+                  "batch2_smoke_context_funding_call_id": (
+                      batch2_smoke_context.funding_call_id if batch2_smoke_context is not None else None
+                  ),
               },
               "selected_quality_flags_count": len(quality_flags),
               "selected_quality_flags": quality_flags,
@@ -803,11 +861,40 @@ jobs:
               )
           PY
 
+      - name: Run bounded live Batch-2 smoke from a validated Batch-1 context
+        if: always()
+        run: |
+          context_file="outputs/ci_batch1_full_live/funding_contexts.json"
+          mkdir -p outputs/ci_batch2_smoke
+          if [ ! -f "$context_file" ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          Path("outputs/ci_batch2_smoke/smoke_status.json").write_text(
+              json.dumps({
+                  "status": "skipped_no_independently_validated_batch1_context",
+                  "reason": "The real Batch-1 scan did not produce a selected context that passed the Batch-2 handoff validator."
+              }, indent=2) + "\\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "::notice::Batch-2 live smoke skipped: no independently validated Batch-1 context was produced."
+            exit 0
+          fi
+          python scripts/pipeline_tools/run_batch2.py \
+            --funding-context-file "$context_file" \
+            --profile smoke \
+            --execution-mode parallel \
+            --max-workers 6 \
+            --output-root outputs/ci_batch2_smoke/runs
+
       - name: Upload full Batch 1 audit artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: batch1-full-live-audit
-          path: outputs/ci_batch1_full_live/
+          name: rif-batch1-and-batch2-live-audit
+          path: |
+            outputs/ci_batch1_full_live/
+            outputs/ci_batch2_smoke/
           if-no-files-found: warn
           retention-days: 7
