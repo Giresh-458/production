@@ -830,6 +830,14 @@ def build_normalized_collection_records(
                     })
                     continue
                 record = normalize_intermediate_artifact(path)
+                provenance_issues = record.get("provenance_validation_issues") or []
+                if provenance_issues:
+                    skipped.append({
+                        "path": str(path.resolve()),
+                        "reason": "provenance_validation_failed",
+                        "issues": list(provenance_issues),
+                    })
+                    continue
                 # A run-scoped caller must never consume artifacts from a prior
                 # or unknown run, even if they remain under a reused output root.
                 artifact_run_id = str(record.get("run_id") or "").strip()
