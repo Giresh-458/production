@@ -431,6 +431,8 @@ def collect_recursive_pages_with_review(
     seen_content_hashes: set[str] = set()
     followed_links: list[RecursiveLinkDecision] = []
     skipped_links: list[RecursiveLinkDecision] = []
+    robots_cache: dict[str, Any] = {}
+    from core.web_collection import _robots_allowed
 
     import inspect
     if "url" in inspect.signature(extract_page_text).parameters:
@@ -499,12 +501,30 @@ def collect_recursive_pages_with_review(
         if current_depth >= config.max_depth:
             continue
         if not current_html:
+            if not _robots_allowed(root_url, current_url, cache=robots_cache, fail_open=False):
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url, parent_url=parent_url, anchor_text="",
+                        score=parent_score, depth=current_depth, action="skipped",
+                        reason="robots_disallow",
+                    )
+                )
+                continue
             try:
-                if ctx: 
-                    with ctx.lock: ctx.urls_fetched += 1
+                if ctx:
+                    with ctx.lock:
+                        ctx.urls_fetched += 1
                 _, _, current_html = _fetch_recursive_page(current_url, fetch_html, extract_page_text)
-                if ctx: ctx.add_page(len(current_html))
-            except Exception:
+                if ctx:
+                    ctx.add_page(len(current_html))
+            except Exception as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=current_url, parent_url=parent_url, anchor_text="",
+                        score=parent_score, depth=current_depth, action="skipped",
+                        reason=f"fetch_failed:{type(exc).__name__}",
+                    )
+                )
                 continue
 
         ranked_links = extract_ranked_links(
@@ -545,12 +565,7 @@ def collect_recursive_pages_with_review(
                 continue
             child_url = canonicalize_url(child_url)
             seen_urls.add(child_url)
-            try:
-                if ctx: 
-                    with ctx.lock: ctx.urls_fetched += 1
-                child_title, child_content, child_html = _fetch_recursive_page(child_url, fetch_html, extract_page_text)
-                if ctx: ctx.add_page(len(child_html) if child_html else 0)
-            except Exception:
+            if not _robots_allowed(root_url, child_url, cache=robots_cache, fail_open=False):
                 skipped_links.append(
                     RecursiveLinkDecision(
                         url=child_url,
@@ -559,7 +574,27 @@ def collect_recursive_pages_with_review(
                         score=score,
                         depth=current_depth + 1,
                         action="skipped",
-                        reason="fetch_failed",
+                        reason="robots_disallow",
+                    )
+                )
+                continue
+            try:
+                if ctx:
+                    with ctx.lock:
+                        ctx.urls_fetched += 1
+                child_title, child_content, child_html = _fetch_recursive_page(child_url, fetch_html, extract_page_text)
+                if ctx:
+                    ctx.add_page(len(child_html) if child_html else 0)
+            except Exception as exc:
+                skipped_links.append(
+                    RecursiveLinkDecision(
+                        url=child_url,
+                        parent_url=current_url,
+                        anchor_text=anchor_text,
+                        score=score,
+                        depth=current_depth + 1,
+                        action="skipped",
+                        reason=f"fetch_failed:{type(exc).__name__}",
                     )
                 )
                 continue
