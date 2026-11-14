@@ -85,7 +85,7 @@ def test_late_collector_artifacts_are_quarantined_before_the_batch_returns(tmp_p
         output_dir.mkdir(parents=True, exist_ok=True)
         artifact = output_dir / "late-artifact.md"
         artifact.write_text("late output", encoding="utf-8")
-        time.sleep(0.08)
+        time.sleep(0.6)
         return {
             "status": "success",
             "outputs": [{"markdown_path": str(artifact)}],
@@ -95,13 +95,17 @@ def test_late_collector_artifacts_are_quarantined_before_the_batch_returns(tmp_p
         }
 
     monkeypatch.setattr("core.batch_runner.run_registered_agent", late_agent)
+    # Isolate this timeout regression from registry preflight overhead.
+    monkeypatch.setattr("core.source_registry.sync_source_registry", lambda **kwargs: None)
+    monkeypatch.setattr("core.source_registry.mark_agent_sources_checked", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("core.source_registry.build_source_refresh_plan", lambda **kwargs: None)
     report = execute_batch_run(
         agent_names=["lab"],
         area_names=[None],
         mode="configured_scan",
         base_input_data={"pipeline_run_dir": str(output_root), "run_id": "late-test-run"},
         execution_mode=execution_mode,
-        timeout_budget_seconds=0.01,
+        timeout_budget_seconds=0.5,
         max_workers=1,
         analysis_mode="collect_only",
     )
