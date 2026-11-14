@@ -205,3 +205,25 @@ def test_http_429_retries_using_retry_after(monkeypatch):
     assert result.status_code == 200
     assert result.text == "ok"
     assert session.get.call_count == 2
+
+
+def test_funding_agent_never_uses_browser_fallback_for_http_429(monkeypatch):
+    import importlib
+
+    funding_agent = importlib.import_module("agents.funding_agent")
+    monkeypatch.setattr(
+        web_collection, "_robots_allowed", lambda *args, **kwargs: True
+    )
+    monkeypatch.setattr(
+        http_client,
+        "fetch_text",
+        lambda *args, **kwargs: (_ for _ in ()).throw(_http_error(429, retry_after="11")),
+    )
+    monkeypatch.setattr(
+        web_collection,
+        "render_page_with_browser",
+        lambda *args, **kwargs: pytest.fail("HTTP 429 must not trigger browser fallback"),
+    )
+
+    with pytest.raises(funding_agent.FundingAgentError, match="HTTP 429"):
+        funding_agent.fetch_html("https://example.org/research")
