@@ -93,7 +93,7 @@ hackathon_sources:
   - name: Challenge.gov
     type: government_challenge_platform
     url: https://www.challenge.gov/
-    focus: public-sector innovation challenges, data and technology competitions
+    focus: public-sector innovation challenges, data and technology competitions, infrastructure, smart systems, resilience
     limits:
       max_pages: 4
       max_depth: 1
@@ -109,28 +109,12 @@ hackathon_sources:
   - name: Smart India Hackathon
     type: government_hackathon
     url: https://www.sih.gov.in/
-    focus: government problem statements, student prototypes, public-sector needs
+    focus: government problem statements, student prototypes, public-sector needs, smart cities, IoT, CPS, transportation, public infrastructure, cyber security
     limits:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
   cps_challenges:
-  - name: Smart India Hackathon
-    type: government_hackathon
-    url: https://www.sih.gov.in/
-    focus: smart cities, IoT, CPS, transportation, public infrastructure, cyber security
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: Challenge.gov
-    type: government_challenge_platform
-    url: https://www.challenge.gov/
-    focus: public-sector innovation, infrastructure, smart systems, resilience
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
   - name: DARPA Challenges
     type: government_challenge_platform
     url: https://www.darpa.mil/work-with-us
