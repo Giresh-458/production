@@ -222,8 +222,15 @@ def build_batch_tasks(
 
 def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[str, Any]:
     outputs = response.get("outputs", []) if isinstance(response, dict) else []
+    if not isinstance(outputs, list):
+        outputs = []
     metadata = response.get("metadata", {}) if isinstance(response, dict) else {}
-    warnings = list(response.get("warnings", []) or []) if isinstance(response, dict) else []
+    if not isinstance(metadata, dict):
+        metadata = {}
+    raw_warnings = response.get("warnings", []) if isinstance(response, dict) else []
+    warnings = list(raw_warnings) if isinstance(raw_warnings, (list, tuple)) else (
+        [str(raw_warnings)] if raw_warnings else []
+    )
     source_urls: set[str] = set()
     for output in outputs if isinstance(outputs, list) else []:
         if isinstance(output, dict):
@@ -388,6 +395,8 @@ def execute_batch_run(
         timed_out.update({
             "source_urls": [],
             "task_id": task["task_id"],
+            "run_id": (task.get("input_data") or {}).get("run_id") or run_id,
+            "funding_call_ids": funding_call_ids,
             "agent_name": task["agent_name"],
             "mode": task["mode"],
             "area": task["area"],
@@ -631,6 +640,9 @@ def execute_batch_run(
                     except Exception as exc:
                         error_result = {
                             "task_id": task["task_id"],
+                            "run_id": (task.get("input_data") or {}).get("run_id") or run_id,
+                            "funding_call_ids": funding_call_ids,
+                            "source_urls": [],
                             "agent_name": task["agent_name"],
                             "mode": task["mode"],
                             "area": task["area"],
@@ -670,7 +682,7 @@ def execute_batch_run(
         "attempted_sources_marked": 0,
         "errors": [],
     }
-    if execution_mode == "parallel":
+    if execution_mode == "parallel" and mode == "configured_scan":
         from core.source_registry import (
             build_source_refresh_plan,
             mark_agent_sources_checked,
@@ -706,6 +718,8 @@ def execute_batch_run(
         except Exception as exc:
             registry_sync["errors"].append(f"source refresh plan rebuild failed: {exc}")
         registry_sync["status"] = "error" if registry_sync["errors"] else "success"
+    elif execution_mode == "parallel":
+        registry_sync["status"] = "not_required"
 
     task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
     task_results.sort(key=lambda item: task_order.get(item.get("task_id"), len(task_order)))
