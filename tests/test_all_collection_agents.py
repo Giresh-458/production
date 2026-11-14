@@ -386,5 +386,37 @@ class AllCollectionAgentTests(unittest.TestCase):
         self.assertIn("resilience", challenge_gov.get("focus", ""))
 
 
+    def test_collection_failure_helpers_surface_incomplete_pages_only(self):
+        from core.agent_interface import (
+            collection_failure_warnings,
+            recursive_collection_failure_warnings,
+        )
+
+        warnings = collection_failure_warnings(
+            "Test Source",
+            [
+                {"url": f"https://example.org/{index}", "reason": "HTTP 503"}
+                for index in range(7)
+            ],
+        )
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("7 page(s)", warnings[0])
+        self.assertIn("and 2 more", warnings[0])
+
+        recursive_warnings = recursive_collection_failure_warnings(
+            "Recursive Source",
+            {
+                "skipped_links": [
+                    {"url": "https://example.org/blocked", "reason": "robots_disallow: policy"},
+                    {"url": "https://example.org/failed", "reason": "fetch_failed: Timeout"},
+                    {"url": "https://example.org/duplicate", "reason": "already_seen_url"},
+                ]
+            },
+        )
+        self.assertEqual(len(recursive_warnings), 1)
+        self.assertIn("2 page(s)", recursive_warnings[0])
+        self.assertNotIn("already_seen_url", recursive_warnings[0])
+
+
 if __name__ == "__main__":
     unittest.main()
