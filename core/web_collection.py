@@ -319,7 +319,7 @@ def _render_with_browser(
         page = ctx.new_page()
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-            if response is not None and response.status in (401, 403, 429, 451, 503):
+            if response is not None and response.status >= 400:
                 return None
             remaining_ms = timeout_ms - int((time.monotonic() - started) * 1000)
             if remaining_ms <= 0:
