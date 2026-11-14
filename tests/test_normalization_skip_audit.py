@@ -180,3 +180,60 @@ def test_failed_normalization_generation_preserves_previous_outputs(tmp_path: Pa
         for name in published_names
     } == before
     assert not list(run_root.glob(".normalized.staging-*"))
+
+
+def test_normalization_cache_rebuilds_when_ledger_relationships_are_missing(tmp_path: Path):
+    import sqlite3
+
+    from core.normalization import (
+        _normalization_cache_ledger_matches_records,
+        ensure_normalized_collection_records,
+    )
+
+    run_root = tmp_path / "run-ledger-relationships"
+    intermediate = run_root / "intermediate"
+    intermediate.mkdir(parents=True)
+    artifact = _artifact(
+        title="Ledger Relationship Evidence",
+        run_id="run-ledger-relationships",
+    ).replace(
+        "## Evidence Bundle\n",
+        "## Evidence Bundle\n"
+        "### Named Entities or Programs\n"
+        "- National Institute of Standards and Technology\n",
+    )
+    (intermediate / "signal.md").write_text(artifact, encoding="utf-8")
+
+    paths = save_normalized_collection_records(intermediate, run_root)
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    ledger_path = run_root / "normalized" / "evidence_ledger.db"
+
+    connection = sqlite3.connect(ledger_path)
+    before_claim_links = connection.execute(
+        "SELECT COUNT(*) FROM evidence_claims"
+    ).fetchone()[0]
+    before_entity_links = connection.execute(
+        "SELECT COUNT(*) FROM evidence_entities"
+    ).fetchone()[0]
+    assert before_claim_links > 0
+    assert before_entity_links > 0
+
+    connection.execute("DELETE FROM evidence_claims")
+    connection.execute("DELETE FROM evidence_entities")
+    connection.commit()
+    connection.close()
+
+    assert not _normalization_cache_ledger_matches_records(ledger_path, records)
+
+    ensure_normalized_collection_records(run_root)
+    connection = sqlite3.connect(ledger_path)
+    after_claim_links = connection.execute(
+        "SELECT COUNT(*) FROM evidence_claims"
+    ).fetchone()[0]
+    after_entity_links = connection.execute(
+        "SELECT COUNT(*) FROM evidence_entities"
+    ).fetchone()[0]
+    connection.close()
+
+    assert after_claim_links == before_claim_links
+    assert after_entity_links == before_entity_links
