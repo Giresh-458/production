@@ -140,3 +140,43 @@ def test_recursive_collection_skips_robots_disallowed_child(monkeypatch):
         item["reason"] == "robots_disallow"
         for item in review["skipped_links"]
     )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "error_class_name"),
+    [
+        ("lab", "LabAgentError"),
+        ("company", "CompanyAgentError"),
+        ("regulation", "RegulationAgentError"),
+        ("opensource", "OpenSourceAgentError"),
+        ("practitioner", "PractitionerAgentError"),
+        ("investment", "InvestmentAgentError"),
+        ("failure", "FailureAgentError"),
+        ("data_availability", "DataAvailabilityAgentError"),
+        ("hackathon", "HackathonAgentError"),
+        ("expert", "ExpertAgentError"),
+    ],
+)
+def test_configured_agent_fetch_html_propagates_shared_crawler_error(
+    monkeypatch, module_name, error_class_name
+):
+    import importlib
+    from types import SimpleNamespace
+
+    module = importlib.import_module(f"agents.{module_name}_agent")
+    from core.shared_crawl_manager import SharedCrawlManager
+
+    class FakeManager:
+        def fetch(self, _url):
+            return SimpleNamespace(
+                error="robots_disallow",
+                status_code=0,
+                fetch_method="robots",
+                html="",
+            )
+
+    monkeypatch.setattr(SharedCrawlManager, "get", lambda: FakeManager())
+    error_class = getattr(module, error_class_name)
+
+    with pytest.raises(error_class, match="robots_disallow"):
+        module.fetch_html("https://example.org/research")
