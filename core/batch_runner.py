@@ -770,13 +770,34 @@ def execute_batch_run(
                     registry_sync["errors"].append(
                         f"source refresh update failed for agent '{agent_name}': {exc}"
                     )
-        for agent_name in agent_names_for_registry:
-            try:
-                build_source_refresh_plan(agent_filter=agent_name)
-            except Exception as exc:
-                registry_sync["errors"].append(
-                    f"source refresh plan rebuild failed for agent '{agent_name}': {exc}"
-                )
+        plan_root = None
+        if report_path is not None:
+            plan_root = Path(report_path).parent / "source_refresh_plans"
+        elif (base_input_data or {}).get("pipeline_run_dir"):
+            plan_root = (
+                Path((base_input_data or {})["pipeline_run_dir"])
+                / "workflow"
+                / "source_refresh_plans"
+            )
+        if plan_root is not None:
+            plan_root.mkdir(parents=True, exist_ok=True)
+            registry_sync["refresh_plan_paths"] = []
+            for agent_name in agent_names_for_registry:
+                try:
+                    plan_path = plan_root / f"{agent_name}.json"
+                    build_source_refresh_plan(
+                        agent_filter=agent_name,
+                        output_path=plan_path,
+                    )
+                    registry_sync["refresh_plan_paths"].append(str(plan_path.resolve()))
+                except Exception as exc:
+                    registry_sync["errors"].append(
+                        f"source refresh plan rebuild failed for agent '{agent_name}': {exc}"
+                    )
+        else:
+            registry_sync["errors"].append(
+                "source refresh plans were not written because no report or pipeline run directory was provided"
+            )
         registry_sync["status"] = "error" if registry_sync["errors"] else "success"
 
     task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
