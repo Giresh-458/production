@@ -502,6 +502,8 @@ def collect_source(
     """
     if max_pages < 1:
         raise ValueError("max_pages must be a positive integer")
+    if max_depth is not None and max_depth < 0:
+        raise ValueError("max_depth must be zero or a positive integer")
     if max_documents is not None and max_documents < 1:
         raise ValueError("max_documents must be a positive integer when provided")
     if max_seconds is not None and max_seconds < 1:
@@ -866,7 +868,7 @@ def collect_source(
                             push(discovered_url, 0, final_url, "sitemap", s + 1.0)
                 else:
                     push(hint, 0, final_url, "feed", 2.0)
-        if depth >= max_depth:
+        if depth >= effective_max_depth:
             continue
         for href, anchor in links:
             child = canonicalize_url(urljoin(final_url, href))
