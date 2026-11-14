@@ -278,9 +278,17 @@ def test_normalization_marks_tampered_modern_artifact_needs_review(tmp_path: Pat
 
     artifact_path = save_intermediate_markdown(payload=payload, output_dir=tmp_path)
     original = artifact_path.read_text(encoding="utf-8")
-    assert "update frequency" in original
+    raw_content_marker = "## Raw Content\\n\\n"
+    assert raw_content_marker in original
+    raw_content_start = original.index(raw_content_marker)
+    metadata_and_evidence = original[:raw_content_start]
+    raw_content_section = original[raw_content_start:]
+    assert "update frequency" in raw_content_section
     artifact_path.write_text(
-        original.replace("update frequency", "tampered update frequency", 1),
+        metadata_and_evidence
+        + raw_content_section.replace(
+            "update frequency", "tampered update frequency", 1
+        ),
         encoding="utf-8",
     )
 
