@@ -813,6 +813,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
     output_dir = Path(payload.get("output_dir", default_intermediate_output_dir(agent_name)))
     before_snapshot = snapshot_markdown_files(output_dir)
+    collection_warnings: list[str] = []
     try:
         if mode == "configured_scan":
             connection = db_connect(Path(payload.get("db_path", DEFAULT_DB_PATH)))
@@ -831,6 +832,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 funding_context=funding_context,
                 run_id=payload.get("run_id"),
                 return_papers=True,
+                collection_warnings=collection_warnings,
             )
             response = finalize_collection_agent_response(
                 agent=agent_name,
@@ -840,6 +842,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=papers,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 funding_context=funding_context,
                 funding_contexts=funding_contexts,
                 run_id=payload.get("run_id"),
@@ -874,6 +877,8 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     source_id=paper.source_id,
                     doi=paper.doi,
                 )
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         if mode == "manual_url":
