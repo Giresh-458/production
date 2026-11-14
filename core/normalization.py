@@ -673,15 +673,30 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         except (TypeError, ValueError, OverflowError):
             provenance_validation_issues.append("collected_at_not_timezone_aware")
 
-        raw_ids_are_valid = (
-            isinstance(raw_call_ids, list)
-            and all(isinstance(value, str) and value.strip() for value in raw_call_ids)
-            and len(raw_call_ids) == len(set(raw_call_ids))
-        )
+        if isinstance(raw_call_ids, list):
+            parsed_raw_call_ids = [
+                value.strip()
+                for value in raw_call_ids
+                if isinstance(value, str) and value.strip()
+            ]
+            raw_ids_are_valid = (
+                len(parsed_raw_call_ids) == len(raw_call_ids)
+                and len(parsed_raw_call_ids) == len(set(parsed_raw_call_ids))
+            )
+        elif isinstance(raw_call_ids, str):
+            parsed_raw_call_ids = [
+                value.strip() for value in raw_call_ids.split(",") if value.strip()
+            ]
+            raw_ids_are_valid = (
+                len(parsed_raw_call_ids) == len(set(parsed_raw_call_ids))
+            )
+        else:
+            parsed_raw_call_ids = []
+            raw_ids_are_valid = raw_call_ids is None
         if raw_call_ids is not None and not raw_ids_are_valid:
             provenance_validation_issues.append("funding_call_ids_invalid")
-        if funding_call_id and (
-            not raw_ids_are_valid or funding_call_id not in funding_call_ids
+        if funding_call_id and parsed_raw_call_ids and (
+            not raw_ids_are_valid or funding_call_id not in parsed_raw_call_ids
         ):
             provenance_validation_issues.append("funding_call_id_list_mismatch")
         if len(funding_call_ids) != 1 and funding_call_id:
