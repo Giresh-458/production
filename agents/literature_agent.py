@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import logging
 import re
@@ -68,6 +69,14 @@ CONCEPT_VOCAB = [
     "auditability", "resilience", "tokenization",
 ]
 LOGGER = logging.getLogger("rif.literature_agent")
+_COLLECTION_WARNINGS = contextvars.ContextVar("literature_collection_warnings", default=None)
+
+
+def _record_collection_warning(source_name: str, exc: Exception) -> None:
+    warnings = _COLLECTION_WARNINGS.get()
+    if warnings is not None:
+        warnings.append(f"{source_name} collection failed: {exc}")
+
 
 
 @dataclass(slots=True)
@@ -272,6 +281,7 @@ def fetch_arxiv_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -
             ))
     except Exception as exc:
         LOGGER.warning("arXiv fetch failed: %s", exc)
+        _record_collection_warning("arXiv", exc)
     return papers
 
 def _fetch_provider_json(url: str, source_name: str) -> dict:
@@ -282,6 +292,7 @@ def _fetch_provider_json(url: str, source_name: str) -> dict:
         return data
     except Exception as exc:
         LOGGER.warning("%s fetch failed: %s", source_name, exc)
+        _record_collection_warning(source_name, exc)
         return {}
 
 def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -> list[Paper]:
@@ -313,6 +324,7 @@ def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE
             )
         except Exception as exc:
             LOGGER.warning("OpenAlex query failed for %r: %s", query, exc)
+            _record_collection_warning(f"OpenAlex query {query!r}", exc)
             continue
         for item in data.get("results", []) or []:
             item_id = str(item.get("id") or item.get("doi") or item.get("display_name") or "")
@@ -598,15 +610,21 @@ def process_area(
     funding_context: FundingCallContext | None = None,
     run_id: str | None = None,
     return_papers: bool = False,
+    collection_warnings: list[str] | None = None,
 ) -> int | list[Paper]:
     LOGGER.info("Starting collection for area: %s", area)
     
     all_papers = []
-    all_papers.extend(fetch_arxiv_entries(area))
-    all_papers.extend(fetch_openalex_entries(area))
-    all_papers.extend(fetch_semanticscholar_entries(area))
-    all_papers.extend(fetch_crossref_entries(area))
-    all_papers.extend(fetch_dblp_entries(area))
+    effective_warnings = collection_warnings if collection_warnings is not None else []
+    warning_token = _COLLECTION_WARNINGS.set(effective_warnings)
+    try:
+        all_papers.extend(fetch_arxiv_entries(area))
+        all_papers.extend(fetch_openalex_entries(area))
+        all_papers.extend(fetch_semanticscholar_entries(area))
+        all_papers.extend(fetch_crossref_entries(area))
+        all_papers.extend(fetch_dblp_entries(area))
+    finally:
+        _COLLECTION_WARNINGS.reset(warning_token)
     
     unique_papers = deduplicate_papers(all_papers)
     
@@ -890,6 +908,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             started_at=started_at, finished_at=datetime.now(UTC),
         )
     except Exception as exc:
+        LOGGER.exception("Literature agent failed")
+        return create_error_response(
+            agent=agent_name, layer=layer, mode=mode, area=area, errors=[str(exc)],
+            started_at=started_at, finished_at=datetime.now(UTC),
+        )
+xcept Exception as exc:
         LOGGER.exception("Literature agent failed")
         return create_error_response(
             agent=agent_name, layer=layer, mode=mode, area=area, errors=[str(exc)],
