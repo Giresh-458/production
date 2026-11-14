@@ -721,7 +721,7 @@ def execute_batch_run(
     # actually attempted; this avoids lost new sources and concurrent writes.
     registry_sync: Dict[str, Any] = {
         "status": "per_task" if execution_mode == "sequential" else "pending",
-        "synced": registry_synced if execution_mode == "parallel" else None,
+        "synced": registry_synced if execution_mode == "parallel" and mode == "configured_scan" else None,
         "attempted_sources_marked": 0,
         "errors": list(registry_sync_errors),
     }
