@@ -456,3 +456,48 @@ def test_genuine_climate_call_manual_is_support_evidence_not_standalone_call():
     title = "Call Manual SME Market Expansion Call 2027 final v1.2 271026"
     assert crawler._is_supporting_document_record(url, title) is True
     assert crawler._is_climate_kic_noncall_timeline(url) is False
+
+
+def test_collect_source_reports_page_cap_truncation_without_context():
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=1,
+        max_depth=2,
+    )
+    assert len(result.pages) == 1
+    assert any(
+        item.get("reason") == "source_max_pages_reached"
+        for item in result.failed_urls
+    )
+
+
+def test_collect_source_enforces_document_cap_without_context():
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=10,
+        max_documents=1,
+        max_depth=2,
+    )
+    assert len(result.pages) == 1
+    assert any(
+        item.get("reason") == "source_max_documents_reached"
+        for item in result.failed_urls
+    )
+
+
+def test_collect_source_enforces_time_budget_without_context(monkeypatch):
+    ticks = iter([0.0, 2.0])
+    monkeypatch.setattr(core.web_collection.time, "monotonic", lambda: next(ticks))
+    result = collect_source(
+        "http://test.com/research",
+        keywords=(),
+        max_pages=10,
+        max_seconds=1,
+    )
+    assert result.pages == []
+    assert any(
+        item.get("reason") == "source_max_seconds_reached"
+        for item in result.failed_urls
+    )
