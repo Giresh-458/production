@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
+import tempfile
 import json
 import re
 import ast
@@ -1001,144 +1004,181 @@ def save_normalized_collection_records(
         skipped_artifacts=skipped_artifacts,
     )
     target_dir = output_dir / "normalized"
-    normalized_root = target_dir
-    # Process observations chronologically so the canonical metadata and
-    # title are independent of hashed filenames or filesystem traversal order.
-    # This prevents a later conflicting title from laundering an otherwise
-    # unrelated evidence excerpt through the mission-relevance gate.
-    def _observation_sort_key(record: dict[str, Any]) -> tuple[float, str]:
-        raw_timestamp = str(record.get("collected_at") or "").strip()
-        try:
-            parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
-            if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
-                raise ValueError("naive collection timestamp")
-            timestamp = parsed_timestamp.timestamp()
-        except (TypeError, ValueError, OverflowError, OSError):
-            timestamp = float("inf")
-        # Python's stable sort preserves the deterministic path order for
-        # observations collected at the same instant.
-        return (timestamp,)
-
-    records.sort(key=_observation_sort_key)
-    deduped_records = {}
-    for r in records:
-        sid = _normalized_record_dedupe_key(r)
-        if sid not in deduped_records:
-            r["observation_count"] = 1
-            r["first_seen"] = r["collected_at"]
-            r["last_seen"] = r["collected_at"]
-            r["content_versions"] = [r["content_hash"]]
-            r["source_id_variants"] = [r["source_id"]] if r.get("source_id") else []
-            r["source_url_variants"] = [r["source_url"]] if r.get("source_url") else []
-            r["title_variants"] = [r["title"]] if r.get("title") else []
-            deduped_records[sid] = r
-        else:
-            existing = deduped_records[sid]
-            for field, candidate in (
-                ("source_id_variants", r.get("source_id")),
-                ("source_url_variants", r.get("source_url")),
-                ("title_variants", r.get("title")),
-            ):
-                if candidate and candidate not in existing.setdefault(field, []):
-                    existing[field].append(candidate)
-            existing["observation_count"] += 1
-            if r["collected_at"] < existing["first_seen"]:
-                existing["first_seen"] = r["collected_at"]
-            if r["collected_at"] > existing["last_seen"]:
-                existing["last_seen"] = r["collected_at"]
-                # keep latest data
-                existing["problem_statement"] = r["problem_statement"]
-                existing["context_summary"] = r["context_summary"]
-                existing["content_hash"] = r["content_hash"]
-                existing["evidence_snippets"] = r["evidence_snippets"]
-
-            if r["content_hash"] not in existing["content_versions"]:
-                existing["content_versions"].append(r["content_hash"])
-
-    records = list(deduped_records.values())
-    if filter_func:
-        records = [r for r in records if filter_func(r)]
-
-    import shutil
-    if normalized_root.exists():
-        shutil.rmtree(normalized_root)
-    normalized_root.mkdir(parents=True, exist_ok=True)
-
-    records_path = normalized_root / "records.json"
-    atomic_write_json(records_path, records)
-    atomic_write_json(normalized_root / "input_manifest.json", input_manifest)
-
-    by_area, by_layer = _build_indexes(records)
-
-    by_area_path = normalized_root / "by_area.json"
-    atomic_write_json(by_area_path, by_area)
-
-    by_layer_path = normalized_root / "by_layer.json"
-    atomic_write_json(by_layer_path, by_layer)
-
-    # DB Insertion Layer for Evidence Ledger
-    conn = None
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(
+        tempfile.mkdtemp(
+            prefix=f".{target_dir.name}.staging-",
+            dir=str(target_dir.parent),
+        )
+    )
+    normalized_root = staging_dir
     try:
-        db_path = normalized_root / "evidence_ledger.db"
-        conn = get_ledger_connection(db_path)
-
-        # We need to compute independence groups.
-        # Deterministic clustering based on content_hash
-        content_hash_to_group = {}
-        for rec in records:
-            if rec["content_hash"] not in content_hash_to_group:
-                content_hash_to_group[rec["content_hash"]] = rec["source_id"]
-
-        for record in records:
-            canonical_rec = _canonical_evidence_ledger_record(record, content_hash_to_group)
-
+        # Process observations chronologically so the canonical metadata and
+        # title are independent of hashed filenames or filesystem traversal order.
+        # This prevents a later conflicting title from laundering an otherwise
+        # unrelated evidence excerpt through the mission-relevance gate.
+        def _observation_sort_key(record: dict[str, Any]) -> tuple[float, str]:
+            raw_timestamp = str(record.get("collected_at") or "").strip()
             try:
-                upsert_canonical_evidence(conn, canonical_rec)
+                parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+                if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+                    raise ValueError("naive collection timestamp")
+                timestamp = parsed_timestamp.timestamp()
+            except (TypeError, ValueError, OverflowError, OSError):
+                timestamp = float("inf")
+            # Python's stable sort preserves the deterministic path order for
+            # observations collected at the same instant.
+            return (timestamp,)
 
-                # Extract claims
-                claims = extract_claims(record["evidence_snippets"])
-                for claim in claims:
-                    upsert_claim(conn, claim)
-                    link_evidence_claim(conn, canonical_rec["evidence_id"], claim["claim_id"])
+        records.sort(key=_observation_sort_key)
+        deduped_records = {}
+        for r in records:
+            sid = _normalized_record_dedupe_key(r)
+            if sid not in deduped_records:
+                r["observation_count"] = 1
+                r["first_seen"] = r["collected_at"]
+                r["last_seen"] = r["collected_at"]
+                r["content_versions"] = [r["content_hash"]]
+                r["source_id_variants"] = [r["source_id"]] if r.get("source_id") else []
+                r["source_url_variants"] = [r["source_url"]] if r.get("source_url") else []
+                r["title_variants"] = [r["title"]] if r.get("title") else []
+                deduped_records[sid] = r
+            else:
+                existing = deduped_records[sid]
+                for field, candidate in (
+                    ("source_id_variants", r.get("source_id")),
+                    ("source_url_variants", r.get("source_url")),
+                    ("title_variants", r.get("title")),
+                ):
+                    if candidate and candidate not in existing.setdefault(field, []):
+                        existing[field].append(candidate)
+                existing["observation_count"] += 1
+                if r["collected_at"] < existing["first_seen"]:
+                    existing["first_seen"] = r["collected_at"]
+                if r["collected_at"] > existing["last_seen"]:
+                    existing["last_seen"] = r["collected_at"]
+                    # keep latest data
+                    existing["problem_statement"] = r["problem_statement"]
+                    existing["context_summary"] = r["context_summary"]
+                    existing["content_hash"] = r["content_hash"]
+                    existing["evidence_snippets"] = r["evidence_snippets"]
 
-                # Extract entities
-                for entity_name in record["named_entities"]:
-                    eid = hashlib.sha256(entity_name.lower().encode('utf-8')).hexdigest()[:16]
-                    entity = {
-                        "entity_id": eid,
-                        "canonical_name": entity_name,
-                        "entity_type": "extracted_entity",
-                        "aliases": [entity_name],
-                        "external_ids": {}
-                    }
-                    upsert_entity(conn, entity)
-                    link_evidence_entity(conn, canonical_rec["evidence_id"], eid)
+                if r["content_hash"] not in existing["content_versions"]:
+                    existing["content_versions"].append(r["content_hash"])
 
-            except Exception as e:
-                errors.append(f"DB Error for {record['record_id']}: {e}")
+        records = list(deduped_records.values())
+        if filter_func:
+            records = [r for r in records if filter_func(r)]
 
-        conn.commit()
-    except Exception as e:
-        errors.append(f"Ledger DB Init Error: {e}")
+        records_path = normalized_root / "records.json"
+        atomic_write_json(records_path, records)
+        atomic_write_json(normalized_root / "input_manifest.json", input_manifest)
+
+        by_area, by_layer = _build_indexes(records)
+
+        by_area_path = normalized_root / "by_area.json"
+        atomic_write_json(by_area_path, by_area)
+
+        by_layer_path = normalized_root / "by_layer.json"
+        atomic_write_json(by_layer_path, by_layer)
+
+        # DB Insertion Layer for Evidence Ledger
+        conn = None
+        try:
+            db_path = normalized_root / "evidence_ledger.db"
+            conn = get_ledger_connection(db_path)
+
+            # We need to compute independence groups.
+            # Deterministic clustering based on content_hash
+            content_hash_to_group = {}
+            for rec in records:
+                if rec["content_hash"] not in content_hash_to_group:
+                    content_hash_to_group[rec["content_hash"]] = rec["source_id"]
+
+            for record in records:
+                canonical_rec = _canonical_evidence_ledger_record(record, content_hash_to_group)
+
+                try:
+                    upsert_canonical_evidence(conn, canonical_rec)
+
+                    # Extract claims
+                    claims = extract_claims(record["evidence_snippets"])
+                    for claim in claims:
+                        upsert_claim(conn, claim)
+                        link_evidence_claim(conn, canonical_rec["evidence_id"], claim["claim_id"])
+
+                    # Extract entities
+                    for entity_name in record["named_entities"]:
+                        eid = hashlib.sha256(entity_name.lower().encode('utf-8')).hexdigest()[:16]
+                        entity = {
+                            "entity_id": eid,
+                            "canonical_name": entity_name,
+                            "entity_type": "extracted_entity",
+                            "aliases": [entity_name],
+                            "external_ids": {}
+                        }
+                        upsert_entity(conn, entity)
+                        link_evidence_entity(conn, canonical_rec["evidence_id"], eid)
+
+                except Exception as e:
+                    errors.append(f"DB Error for {record['record_id']}: {e}")
+
+            conn.commit()
+        except Exception as e:
+            errors.append(f"Ledger DB Init Error: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception as close_error:
+                    errors.append(f"Ledger DB Close Error: {close_error}")
+
+        errors_path = normalized_root / "errors.json"
+        atomic_write_json(errors_path, errors)
+        skipped_path = normalized_root / "skipped_artifacts.json"
+        atomic_write_json(skipped_path, skipped_artifacts)
+
+        staged_files = (
+            "evidence_ledger.db",
+            "records.json",
+            "by_area.json",
+            "by_layer.json",
+            "errors.json",
+            "skipped_artifacts.json",
+            # Publish the manifest last so an interrupted multi-file swap cannot
+            # make a mixed generation look current to the cache validator.
+            "input_manifest.json",
+        )
+        missing_files = [
+            name for name in staged_files
+            if not (normalized_root / name).is_file()
+        ]
+        if missing_files:
+            raise RuntimeError(
+                "Normalization generation is incomplete; existing outputs were preserved. "
+                f"Missing staged files: {', '.join(missing_files)}"
+            )
+        staged_ledger_path = normalized_root / "evidence_ledger.db"
+        if not _normalization_cache_ledger_matches_records(staged_ledger_path, records):
+            raise RuntimeError(
+                "Staged evidence ledger failed integrity validation; "
+                "existing normalized outputs were preserved."
+            )
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in staged_files:
+            os.replace(normalized_root / name, target_dir / name)
+
+        return {
+            "records": target_dir / "records.json",
+            "by_area": target_dir / "by_area.json",
+            "by_layer": target_dir / "by_layer.json",
+            "errors": target_dir / "errors.json",
+            "skipped_artifacts": target_dir / "skipped_artifacts.json",
+        }
     finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception as close_error:
-                errors.append(f"Ledger DB Close Error: {close_error}")
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
-    errors_path = normalized_root / "errors.json"
-    atomic_write_json(errors_path, errors)
-    skipped_path = normalized_root / "skipped_artifacts.json"
-    atomic_write_json(skipped_path, skipped_artifacts)
-
-    return {
-        "records": records_path,
-        "by_area": by_area_path,
-        "by_layer": by_layer_path,
-        "errors": errors_path,
-        "skipped_artifacts": skipped_path,
-    }
 
 
 def resolve_refresh_context(outputs_root: Path):
