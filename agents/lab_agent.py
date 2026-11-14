@@ -7,6 +7,7 @@ import re
 import sqlite3
 import sys
 import textwrap
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,9 +24,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.db import db_connect
 from agents.utils import cleaned_text
-from core.source_registry import apply_refresh_policy
+from core.source_registry import apply_refresh_policy, current_force_source_refresh, extract_yaml_limits
 from core.llm_provider import generate as llm_generate
 from core.schemas import AREA_KEYWORDS
+from core.crawl_context import current_crawl_context, GLOBAL_MAX_PAGES, GLOBAL_MAX_SECONDS
 
 DEFAULT_OUTPUT_DIR = Path("outputs/labs")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "labs_memory.db"
@@ -257,22 +259,97 @@ def resolve_focus_url(base_url: str, focus_page: str) -> str:
     return urljoin(base_url, focus_page)
 
 
-def collect_lab_document(source: LabSource, connection: sqlite3.Connection) -> LabDocument | None:
+def collect_lab_document(
+    source: LabSource,
+    connection: sqlite3.Connection,
+    *,
+    source_limits: dict[str, Any] | None = None,
+    force_refresh: bool = False,
+    warnings: list[str] | None = None,
+) -> LabDocument | None:
+    """Collect configured focus pages within source and run crawl budgets.
+
+    Lab sources are intentionally collected from their explicit focus_pages;
+    this agent does not recursively spider the institution site. max_pages
+    therefore caps focus-page requests, while max_seconds bounds the source.
+    """
+    limits = source_limits or {}
+    try:
+        max_pages = min(int(limits.get("max_pages", 8)), GLOBAL_MAX_PAGES)
+        max_seconds = min(
+            int(limits.get("max_seconds", GLOBAL_MAX_SECONDS)),
+            GLOBAL_MAX_SECONDS,
+        )
+    except (TypeError, ValueError) as exc:
+        raise LabAgentError(f"Invalid crawl limits for lab source {source.name}: {exc}") from exc
+    if max_pages < 1 or max_seconds < 1:
+        raise LabAgentError(
+            f"Invalid crawl limits for lab source {source.name}: "
+            "max_pages and max_seconds must be positive integers."
+        )
+
+    collected_warnings = warnings if warnings is not None else []
+    crawl_context = current_crawl_context.get(None)
+    if crawl_context:
+        crawl_context.begin_source()
+
+    started = time.monotonic()
+    attempted_pages = 0
     pages: list[LabPage] = []
+    stopped_by_limit = ""
+
     for focus_page in source.focus_pages:
+        if crawl_context:
+            if crawl_context.check_limits(
+                source_max_pages=max_pages,
+                source_max_seconds=max_seconds,
+            ):
+                stopped_by_limit = ", ".join(sorted(crawl_context.stop_reasons)) or "crawl budget"
+                break
+        else:
+            if attempted_pages >= max_pages:
+                stopped_by_limit = "source_max_pages"
+                break
+            if time.monotonic() - started >= max_seconds:
+                stopped_by_limit = "source_max_seconds"
+                break
+
         page_url = resolve_focus_url(source.url, focus_page)
-        if page_exists(connection, page_url):
+        if page_exists(connection, page_url) and not force_refresh:
             LOGGER.info("Skipping already stored lab page %s", page_url)
             continue
+
+        attempted_pages += 1
+        if crawl_context:
+            # Count every outbound attempt against the global/source page budget,
+            # including failed requests, so repeated failures cannot evade limits.
+            with crawl_context.lock:
+                crawl_context.urls_fetched += 1
+            crawl_context.add_page(0)
+
         try:
             html = fetch_html(page_url)
         except LabAgentError as exc:
-            LOGGER.warning("Skipping lab page %s: %s", page_url, exc)
+            message = f"Lab source '{source.name}' page '{page_url}' failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
+
         title, content = extract_page_text(html)
         if not content:
+            message = f"Lab source '{source.name}' page '{page_url}' returned no usable text."
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         pages.append(LabPage(url=page_url, title=title, content=content))
+
+    if stopped_by_limit:
+        message = (
+            f"Lab source '{source.name}' collection stopped at its crawl budget "
+            f"({stopped_by_limit}); remaining focus pages were not fetched."
+        )
+        LOGGER.warning(message)
+        collected_warnings.append(message)
 
     if not pages:
         return None
@@ -284,6 +361,7 @@ def collect_lab_document(source: LabSource, connection: sqlite3.Connection) -> L
         source_type="Automatic",
         pages=pages,
     )
+
 
 
 def discover_lab_candidates(query: str, limit: int = 8) -> list[dict[str, object]]:
@@ -341,18 +419,59 @@ def build_discovered_lab_documents(funding_context: str, area: str | None = None
     return documents[:limit]
 
 
-def build_auto_documents(sources_path: Path, db_path: Path, area: str | None = None) -> list[LabDocument]:
+def build_auto_documents(
+    sources_path: Path,
+    db_path: Path,
+    area: str | None = None,
+    *,
+    warnings: list[str] | None = None,
+) -> list[LabDocument]:
     connection = db_connect(db_path)
     init_labs_db(connection)
+    collected_warnings = warnings if warnings is not None else []
+
+    # Load limits from the same YAML inventory as the source definitions.
+    try:
+        raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise LabAgentError(f"Unable to read lab source limits from {sources_path}: {exc}") from exc
+    limits_by_url = extract_yaml_limits(raw_sources)
+
+    from core.http_client import canonicalize_url
+
+    crawl_context = current_crawl_context.get(None)
+    force_refresh = current_force_source_refresh.get()
     documents: list[LabDocument] = []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting lab intelligence from %s", source.name)
-        document = collect_lab_document(source, connection)
+        limits = limits_by_url.get(source.url)
+        if not limits:
+            limits = limits_by_url.get(canonicalize_url(source.url), {})
+        if crawl_context:
+            crawl_context.source_limits_telemetry.append({
+                "source_name": source.name,
+                "url": source.url,
+                "source_limit_configured": bool(limits),
+                "source_limit_matched": bool(limits),
+                "max_pages": limits.get("max_pages"),
+                "max_depth": limits.get("max_depth"),
+                "max_seconds": limits.get("max_seconds"),
+                "global_fallback_used": not bool(limits),
+            })
+
+        document = collect_lab_document(
+            source,
+            connection,
+            source_limits=limits,
+            force_refresh=force_refresh,
+            warnings=collected_warnings,
+        )
         if document is not None and matches_lab_area(document, area):
             documents.append(document)
         elif report_exists(connection, source.name):
             LOGGER.info("No new pages for lab '%s'; existing report already present.", source.name)
     return documents
+
 
 
 def build_manual_url_document(url: str, lab_name: str, institution: str | None, funding_context: str = "") -> LabDocument:
@@ -748,13 +867,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting lab agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, db_path, area)
+            documents = build_auto_documents(sources_path, db_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             lab_name = payload.get("lab_name") or infer_name_from_url(url, "Manual Lab")
@@ -776,9 +896,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             LOGGER.info("Finished lab agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
             return response
 
