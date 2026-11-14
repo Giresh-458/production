@@ -2226,3 +2226,54 @@ def test_sequential_batch_isolates_agent_exceptions_and_continues(tmp_path):
     assert "fixture failure" in report["tasks"][0]["errors"][0]
     assert report["tasks"][1]["status"] == "success"
     assert report["status"] == "completed_with_errors"
+
+
+def test_parallel_batch_respects_prepared_registry_without_resyncing(tmp_path):
+    from core.batch_runner import execute_batch_run
+
+    marked = []
+
+    def fake_run_registered_agent(
+        agent_name, mode, area, input_data, funding_context=None, funding_contexts=None
+    ):
+        return {
+            "status": "success",
+            "items_processed": 1,
+            "items_saved": 1,
+            "outputs": [{"source": "https://example.org/prepared-registry"}],
+            "warnings": [],
+            "errors": [],
+            "metadata": {},
+        }
+
+    with (
+        patch("core.batch_runner.run_registered_agent", side_effect=fake_run_registered_agent),
+        patch("core.source_registry.sync_source_registry") as sync_registry,
+        patch(
+            "core.source_registry.mark_agent_sources_checked",
+            side_effect=lambda agent, *, attempted_urls=None, **kwargs: marked.append(
+                (agent, set(attempted_urls or set()))
+            ) or len(attempted_urls or set()),
+        ),
+        patch("core.source_registry.build_source_refresh_plan") as build_plan,
+    ):
+        report = execute_batch_run(
+            agent_names=["lab"],
+            area_names=["RWA"],
+            mode="configured_scan",
+            base_input_data={
+                "pipeline_run_dir": str(tmp_path),
+                "defer_registry_sync": True,
+                "run_id": "run-prepared-registry",
+            },
+            execution_mode="parallel",
+            max_workers=1,
+            report_path=tmp_path / "prepared-registry-report.json",
+        )
+
+    sync_registry.assert_not_called()
+    assert len(marked) == 1
+    assert marked[0] == ("lab", {"https://example.org/prepared-registry"})
+    build_plan.assert_called_once()
+    assert report["registry_sync"]["synced"] is True
+    assert report["registry_sync"]["status"] == "success"
