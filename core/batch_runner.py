@@ -307,6 +307,24 @@ def execute_batch_run(
         raise ValueError("execution_mode must be one of sequential, parallel")
 
     started_at = datetime.now(UTC)
+    registry_sync_errors: list[str] = []
+    registry_synced = False
+    if execution_mode == "parallel" and mode == "configured_scan" and not dry_run:
+        from core.source_registry import build_source_refresh_plan, sync_source_registry
+        try:
+            sync_source_registry()
+            registry_synced = True
+        except Exception as exc:
+            registry_sync_errors.append(
+                f"source registry synchronization failed before parallel collection: {exc}"
+            )
+        try:
+            build_source_refresh_plan()
+        except Exception as exc:
+            registry_sync_errors.append(
+                f"source refresh plan preparation failed before parallel collection: {exc}"
+            )
+
     tasks = build_batch_tasks(
         agent_names=agent_names,
         area_names=area_names,
@@ -684,22 +702,15 @@ def execute_batch_run(
     # actually attempted; this avoids lost new sources and concurrent writes.
     registry_sync: Dict[str, Any] = {
         "status": "per_task" if execution_mode == "sequential" else "pending",
+        "synced": registry_synced if execution_mode == "parallel" else None,
         "attempted_sources_marked": 0,
-        "errors": [],
+        "errors": list(registry_sync_errors),
     }
     if execution_mode == "parallel" and mode == "configured_scan":
         from core.source_registry import (
             build_source_refresh_plan,
             mark_agent_sources_checked,
-            sync_source_registry,
         )
-        try:
-            sync_source_registry()
-            registry_sync["synced"] = True
-        except Exception as exc:
-            registry_sync["errors"].append(f"source registry synchronization failed: {exc}")
-            registry_sync["synced"] = False
-
         for agent_name in sorted({str(task.get("agent_name") or "") for task in tasks}):
             attempted_urls: set[str] = set()
             for item in task_results:
