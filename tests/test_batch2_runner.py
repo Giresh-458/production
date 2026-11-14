@@ -2092,9 +2092,9 @@ def test_parallel_batch_reconciles_registry_and_preserves_multi_call_attribution
 
     with (
         patch("core.batch_runner.run_registered_agent", side_effect=fake_run_registered_agent),
-        patch("core.source_registry.sync_source_registry", side_effect=lambda: registry_calls.__setitem__("sync", registry_calls["sync"] + 1)),
+        patch("core.source_registry.sync_source_registry", side_effect=lambda **kwargs: registry_calls.__setitem__("sync", registry_calls["sync"] + 1)),
         patch("core.source_registry.mark_agent_sources_checked", side_effect=fake_mark),
-        patch("core.source_registry.build_source_refresh_plan", side_effect=lambda: registry_calls.__setitem__("plan", registry_calls["plan"] + 1)),
+        patch("core.source_registry.build_source_refresh_plan", side_effect=lambda **kwargs: registry_calls.__setitem__("plan", registry_calls["plan"] + 1)),
     ):
         report = execute_batch_run(
             agent_names=["lab"],
