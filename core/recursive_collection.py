@@ -522,7 +522,7 @@ def collect_recursive_pages_with_review(
                     RecursiveLinkDecision(
                         url=current_url, parent_url=parent_url, anchor_text="",
                         score=parent_score, depth=current_depth, action="skipped",
-                        reason=f"fetch_failed:{type(exc).__name__}",
+                        reason=f"fetch_failed:{type(exc).__name__}:{str(exc)[:120]}",
                     )
                 )
                 continue
@@ -594,7 +594,7 @@ def collect_recursive_pages_with_review(
                         score=score,
                         depth=current_depth + 1,
                         action="skipped",
-                        reason=f"fetch_failed:{type(exc).__name__}",
+                        reason=f"fetch_failed:{type(exc).__name__}:{str(exc)[:120]}",
                     )
                 )
                 continue
