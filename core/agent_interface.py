@@ -161,6 +161,65 @@ def validate_intermediate_artifact(payload: Dict[str, Any]) -> list[str]:
             if field_name not in evidence_bundle:
                 errors.append(f"evidence_bundle missing required field: {field_name}")
 
+    if isinstance(shared_header, dict) and isinstance(payload.get("provenance"), dict) and isinstance(raw_content, str):
+        provenance = payload["provenance"]
+        expected_metadata = {
+            "source_url": shared_header.get("source"),
+            "agent_name": shared_header.get("agent_name"),
+            "agent_version": shared_header.get("agent_version"),
+            "collection_mode": shared_header.get("collection_mode"),
+            "collected_at": shared_header.get("collected_at"),
+        }
+        for provenance_field, expected_value in expected_metadata.items():
+            if provenance.get(provenance_field) != expected_value:
+                errors.append(
+                    f"provenance {provenance_field!r} does not match shared metadata"
+                )
+
+        collected_at = str(shared_header.get("collected_at") or "").strip()
+        try:
+            parsed_collected_at = datetime.fromisoformat(
+                collected_at.replace("Z", "+00:00")
+            )
+            if parsed_collected_at.tzinfo is None or parsed_collected_at.utcoffset() is None:
+                raise ValueError("timestamp must include a timezone")
+        except (TypeError, ValueError, OverflowError):
+            errors.append("shared metadata collected_at must be a timezone-aware ISO timestamp")
+
+        import hashlib
+
+        expected_content_hash = hashlib.sha256(raw_content.strip().encode("utf-8")).hexdigest()
+        if provenance.get("content_hash") != expected_content_hash:
+            errors.append("provenance content_hash does not match raw_content")
+
+        source_value = str(shared_header.get("source") or "").strip()
+        title_value = str(shared_header.get("title") or "").strip()
+        expected_identity = hashlib.sha256(
+            f"{source_value}|{title_value}".encode("utf-8")
+        ).hexdigest()
+        if provenance.get("document_identity") != expected_identity:
+            errors.append("provenance document_identity does not match source and title")
+
+        call_ids = shared_header.get("funding_call_ids")
+        if call_ids is not None:
+            if (
+                not isinstance(call_ids, list)
+                or any(not isinstance(item, str) or not item.strip() for item in call_ids)
+                or len(call_ids) != len(set(call_ids))
+            ):
+                errors.append("shared metadata funding_call_ids must be a unique list of non-empty strings")
+            elif len(call_ids) == 1 and shared_header.get("funding_call_id") != call_ids[0]:
+                errors.append("shared metadata funding_call_id does not match funding_call_ids")
+            elif len(call_ids) != 1 and shared_header.get("funding_call_id") is not None:
+                errors.append("shared metadata funding_call_id must be omitted unless exactly one call is assigned")
+
+        run_id = shared_header.get("run_id")
+        if run_id is not None and (
+            not isinstance(run_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", run_id)
+        ):
+            errors.append("shared metadata run_id contains unsafe path characters")
+
     return errors
 
 
