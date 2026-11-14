@@ -110,7 +110,7 @@ def test_lab_configured_collection_enforces_source_page_budget_and_telemetry(tmp
     assert any("source_max_pages" in warning for warning in warnings)
 
 
-def test_lab_collection_force_refresh_bypasses_permanent_page_exists_skip(monkeypatch):
+def test_lab_collection_refreshes_existing_pages_when_source_policy_selects_them(monkeypatch):
     import sqlite3
 
     from agents import lab_agent
@@ -125,6 +125,8 @@ def test_lab_collection_force_refresh_bypasses_permanent_page_exists_skip(monkey
     )
     connection.commit()
 
+    # build_auto_documents receives only sources selected by load_sources(),
+    # which has already applied the source registry's due/force-refresh policy.
     source = lab_agent.LabSource(
         name="Test Lab",
         url="https://example.org/",
@@ -142,14 +144,10 @@ def test_lab_collection_force_refresh_bypasses_permanent_page_exists_skip(monkey
         lambda _html: ("Updated research", "Newly retrieved laboratory research evidence."),
     )
 
-    assert lab_agent.collect_lab_document(source, connection) is None
-    assert fetched == []
-
     refreshed = lab_agent.collect_lab_document(
         source,
         connection,
         source_limits={"max_pages": 1, "max_seconds": 30},
-        force_refresh=True,
     )
     assert refreshed is not None
     assert refreshed.pages[0].title == "Updated research"
