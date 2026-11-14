@@ -338,14 +338,25 @@ def _render_with_browser(
     except Exception:
         return None
 
-def render_page_with_browser(url: str) -> tuple[str, str, list[tuple[str, str]], str] | None:
-    """Render one page with the optional Playwright fallback.
+def render_page_with_browser(
+    url: str, *, timeout_ms: int | None = None
+) -> tuple[str, str, list[tuple[str, str]], str] | None:
+    """Render one page with the optional, deadline-bounded Playwright fallback.
 
-    Intended only for a successful static response that is clearly a
-    JavaScript shell. HTTP authorization, rate-limit and server errors must not
-    be bypassed. Robots policy is checked by callers.
+    Callers must establish robots permission and only invoke this for an
+    explicitly recognized JavaScript challenge. HTTP authorization, rate-limit
+    and server errors must not be bypassed.
     """
-    return _render_with_browser(url)
+    if timeout_ms is None:
+        from core.crawl_context import current_crawl_context
+        import time
+
+        crawl_ctx = current_crawl_context.get(None)
+        if crawl_ctx and crawl_ctx.deadline:
+            timeout_ms = int((crawl_ctx.deadline - time.time()) * 1000)
+        else:
+            timeout_ms = 30000
+    return _render_with_browser(url, timeout_ms=timeout_ms)
 
 
 def collect_source(
