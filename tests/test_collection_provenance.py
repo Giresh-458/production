@@ -152,3 +152,35 @@ def test_intermediate_artifact_rejects_tampered_provenance_and_unsafe_run_identi
         "run_id contains unsafe path characters" in error
         for error in validate_intermediate_artifact(unsafe_run)
     )
+
+
+def test_intermediate_artifact_filename_is_bounded_for_windows_paths(tmp_path):
+    from datetime import datetime, timezone
+
+    from core.agent_interface import (
+        build_intermediate_artifact_payload,
+        save_intermediate_markdown,
+    )
+
+    payload, _ = build_intermediate_artifact_payload(
+        agent="data_availability",
+        layer="Data Availability",
+        mode="manual_text",
+        area="RWA",
+        title=("Extremely long dataset catalog title " * 30),
+        source="https://example.org/catalog",
+        content=(
+            "The dataset catalog provides research data access, schema details, "
+            "update cadence, and benchmark reproducibility information."
+        ),
+        collected_at=datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc),
+    )
+    payload["agent_specific_body"] = {
+        "source_type": "dataset_catalog",
+        "evidence_type": "dataset_listing",
+        "focus": "RWA",
+    }
+
+    artifact_path = save_intermediate_markdown(payload=payload, output_dir=tmp_path)
+    assert artifact_path.is_file()
+    assert len(artifact_path.name) < 200
