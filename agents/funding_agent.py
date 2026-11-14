@@ -682,14 +682,19 @@ def fetch_html(url: str) -> str:
             ) from exc
 
         body = str(getattr(response, "text", "") or "").lower()
-        challenge_markers = (
-            "enable javascript",
-            "javascript is required",
-            "cloudflare" if "challenge" in body else "__no_challenge__",
-            "checking if the site connection is secure",
-            "just a moment",
+        recognized_challenge = (
+            any(
+                marker in body
+                for marker in (
+                    "enable javascript",
+                    "javascript is required",
+                    "checking if the site connection is secure",
+                    "just a moment",
+                )
+            )
+            or ("cloudflare" in body and "challenge" in body)
         )
-        if not any(marker in body for marker in challenge_markers):
+        if not recognized_challenge:
             raise FundingAgentError(
                 f"Unable to fetch page {url}: HTTP 403 (not a recognized JavaScript challenge)"
             ) from exc
