@@ -223,6 +223,16 @@ def build_batch_tasks(
 def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[str, Any]:
     outputs = response.get("outputs", []) if isinstance(response, dict) else []
     metadata = response.get("metadata", {}) if isinstance(response, dict) else {}
+    warnings = list(response.get("warnings", []) or []) if isinstance(response, dict) else []
+    source_urls: set[str] = set()
+    for output in outputs if isinstance(outputs, list) else []:
+        if isinstance(output, dict):
+            source_url = str(output.get("source") or output.get("source_url") or "").strip()
+            if source_url.startswith(("http://", "https://")):
+                source_urls.add(source_url)
+    for warning in warnings:
+        for match in re.findall(r"https?://[^\\s)\\]>,]+", str(warning)):
+            source_urls.add(match.rstrip(".,;"))
     return {
         "task_id": task["task_id"],
         "agent_name": task["agent_name"],
@@ -239,7 +249,8 @@ def _summarize_response(task: Dict[str, Any], response: Dict[str, Any]) -> Dict[
             and str(item.get("markdown_path") or item.get("path") or "").strip()
         }),
         "errors": list(response.get("errors", []) or []),
-        "warnings": list(response.get("warnings", []) or []),
+        "warnings": warnings,
+        "source_urls": sorted(source_urls),
         "duration_seconds": metadata.get("duration_seconds", 0),
         "stop_reasons": list(response.get("stop_reasons", metadata.get("stop_reasons", [])) or []),
         "metadata": {
@@ -302,6 +313,12 @@ def execute_batch_run(
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
     run_id = started_at.isoformat()
+    contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
+    funding_call_ids = sorted({
+        str(context.funding_call_id).strip()
+        for context in contexts_to_process
+        if str(getattr(context, "funding_call_id", "") or "").strip()
+    })
     tasks_per_agent: dict[str, int] = {}
     for task in tasks:
         agent_name = str(task.get("agent_name") or "")
@@ -369,6 +386,7 @@ def execute_batch_run(
         except (TypeError, ValueError):
             reported_items_saved = 0
         timed_out.update({
+            "source_urls": [],
             "task_id": task["task_id"],
             "agent_name": task["agent_name"],
             "mode": task["mode"],
@@ -413,7 +431,9 @@ def execute_batch_run(
                 "per_agent_limits": per_agent_limits or {},
                 "timeout_budget_seconds": timeout_budget_seconds,
                 "max_workers": max_workers,
+                "run_id": run_id,
                 "funding_call_id": funding_context.funding_call_id if funding_context else None,
+                "funding_call_ids": funding_call_ids,
             },
             "stats": {
                 "planned_tasks": len(tasks),
@@ -451,8 +471,7 @@ def execute_batch_run(
         token_ctx = None
         token_q = None
         
-        # Combine contexts if multiple are provided, otherwise use single
-        contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
+        # Contexts are combined once for the agent's prompt and query routing.
         
         if contexts_to_process:
             from core.funding_context import build_agent_specific_funding_context, generate_funding_queries, current_funding_prompt_context, current_funding_queries
@@ -511,6 +530,8 @@ def execute_batch_run(
             current_source_area.reset(token_area)
 
         summary = _summarize_response(task, response)
+        summary["run_id"] = inp.get("run_id")
+        summary["funding_call_ids"] = funding_call_ids
         summary["finished_at"] = datetime.now(UTC).isoformat()
         summary["output_dir"] = str(output_dir.resolve()) if output_dir is not None else None
         return summary
@@ -641,6 +662,54 @@ def execute_batch_run(
         # ThreadPoolExecutor.__exit__ calls shutdown(wait=True) here
         _executor_shutdown_finished = _time.time()
 
+    # Parallel workers deliberately defer registry writes. Reconcile the
+    # configured source set once, then mark only URLs that those workers
+    # actually attempted; this avoids lost new sources and concurrent writes.
+    registry_sync: Dict[str, Any] = {
+        "status": "per_task" if execution_mode == "sequential" else "pending",
+        "attempted_sources_marked": 0,
+        "errors": [],
+    }
+    if execution_mode == "parallel":
+        from core.source_registry import (
+            build_source_refresh_plan,
+            mark_agent_sources_checked,
+            sync_source_registry,
+        )
+        try:
+            sync_source_registry()
+            registry_sync["synced"] = True
+        except Exception as exc:
+            registry_sync["errors"].append(f"source registry synchronization failed: {exc}")
+            registry_sync["synced"] = False
+
+        for agent_name in sorted({str(task.get("agent_name") or "") for task in tasks}):
+            attempted_urls: set[str] = set()
+            for item in task_results:
+                if (
+                    item.get("agent_name") == agent_name
+                    and item.get("status") in {"success", "partial_success", "partial_limit"}
+                ):
+                    attempted_urls.update(item.get("source_urls") or [])
+            if attempted_urls:
+                try:
+                    registry_sync["attempted_sources_marked"] += mark_agent_sources_checked(
+                        agent_name,
+                        attempted_urls=attempted_urls,
+                    )
+                except Exception as exc:
+                    registry_sync["errors"].append(
+                        f"source refresh update failed for agent '{agent_name}': {exc}"
+                    )
+        try:
+            build_source_refresh_plan()
+        except Exception as exc:
+            registry_sync["errors"].append(f"source refresh plan rebuild failed: {exc}")
+        registry_sync["status"] = "error" if registry_sync["errors"] else "success"
+
+    task_order = {task["task_id"]: index for index, task in enumerate(tasks)}
+    task_results.sort(key=lambda item: task_order.get(item.get("task_id"), len(task_order)))
+
     finished_at = datetime.now(UTC)
     status_counts: Dict[str, int] = {}
     agent_counts: Dict[str, int] = {}
@@ -650,6 +719,7 @@ def execute_batch_run(
     total_outputs = 0
     total_saved = 0
     total_processed = 0
+    partial_tasks = 0
 
     for item in task_results:
         status = str(item.get("status", "unknown"))
@@ -659,6 +729,8 @@ def execute_batch_run(
         total_outputs += int(item.get("outputs_count", 0) or 0)
         total_saved += int(item.get("items_saved", 0) or 0)
         total_processed += int(item.get("items_processed", 0) or 0)
+        if status in {"partial_success", "partial_limit"}:
+            partial_tasks += 1
         if status == "timeout_budget_exceeded":
             timed_out += 1
         elif status == "error":
@@ -669,7 +741,7 @@ def execute_batch_run(
 
     report = {
         "generated_at": finished_at.isoformat(),
-        "status": "completed_with_errors" if error_tasks or timed_out else "completed",
+        "status": "completed_with_errors" if error_tasks or timed_out or registry_sync["errors"] else "completed",
         "config": {
             "mode": mode,
             "execution_mode": execution_mode,
@@ -679,8 +751,11 @@ def execute_batch_run(
             "per_agent_limits": per_agent_limits or {},
             "timeout_budget_seconds": timeout_budget_seconds,
             "max_workers": max_workers,
+            "run_id": run_id,
+            "funding_call_ids": funding_call_ids,
         },
         "metadata": {
+            "run_id": run_id,
             "started_at": started_at.isoformat(),
             "finished_at": finished_at.isoformat(),
             "duration_seconds": round((finished_at - started_at).total_seconds(), 3),
@@ -690,6 +765,7 @@ def execute_batch_run(
             "completed_tasks": completed,
             "timed_out_tasks": timed_out,
             "error_tasks": error_tasks,
+            "partial_tasks": partial_tasks,
             "total_items_processed": total_processed,
             "total_items_saved": total_saved,
             "total_outputs": total_outputs,
@@ -704,6 +780,8 @@ def execute_batch_run(
             "executor_shutdown_started": _executor_shutdown_started if execution_mode == "parallel" else None,
             "executor_shutdown_finished": _executor_shutdown_finished if execution_mode == "parallel" else None,
         },
+        "registry_sync": registry_sync,
+        "warnings": list(registry_sync["errors"]),
         "tasks": task_results,
     }
     saved = _save_batch_report(report, report_path)
