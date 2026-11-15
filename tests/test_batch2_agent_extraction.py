@@ -457,3 +457,33 @@ def test_failure_agent_uses_model_incident_type_and_evidence_metadata(monkeypatc
     assert result.attack_vector == "Validator key compromise"
     assert result.evidence_strength == "High"
 
+def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_path):
+    from datetime import UTC, datetime
+    from core.agent_interface import finalize_collection_agent_response
+
+    document = SimpleNamespace(
+        title="Substantive source evidence",
+        url="https://example.org/research",
+        content=(
+            "The research programme identifies a concrete technical limitation in "
+            "cross-chain verification. Current systems depend on centralized relayers "
+            "and provide limited fault tolerance. This creates measurable security and "
+            "availability risks for tokenized assets. A distributed verification design "
+            "could reduce these risks through independent validation and auditable proofs. "
+        ) * 8,
+    )
+    result = finalize_collection_agent_response(
+        agent="company",
+        layer="Company",
+        mode="configured_scan",
+        area="RWA",
+        documents=[document],
+        output_dir=tmp_path,
+        started_at=datetime.now(UTC),
+        warnings=["Source 'Example' failed one relevant page: HTTP 503."],
+    )
+
+    assert result["items_saved"] == 1
+    assert result["status"] == "partial_success"
+    assert any("HTTP 503" in warning for warning in result["warnings"])
+
