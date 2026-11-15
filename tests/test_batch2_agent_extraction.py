@@ -487,3 +487,39 @@ def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_
     assert result["status"] == "partial_success"
     assert any("HTTP 503" in warning for warning in result["warnings"])
 
+def test_literature_arxiv_provider_failure_is_returned_as_collection_warning(monkeypatch):
+    from agents import literature_agent
+    import core.http_client as http_client
+
+    warnings = []
+    token = literature_agent._literature_collection_warnings.set(warnings)
+
+    def fail_request(*_args, **_kwargs):
+        raise RuntimeError("arXiv service unavailable")
+
+    monkeypatch.setattr(http_client, "get_response", fail_request)
+    try:
+        papers = literature_agent.fetch_arxiv_entries("RWA")
+    finally:
+        literature_agent._literature_collection_warnings.reset(token)
+
+    assert papers == []
+    assert any("arXiv" in warning and "service unavailable" in warning for warning in warnings)
+
+
+def test_literature_json_provider_failure_is_returned_as_collection_warning():
+    from agents import literature_agent
+
+    warnings = []
+    token = literature_agent._literature_collection_warnings.set(warnings)
+    try:
+        payload = literature_agent._fetch_provider_json(
+            "https://api.example.org/papers",
+            "Test Provider",
+        )
+    finally:
+        literature_agent._literature_collection_warnings.reset(token)
+
+    assert payload == {}
+    assert any("Test Provider" in warning for warning in warnings)
+
