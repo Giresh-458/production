@@ -525,7 +525,7 @@ def analyze_document(document: LabDocument) -> LabAnalysis:
 
     research_area = cleaned_text(str(parsed.get("research_area") or ""))
     if research_area not in FOCUS_AREAS:
-        research_area = infer_research_area(json.dumps(parsed))
+        research_area = infer_theme_area(json.dumps(parsed))
     research_themes = sanitize_list(parsed.get("research_themes"), 5)
     keywords = sanitize_keywords(parsed.get("keywords"), 6)
     active_problems = sanitize_list(parsed.get("active_problems"), 5)
