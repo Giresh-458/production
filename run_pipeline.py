@@ -746,7 +746,7 @@ def main() -> int:
             try:
                 adaptive_result = run_stage(
                     "adaptive_research", "configured_scan", "Unscoped",
-                    {"output_dir": str(call_root / "intermediate" / "adaptive_research"), "run_id": run_id},
+                    {"output_dir": str(call_root / "intermediate" / "adaptive_research"), "run_id": run_id, "funding_call_id": context.funding_call_id},
                     funding_context=context,
                 )
             except Exception as exc:
@@ -819,9 +819,9 @@ def main() -> int:
             process_area = "Unscoped"
         processing_failed = False
         for agent, payload in [
-            ("tagging", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "tags")}),
-            ("clustering", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "clusters"), "threshold": 0.20, "llm_ambiguity_resolution": False}),
-            ("trend", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "trends")}),
+            ("tagging", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "tags"), "run_id": run_id, "funding_call_id": context.funding_call_id}),
+            ("clustering", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "clusters"), "threshold": 0.20, "llm_ambiguity_resolution": False, "run_id": run_id, "funding_call_id": context.funding_call_id}),
+            ("trend", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "trends"), "run_id": run_id, "funding_call_id": context.funding_call_id}),
         ]:
             try:
                 res = run_stage(agent, "configured_scan", process_area if process_area != "Unscoped" else None, payload, context)
@@ -842,7 +842,7 @@ def main() -> int:
         print("\n[5/6] Intelligence: synthesis → ideas → proposals...")
         try:
             stage_results["synthesis"] = run_stage("synthesis", "configured_scan", process_area if process_area != "Unscoped" else None, {
-                "outputs_root": str(call_root), "output_dir": str(call_root / "synthesis" / "generated"), "manifest_dir": str(call_root / "synthesis" / "manifest")
+                "outputs_root": str(call_root), "output_dir": str(call_root / "synthesis" / "generated"), "manifest_dir": str(call_root / "synthesis" / "manifest"), "run_id": run_id, "funding_call_id": context.funding_call_id
             }, context)
             synthesis_ok = str(stage_results["synthesis"].get("status", "")).lower() in ("success", "partial_success") and int(stage_results["synthesis"].get("outputs_count", len(stage_results["synthesis"].get("outputs", []) or [])) or 0) > 0
         except Exception as exc:
@@ -866,7 +866,7 @@ def main() -> int:
         try:
             stage_results["idea"] = run_stage("idea", "configured_scan", process_area if process_area != "Unscoped" else None, {
                 "output_dir": str(call_root / "ideas"), "manifest_dir": str(call_root / "synthesis" / "manifest"),
-                "external_novelty_validation": True
+                "external_novelty_validation": True, "run_id": run_id, "funding_call_id": context.funding_call_id
             }, context)
             idea_ok = str(stage_results["idea"].get("status", "")).lower() in ("success", "partial_success")
         except Exception as exc:
@@ -880,7 +880,7 @@ def main() -> int:
 
         try:
             stage_results["proposal"] = run_stage("proposal", "configured_scan", process_area if process_area != "Unscoped" else None, {
-                "output_dir": str(call_root / "proposals"), "idea_dir": str(call_root / "ideas"), "__selected_call_context": context
+                "output_dir": str(call_root / "proposals"), "idea_dir": str(call_root / "ideas"), "__selected_call_context": context, "run_id": run_id, "funding_call_id": context.funding_call_id
             }, context)
             proposal_ok = str(stage_results["proposal"].get("status", "")).lower() in ("success", "partial_success")
         except Exception as exc:
