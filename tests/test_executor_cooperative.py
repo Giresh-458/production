@@ -29,6 +29,7 @@ def test_executor_cooperative_cancellation():
     # Run a batch with a tiny 1-second timeout
     result = execute_batch_run(
         agent_names=["literature", "funding"],
+        area_names=[None],
         mode="configured_scan",
         execution_mode="parallel",
         timeout_budget_seconds=1,
