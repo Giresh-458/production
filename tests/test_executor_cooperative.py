@@ -70,6 +70,7 @@ def test_executor_non_cooperative_returns_at_deadline(monkeypatch):
 
     result = execute_batch_run(
         agent_names=["literature", "funding"],
+        area_names=[None],
         mode="configured_scan",
         execution_mode="parallel",
         timeout_budget_seconds=0.5,
