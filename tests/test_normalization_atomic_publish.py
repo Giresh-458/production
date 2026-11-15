@@ -134,3 +134,28 @@ def test_atomic_text_writer_preserves_existing_file_on_replace_failure(
 
     assert target.read_text(encoding="utf-8") == "previous complete artifact"
     assert not list(tmp_path.glob("artifact.md.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        "https://user:secret@example.org/research",
+        "https://example.org/path with spaces",
+        "https://example.org:99999/research",
+    ],
+)
+def test_invalid_source_urls_are_marked_for_review(
+    tmp_path: Path, source_url: str
+) -> None:
+    path = tmp_path / "artifact.md"
+    path.write_text(
+        _artifact("This evidence statement is sufficiently long for normalization.").replace(
+            "https://example.org/research/atomic", source_url
+        ),
+        encoding="utf-8",
+    )
+
+    record = normalize_intermediate_artifact(path)
+    assert record["source_url"] == ""
+    assert record["canonical_url"] == ""
+    assert record["normalization_status"] == "NEEDS_REVIEW"
