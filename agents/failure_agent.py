@@ -340,7 +340,7 @@ def load_sources(sources_path: Path) -> list[FailureSource]:
         raise FailureAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("failure_sources", {})
     if not isinstance(root, dict):
-        raise FailureAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise FailureAgentError(f"Expected 'failure_sources' to be a mapping in {sources_path}.")
     sources: list[FailureSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
