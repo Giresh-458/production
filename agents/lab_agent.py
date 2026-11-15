@@ -206,10 +206,14 @@ def load_sources(sources_path: Path) -> list[LabSource]:
 
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise LabAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise LabAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
 
     entries = data.get("labs", [])
+    if not isinstance(entries, list):
+        raise LabAgentError(f"Expected '{key}' to be a list in {sources_path}.")
     sources: list[LabSource] = []
     for entry in entries:
         if not isinstance(entry, dict):
