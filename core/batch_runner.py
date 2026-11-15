@@ -333,10 +333,21 @@ def execute_batch_run(
                 "source_limits": crawl_ctx.source_limits_telemetry,
             })
             summary = _summarize_response(task, response)
+            attempted_source_urls: set[str] = set()
+            for output_item in response.get("outputs", []) or []:
+                if isinstance(output_item, dict):
+                    source_url = str(output_item.get("source", "") or "").strip()
+                    if source_url:
+                        attempted_source_urls.add(source_url)
+            import re
+            for warning in response.get("warnings", []) or []:
+                for match in re.findall(r"https?://[^\\s)\\]>,]+", str(warning)):
+                    attempted_source_urls.add(match.rstrip(".,;"))
             summary.update({
                 "run_id": inp.get("run_id"),
                 "funding_call_ids": funding_call_ids,
                 "funding_call_id": funding_call_ids[0] if len(funding_call_ids) == 1 else None,
+                "attempted_source_urls": sorted(attempted_source_urls),
             })
             return summary
         except Exception as exc:
@@ -484,6 +495,28 @@ def execute_batch_run(
             with _wl_lock:
                 _worker_active_after = _wl_started - _wl_completed
 
+    registry_sync_warnings: list[str] = []
+    if execution_mode == "parallel" and mode == "configured_scan":
+        attempted_by_agent: dict[str, set[str]] = {}
+        for task_result in task_results:
+            agent = str(task_result.get("agent_name", "")).strip().lower()
+            if not agent:
+                continue
+            attempted_by_agent.setdefault(agent, set()).update(
+                str(url).strip()
+                for url in task_result.get("attempted_source_urls", [])
+                if str(url).strip()
+            )
+        try:
+            from core.source_registry import mark_agent_sources_checked, build_source_refresh_plan
+            for agent, attempted_urls in attempted_by_agent.items():
+                if attempted_urls:
+                    mark_agent_sources_checked(agent, attempted_urls=attempted_urls)
+            build_source_refresh_plan()
+        except Exception as exc:
+            LOGGER.exception("Deferred parallel source-registry update failed")
+            registry_sync_warnings.append(f"{type(exc).__name__}: {exc}")
+
     finished_at = datetime.now(UTC)
     status_counts: Dict[str, int] = {}
     agent_counts: Dict[str, int] = {}
@@ -546,6 +579,7 @@ def execute_batch_run(
             "status_counts": status_counts,
             "agent_task_counts": agent_counts,
         },
+        "registry_sync_warnings": registry_sync_warnings,
         "worker_lifecycle": {
             "tasks_started": _wl_started if execution_mode == "parallel" else len(task_results),
             "tasks_completed": _wl_completed if execution_mode == "parallel" else len(task_results),
