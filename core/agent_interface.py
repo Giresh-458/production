@@ -545,11 +545,13 @@ def save_intermediate_markdown(
         }
         actual_content_hash = hashlib.sha256(json.dumps(semantic_payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
 
+    run_id = str(shared_header.get("run_id") or "").strip()
+    run_suffix = f"-{hashlib.sha256(run_id.encode('utf-8')).hexdigest()[:10]}" if run_id else ""
     if source_url:
         url_hash = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:16]
-        output_path = target_dir / f"{base_name}-{url_hash}-{actual_content_hash}.md"
+        output_path = target_dir / f"{base_name}-{url_hash}-{actual_content_hash}{run_suffix}.md"
     else:
-        output_path = target_dir / f"{base_name}-{actual_content_hash}.md"
+        output_path = target_dir / f"{base_name}-{actual_content_hash}{run_suffix}.md"
 
     problem_intelligence = payload.get("problem_intelligence", {})
     preview = problem_intelligence.get("selected_problem") or "No explicit problem statement found."
