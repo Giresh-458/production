@@ -262,6 +262,20 @@ class SharedCrawlManager:
                 http_future.cancel()
                 return self._deadline_error(url)
 
+            # A followed redirect is a new acquisition target. Enforce the
+            # destination origin/path's robots policy before using its content.
+            final_url = canonicalize_url(result.final_url or url)
+            if (
+                not result.error
+                and final_url != canonicalize_url(url)
+                and not self._robots_allowed(final_url)
+            ):
+                result.error = "robots_disallow_redirect"
+                result.html = ""
+                result.clean_text = ""
+                result.content_hash = ""
+                return result
+
             # Render only successful HTTP 200 JavaScript shells. Never use a
             # browser to work around authorization, rate limits, server errors,
             # or transport failures.
