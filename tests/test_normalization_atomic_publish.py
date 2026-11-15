@@ -216,8 +216,8 @@ def test_intermediate_writer_keeps_distinct_run_snapshots(tmp_path: Path) -> Non
             "raw_content": "A substantive source body used to generate the intermediate artifact.",
         }
 
-    first = save_intermediate_markdown(payload("RUN-A"), tmp_path / "intermediate")
-    second = save_intermediate_markdown(payload("RUN-B"), tmp_path / "intermediate")
+    first = save_intermediate_markdown(payload=payload("RUN-A"), output_dir=tmp_path / "intermediate")
+    second = save_intermediate_markdown(payload=payload("RUN-B"), output_dir=tmp_path / "intermediate")
 
     assert first != second
     assert first.exists()
