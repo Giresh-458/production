@@ -756,6 +756,20 @@ def fallback_analysis(document: Any) -> Any:
     raise ValueError("LLM extraction failed and synthetic fallback is disabled")
 
 
+def _coerce_bool(value: Any, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "required"}:
+            return True
+        if lowered in {"false", "no", "0", "not required"}:
+            return False
+    return default
+
+
 def analyze_document(document: HackathonDocument) -> HackathonAnalysis:
     prompt = build_analysis_prompt(document)
     LOGGER.info("Analyzing hackathon signal '%s' with local llm_provider", document.challenge_name)
@@ -766,30 +780,30 @@ def analyze_document(document: HackathonDocument) -> HackathonAnalysis:
         LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
         raise HackathonAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
-    area = cleaned_text(str(parsed["area"])) or document.area_hint
+    area = cleaned_text(str(parsed.get("area", ""))) or document.area_hint
     if area not in AREA_KEYWORDS:
         area = document.area_hint
-    problem_statement = cleaned_text(str(parsed["problem_statement"]))
-    required_technology = cleaned_text(str(parsed["required_technology"])) or detect_required_technology(document.content)
+    problem_statement = cleaned_text(str(parsed.get("problem_statement", "")))
+    required_technology = cleaned_text(str(parsed.get("required_technology", ""))) or detect_required_technology(document.content)
     return HackathonAnalysis(
-        challenge_name=cleaned_text(str(parsed["challenge_name"])) or document.challenge_name,
-        source_type=cleaned_text(str(parsed["source_type"])) or document.source_type,
+        challenge_name=cleaned_text(str(parsed.get("challenge_name", ""))) or document.challenge_name,
+        source_type=cleaned_text(str(parsed.get("source_type", ""))) or document.source_type,
         evidence_type=document.evidence_type,
-        sponsor_or_organizer=cleaned_text(str(parsed["sponsor_or_organizer"])) or document.sponsor_or_organizer,
+        sponsor_or_organizer=cleaned_text(str(parsed.get("sponsor_or_organizer", ""))) or document.sponsor_or_organizer,
         area=area,
         problem_statement=problem_statement,
         required_technology=required_technology,
-        expected_output=cleaned_text(str(parsed["expected_output"])) or "prototype demo",
-        industry_research_relevance=cleaned_text(str(parsed["industry_research_relevance"])) or "Prototype-oriented ecosystem need.",
-        prototype_idea=cleaned_text(str(parsed["prototype_idea"])) or f"Build a small {area} prototype.",
-        funding_collaboration_signal=cleaned_text(str(parsed["funding_collaboration_signal"])) or f"Sponsor signal from {document.sponsor_or_organizer}.",
+        expected_output=cleaned_text(str(parsed.get("expected_output", ""))) or "prototype demo",
+        industry_research_relevance=cleaned_text(str(parsed.get("industry_research_relevance", ""))) or "Prototype-oriented ecosystem need.",
+        prototype_idea=cleaned_text(str(parsed.get("prototype_idea", ""))) or f"Build a small {area} prototype.",
+        funding_collaboration_signal=cleaned_text(str(parsed.get("funding_collaboration_signal", ""))) or f"Sponsor signal from {document.sponsor_or_organizer}.",
         problem_signature=build_problem_signature(area, required_technology, problem_statement),
         keywords=sanitize_list(parsed.get("keywords"), max_items=5),
-        confidence=cleaned_text(str(parsed["confidence"])) or "Medium",
+        confidence=cleaned_text(str(parsed.get("confidence", "Medium"))) or "Medium",
         source_method="ollama",
         signal_class="emerging_demand",
         evidence_strength=cleaned_text(str(parsed.get("evidence_strength", "Low"))) or "Low",
-        corroboration_required=bool(parsed.get("corroboration_required", True)),
+        corroboration_required=_coerce_bool(parsed.get("corroboration_required", True)),
     )
 
 
