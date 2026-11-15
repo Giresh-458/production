@@ -451,11 +451,36 @@ def collect_source(
                     text = better[1]
                 
                 def _needs_browser(h, t):
-                    if len(t.strip()) >= 800: return False
+                    if len(t.strip()) >= 800:
+                        return False
+                    lower_html = h.lower()
                     headings = len(re.findall(r"<h[1-6][^>]*>", h, re.I))
-                    s_bytes = sum(len(m) for m in re.findall(r"<script[^>]*>.*?</script>", h, re.I | re.S))
-                    if len(t.strip()) < 300 and headings < 2: return True
-                    return False
+                    script_bytes = sum(
+                        len(m) for m in re.findall(r"<script[^>]*>.*?</script>", h, re.I | re.S)
+                    )
+                    script_count = len(re.findall(r"<script\\b", h, re.I))
+                    explicit_js_shell = any(
+                        marker in lower_html
+                        for marker in (
+                            "enable javascript",
+                            "javascript is required",
+                            "please turn on javascript",
+                            "checking your browser",
+                        )
+                    )
+                    app_mount = bool(
+                        re.search(r"""id=["'](?:root|app|__next|__nuxt)["']""", lower_html)
+                    )
+                    return (
+                        len(t.strip()) < 300
+                        and headings < 2
+                        and (
+                            explicit_js_shell
+                            or "<noscript" in lower_html
+                            or script_bytes >= 500
+                            or (script_count > 0 and app_mount)
+                        )
+                    )
 
                 if _needs_browser(html, text):
                     if ctx:
