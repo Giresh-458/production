@@ -801,9 +801,7 @@ def analyze_document(document: RegulationDocument) -> RegulationAnalysis:
     
     problem_signature = build_problem_signature(area, constraint, technical_problem)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = cleaned_text(str(parsed.get("confidence", "Medium"))).title()
-    if confidence not in {"High", "Medium", "Low"}:
-        confidence = "Medium"
+    confidence = normalize_confidence(parsed.get("confidence"))
     source_type = document.source_type
     evidence_type = document.evidence_type
     return RegulationAnalysis(
