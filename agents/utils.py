@@ -78,6 +78,12 @@ def append_collection_diagnostics(
         warnings.append(f"Source '{source_name}' produced no pages.")
 
 
+def normalize_confidence(value: object, default: str = "Medium") -> str:
+    """Normalize model confidence to the supported High/Medium/Low vocabulary."""
+    text = cleaned_text(str(value or "")).title()
+    return text if text in {"High", "Medium", "Low"} else default
+
+
 def coalesce_text(*values: object) -> str:
     """Return the first non-empty scalar value after whitespace normalization."""
     for value in values:
