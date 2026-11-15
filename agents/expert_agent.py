@@ -331,7 +331,7 @@ def load_sources(sources_path: Path) -> list[ExpertSource]:
         raise ExpertAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("expert_sources", {})
     if not isinstance(root, dict):
-        raise ExpertAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise ExpertAgentError(f"Expected 'expert_sources' to be a mapping in {sources_path}.")
     sources: list[ExpertSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
