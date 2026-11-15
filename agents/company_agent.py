@@ -325,10 +325,14 @@ def load_sources(sources_path: Path) -> list[CompanySource]:
         raise CompanyAgentError(f"Company sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise CompanyAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise CompanyAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
 
     root = data.get("companies", {})
+    if not isinstance(root, dict):
+        raise CompanyAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
     sources: list[CompanySource] = []
     for raw_area, entries in root.items():
         area = AREA_MAP.get(raw_area)
