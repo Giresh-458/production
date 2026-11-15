@@ -755,8 +755,8 @@ def analyze_document(document: HackathonDocument) -> HackathonAnalysis:
         response_text = llm_generate(prompt)
         parsed = parse_llm_response(response_text)
     except Exception as exc:
-        LOGGER.warning("Using fallback hackathon extraction for '%s': %s", document.challenge_name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise HackathonAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     area = cleaned_text(str(parsed["area"])) or document.area_hint
     if area not in AREA_KEYWORDS:
