@@ -323,9 +323,13 @@ def load_sources(sources_path: Path) -> list[PractitionerSource]:
         raise PractitionerAgentError(f"Practitioner sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise PractitionerAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise PractitionerAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
     root = data.get("practitioner_sources", {})
+    if not isinstance(root, dict):
+        raise PractitionerAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
     sources: list[PractitionerSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
