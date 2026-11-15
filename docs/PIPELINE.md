@@ -42,8 +42,18 @@ selected call contexts to avoid duplicating the same web crawl.
    contexts; collected artifacts preserve their run and funding-call metadata.
 4. **Run-scoped output:** Collector artifacts are written to
    `outputs/pipeline_run/<run_id>/intermediate/<agent_name>/`, not a shared
-   directory containing files from older full-pipeline runs.
-5. **Collection-health gate:** The pipeline requires a strict majority of the
+   directory containing files from older full-pipeline runs. Every task and
+   artifact carries the orchestrator run ID and active funding-call IDs.
+5. **Registry synchronization:** Parallel collectors defer individual registry
+   writes. After the batch, the runner aggregates attempted URLs by agent,
+   marks only those URLs as checked, and rebuilds the refresh plan once. A
+   registry update failure is surfaced in the batch report.
+6. **Deadline behavior:** Collectors receive a shared cooperative deadline.
+   When a parallel batch reaches its budget, unfinished tasks are marked as
+   timed out and the runner returns without waiting indefinitely for running
+   Python threads. Python cannot forcibly terminate an already-running thread;
+   such workers are reported and may finish after the batch report is written.
+7. **Collection-health gate:** The pipeline requires a strict majority of the
    configured collectors to complete with usable outputs. For the current set of
    11 downstream collectors, at least 6 must be healthy. A batch with too little
    evidence stops instead of silently proceeding.
@@ -80,7 +90,7 @@ output root.
    stops proposal work for that call rather than inventing a research gap.
 
 Normalized records and the mission-relevance report are stored under
-`outputs/pipeline_run/<run_id>/calls/<funding_call_id>/`.
+`outputs/pipeline_run/<run_id>/calls/<safe_call_id>/`.
 
 ---
 
@@ -109,8 +119,11 @@ Outputs are stored in the call root under `processed/`.
    applies external novelty validation.
 3. **Proposal generation:** The proposal agent uses the original selected
    `FundingCallContext` and only proceeds after upstream stage gates pass.
-4. **Final reporting:** Each call receives a `workflow/pipeline_report.json` and
-   `workflow/pipeline_manifest.json`. The run-level summary is written to
+4. **Final reporting:** Each selected call receives a terminal
+   `workflow/pipeline_report.json`, including early failures in normalization,
+   processing, synthesis, or idea generation. Calls that complete the full
+   pipeline also receive `workflow/pipeline_manifest.json`. The run-level
+   summary is written to
    `outputs/pipeline_run/<run_id>/workflow/pipeline_summary.json`.
 
 A proposal is a preliminary review artifact, not a submission-ready grant
