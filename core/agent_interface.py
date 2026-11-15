@@ -799,21 +799,10 @@ def finalize_collection_agent_response(
         artifact_payload["agent_specific_body"] = agent_specific_body
         collected_warnings.extend(area_warnings)
         quality_gate = artifact_payload["metadata"].get("quality_gate", {})
-        # Configured live scans are source collection, not final publication.
-        # Preserve useful fetched evidence even when a page is structurally thin
-        # or does not contain a literal "problem" phrase. The downstream stages
-        # can weight the quality metadata rather than losing the evidence entirely.
-        live_source_rescue = (
-            mode == "configured_scan"
-            and bool(source.strip().startswith(("http://", "https://")))
-            and len(content.strip()) >= 180
-            and agent != "adaptive_research"
-        )
-        if live_source_rescue and not quality_gate.get("passed", False):
-            agent_specific_body = _rescue_required_agent_body(agent, document, agent_specific_body, resolved_area, source)
-            artifact_payload["agent_specific_body"] = agent_specific_body
-
-        if not quality_gate.get("passed", False) and not live_source_rescue:
+        # Apply the same evidence-quality gate to configured and manual sources.
+        # A live URL or a minimum character count is not proof that the captured
+        # content is substantive; do not rescue weak content with placeholder fields.
+        if not quality_gate.get("passed", False):
             rejected_pages += 1
             review_id = _recursive_review_id(metadata)
             if review_id:
@@ -830,14 +819,6 @@ def finalize_collection_agent_response(
                 f"{quality_gate.get('rejection_reason') or 'failed shared collection quality checks'}."
             )
             continue
-        if live_source_rescue and not quality_gate.get("passed", False):
-            quality_gate["accepted_with_warnings"] = True
-            quality_gate["acceptance_reason"] = "configured live source preserved for evidence despite a soft collection-quality gate"
-            artifact_payload["metadata"]["quality_gate"] = quality_gate
-            collected_warnings.append(
-                f"Preserved '{artifact_payload['shared_header']['title']}' as live evidence despite soft quality gate: "
-                f"{quality_gate.get('rejection_reason') or 'limited structure/signal'}."
-            )
 
         dedupe_key = (
             artifact_payload["shared_header"]["title"].lower(),
