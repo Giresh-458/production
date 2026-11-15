@@ -2883,7 +2883,9 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
         - Funding Call Id: {analysis.call_id}
         - Layer: Funding
         - Research Area: {analysis.focus_area}
-        - Collected At: {analysis.retrieved_at}{run_id_line}
+        - Collected At: {analysis.retrieved_at}
+        - Published At: {analysis.published_at or "Unknown"}
+        - Last Verified At: {analysis.last_verified_at}{run_id_line}
 
         ## Agent-Specific Body
         - Organization: {document.organization}
