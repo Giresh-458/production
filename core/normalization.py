@@ -21,7 +21,7 @@ from core.evidence_ledger import (
 )
 
 NORMALIZED_OUTPUT_DIR = Path("outputs/normalized")
-NORMALIZATION_SCHEMA_VERSION = 4
+NORMALIZATION_SCHEMA_VERSION = 5
 
 LAYER_EVIDENCE_WEIGHTS = {
     "literature": 1.00,
