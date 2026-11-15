@@ -202,7 +202,7 @@ def execute_batch_run(
 
     deadline = started_at + timedelta(seconds=timeout_budget_seconds) if timeout_budget_seconds else None
     task_results: list[Dict[str, Any]] = []
-    run_id = started_at.isoformat()
+    run_id = str((base_input_data or {}).get("run_id") or started_at.isoformat())
 
     if dry_run:
         report = {
