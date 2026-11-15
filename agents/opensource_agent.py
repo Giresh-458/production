@@ -807,8 +807,8 @@ def analyze_document(document: OpenSourceDocument) -> OpenSourceAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback open-source extraction for '%s': %s", document.project_name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise OpenSourceAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     area = document.area_hint
     if area not in AREA_KEYWORDS:
