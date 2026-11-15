@@ -663,8 +663,8 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback data-availability extraction for '%s': %s", document.source_name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise DataAvailabilityAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     source_name = document.source_name
     area = document.area_hint
