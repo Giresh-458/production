@@ -744,7 +744,7 @@ def analyze_document(document: CompanyDocument) -> CompanyAnalysis:
     
     prototype_idea = coalesce_text(parsed.get("prototype_idea"), "UNKNOWN")
     
-    funding_alignment = "industry / infrastructure"
+    funding_alignment = coalesce_text(parsed.get("funding_alignment"), "industry / infrastructure")
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
     confidence = normalize_confidence(parsed.get("confidence"))
     problem_signature = build_problem_signature(area, problem, real_world_constraint)
