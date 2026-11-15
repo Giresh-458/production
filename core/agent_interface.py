@@ -356,7 +356,7 @@ def assign_funding_calls(title: str, content: str, funding_contexts: list[Fundin
         if len(normalized) <= 15:
             return False
         words = [re.escape(part) for part in normalized.split()]
-        pattern = r"(?<!\\w)" + r"\\s+".join(words) + r"(?!\\w)"
+        pattern = r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)"
         return bool(re.search(pattern, raw))
 
     strong_ids: list[str] = []
