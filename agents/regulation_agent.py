@@ -352,8 +352,8 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
             if name and url and not is_valid_http_url(url):
-            raise RegulationAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise RegulationAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(
                     RegulationSource(
                         name=name,
