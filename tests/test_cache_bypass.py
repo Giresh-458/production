@@ -59,7 +59,6 @@ def test_legacy_ungated_records_bypass(tmp_path):
         "collected_at": "2026-08-24T10:00:00+00:00"
     }]
     records_json.write_text(json.dumps(legacy_records), encoding="utf-8")
-    seed_normalized_ledger(normalized, legacy_records)
 
     # New timestamp for records to force cache hit
     new_time = time.time()
@@ -102,6 +101,7 @@ def test_cache_hit_global_refresh_is_preserved(tmp_path, seed_normalized_ledger)
         "collected_at": "2026-08-24T10:00:00+00:00"
     }]
     records_json.write_text(json.dumps(legacy_records), encoding="utf-8")
+    seed_normalized_ledger(normalized, legacy_records)
 
     new_time = time.time()
     os.utime(records_json, (new_time, new_time))
