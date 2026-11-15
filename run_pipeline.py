@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from core.funding_selection import (
     has_substantive_eligibility_evidence,
 )
 from core.normalization import save_normalized_collection_records
+from core.file_lock import atomic_write_json
 from core.schemas import ALLOWED_RESEARCH_AREAS, DOMAIN_TERM_WEIGHTS, has_required_domain_anchor_groups, normalize_area
 from core.mission_gate import relevance as mission_relevance
 
@@ -39,6 +42,14 @@ def evaluate_collection_health(collection_tasks: list[dict], min_required_agents
 
     is_healthy = len(healthy_agents) >= min_required_agents
     return is_healthy, len(healthy_agents)
+
+def _safe_call_directory_name(funding_call_id: str) -> str:
+    """Create a filesystem-safe, collision-resistant directory component."""
+    raw = str(funding_call_id or "").strip()
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("._-")[:64] or "call"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    return f"{slug}-{digest}"
+
 
 def minimum_healthy_collectors(total_agents: int) -> int:
     """Require a strict majority, with a three-agent floor for larger batches."""
@@ -511,7 +522,7 @@ def main() -> int:
     parser.add_argument("--max-open-calls", type=int, default=None, help="Maximum number of open calls to send downstream (default: all valid calls).")
     args = parser.parse_args()
 
-    run_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    run_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f") + "-" + uuid.uuid4().hex[:8]
     root = Path(args.output_root) / run_id
     root.mkdir(parents=True, exist_ok=True)
     print("==============================================")
@@ -530,6 +541,9 @@ def main() -> int:
             "title": f"Manual Funding Call ({input_path.name})",
             "source": f"manual://{input_path}",
             "organization": "Manual Input",
+            "analysis_mode": "collect_only",
+            "output_dir": str(root / "intermediate" / "funding"),
+            "run_id": run_id,
         }
         print(f"\n[1/6] Funding Agent — manual override: {input_path}")
     else:
@@ -549,7 +563,7 @@ def main() -> int:
     if not funding_result.get("outputs"):
         report = {"run_id": run_id, "status": "no_funding_candidates", "funding_result": funding_result}
         (root / "workflow").mkdir(parents=True, exist_ok=True)
-        (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(root / "workflow" / "pipeline_report.json", report)
         print("❌ No funding opportunities were discovered.")
         return 2
 
@@ -560,7 +574,7 @@ def main() -> int:
     if not valid_calls:
         report = {"run_id": run_id, "status": "no_open_call", "funding_result": funding_result, "rejected_calls": rejected}
         (root / "workflow").mkdir(parents=True, exist_ok=True)
-        (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(root / "workflow" / "pipeline_report.json", report)
         print("❌ Funding scan found no currently open call. Pipeline stopped before downstream research.")
         return 3
 
@@ -607,7 +621,7 @@ def main() -> int:
             "rejected_unverified_research_context": rejected_unverified_research_context,
         }
         (root / "workflow").mkdir(parents=True, exist_ok=True)
-        (root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(root / "workflow" / "pipeline_report.json", report)
         print("❌ Funding scan found open calls, but none had explicit research intent. Pipeline stopped before downstream research.")
         return 3
 
@@ -687,22 +701,19 @@ def main() -> int:
         canonical_areas = select_collection_areas(selected, args.area)
         unknown_area = not canonical_areas or max((float(x.get("score", 0.0) or 0.0) for x in selected.get("domain_relevance", []) or []), default=0.0) < 0.10
 
-        call_root = root / "calls" / context.funding_call_id
+        call_root = root / "calls" / _safe_call_directory_name(context.funding_call_id)
         call_root.mkdir(parents=True, exist_ok=True)
 
         selected_path = call_root / "workflow" / "selected_funding_call.json"
         selected_path.parent.mkdir(parents=True, exist_ok=True)
-        selected_path.write_text(
-            json.dumps(
-                {
-                    "run_id": run_id,
-                    "selected": selected,
-                    "rejected_alternatives": rejected if call_idx == 1 else [],
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        atomic_write_json(
+            selected_path,
+            {
+                "run_id": run_id,
+                "selected": selected,
+                "selected_funding_call_id": context.funding_call_id,
+                "rejected_alternatives": rejected if call_idx == 1 else [],
+            },
         )
 
         print(f"\n==============================================")
@@ -723,7 +734,7 @@ def main() -> int:
                 "research_intent_evidence": list(getattr(research_ctx, "research_intent_evidence", ()) if research_ctx else ()),
                 "final_output": None, "proposal_count": 0,
             }
-            (workflow / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            atomic_write_json(workflow / "pipeline_report.json", report)
             all_reports.append(report)
             continue
 
@@ -785,12 +796,12 @@ def main() -> int:
             global_exit_code = max(global_exit_code, 4)
             continue
 
-        (call_root / "workflow" / "mission_relevance_gate.json").write_text(json.dumps({"input_records": input_count, "accepted_records": accepted_count, "rejected_records": rejected_count, "details": gate_details[:500]}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_json(call_root / "workflow" / "mission_relevance_gate.json", {"input_records": input_count, "accepted_records": accepted_count, "rejected_records": rejected_count, "details": gate_details[:500]})
         print(f"   🛡️ Mission relevance gate: {accepted_count} accepted / {rejected_count} rejected")
 
         if not records:
             report = {"run_id": run_id, "status": "no_relevant_evidence", "output_root": str(call_root.resolve()), "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id}, "mission_relevance_gate": {"accepted": 0, "rejected": rejected_count}, "final_output": None, "proposal_count": 0}
-            (call_root / "workflow" / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            atomic_write_json(call_root / "workflow" / "pipeline_report.json", report)
             print("⚠️ Funding call found, but no collected evidence passed the mission relevance gate. No proposal will be generated.")
             all_reports.append(report)
             continue
@@ -921,7 +932,7 @@ def main() -> int:
         workflow = call_root / "workflow"
         workflow.mkdir(parents=True, exist_ok=True)
         (workflow / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-        (workflow / "pipeline_manifest.json").write_text(json.dumps({
+        atomic_write_json(workflow / "pipeline_manifest.json", {
             "run_id": run_id,
             "selected_funding_call_id": context.funding_call_id,
             "selected_program": selected.get("program_name") or selected.get("title"),
@@ -931,7 +942,7 @@ def main() -> int:
             "normalized_records": len(records),
             "proposals": len(proposal_files),
             "final_output": str(final_output.resolve()) if final_output else None,
-        }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        })
         all_reports.append(report)
 
     # Write global summary report
@@ -953,7 +964,7 @@ def main() -> int:
         "all_final_outputs": all_final_outputs,
         "reports": all_reports,
     }
-    (global_workflow / "pipeline_summary.json").write_text(json.dumps(global_report, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(global_workflow / "pipeline_summary.json", global_report)
 
     print("\n==============================================")
     if global_exit_code == 0:
