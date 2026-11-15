@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -468,6 +468,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, warnings: 
             result = collect_source(source.url, keywords=('incident', 'exploit', 'vulnerability', 'postmortem', 'outage', 'attack'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
             title = result.pages[0].title if result.pages else source.name
             full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
+        append_collection_diagnostics(warnings, source.name, result=result)
         except Exception as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
             if warnings is not None:
