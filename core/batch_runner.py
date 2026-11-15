@@ -232,52 +232,65 @@ def execute_batch_run(
         return report
 
     def run_task(task: Dict[str, Any]) -> Dict[str, Any]:
+        started_at = datetime.now(UTC)
         LOGGER.info("Batch task starting: %s", task["task_id"])
         inp = dict(task.get("input_data") or {})
-        # Preserve the orchestrator's run ID when present so persisted collector
-        # artifacts match the selected-call manifest and normalization boundary.
-        # Standalone batch runs still receive the batch runner's generated ID.
         if not inp.get("run_id"):
             inp["run_id"] = run_id
-        # Parallel collectors must not race on the shared source registry.
-        # Registry synchronization is performed by the batch coordinator.
         if execution_mode == "parallel":
             inp["defer_registry_sync"] = True
-        
+
         pipeline_run_dir = inp.get("pipeline_run_dir")
         if pipeline_run_dir:
             inp["output_dir"] = str(Path(pipeline_run_dir) / "intermediate" / task["agent_name"])
 
-        from core.source_registry import current_force_source_refresh, current_source_area
-        token_refresh = current_force_source_refresh.set(bool(inp.get("force_refresh", False)))
-        token_area = current_source_area.set(task.get("area"))
-        token_ctx = None
-        token_q = None
-        
-        # Combine contexts if multiple are provided, otherwise use single
-        contexts_to_process = funding_contexts if funding_contexts else ([funding_context] if funding_context else [])
-        
-        if contexts_to_process:
-            from core.funding_context import build_agent_specific_funding_context, generate_funding_queries, current_funding_prompt_context, current_funding_queries
-            combined_prompt_ctx = "\n\n---\n\n".join(
-                build_agent_specific_funding_context(task["agent_name"], ctx) 
-                for ctx in contexts_to_process
-            )
-            combined_queries = []
-            for ctx in contexts_to_process:
-                combined_queries.extend(generate_funding_queries(ctx))
-                
-            token_ctx = current_funding_prompt_context.set(combined_prompt_ctx)
-            # Preserve source/context order while removing duplicates for reproducible runs.
-            token_q = current_funding_queries.set(list(dict.fromkeys(combined_queries)))
-            
-        inp["deadline"] = deadline.timestamp() if deadline else None
+        contexts_to_process = (
+            funding_contexts
+            if funding_contexts
+            else ([funding_context] if funding_context else [])
+        )
+        funding_call_ids = list(dict.fromkeys(
+            str(ctx.funding_call_id).strip()
+            for ctx in contexts_to_process
+            if str(getattr(ctx, "funding_call_id", "") or "").strip()
+        ))
+        context_tokens = []
+        token_crawl = None
+        current_crawl_context = None
+        crawl_ctx = None
 
         try:
+            from core.source_registry import current_force_source_refresh, current_source_area
+            token_refresh = current_force_source_refresh.set(bool(inp.get("force_refresh", False)))
+            context_tokens.append((current_force_source_refresh, token_refresh))
+            token_area = current_source_area.set(task.get("area"))
+            context_tokens.append((current_source_area, token_area))
+
+            if contexts_to_process:
+                from core.funding_context import (
+                    build_agent_specific_funding_context,
+                    generate_funding_queries,
+                    current_funding_prompt_context,
+                    current_funding_queries,
+                )
+                combined_prompt_ctx = "\n\n---\n\n".join(
+                    build_agent_specific_funding_context(task["agent_name"], ctx)
+                    for ctx in contexts_to_process
+                )
+                combined_queries = []
+                for ctx in contexts_to_process:
+                    combined_queries.extend(generate_funding_queries(ctx))
+                token_ctx = current_funding_prompt_context.set(combined_prompt_ctx)
+                context_tokens.append((current_funding_prompt_context, token_ctx))
+                token_queries = current_funding_queries.set(list(dict.fromkeys(combined_queries)))
+                context_tokens.append((current_funding_queries, token_queries))
+
+            inp["deadline"] = deadline.timestamp() if deadline else None
+
             from core.crawl_context import CrawlContext, current_crawl_context
-            ctx = CrawlContext(deadline=deadline.timestamp() if deadline else None)
-            token_crawl = current_crawl_context.set(ctx)
-            
+            crawl_ctx = CrawlContext(deadline=deadline.timestamp() if deadline else None)
+            token_crawl = current_crawl_context.set(crawl_ctx)
+
             response = run_registered_agent(
                 agent_name=task["agent_name"],
                 mode=task["mode"],
@@ -286,35 +299,64 @@ def execute_batch_run(
                 funding_context=funding_context,
                 funding_contexts=funding_contexts,
             )
-            if ctx.stop_reasons:
-                response["stop_reasons"] = list(ctx.stop_reasons)
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Agent {task['agent_name']} returned {type(response).__name__}; expected a response dictionary."
+                )
+
+            if crawl_ctx.stop_reasons:
+                response["stop_reasons"] = list(crawl_ctx.stop_reasons)
                 if response.get("status", "success") == "success":
                     response["status"] = "partial_limit"
-            response["metadata"] = response.get("metadata", {})
-            response["metadata"]["pages_fetched"] = ctx.pages_fetched
-            response["metadata"]["documents_collected"] = ctx.documents_collected
-            response["metadata"]["playwright_used"] = ctx.playwright_used
-            response["metadata"]["playwright_fallback_failed"] = ctx.playwright_fallback_failed
-            response["metadata"]["browser_attempts"] = ctx.browser_attempts
-            response["metadata"]["browser_successes"] = ctx.browser_successes
-            response["metadata"]["browser_failures"] = ctx.browser_failures
-            response["metadata"]["js_shells_detected"] = ctx.js_shells_detected
-            response["metadata"]["http_requests"] = ctx.http_requests
-            response["metadata"]["browser_escalations"] = ctx.browser_escalations
-            response["metadata"]["exceptions"] = ctx.exceptions
-            response["metadata"]["source_limits"] = ctx.source_limits_telemetry
-        finally:
-            from core.crawl_context import current_crawl_context
-            if 'token_crawl' in locals():
-                current_crawl_context.reset(token_crawl)
-            if contexts_to_process:
-                from core.funding_context import current_funding_prompt_context, current_funding_queries
-                if token_ctx: current_funding_prompt_context.reset(token_ctx)
-                if token_q: current_funding_queries.reset(token_q)
-            current_force_source_refresh.reset(token_refresh)
-            current_source_area.reset(token_area)
 
-        return _summarize_response(task, response)
+            metadata = response.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                response["metadata"] = metadata
+            metadata.update({
+                "pages_fetched": crawl_ctx.pages_fetched,
+                "documents_collected": crawl_ctx.documents_collected,
+                "playwright_used": crawl_ctx.playwright_used,
+                "playwright_fallback_failed": crawl_ctx.playwright_fallback_failed,
+                "browser_attempts": crawl_ctx.browser_attempts,
+                "browser_successes": crawl_ctx.browser_successes,
+                "browser_failures": crawl_ctx.browser_failures,
+                "js_shells_detected": crawl_ctx.js_shells_detected,
+                "http_requests": crawl_ctx.http_requests,
+                "browser_escalations": crawl_ctx.browser_escalations,
+                "exceptions": crawl_ctx.exceptions,
+                "source_limits": crawl_ctx.source_limits_telemetry,
+            })
+            summary = _summarize_response(task, response)
+            summary.update({
+                "run_id": inp.get("run_id"),
+                "funding_call_ids": funding_call_ids,
+                "funding_call_id": funding_call_ids[0] if len(funding_call_ids) == 1 else None,
+            })
+            return summary
+        except Exception as exc:
+            LOGGER.exception("Batch task failed: %s", task["task_id"])
+            return {
+                "task_id": task["task_id"],
+                "agent_name": task["agent_name"],
+                "mode": task["mode"],
+                "area": task["area"],
+                "status": "error",
+                "items_processed": 0,
+                "items_saved": 0,
+                "outputs_count": 0,
+                "errors": [f"{type(exc).__name__}: {exc}"],
+                "warnings": [],
+                "duration_seconds": max(0.0, (datetime.now(UTC) - started_at).total_seconds()),
+                "run_id": inp.get("run_id", run_id),
+                "funding_call_ids": funding_call_ids,
+                "funding_call_id": funding_call_ids[0] if len(funding_call_ids) == 1 else None,
+            }
+        finally:
+            if token_crawl is not None and current_crawl_context is not None:
+                current_crawl_context.reset(token_crawl)
+            for variable, token in reversed(context_tokens):
+                variable.reset(token)
 
     _wl_started = 0
     _wl_completed = 0
