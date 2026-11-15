@@ -763,8 +763,8 @@ def analyze_document(document: RegulationDocument) -> RegulationAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback regulation extraction for '%s': %s", document.name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise RegulationAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     area = document.area_hint
     if area not in AREA_KEYWORDS:
