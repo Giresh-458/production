@@ -16,6 +16,7 @@ def test_recursive_stress_timeout(monkeypatch):
             def raise_for_status(self): pass
         return MockResponse()
 
+    import urllib.error
     import urllib.request
     def mock_urlopen(url, *args, **kwargs):
         # A confirmed missing robots.txt is an explicit allow; a generic
