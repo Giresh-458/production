@@ -159,3 +159,21 @@ def test_invalid_source_urls_are_marked_for_review(
     assert record["source_url"] == ""
     assert record["canonical_url"] == ""
     assert record["normalization_status"] == "NEEDS_REVIEW"
+
+
+def test_normalization_schema_version_is_recorded_and_fingerprinted(tmp_path: Path) -> None:
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "source.md").write_text(
+        _artifact("A stable evidence statement for normalization schema versioning."),
+        encoding="utf-8",
+    )
+
+    paths = save_normalized_collection_records(outputs, outputs)
+    import json
+
+    manifest = json.loads((outputs / "normalized" / "input_manifest.json").read_text(encoding="utf-8"))
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 2
+    assert records[0]["normalization_schema_version"] == 2
