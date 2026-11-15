@@ -396,6 +396,12 @@ def execute_batch_run(
                         "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before task start"],
                         "warnings": [],
                         "duration_seconds": 0,
+                        "run_id": run_id,
+                        "funding_call_ids": list(dict.fromkeys(
+                            str(ctx.funding_call_id).strip()
+                            for ctx in (funding_contexts or ([funding_context] if funding_context else []))
+                            if str(getattr(ctx, "funding_call_id", "") or "").strip()
+                        )),
                     })
                 break
             task_results.append(run_task(task))
@@ -481,6 +487,11 @@ def execute_batch_run(
                             "warnings": [],
                             "duration_seconds": 0,
                             "run_id": run_id,
+                            "funding_call_ids": list(dict.fromkeys(
+                                str(ctx.funding_call_id).strip()
+                                for ctx in (funding_contexts or ([funding_context] if funding_context else []))
+                                if str(getattr(ctx, "funding_call_id", "") or "").strip()
+                            )),
                         })
         finally:
             with _wl_lock:
