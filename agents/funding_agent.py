@@ -2876,17 +2876,24 @@ def build_markdown(document: FundingDocument, analysis: FundingOpportunity, tags
 
         ## Shared Metadata
         - Agent: funding
+        - Agent Name: funding
+        - Agent Version: v1
         - Title: {analysis.program_name}
         - Source: {source_value}
         - Funding Call Id: {analysis.call_id}
         - Layer: Funding
-        - Research Area: {analysis.focus_area}{run_id_line}
+        - Research Area: {analysis.focus_area}
+        - Collected At: {analysis.retrieved_at}{run_id_line}
 
         ## Agent-Specific Body
+        - Organization: {document.organization}
+        - Source Type: {document.source_type}
+        - Year: {document.year}
         - Funding Body: {analysis.funding_body}
         - Opportunity Type: {analysis.opportunity_type}
         - Funding Amount: {analysis.funding_amount or "Unknown"}
         - Evaluation Criteria: {analysis.evaluation_criteria or "Unknown"}
+        - Focus Area: {analysis.focus_area}
 
         ## Raw Content
         {document.content.strip()}
