@@ -14,6 +14,7 @@ from datetime import UTC, datetime, date
 from pathlib import Path
 from typing import Any
 from core.funding_selection import FundingCallContext
+from core.file_lock import atomic_write_text
 from core.funding_context import build_agent_specific_funding_context, current_funding_prompt_context, current_funding_queries, generate_funding_queries
 from urllib.parse import urljoin, urlparse
 
@@ -2911,7 +2912,7 @@ def save_markdown_output(document: FundingDocument, analysis: FundingOpportunity
     filename = f"{base_slug}-{unique_suffix}.md"
     output_path = org_dir / filename
     tags = build_tags(analysis)
-    output_path.write_text(build_markdown(document, analysis, tags, run_id=run_id), encoding="utf-8")
+    atomic_write_text(output_path, build_markdown(document, analysis, tags, run_id=run_id))
     LOGGER.info("Saved funding markdown output to %s", output_path)
     return output_path
 
@@ -2987,7 +2988,7 @@ def write_insights(connection: sqlite3.Connection, output_dir: Path) -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     insights_path = output_dir / "insights.md"
-    insights_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(insights_path, "\n".join(lines) + "\n")
     LOGGER.info("Saved funding insights to %s", insights_path)
 
 
