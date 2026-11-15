@@ -113,8 +113,8 @@ def test_funding_artifact_collision_safe(tmp_path: Path):
     records1 = build_normalized_collection_records(tmp_path, target_funding_call_id="CALL-5AD5E7593144")
     records2 = build_normalized_collection_records(tmp_path, target_funding_call_id="CALL-78164EE906DE")
     
-    assert len(records1) == 1
-    assert records1[0]["source_url"] == doc1.source
+    assert len(records1) == 2
+    assert all(record["source_url"] == doc1.source for record in records1)
     
     assert len(records2) == 1
     assert records2[0]["source_url"] == doc2.source
