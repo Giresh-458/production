@@ -330,8 +330,8 @@ def load_sources(sources_path: Path) -> list[InvestmentSource]:
             url = cleaned_text(str(entry.get("url", "")))
             focus = cleaned_text(str(entry.get("focus", "")))
             if name and url and not is_valid_http_url(url):
-            raise InvestmentAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise InvestmentAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(InvestmentSource(name=name, type=source_type, url=url, focus=focus))
     if not sources:
         raise InvestmentAgentError("No investment sources were loaded from sources/investment_sources.yaml.")
