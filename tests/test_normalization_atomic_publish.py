@@ -180,8 +180,8 @@ def test_normalization_schema_version_is_recorded_and_fingerprinted(tmp_path: Pa
 
     manifest = json.loads((outputs / "normalized" / "input_manifest.json").read_text(encoding="utf-8"))
     records = json.loads(paths["records"].read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 3
-    assert records[0]["normalization_schema_version"] == 3
+    assert manifest["schema_version"] == 4
+    assert records[0]["normalization_schema_version"] == 4
 
 
 
@@ -240,10 +240,16 @@ def test_dedupe_merges_call_ids_and_raw_artifact_provenance(tmp_path: Path) -> N
     first = _artifact(evidence, "RUN-A").replace(
         "- Funding Call Id: CALL-ATOMIC",
         "- Funding Call Ids: CALL-A, CALL-B",
+    ).replace(
+        "https://example.org/research/atomic",
+        "https://example.org/research/atomic?utm_source=first",
     )
     second = _artifact(evidence, "RUN-B").replace(
         "- Funding Call Id: CALL-ATOMIC",
         "- Funding Call Ids: CALL-B, CALL-C",
+    ).replace(
+        "https://example.org/research/atomic",
+        "https://example.org/research/atomic?utm_source=second",
     )
     (intermediate / "first.md").write_text(first, encoding="utf-8")
     (intermediate / "second.md").write_text(second, encoding="utf-8")
@@ -255,6 +261,7 @@ def test_dedupe_merges_call_ids_and_raw_artifact_provenance(tmp_path: Path) -> N
     assert record["funding_call_ids"] == ["CALL-A", "CALL-B", "CALL-C"]
     assert record["run_ids"] == ["RUN-A", "RUN-B"]
     assert len(record["raw_record_paths"]) == 2
+    assert len(record["source_urls"]) == 2
 
     with sqlite3.connect(outputs / "normalized" / "evidence_ledger.db") as conn:
         row = conn.execute("SELECT provenance FROM canonical_evidence").fetchone()
@@ -262,6 +269,7 @@ def test_dedupe_merges_call_ids_and_raw_artifact_provenance(tmp_path: Path) -> N
     provenance = json.loads(row[0])
     assert provenance["funding_call_ids"] == ["CALL-A", "CALL-B", "CALL-C"]
     assert len(provenance["raw_record_paths"]) == 2
+    assert len(provenance["source_urls"]) == 2
     assert groups == 1
 
 
