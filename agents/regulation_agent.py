@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -333,8 +333,8 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise RegulationAgentError(f"Expected a YAML mapping in {sources_path}.")
-    except yaml.YAMLError as exc:
-        raise RegulationAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise RegulationAgentError(f"Could not read valid YAML from {sources_path}: {exc}") from exc
 
     root = data.get("regulation_sources", {})
     if not isinstance(root, dict):
@@ -351,7 +351,9 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
             focus = cleaned_text(str(entry.get("focus", "")))
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Regulation"
             evidence_type = cleaned_text(str(entry.get("evidence_type", ""))) or "Guidance"
-            if name and url:
+            if name and url and not is_valid_http_url(url):
+            raise RegulationAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+        if name and url:
                 sources.append(
                     RegulationSource(
                         name=name,
