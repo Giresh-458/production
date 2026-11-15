@@ -78,6 +78,19 @@ def append_collection_diagnostics(
         warnings.append(f"Source '{source_name}' produced no pages.")
 
 
+def coalesce_text(*values: object) -> str:
+    """Return the first non-empty scalar value after whitespace normalization."""
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, (dict, list, tuple, set)):
+            continue
+        text = cleaned_text(str(value))
+        if text and text.lower() not in {"none", "null"}:
+            return text
+    return ""
+
+
 def cleaned_text(value: str | None) -> str:
     return " ".join((value or "").split())
 
