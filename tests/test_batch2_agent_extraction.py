@@ -257,3 +257,57 @@ def test_collection_diagnostics_surface_failed_urls_and_skipped_links():
     assert any("robots_disallow" in warning for warning in warnings)
     assert any("relevant_link_outside_allowed_domains" in warning for warning in warnings)
 
+def test_hackathon_partial_llm_json_uses_safe_document_defaults(monkeypatch):
+    from agents import hackathon_agent
+
+    monkeypatch.setattr(hackathon_agent, "build_analysis_prompt", lambda _document: "prompt")
+    monkeypatch.setattr(hackathon_agent, "llm_generate", lambda _prompt: "{}")
+    document = SimpleNamespace(
+        challenge_name="RWA Builder Challenge",
+        source_type="Hackathon Platform",
+        evidence_type="Challenge",
+        sponsor_or_organizer="Test Organizer",
+        area_hint="RWA",
+        content="Build a prototype for tokenized settlement and verification.",
+    )
+
+    result = hackathon_agent.analyze_document(document)
+
+    assert result.challenge_name == document.challenge_name
+    assert result.area == "RWA"
+    assert result.problem_statement == ""
+    assert result.confidence == "Medium"
+    assert result.corroboration_required is True
+
+
+def test_regulation_invalid_evidence_weight_is_bounded_and_confidence_is_parsed(monkeypatch):
+    from agents import regulation_agent
+
+    parsed = {
+        "confidence": "High",
+        "evidence_weight": "not-a-number",
+        "effective_date": "2026-01-01",
+        "supersedes": "Prior regulation",
+        "requirement": "Mandatory identity verification",
+        "technical_problem": "Verification overhead",
+        "research_opportunity": "Privacy-preserving verification",
+        "prototype_idea": "A compliant verification prototype",
+    }
+    monkeypatch.setattr(regulation_agent, "build_analysis_prompt", lambda _document: "prompt")
+    monkeypatch.setattr(regulation_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
+    document = SimpleNamespace(
+        name="Test Regulation",
+        issuing_body="Test Authority",
+        area_hint="RWA",
+        content="Regulation requires compliance and identity verification.",
+        source_type="Regulation",
+        evidence_type="Binding Rule",
+    )
+
+    result = regulation_agent.analyze_document(document)
+
+    assert result.confidence == "High"
+    assert result.effective_date == "2026-01-01"
+    assert result.supersedes == "Prior regulation"
+    assert 0.0 <= result.evidence_weight <= 1.0
+
