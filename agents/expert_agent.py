@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import re
 import sqlite3
 import sys
@@ -748,6 +749,10 @@ def analyze_document(document: ExpertDocument) -> ExpertAnalysis:
         collaboration_fit_score = float(parsed.get("collaboration_fit_score", compute_collaboration_fit_score(area, expertise_themes, recent_work, collaboration_relevance, proposal_relevance)))
     except (TypeError, ValueError):
         collaboration_fit_score = compute_collaboration_fit_score(area, expertise_themes, recent_work, collaboration_relevance, proposal_relevance)
+    if not math.isfinite(collaboration_fit_score):
+        collaboration_fit_score = compute_collaboration_fit_score(
+            area, expertise_themes, recent_work, collaboration_relevance, proposal_relevance
+        )
     collaboration_fit_score = max(0.0, min(100.0, collaboration_fit_score))
     try:
         relevant_papers_count = max(0, int(parsed.get("relevant_papers_count", 0)))
