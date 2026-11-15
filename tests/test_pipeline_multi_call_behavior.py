@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import logging
 from unittest.mock import patch, MagicMock
 
@@ -110,8 +111,10 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
             proposals_dir.mkdir(parents=True, exist_ok=True)
             (proposals_dir / "prop.md").write_text("test")
 
-            # Simulate the "Call Bad" processing exception for coverage of failure mode during processing
-            if "Call Bad" in str(call_root):
+            # Identify the selected call from its persisted manifest, not its opaque directory name.
+            selected_path = call_root / "workflow" / "selected_funding_call.json"
+            selected = json.loads(selected_path.read_text(encoding="utf-8"))["selected"]
+            if selected.get("title") == "Call Bad":
                 raise ValueError("Simulated extraction error for Call Bad")
 
             return True
@@ -189,3 +192,49 @@ def test_shared_evidence_isolation(tmp_path):
     # Verify shared evidence doesn't cause duplicate network collection.
     # Since there's only one intermediate file `evidence_shared.md`, it was collected once, but correctly distributed to both calls.
     assert len(list(intermediate.rglob("*.md"))) == 3
+
+
+
+def test_manual_funding_runs_use_unique_run_scoped_output_directories(tmp_path, monkeypatch):
+    input_file = tmp_path / "manual-call.txt"
+    input_file.write_text("A manual funding call for research.", encoding="utf-8")
+    output_root = tmp_path / "runs"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pipeline.py",
+            "--input-file",
+            str(input_file),
+            "--output-root",
+            str(output_root),
+        ],
+    )
+    observed_payloads = []
+
+    def fake_run_stage(agent, mode, area, payload, funding_context=None):
+        assert agent == "funding"
+        assert mode == "manual_text"
+        observed_payloads.append(dict(payload))
+        return {"outputs": []}
+
+    with patch("run_pipeline.run_stage", fake_run_stage):
+        assert main() == 2
+        assert main() == 2
+
+    assert len(observed_payloads) == 2
+    run_ids = [payload["run_id"] for payload in observed_payloads]
+    assert run_ids[0] != run_ids[1]
+    for payload in observed_payloads:
+        output_dir = Path(payload["output_dir"])
+        assert payload["analysis_mode"] == "collect_only"
+        assert output_dir == output_root / payload["run_id"] / "intermediate" / "funding"
+
+
+def test_call_directory_names_are_safe_and_collision_resistant():
+    from run_pipeline import _safe_call_directory_name
+
+    first = _safe_call_directory_name("../CALL/A")
+    second = _safe_call_directory_name("CALL-A")
+
+    assert "/" not in first and "\\" not in first
+    assert first != second
