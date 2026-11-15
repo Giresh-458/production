@@ -136,8 +136,7 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         for path in (tmp_path / "calls").glob("*/workflow/pipeline_report.json")
     ]
     assert len(reports) == 3
-    by_call = {report["funding"]["selected_funding_call_id"]: report for report in reports}
-    assert set(by_call) == {"test", "test", "test"} if False else len(by_call) >= 1
+    assert all(report["funding"]["selected_funding_call_id"] for report in reports)
     assert sum(report["status"] == "failed_normalization" for report in reports) == 1
     assert all(report["run_id"] for report in reports)
 
