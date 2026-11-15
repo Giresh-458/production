@@ -462,7 +462,7 @@ def infer_evidence_type(raw_type: str) -> str:
     return EVIDENCE_TYPE_MAP.get(raw_type, "Problem Statement")
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[HackathonDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, warnings: list[str] | None = None) -> list[HackathonDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
@@ -475,6 +475,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Ha
             html = fetch_html(source.url)
         except HackathonAgentError as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            if warnings is not None:
+                warnings.append(f"Source '{source.name}' failed: {exc}")
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -1063,10 +1065,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
     LOGGER.info("Starting hackathon agent run: mode=%s area=%s", mode, area)
 
+    collection_warnings: list[str] = []
+
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1096,6 +1100,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
         if analysis_mode != "analyze":
             response = finalize_collection_agent_response(
+        warnings=collection_warnings,
         funding_context=funding_context,
         funding_contexts=funding_contexts,
         run_id=(input_data or {}).get("run_id"),
