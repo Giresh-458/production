@@ -345,8 +345,8 @@ def load_sources(sources_path: Path) -> list[CompanySource]:
             source_type = cleaned_text(str(entry.get("source_type", ""))) or "Blockchain-native"
             focus = cleaned_text(str(entry.get("focus", "")))
             if name and url and not is_valid_http_url(url):
-            raise CompanyAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise CompanyAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(CompanySource(name=name, url=url, source_type=source_type, focus=focus, area=area))
     if not sources:
         raise CompanyAgentError("No company sources were loaded from sources/company_sources.yaml.")
