@@ -74,6 +74,9 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         ctxs = kwargs.get("funding_contexts")
         assert ctxs is not None, "execute_batch_run must receive funding_contexts"
         assert len(ctxs) == 3, "must pass all contexts"
+        assert kwargs["execution_mode"] == "parallel"
+        assert kwargs["base_input_data"]["run_id"]
+        assert Path(kwargs["base_input_data"]["pipeline_run_dir"]).name == kwargs["base_input_data"]["run_id"]
 
         return {
             "status": "success",
@@ -129,6 +132,11 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
 
     # Check that execute_batch_run was called exactly 1 time (GLOBAL shared)
     assert mock_execute_batch.call_count == 1
+    shared_run_id = mock_execute_batch.call_args.kwargs["base_input_data"]["run_id"]
+    assert len(mock_save_normalized.call_args_list) == 3
+    for call_args in mock_save_normalized.call_args_list:
+        assert call_args.kwargs["target_run_id"] == shared_run_id
+        assert call_args.args[2]  # Each normalization is scoped to one selected call.
 
     # Every selected call must have its own terminal report, including failures.
     reports = [
