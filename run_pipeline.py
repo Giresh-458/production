@@ -907,6 +907,7 @@ def main() -> int:
             all_reports.append(report)
             continue
 
+        idea_failure_reason = None
         try:
             stage_results["idea"] = run_stage("idea", "configured_scan", process_area if process_area != "Unscoped" else None, {
                 "output_dir": str(call_root / "ideas"), "manifest_dir": str(call_root / "synthesis" / "manifest"),
@@ -926,7 +927,7 @@ def main() -> int:
                 "output_root": str(call_root.resolve()),
                 "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
                 "stage_results": stage_results,
-                "failure_reason": locals().get("idea_failure_reason", "idea_stage_failed_or_empty"),
+                "failure_reason": idea_failure_reason or "idea_stage_failed_or_empty",
                 "final_output": None,
                 "proposal_count": 0,
             }
