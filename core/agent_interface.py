@@ -340,62 +340,80 @@ def _document_agent_specific_body(document: Any) -> Dict[str, Any]:
 
 
 def assign_funding_calls(title: str, content: str, funding_contexts: list[FundingCallContext]) -> list[str]:
-    """Assign evidence to explicitly identified calls before considering relevance.
+    """Assign evidence to explicitly identified calls before relevance fallback.
 
-    If any call is identified by a literal identity signal (funding ID, URL,
-    call ID, exact call title, or exact program name), those explicit matches
-    take precedence globally. Relevance fallback is only used when no explicit
-    identity signal matches any context, preventing unrelated calls from being
-    added simply because their broad research queries share a few words.
+    Literal call IDs and application URLs are strongest identity signals. Exact
+    title/program phrases are also accepted, but when one title is merely a
+    prefix of a longer matched title, prefer the longer, more specific match.
     """
     import re
     from core.funding_context import funding_context_relevance_for_context
 
-    raw = (str(content) + " " + str(title)).lower()
+    raw = (str(content) + " " + str(title)).casefold()
 
-    def has_explicit_identity(ctx: FundingCallContext) -> bool:
-        funding_call_id = str(ctx.funding_call_id or "").strip()
-        if funding_call_id and re.search(rf"\b{re.escape(funding_call_id.lower())}\b", raw):
-            return True
+    def contains_phrase(phrase: str) -> bool:
+        normalized = " ".join(str(phrase or "").casefold().split())
+        if len(normalized) <= 15:
+            return False
+        words = [re.escape(part) for part in normalized.split()]
+        pattern = r"(?<!\\w)" + r"\\s+".join(words) + r"(?!\\w)"
+        return bool(re.search(pattern, raw))
 
-        application_url = str(ctx.application_url or "").strip().lower()
-        if application_url and application_url in raw:
-            return True
+    strong_ids: list[str] = []
+    title_match_lengths: dict[str, int] = {}
+    seen_ids: set[str] = set()
 
-        call_id = str(ctx.call_id or "").strip()
-        if len(call_id) > 4 and re.search(rf"\b{re.escape(call_id.lower())}\b", raw):
-            return True
-
-        call_title = str(ctx.call_title or "").strip().lower()
-        if len(call_title) > 15 and call_title in raw:
-            return True
-
-        program_name = str(ctx.program_name or "").strip().lower()
-        if len(program_name) > 15 and program_name in raw:
-            return True
-
-        return False
-
-    # First pass: gather every explicit match across the full context list.
-    # Do not run relevance fallback while iterating: an explicit match for one
-    # call must prevent the fallback from appending loosely related calls.
-    explicit_ids: list[str] = []
-    seen_explicit_ids: set[str] = set()
     for ctx in funding_contexts:
         funding_call_id = str(ctx.funding_call_id or "").strip()
-        if not funding_call_id or funding_call_id in seen_explicit_ids:
+        if not funding_call_id:
             continue
-        if has_explicit_identity(ctx):
-            explicit_ids.append(funding_call_id)
-            seen_explicit_ids.add(funding_call_id)
 
-    if explicit_ids:
-        return explicit_ids
+        call_id = str(ctx.call_id or "").strip()
+        funding_id_match = bool(re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(funding_call_id.casefold())}(?![A-Za-z0-9])",
+            raw,
+        ))
+        call_id_match = bool(
+            len(call_id) > 4
+            and re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(call_id.casefold())}(?![A-Za-z0-9])",
+                raw,
+            )
+        )
+        application_url = str(ctx.application_url or "").strip().casefold()
+        url_match = bool(application_url and application_url in raw)
 
-    # Second pass: absent all explicit identity signals, assess relevance for
-    # each call independently. Keep results stable and deduplicate call IDs.
+        if (funding_id_match or call_id_match or url_match) and funding_call_id not in seen_ids:
+            strong_ids.append(funding_call_id)
+            seen_ids.add(funding_call_id)
+
+        matched_title_lengths = [
+            len(" ".join(str(phrase).casefold().split()))
+            for phrase in (ctx.call_title, ctx.program_name)
+            if contains_phrase(str(phrase or ""))
+        ]
+        if matched_title_lengths:
+            title_match_lengths[funding_call_id] = max(
+                title_match_lengths.get(funding_call_id, 0),
+                max(matched_title_lengths),
+            )
+
+    if title_match_lengths:
+        longest_match = max(title_match_lengths.values())
+        longest_title_ids = [
+            call_id
+            for call_id, match_length in title_match_lengths.items()
+            if match_length == longest_match
+        ]
+        explicit_ids = list(dict.fromkeys(strong_ids + longest_title_ids))
+        if explicit_ids:
+            return explicit_ids
+    elif strong_ids:
+        return strong_ids
+
+    # Relevance fallback is used only when no literal identity signal matched.
     matched_ids: list[str] = []
-    seen_ids: set[str] = set()
+    seen_ids = set()
     for ctx in funding_contexts:
         funding_call_id = str(ctx.funding_call_id or "").strip()
         if not funding_call_id or funding_call_id in seen_ids:
