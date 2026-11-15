@@ -469,7 +469,7 @@ def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_
 
     def fake_payload(**kwargs):
         area = kwargs["area"] or "RWA"
-        return {
+        return ({
             "shared_header": {
                 "title": kwargs["title"],
                 "source": kwargs["source"],
@@ -480,7 +480,7 @@ def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_
                 "area_normalization": {"keyword_scores": {area: 1.0}},
             },
             "problem_intelligence": {"selected_problem": "A documented technical limitation."},
-        }
+        }, [])
 
     output_path = tmp_path / "saved.md"
 
