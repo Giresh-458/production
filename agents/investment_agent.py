@@ -589,8 +589,8 @@ def analyze_document(document: InvestmentDocument) -> InvestmentAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback investment extraction for '%s': %s", document.title, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise InvestmentAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     investor_or_organization = document.investor_or_organization
     source_type = document.source_type
