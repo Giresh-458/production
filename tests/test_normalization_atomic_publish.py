@@ -402,3 +402,41 @@ def test_explicit_shared_evidence_remains_available_to_more_than_three_calls(
         "CALL-C",
         "CALL-D",
     ]
+
+
+def test_refresh_context_reads_funding_call_id_from_manifest_for_safe_path(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from core.normalization import resolve_refresh_context, resolve_refresh_run_id
+    from run_pipeline import _safe_call_directory_name
+
+    run_id = "RUN-SAFE-CALL-PATH"
+    funding_call_id = "CALL-REAL-ID"
+    run_root = tmp_path / run_id
+    call_root = run_root / "calls" / _safe_call_directory_name(funding_call_id)
+    workflow = call_root / "workflow"
+    workflow.mkdir(parents=True)
+    (workflow / "selected_funding_call.json").write_text(
+        json.dumps({
+            "run_id": run_id,
+            "selected_funding_call_id": funding_call_id,
+            "selected": {
+                "call_id": funding_call_id,
+                "title": "Real Funding Call",
+                "research_context": {
+                    "funding_call_id": funding_call_id,
+                    "research_intent": "research",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    roots, target_call_id, gate = resolve_refresh_context(call_root)
+
+    assert target_call_id == funding_call_id
+    assert roots == [run_root / "intermediate", call_root / "intermediate"]
+    assert callable(gate)
+    assert resolve_refresh_run_id(call_root) == run_id
