@@ -423,6 +423,11 @@ def collect_source(
             final_url = canonicalize_url(str(response.url))
             if _domain(final_url) not in allowed:
                 raise ValueError("redirected_to_untrusted_domain")
+            # A redirect destination is a new acquisition target; check its
+            # own robots rules before extracting or using the response body.
+            if not _robots_allowed(final_url, final_url, cache=robots_cache, fail_open=False):
+                failed.append({"url": url, "reason": "robots_disallow_redirect"})
+                continue
             if not ("html" in content_type or "pdf" in content_type or final_url.lower().endswith(".pdf")):
                 failed.append({"url": url, "reason": f"unsupported_content_type:{content_type or 'unknown'}"})
                 continue
