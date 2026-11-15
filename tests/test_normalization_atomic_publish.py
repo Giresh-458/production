@@ -369,3 +369,36 @@ def test_input_mutation_during_normalization_preserves_previous_generation(
     }
     assert after == before
     assert not list(outputs.glob(".normalized-stage-*"))
+
+
+def test_explicit_shared_evidence_remains_available_to_more_than_three_calls(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    content = _artifact(
+        "A single source explicitly supports all four named funding calls."
+    ).replace(
+        "- Funding Call Id: CALL-ATOMIC",
+        "- Funding Call Ids: CALL-A, CALL-B, CALL-C, CALL-D",
+    )
+    (intermediate / "shared.md").write_text(content, encoding="utf-8")
+
+    paths = save_normalized_collection_records(
+        outputs,
+        outputs,
+        target_funding_call_id="CALL-D",
+    )
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+
+    assert len(records) == 1
+    assert records[0]["funding_call_id"] == "CALL-D"
+    assert records[0]["funding_call_ids"] == [
+        "CALL-A",
+        "CALL-B",
+        "CALL-C",
+        "CALL-D",
+    ]
