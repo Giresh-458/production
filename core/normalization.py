@@ -15,7 +15,8 @@ from core.evidence_ledger import (
     upsert_claim,
     link_evidence_claim,
     upsert_entity,
-    link_evidence_entity
+    link_evidence_entity,
+    upsert_independence_group,
 )
 
 NORMALIZED_OUTPUT_DIR = Path("outputs/normalized")
@@ -783,23 +784,48 @@ def save_normalized_collection_records(
             record["last_seen"] = record["collected_at"]
             record["content_versions"] = [record["content_hash"]]
             record["run_ids"] = [record["run_id"]] if record["run_id"] else []
+            record["raw_record_paths"] = [record["file_path"]]
             deduped_records[evidence_key] = record
             continue
 
         existing = deduped_records[evidence_key]
         existing["observation_count"] += 1
+
+        # Preserve every explicit attribution and raw artifact location when
+        # repeated observations collapse to one evidence identity.
+        for call_id in record.get("funding_call_ids", []):
+            if call_id not in existing["funding_call_ids"]:
+                existing["funding_call_ids"].append(call_id)
+        if record.get("funding_call_id") and record["funding_call_id"] not in existing["funding_call_ids"]:
+            existing["funding_call_ids"].append(record["funding_call_id"])
         if record["run_id"] and record["run_id"] not in existing["run_ids"]:
             existing["run_ids"].append(record["run_id"])
-        if record["collected_at"] and (
-            not existing["first_seen"] or record["collected_at"] < existing["first_seen"]
-        ):
-            existing["first_seen"] = record["collected_at"]
-        if record["collected_at"] and record["collected_at"] > existing["last_seen"]:
-            existing["last_seen"] = record["collected_at"]
+        if record["file_path"] not in existing["raw_record_paths"]:
+            existing["raw_record_paths"].append(record["file_path"])
+
+        record_time = record.get("collected_at") or ""
+        existing_time = existing.get("last_seen") or ""
+        if record_time and (not existing.get("first_seen") or record_time < existing["first_seen"]):
+            existing["first_seen"] = record_time
+
+        # Prefer the chronologically newest observation. When timestamps are
+        # equal or absent, use the lexically later path as a stable tie-breaker.
+        is_latest = record_time > existing_time or (
+            record_time == existing_time
+            and record.get("file_path", "") > existing.get("file_path", "")
+        )
+        if is_latest:
+            if record_time:
+                existing["last_seen"] = record_time
+            existing["file_path"] = record["file_path"]
+            existing["record_id"] = record["record_id"]
+            existing["run_id"] = record["run_id"]
             existing["problem_statement"] = record["problem_statement"]
             existing["context_summary"] = record["context_summary"]
             existing["content_hash"] = record["content_hash"]
             existing["evidence_snippets"] = record["evidence_snippets"]
+            existing["agent_specific_fields"] = record["agent_specific_fields"]
+            existing["machine_metadata"] = record["machine_metadata"]
         if record["content_hash"] not in existing["content_versions"]:
             existing["content_versions"].append(record["content_hash"])
 
@@ -889,13 +915,22 @@ def save_normalized_collection_records(
                         "source_id": record["source_id"],
                         "agent": record["agent_name"],
                         "funding_call_id": record["funding_call_id"],
+                        "funding_call_ids": record.get("funding_call_ids", []),
                         "run_id": record["run_id"],
                         "run_ids": record.get("run_ids", []),
                         "retrieved_at": record["collected_at"],
                         "raw_record_id": record["file_path"],
+                        "raw_record_paths": record.get("raw_record_paths", [record["file_path"]]),
                     },
                     "raw_record_id": record["file_path"],
                 }
+                if independence_group != "UNKNOWN":
+                    upsert_independence_group(
+                        conn,
+                        independence_group,
+                        record["source_id"],
+                        record["content_hash"],
+                    )
                 upsert_canonical_evidence(conn, canonical_record)
 
                 for claim in extract_claims(record["evidence_snippets"]):
