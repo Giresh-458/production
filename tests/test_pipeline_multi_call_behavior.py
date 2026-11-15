@@ -139,13 +139,16 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
         assert call_args.args[2]  # Each normalization is scoped to one selected call.
 
     # Every selected call must have its own terminal report, including failures.
+    run_dirs = [path for path in tmp_path.iterdir() if path.is_dir()]
+    assert len(run_dirs) == 1
     reports = [
         json.loads(path.read_text(encoding="utf-8"))
-        for path in (tmp_path / "calls").glob("*/workflow/pipeline_report.json")
+        for path in (run_dirs[0] / "calls").glob("*/workflow/pipeline_report.json")
     ]
     assert len(reports) == 3
     assert all(report["funding"]["selected_funding_call_id"] for report in reports)
     assert sum(report["status"] == "failed_normalization" for report in reports) == 1
+    assert sum(report["status"] == "no_normalized_evidence" for report in reports) == 2
     assert all(report["run_id"] for report in reports)
 
 def test_shared_evidence_isolation(tmp_path):
