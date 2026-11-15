@@ -61,15 +61,24 @@ def _clean(text: str) -> str:
 
 
 def _usable_source_url(value: Any) -> str:
-    """Return an absolute HTTP(S) source URL; ignore placeholders such as 'Manual'."""
+    """Return a safe absolute HTTP(S) source URL; reject placeholders and malformed URLs."""
     cleaned = _clean(str(value or ""))
     if not cleaned or cleaned.casefold() in {"manual", "unknown", "none", "null", "n/a", "na"}:
         return ""
-    try:
-        parsed = urllib.parse.urlparse(cleaned)
-    except Exception:
+    if any(character.isspace() for character in cleaned):
         return ""
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+    try:
+        parsed = urllib.parse.urlsplit(cleaned)
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return ""
+        # Accessing .port validates malformed and out-of-range port values.
+        _ = parsed.port
+    except (TypeError, ValueError):
         return ""
     return cleaned
 
