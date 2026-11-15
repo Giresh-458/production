@@ -323,3 +323,49 @@ def test_missing_or_corrupt_ledger_forces_cache_rebuild(tmp_path: Path) -> None:
     with sqlite3.connect(ledger) as conn:
         assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
         assert conn.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0] == 1
+
+
+def test_input_mutation_during_normalization_preserves_previous_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import core.normalization as normalization
+
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    artifact = intermediate / "source.md"
+    artifact.write_text(
+        _artifact("The first complete evidence snapshot is stable."),
+        encoding="utf-8",
+    )
+    save_normalized_collection_records(outputs, outputs)
+    normalized_dir = outputs / "normalized"
+    before = {
+        path.name: path.read_bytes()
+        for path in normalized_dir.iterdir()
+        if path.is_file()
+    }
+
+    original_builder = normalization.build_normalized_collection_records
+
+    def mutate_after_read(*args, **kwargs):
+        records = original_builder(*args, **kwargs)
+        artifact.write_text(
+            _artifact("The source changed while normalization was running."),
+            encoding="utf-8",
+        )
+        return records
+
+    monkeypatch.setattr(
+        normalization, "build_normalized_collection_records", mutate_after_read
+    )
+    with pytest.raises(RuntimeError, match="changed during normalization"):
+        save_normalized_collection_records(outputs, outputs)
+
+    after = {
+        path.name: path.read_bytes()
+        for path in normalized_dir.iterdir()
+        if path.is_file()
+    }
+    assert after == before
+    assert not list(outputs.glob(".normalized-stage-*"))
