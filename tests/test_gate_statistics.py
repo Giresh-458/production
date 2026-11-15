@@ -28,6 +28,7 @@ def test_duplicate_mission_gate_statistics(
 
     call_id = "CALL-TEST-DUPES"
     mock_evaluate_health.return_value = (True, 10)
+    mock_run_stage.return_value = {"status": "success", "outputs": [{"title": "test"}], "outputs_count": 1, "metadata": {}}
 
     selected_call = {
         "selected": {
