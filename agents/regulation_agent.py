@@ -331,10 +331,14 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
         raise RegulationAgentError(f"Regulation sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise RegulationAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise RegulationAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
 
     root = data.get("regulation_sources", {})
+    if not isinstance(root, dict):
+        raise RegulationAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
     sources: list[RegulationSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
