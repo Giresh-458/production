@@ -320,10 +320,10 @@ def load_sources(sources_path: Path) -> list[OpenSourceSource]:
         raise OpenSourceAgentError(f"Open-source sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise OpenSourceAgentError(f"Expected a YAML mapping in {sources_path}.")
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise OpenSourceAgentError(f"Could not read valid YAML from {sources_path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise OpenSourceAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("opensource_sources", {})
     if not isinstance(root, dict):
         raise OpenSourceAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
