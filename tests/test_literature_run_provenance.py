@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -106,3 +107,69 @@ def test_configured_literature_scan_preserves_run_and_call_provenance(tmp_path: 
     assert len(selected_records) == 1
     assert selected_records[0]["run_id"] == run_id
     assert selected_records[0]["funding_call_id"] == call.funding_call_id
+
+def test_configured_literature_scan_preserves_multiple_call_ids(tmp_path: Path, monkeypatch):
+    now = datetime(2026, 9, 1, tzinfo=UTC)
+    paper = literature_agent.Paper(
+        title="Scalable real-world asset tokenization and settlement",
+        summary=(
+            "Research evidence for the first funding call and the second funding call. "
+            "Real-world asset tokenization systems face verification and settlement limits."
+        ),
+        url="https://doi.org/10.5555/rif-literature-multi-call",
+        published=now,
+        authors=["Researcher One"],
+        source="OpenAlex",
+        source_id="openalex:test-literature-multi-call",
+        doi="10.5555/rif-literature-multi-call",
+        venue="Test Research",
+        retrieval_timestamp=now.isoformat(),
+    )
+
+    monkeypatch.setattr(literature_agent, "fetch_arxiv_entries", lambda _area: [paper])
+    monkeypatch.setattr(literature_agent, "fetch_openalex_entries", lambda _area: [])
+    monkeypatch.setattr(literature_agent, "fetch_semanticscholar_entries", lambda _area: [])
+    monkeypatch.setattr(literature_agent, "fetch_crossref_entries", lambda _area: [])
+    monkeypatch.setattr(literature_agent, "fetch_dblp_entries", lambda _area: [])
+    monkeypatch.setattr(literature_agent, "score_paper", lambda candidate, _area, _now: candidate)
+    monkeypatch.setattr(literature_agent, "semantic_rerank", lambda papers, _query: papers)
+
+    call_a = _context()
+    call_b = replace(
+        call_a,
+        funding_call_id="CALL-LITERATURE-PROVENANCE-002",
+        call_id="LITERATURE-PROVENANCE-002",
+        call_title="Second funding call for scalable RWA settlement",
+    )
+    monkeypatch.setattr(
+        "core.agent_interface.assign_funding_calls",
+        lambda _title, _content, contexts: [ctx.funding_call_id for ctx in contexts],
+    )
+
+    run_id = "pipeline-run-literature-multi-call-001"
+    output_dir = tmp_path / "intermediate" / "literature"
+    result = run_registered_agent(
+        "literature",
+        "configured_scan",
+        area="RWA",
+        input_data={
+            "output_dir": str(output_dir),
+            "db_path": str(tmp_path / "literature-multi-call.sqlite"),
+            "analysis_mode": "collect_only",
+            "run_id": run_id,
+            "defer_registry_sync": True,
+        },
+        funding_contexts=[call_a, call_b],
+    )
+
+    assert result["status"] == "success", result
+    artifact_path = Path(result["outputs"][0]["markdown_path"])
+    normalized = normalize_intermediate_artifact(artifact_path)
+    assert normalized["funding_call_ids"] == [
+        call_a.funding_call_id,
+        call_b.funding_call_id,
+    ]
+    assert normalized["funding_call_id"] == ""
+    assert normalized["run_id"] == run_id
+    assert normalized["source_url"] == paper.url
+
