@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from core.normalization import normalize_intermediate_artifact, save_normalized_collection_records
+from core.agent_interface import save_intermediate_markdown
 
 
 def _artifact(evidence: str, run_id: str = "RUN-ATOMIC") -> str:
@@ -177,3 +178,47 @@ def test_normalization_schema_version_is_recorded_and_fingerprinted(tmp_path: Pa
     records = json.loads(paths["records"].read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 2
     assert records[0]["normalization_schema_version"] == 2
+
+
+
+def test_intermediate_writer_keeps_distinct_run_snapshots(tmp_path: Path) -> None:
+    def payload(run_id: str) -> dict:
+        return {
+            "shared_header": {
+                "title": "Run snapshot",
+                "source": "https://example.org/run-snapshot",
+                "layer": "Custom",
+                "research_area": "DePIN",
+                "collected_at": "2026-11-15T10:00:00Z",
+                "agent_name": "custom",
+                "agent_version": "v1",
+                "collection_mode": "manual_text",
+                "run_id": run_id,
+            },
+            "evidence_bundle": {
+                "page_title": "Run snapshot",
+                "section_headings": [],
+                "key_paragraphs": ["A substantive paragraph describing the collected source."],
+                "bullet_lists": [],
+                "quoted_passages": [],
+                "links_found": [],
+                "named_entities_or_programs": [],
+                "evidence_snippets": ["A substantive evidence snippet for the run snapshot."],
+                "excerpt_windows": [],
+            },
+            "metadata": {"artifact_schema": "shared-metadata-header-plus-agent-body-v1"},
+            "provenance": {
+                "source_url": "https://example.org/run-snapshot",
+                "collected_at": "2026-11-15T10:00:00Z",
+            },
+            "problem_intelligence": {"selected_problem": "A sufficiently specific research problem."},
+            "agent_specific_body": {},
+            "raw_content": "A substantive source body used to generate the intermediate artifact.",
+        }
+
+    first = save_intermediate_markdown(payload("RUN-A"), tmp_path / "intermediate")
+    second = save_intermediate_markdown(payload("RUN-B"), tmp_path / "intermediate")
+
+    assert first != second
+    assert first.exists()
+    assert second.exists()
