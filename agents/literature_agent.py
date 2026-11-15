@@ -696,18 +696,22 @@ def process_area(
     if primary_source_url:
         lines.append(f"- source: {primary_source_url}")
     resolved_call_ids: list[str] = []
-    if funding_context and funding_context.funding_call_id:
-        resolved_call_ids = [funding_context.funding_call_id]
-    elif funding_contexts:
+    if funding_contexts and len(funding_contexts) > 1:
         from core.agent_interface import assign_funding_calls
         evidence_text = "\n".join(
-            f"{paper.title}\n{paper.summary}" for paper in semantically_ranked
+            f"{paper.title}\n{paper.summary}\n{paper.url}" for paper in semantically_ranked
         )
         resolved_call_ids = assign_funding_calls(
             f"Research Gap: {effective_area}",
             evidence_text,
             funding_contexts,
         )
+    elif funding_contexts:
+        resolved_call_ids = [
+            funding_contexts[0].funding_call_id
+        ] if funding_contexts[0].funding_call_id else []
+    elif funding_context and funding_context.funding_call_id:
+        resolved_call_ids = [funding_context.funding_call_id]
     if len(resolved_call_ids) == 1:
         lines.append(f"- funding_call_id: {resolved_call_ids[0]}")
     if resolved_call_ids:
