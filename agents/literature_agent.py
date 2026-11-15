@@ -204,7 +204,7 @@ def compute_problem_clarity(summary: str) -> float:
     return round(min((hits / len(indicators)) + (0.35 * length_bonus), 1.0), 4)
 
 def score_paper(paper: Paper, research_area: str, now: datetime) -> Paper | None:
-            f"{paper.title}\n{paper.summary}" for paper in semantically_ranked
+    search_text = f"{paper.title} {paper.summary}"
     keywords = get_keywords(research_area)
     
     relevance_score = compute_relevance(search_text, keywords)
@@ -701,7 +701,7 @@ def process_area(
     elif funding_contexts:
         from core.agent_interface import assign_funding_calls
         evidence_text = "\n".join(
-            f"{paper.title}\\n{paper.summary}" for paper in semantically_ranked
+            f"{paper.title}\n{paper.summary}" for paper in semantically_ranked
         )
         resolved_call_ids = assign_funding_calls(
             f"Research Gap: {effective_area}",
