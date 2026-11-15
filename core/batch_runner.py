@@ -408,14 +408,19 @@ def execute_batch_run(
         _executor_shutdown_started = None
         _executor_shutdown_finished = None
 
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_task = {executor.submit(tracked_run_task, task): task for task in tasks}
-            pending = set(future_to_task.keys())
+        executor = ThreadPoolExecutor(max_workers=workers)
+        deadline_expired = False
+        future_to_task = {
+            executor.submit(tracked_run_task, task): task for task in tasks
+        }
+        pending = set(future_to_task.keys())
+        try:
             while pending:
                 timeout = None
                 if deadline:
                     remaining = (deadline - datetime.now(UTC)).total_seconds()
                     if remaining <= 0:
+                        deadline_expired = True
                         for future in list(pending):
                             task = future_to_task[future]
                             future.cancel()
@@ -429,8 +434,16 @@ def execute_batch_run(
                                 "items_saved": 0,
                                 "outputs_count": 0,
                                 "errors": [f"batch timeout budget of {timeout_budget_seconds}s exceeded before completion"],
-                                "warnings": [],
+                                "warnings": [
+                                    "Running worker threads cannot be forcibly stopped; they receive the shared cooperative deadline and may finish after this report is returned."
+                                ],
                                 "duration_seconds": 0,
+                                "run_id": run_id,
+                                "funding_call_ids": list(dict.fromkeys(
+                                    str(ctx.funding_call_id).strip()
+                                    for ctx in (funding_contexts or ([funding_context] if funding_context else []))
+                                    if str(getattr(ctx, "funding_call_id", "") or "").strip()
+                                )),
                             })
                         pending.clear()
                         break
@@ -456,15 +469,20 @@ def execute_batch_run(
                             "errors": [f"batch runner exception: {exc}"],
                             "warnings": [],
                             "duration_seconds": 0,
+                            "run_id": run_id,
                         })
+        finally:
             with _wl_lock:
                 _worker_active_at_shutdown = _wl_started - _wl_completed
 
             _executor_shutdown_started = _time.time()
-        # ThreadPoolExecutor.__exit__ calls shutdown(wait=True) here
-        _executor_shutdown_finished = _time.time()
-        with _wl_lock:
-            _worker_active_after = _wl_started - _wl_completed
+            # Do not let a deadline breach turn into an unbounded wait in
+            # ThreadPoolExecutor.__exit__. Python cannot kill running threads;
+            # their crawl contexts carry the same cooperative deadline.
+            executor.shutdown(wait=not deadline_expired, cancel_futures=True)
+            _executor_shutdown_finished = _time.time()
+            with _wl_lock:
+                _worker_active_after = _wl_started - _wl_completed
 
     finished_at = datetime.now(UTC)
     status_counts: Dict[str, int] = {}
