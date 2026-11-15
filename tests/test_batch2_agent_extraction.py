@@ -326,3 +326,85 @@ def test_regulation_invalid_evidence_weight_is_bounded_and_confidence_is_parsed(
     assert result.supersedes == "Prior regulation"
     assert 0.0 <= result.evidence_weight <= 1.0
 
+def test_failure_analysis_uses_supported_incident_type_and_model_fields(monkeypatch):
+    from agents import failure_agent
+
+    parsed = {
+        "incident_type": "Bridge Hack",
+        "what_failed": "A bridge validator was compromised.",
+        "root_cause": "Insufficient validator controls.",
+        "impact": "Unauthorized asset movement.",
+        "technical_problem": "Validator compromise",
+        "research_opportunity": "Threshold verification",
+        "prototype_idea": "A monitoring prototype",
+        "prevention_mechanism": "Independent validator checks",
+        "keywords": ["bridge", "validator"],
+        "confidence": "High",
+        "incident_date": "2026-02-10",
+        "estimated_loss": "$1 million",
+        "attack_vector": "Compromised validator keys",
+        "affected_system": "Example Bridge",
+        "recurrence_signal": "Repeated validator incidents",
+        "evidence_strength": "Very High",
+    }
+    monkeypatch.setattr(failure_agent, "build_analysis_prompt", lambda _document: "prompt")
+    monkeypatch.setattr(failure_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
+    document = SimpleNamespace(
+        incident_name="Example Bridge Incident",
+        area_hint="RWA",
+        content="A bridge exploit compromised validator keys.",
+        source_type="Incident Report",
+        evidence_type="Postmortem",
+    )
+
+    result = failure_agent.analyze_document(document)
+
+    assert result.incident_type == "Bridge Hack"
+    assert result.confidence == "High"
+    assert result.incident_date == "2026-02-10"
+    assert result.estimated_loss == "$1 million"
+    assert result.attack_vector == "Compromised validator keys"
+    assert result.affected_system == "Example Bridge"
+    assert result.evidence_strength == "Very High"
+
+
+def test_data_availability_analysis_uses_model_access_and_dataset_metadata(monkeypatch):
+    from agents import data_availability_agent
+
+    parsed = {
+        "what_it_provides": "Historical settlement events",
+        "usable_for": "Protocol evaluation",
+        "access_type": "Restricted",
+        "evaluation_possibility": "Reproducible benchmark",
+        "limitations": "Partial geographic coverage",
+        "prototype_use": "Settlement risk analysis",
+        "keywords": ["settlement", "benchmark"],
+        "confidence": "High",
+        "dataset_scope": "Ethereum settlement events",
+        "coverage_period": "2023-2026",
+        "license_or_access_terms": "Research access",
+        "benchmark_metrics": "Latency and failure rate",
+        "benchmark_gap": "No labeled recovery events",
+        "reproducibility": "High",
+    }
+    monkeypatch.setattr(data_availability_agent, "build_analysis_prompt", lambda _document: "prompt")
+    monkeypatch.setattr(data_availability_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
+    document = SimpleNamespace(
+        source_name="Settlement Dataset",
+        area_hint="RWA",
+        source_type="Dataset",
+        evidence_type="Dataset Description",
+        content="A dataset of historical settlement events.",
+    )
+
+    result = data_availability_agent.analyze_document(document)
+
+    assert result.access_type == "Restricted"
+    assert result.confidence == "High"
+    assert result.dataset_scope == "Ethereum settlement events"
+    assert result.coverage_period == "2023-2026"
+    assert result.license_or_access_terms == "Research access"
+    assert result.benchmark_metrics == "Latency and failure rate"
+    assert result.benchmark_gap == "No labeled recovery events"
+    assert result.reproducibility == "High"
+
