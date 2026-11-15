@@ -470,7 +470,7 @@ def discover_company_candidates(query: str, limit: int = 10) -> list[CompanyDocu
     return documents
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[CompanyDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, warnings: list[str] | None = None) -> list[CompanyDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
@@ -485,6 +485,8 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Co
             html = fetch_html(source.url)
         except CompanyAgentError as exc:
             LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            if warnings is not None:
+                warnings.append(f"Source '{source.name}' failed: {exc}")
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -1057,13 +1059,15 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
     LOGGER.info("Starting company agent run: mode=%s area=%s", mode, area)
 
+    collection_warnings: list[str] = []
+
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
             if payload.get("discover") and payload.get("funding_context"):
                 documents = discover_company_candidates(str(payload.get("funding_context")), int(payload.get("max_candidates", 10)))
             else:
-                documents = build_auto_documents(sources_path, area)
+                documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             company_name = payload.get("company_name") or infer_name_from_url(url, "Manual Company")
@@ -1093,6 +1097,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
         if analysis_mode != "analyze":
             response = finalize_collection_agent_response(
+        warnings=collection_warnings,
         funding_context=funding_context,
         funding_contexts=funding_contexts,
         run_id=(input_data or {}).get("run_id"),
