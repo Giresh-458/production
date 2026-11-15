@@ -858,7 +858,7 @@ def main() -> int:
                 "failure_reason": "synthesis_failed_or_empty", "final_output": None, "proposal_count": 0,
             }
             workflow = call_root / "workflow"; workflow.mkdir(parents=True, exist_ok=True)
-            (workflow / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+            atomic_write_json(workflow / "pipeline_report.json", report)
             global_exit_code = max(global_exit_code, 5)
             all_reports.append(report)
             continue
@@ -931,7 +931,7 @@ def main() -> int:
         }
         workflow = call_root / "workflow"
         workflow.mkdir(parents=True, exist_ok=True)
-        (workflow / "pipeline_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(workflow / "pipeline_report.json", report)
         atomic_write_json(workflow / "pipeline_manifest.json", {
             "run_id": run_id,
             "selected_funding_call_id": context.funding_call_id,
