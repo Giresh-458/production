@@ -457,6 +457,20 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         shared_header.get("retrieved_at", ""),
     )
     collection_mode = _coalesce(shared_header.get("collection_mode", ""))
+    published_at = _coalesce(
+        provenance.get("published_at", ""),
+        shared_header.get("published_at", ""),
+        source_hints.get("published_at", ""),
+    )
+    if published_at.casefold() in {"unknown", "none", "null", "n/a", "na"}:
+        published_at = ""
+    last_verified_at = _coalesce(
+        provenance.get("last_verified_at", ""),
+        shared_header.get("last_verified_at", ""),
+        source_hints.get("last_verified_at", ""),
+    )
+    if last_verified_at.casefold() in {"unknown", "none", "null", "n/a", "na"}:
+        last_verified_at = ""
 
     funding_call_id = _clean(shared_header.get("funding_call_id", ""))
     raw_call_ids = shared_header.get("funding_call_ids", [])
@@ -594,6 +608,8 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         "source_url": source_url,
         "canonical_url": canonical_url,
         "collected_at": collected_at,
+        "published_at": published_at,
+        "last_verified_at": last_verified_at,
         "collection_mode": collection_mode,
         "source_type": source_type or "Unknown",
         "evidence_type": evidence_type or "Unknown",
@@ -920,7 +936,7 @@ def save_normalized_collection_records(
                     "evidence_excerpt": "\n".join(record["excerpt_windows"]),
                     "evidence_type": record["evidence_type"],
                     "research_area": record["research_area"],
-                    "published_at": source_hints.get("published_at"),
+                    "published_at": record.get("published_at") or None,
                     "retrieved_at": record["collected_at"] or "",
                     "updated_at": None,
                     "content_hash": record["content_hash"],
@@ -940,6 +956,8 @@ def save_normalized_collection_records(
                         "run_id": record["run_id"],
                         "run_ids": record.get("run_ids", []),
                         "retrieved_at": record["collected_at"],
+                        "published_at": record.get("published_at") or None,
+                        "last_verified_at": record.get("last_verified_at") or None,
                         "raw_record_id": record["file_path"],
                         "raw_record_paths": record.get("raw_record_paths", [record["file_path"]]),
                     },
