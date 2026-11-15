@@ -259,7 +259,7 @@ def resolve_focus_url(base_url: str, focus_page: str) -> str:
     return urljoin(base_url, focus_page)
 
 
-def collect_lab_document(source: LabSource, connection: sqlite3.Connection) -> LabDocument | None:
+def collect_lab_document(source: LabSource, connection: sqlite3.Connection, warnings: list[str] | None = None) -> LabDocument | None:
     pages: list[LabPage] = []
     for focus_page in source.focus_pages:
         page_url = resolve_focus_url(source.url, focus_page)
@@ -270,6 +270,8 @@ def collect_lab_document(source: LabSource, connection: sqlite3.Connection) -> L
             html = fetch_html(page_url)
         except LabAgentError as exc:
             LOGGER.warning("Skipping lab page %s: %s", page_url, exc)
+            if warnings is not None:
+                warnings.append(f"Lab source '{source.name}' page {page_url} failed: {exc}")
             continue
         title, content = extract_page_text(html)
         if not content:
@@ -343,13 +345,13 @@ def build_discovered_lab_documents(funding_context: str, area: str | None = None
     return documents[:limit]
 
 
-def build_auto_documents(sources_path: Path, db_path: Path, area: str | None = None) -> list[LabDocument]:
+def build_auto_documents(sources_path: Path, db_path: Path, area: str | None = None, warnings: list[str] | None = None) -> list[LabDocument]:
     connection = db_connect(db_path)
     init_labs_db(connection)
     documents: list[LabDocument] = []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting lab intelligence from %s", source.name)
-        document = collect_lab_document(source, connection)
+        document = collect_lab_document(source, connection, warnings=warnings)
         if document is not None and matches_lab_area(document, area):
             documents.append(document)
         elif report_exists(connection, source.name):
@@ -761,10 +763,12 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
     LOGGER.info("Starting lab agent run: mode=%s area=%s", mode, area)
 
+    collection_warnings: list[str] = []
+
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, db_path, area)
+            documents = build_auto_documents(sources_path, db_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             lab_name = payload.get("lab_name") or infer_name_from_url(url, "Manual Lab")
@@ -776,6 +780,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
         if analysis_mode != "analyze":
             response = finalize_collection_agent_response(
+        warnings=collection_warnings,
         funding_context=funding_context,
         funding_contexts=funding_contexts,
         run_id=(input_data or {}).get("run_id"),
