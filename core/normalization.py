@@ -778,19 +778,19 @@ def save_normalized_collection_records(
     try:
         records_path = stage_dir / "records.json"
         records_path.write_text(
-            json.dumps(records, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+            json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
         (stage_dir / "input_manifest.json").write_text(
-            json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\\n",
+            json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
 
         by_area, by_layer = _build_indexes(records)
         (stage_dir / "by_area.json").write_text(
-            json.dumps(by_area, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+            json.dumps(by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
         (stage_dir / "by_layer.json").write_text(
-            json.dumps(by_layer, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+            json.dumps(by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
 
         # Build the SQLite ledger in the staging directory. Do not publish JSON
@@ -833,8 +833,8 @@ def save_normalized_collection_records(
                     "title": record["title"],
                     "problem": record["problem_statement"],
                     "problem_signature": "pending-synthesis",
-                    "evidence": "\\n".join(record["evidence_snippets"]),
-                    "evidence_excerpt": "\\n".join(record["excerpt_windows"]),
+                    "evidence": "\n".join(record["evidence_snippets"]),
+                    "evidence_excerpt": "\n".join(record["excerpt_windows"]),
                     "evidence_type": record["evidence_type"],
                     "research_area": record["research_area"],
                     "published_at": source_hints.get("published_at"),
@@ -887,7 +887,7 @@ def save_normalized_collection_records(
                 conn.close()
 
         (stage_dir / "errors.json").write_text(
-            json.dumps(errors, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+            json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
 
         # Replace the published generation only after every staged artifact and
