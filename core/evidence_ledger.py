@@ -105,6 +105,24 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
     conn.commit()
 
+
+def upsert_independence_group(
+    conn: sqlite3.Connection,
+    group_id: str,
+    parent_source_id: str | None,
+    event_id: str | None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO independence_groups (group_id, parent_source_id, event_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(group_id) DO UPDATE SET
+            parent_source_id=COALESCE(independence_groups.parent_source_id, excluded.parent_source_id),
+            event_id=COALESCE(independence_groups.event_id, excluded.event_id)
+        """,
+        (group_id, parent_source_id, event_id),
+    )
+
 def upsert_canonical_evidence(conn: sqlite3.Connection, record: Dict[str, Any]) -> None:
     conn.execute("""
         INSERT INTO canonical_evidence (
