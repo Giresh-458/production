@@ -209,6 +209,62 @@ def test_http_429_retries_using_retry_after(monkeypatch):
     assert session.get.call_count == 2
 
 
+def test_shared_crawler_rejects_redirect_to_robots_disallowed_path():
+    from concurrent.futures import ThreadPoolExecutor
+
+    manager = shared_crawler.SharedCrawlManager.__new__(
+        shared_crawler.SharedCrawlManager
+    )
+    manager._get_domain_semaphore = lambda _url: threading.Semaphore(1)
+    manager._throttle_domain = lambda _domain, deadline=None: True
+    manager._robots_allowed = lambda target: not target.endswith("/private")
+    manager._needs_browser = lambda _html, _status: False
+    manager.http_pool = ThreadPoolExecutor(max_workers=1)
+    manager._do_http_fetch = lambda url: shared_crawler.CrawlResult(
+        canonical_url=url,
+        final_url="https://example.org/private",
+        status_code=200,
+        content_type="text/html",
+        title="Private",
+        html="<p>private content</p>",
+        clean_text="private content",
+        content_hash="hash",
+        fetch_method="http",
+        from_cache=False,
+    )
+    try:
+        result = manager._execute_fetch("https://example.org/public")
+    finally:
+        manager.http_pool.shutdown(wait=True)
+
+    assert result.error == "robots_disallow_redirect"
+    assert result.html == ""
+
+
+def test_web_collection_rejects_redirect_to_robots_disallowed_path(monkeypatch):
+    class Response:
+        url = "https://example.org/private"
+        text = "<html><body>Private content.</body></html>"
+        content = text.encode()
+        headers = {"Content-Type": "text/html"}
+
+    monkeypatch.setattr(web_collection, "get_response", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(
+        web_collection,
+        "_robots_allowed",
+        lambda _root, target, **kwargs: not target.endswith("/private"),
+    )
+
+    result = web_collection.collect_source(
+        "https://example.org/public", keywords=(), max_pages=1
+    )
+    assert result.pages == []
+    assert any(
+        item["reason"] == "robots_disallow_redirect"
+        for item in result.failed_urls
+    )
+
+
 def test_funding_agent_never_uses_browser_fallback_for_http_429(monkeypatch):
     import importlib
 
