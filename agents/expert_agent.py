@@ -739,7 +739,7 @@ def analyze_document(document: ExpertDocument) -> ExpertAnalysis:
     key_projects_or_papers = coalesce_text(parsed.get("key_projects_or_papers"), "UNKNOWN")
     collaboration_relevance = coalesce_text(parsed.get("collaboration_relevance"), "UNKNOWN")
     proposal_relevance = coalesce_text(parsed.get("proposal_relevance"), "UNKNOWN")
-    expert_signature = build_expert_signature(area, expert_name, expertise_themes)
+    expert_signature = build_problem_signature(area, expert_name, expertise_themes)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
     confidence = "Medium".title()
     if confidence not in {"High", "Medium", "Low"}:
