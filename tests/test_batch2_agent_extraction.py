@@ -170,3 +170,28 @@ def test_expert_identity_fields_are_strings(monkeypatch):
     assert result.expert_name == "Dr Example"
     assert result.affiliation == "Example University"
     assert result.role == "Professor"
+
+def test_configured_live_source_cannot_bypass_quality_gate(tmp_path):
+    from datetime import UTC, datetime
+    from core.agent_interface import finalize_collection_agent_response
+
+    weak_document = SimpleNamespace(
+        title="Thin configured source",
+        url="https://example.org/thin",
+        content="lorem ipsum " * 40,
+    )
+    result = finalize_collection_agent_response(
+        agent="company",
+        layer="Company",
+        mode="configured_scan",
+        area="RWA",
+        documents=[weak_document],
+        output_dir=tmp_path,
+        started_at=datetime.now(UTC),
+    )
+
+    assert result["status"] == "partial_success"
+    assert result["items_saved"] == 0
+    assert not list(tmp_path.rglob("*.md"))
+    assert any("quality gate" in warning.lower() for warning in result["warnings"])
+
