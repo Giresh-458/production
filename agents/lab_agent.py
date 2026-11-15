@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, is_valid_http_url
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
 from core.schemas import AREA_KEYWORDS
@@ -208,8 +208,8 @@ def load_sources(sources_path: Path) -> list[LabSource]:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise LabAgentError(f"Expected a YAML mapping in {sources_path}.")
-    except yaml.YAMLError as exc:
-        raise LabAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise LabAgentError(f"Could not read valid YAML from {sources_path}: {exc}") from exc
 
     entries = data.get("labs", [])
     if not isinstance(entries, list):
@@ -221,6 +221,8 @@ def load_sources(sources_path: Path) -> list[LabSource]:
         name = cleaned_text(str(entry.get("name", "")))
         url = cleaned_text(str(entry.get("url", "")))
         focus_pages = [cleaned_text(str(page)) for page in entry.get("focus_pages", []) if cleaned_text(str(page))]
+        if name and url and not is_valid_http_url(url):
+            raise LabAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
         if name and url and focus_pages:
             sources.append(LabSource(name=name, url=url, focus_pages=focus_pages))
     if not sources:
