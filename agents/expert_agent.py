@@ -347,8 +347,8 @@ def load_sources(sources_path: Path) -> list[ExpertSource]:
             auto_collect = bool(entry.get("auto_collect", True))
             query_template = cleaned_text(str(entry.get("query_template", "")))
             if name and url and not is_valid_http_url(url):
-            raise ExpertAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise ExpertAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(
                     ExpertSource(
                         name=name,
