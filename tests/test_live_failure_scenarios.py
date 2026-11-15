@@ -43,9 +43,9 @@ def test_finalize_collection_agent_response_matching():
     ctx_a = FundingCallContext.from_scored_call(ScoredCall(call_id="CALL-A", score=1.0, record={"focus_area": "Health System", "research_priorities": ["Medical Device", "Health System"], "funding_call_id": "CALL-A"}, validation=ValidationResult(True, [])), mode="test")
     ctx_c = FundingCallContext.from_scored_call(ScoredCall(call_id="CALL-C", score=1.0, record={"focus_area": "Security", "research_priorities": ["Cyber Network", "Security"], "funding_call_id": "CALL-C"}, validation=ValidationResult(True, [])), mode="test")
     
-    document_a = {"title": "Medical Device", "content": "Medical Device Health System CALL-A" * 50, "url": "https://a.com"}
-    document_c = {"title": "Network Security", "content": "Cyber Network Security Architecture CALL-C" * 50, "url": "https://c.com"}
-    document_ac = {"title": "Medical Cyber", "content": "Medical Device Health System Cyber Network Security CALL-A CALL-C" * 50, "url": "https://ac.com"}
+    document_a = {"title": "Medical Device", "content": ("Medical Device Health System CALL-A. The source identifies a persistent interoperability limitation between clinical devices, preventing reliable exchange of patient measurements across care settings. " * 10), "url": "https://a.com"}
+    document_c = {"title": "Network Security", "content": ("Cyber Network Security Architecture CALL-C. The source describes a weakness in cross-network identity verification that leaves connected systems exposed to unauthorized access. " * 10), "url": "https://c.com"}
+    document_ac = {"title": "Medical Cyber", "content": ("Medical Device Health System Cyber Network Security CALL-A CALL-C. The source describes both the clinical device interoperability limitation and the cross-network identity verification weakness. " * 10), "url": "https://ac.com"}
 
     from datetime import UTC, datetime
     from pathlib import Path
@@ -65,7 +65,8 @@ def test_finalize_collection_agent_response_matching():
         
         payloads = [call.kwargs["payload"] for call in mock_save.call_args_list]
         headers = [p["shared_header"] for p in payloads]
-        
-        assert headers[0]["funding_call_ids"] == ["CALL-A"]
-        assert headers[1]["funding_call_ids"] == ["CALL-C"]
-        assert set(headers[2]["funding_call_ids"]) == {"CALL-A", "CALL-C"}
+        headers_by_title = {header["title"]: header for header in headers}
+
+        assert headers_by_title["Medical Device"]["funding_call_ids"] == ["CALL-A"]
+        assert headers_by_title["Network Security"]["funding_call_ids"] == ["CALL-C"]
+        assert set(headers_by_title["Medical Cyber"]["funding_call_ids"]) == {"CALL-A", "CALL-C"}
