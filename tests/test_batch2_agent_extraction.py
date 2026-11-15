@@ -457,20 +457,41 @@ def test_failure_agent_uses_model_incident_type_and_evidence_metadata(monkeypatc
     assert result.attack_vector == "Validator key compromise"
     assert result.evidence_strength == "High"
 
-def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_path):
+def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_path, monkeypatch):
     from datetime import UTC, datetime
-    from core.agent_interface import finalize_collection_agent_response
+    from core import agent_interface
 
     document = SimpleNamespace(
         title="Substantive source evidence",
         url="https://example.org/research",
-        content=(
-            "This is a traceable evidence document demonstrating substantive research "
-            "provenance for a source collection. It describes a concrete technical problem, "
-            "its operational impact, and a research direction supported by source material. "
-        ) * 50,
+        content="A source-grounded technical research finding with clear provenance.",
     )
-    result = finalize_collection_agent_response(
+
+    def fake_payload(**kwargs):
+        area = kwargs["area"] or "RWA"
+        return {
+            "shared_header": {
+                "title": kwargs["title"],
+                "source": kwargs["source"],
+                "research_area": area,
+            },
+            "metadata": {
+                "quality_gate": {"passed": True},
+                "area_normalization": {"keyword_scores": {area: 1.0}},
+            },
+            "problem_intelligence": {"selected_problem": "A documented technical limitation."},
+        }
+
+    output_path = tmp_path / "saved.md"
+
+    def fake_save(*, payload, output_dir):
+        output_path.write_text("# Saved evidence\n", encoding="utf-8")
+        return output_path
+
+    monkeypatch.setattr(agent_interface, "build_intermediate_artifact_payload", fake_payload)
+    monkeypatch.setattr(agent_interface, "save_intermediate_markdown", fake_save)
+
+    result = agent_interface.finalize_collection_agent_response(
         agent="company",
         layer="Company",
         mode="configured_scan",
@@ -484,6 +505,7 @@ def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_
     assert result["items_saved"] == 1
     assert result["status"] == "partial_success"
     assert any("HTTP 503" in warning for warning in result["warnings"])
+
 
 def test_literature_arxiv_provider_failure_is_returned_as_collection_warning(monkeypatch):
     from agents import literature_agent
