@@ -195,3 +195,65 @@ def test_configured_live_source_cannot_bypass_quality_gate(tmp_path):
     assert not list(tmp_path.rglob("*.md"))
     assert any("quality gate" in warning.lower() for warning in result["warnings"])
 
+SOURCE_CONFIGS = [
+    ("lab", "labs_sources.yaml"),
+    ("company", "company_sources.yaml"),
+    ("regulation", "regulation_sources.yaml"),
+    ("opensource", "opensource_sources.yaml"),
+    ("practitioner", "practitioner_sources.yaml"),
+    ("investment", "investment_sources.yaml"),
+    ("failure", "failure_sources.yaml"),
+    ("data_availability", "data_sources.yaml"),
+    ("hackathon", "hackathon_sources.yaml"),
+    ("expert", "expert_sources.yaml"),
+]
+
+
+@pytest.mark.parametrize(("agent", "filename"), SOURCE_CONFIGS)
+def test_checked_in_source_configuration_loads_and_has_http_urls(agent, filename):
+    from pathlib import Path
+    from agents.utils import is_valid_http_url
+
+    module = importlib.import_module(f"agents.{agent}_agent")
+    sources = module.load_sources(Path("sources") / filename)
+
+    assert sources, f"{filename} loaded no source entries"
+    assert all(is_valid_http_url(source.url) for source in sources)
+
+
+def test_http_source_url_validator_rejects_unsafe_or_malformed_urls():
+    from agents.utils import is_valid_http_url
+
+    assert is_valid_http_url("https://example.org/research")
+    assert is_valid_http_url("http://localhost:8080/api")
+    assert not is_valid_http_url("ftp://example.org/file")
+    assert not is_valid_http_url("javascript:alert(1)")
+    assert not is_valid_http_url("https://user:password@example.org/")
+    assert not is_valid_http_url("https://example.org/has whitespace")
+    assert not is_valid_http_url("https://[::1")
+
+
+def test_collection_diagnostics_surface_failed_urls_and_skipped_links():
+    from agents.utils import append_collection_diagnostics
+
+    warnings = []
+    result = SimpleNamespace(
+        pages=[],
+        failed_urls=[{"url": "https://example.org/private", "reason": "robots_disallow"}],
+    )
+    review = {
+        "skipped_links": [
+            {"url": "https://partner.example/apply", "reason": "relevant_link_outside_allowed_domains"}
+        ]
+    }
+
+    append_collection_diagnostics(
+        warnings,
+        "Example source",
+        result=result,
+        review=review,
+    )
+
+    assert any("robots_disallow" in warning for warning in warnings)
+    assert any("relevant_link_outside_allowed_domains" in warning for warning in warnings)
+
