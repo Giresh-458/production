@@ -341,7 +341,7 @@ def execute_batch_run(
                         attempted_source_urls.add(source_url)
             import re
             for warning in response.get("warnings", []) or []:
-                for match in re.findall(r"https?://[^\\s)\\]>,]+", str(warning)):
+                for match in re.findall(r"https?://\S+", str(warning)):
                     attempted_source_urls.add(match.rstrip(".,;"))
             summary.update({
                 "run_id": inp.get("run_id"),
