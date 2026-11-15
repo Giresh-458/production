@@ -92,6 +92,8 @@ def test_company_product_or_deployment_is_a_string(monkeypatch):
         "research_gap": "Scale",
         "prototype_idea": "Batching",
         "keywords": ["verification"],
+        "confidence": "High",
+        "funding_alignment": "Strong alignment with RWA settlement research.",
     }
     monkeypatch.setattr(company_agent, "build_analysis_prompt", lambda _document: "prompt")
     monkeypatch.setattr(company_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
@@ -108,6 +110,8 @@ def test_company_product_or_deployment_is_a_string(monkeypatch):
 
     assert isinstance(result.product_or_deployment, str)
     assert result.product_or_deployment == "Tokenized settlement"
+    assert result.confidence == "High"
+    assert result.funding_alignment == "Strong alignment with RWA settlement research."
 
 
 def test_practitioner_role_is_a_string(monkeypatch):
@@ -120,6 +124,7 @@ def test_practitioner_role_is_a_string(monkeypatch):
         "research_opportunity": "Parallel proving",
         "prototype_idea": "Parallel verifier",
         "keywords": ["latency"],
+        "confidence": "High",
     }
     monkeypatch.setattr(practitioner_agent, "build_analysis_prompt", lambda _document: "prompt")
     monkeypatch.setattr(practitioner_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
@@ -135,6 +140,7 @@ def test_practitioner_role_is_a_string(monkeypatch):
 
     assert isinstance(result.practitioner_role, str)
     assert result.practitioner_role == "Engineer"
+    assert result.confidence == "High"
 
 
 def test_expert_identity_fields_are_strings(monkeypatch):
@@ -147,6 +153,7 @@ def test_expert_identity_fields_are_strings(monkeypatch):
         "collaboration_relevance": "Relevant",
         "proposal_relevance": "Strong fit",
         "keywords": ["cryptography"],
+        "confidence": "High",
     }
     monkeypatch.setattr(expert_agent, "build_analysis_prompt", lambda _document: "prompt")
     monkeypatch.setattr(expert_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
@@ -170,6 +177,7 @@ def test_expert_identity_fields_are_strings(monkeypatch):
     assert result.expert_name == "Dr Example"
     assert result.affiliation == "Example University"
     assert result.role == "Professor"
+    assert result.confidence == "High"
 
 def test_configured_live_source_cannot_bypass_quality_gate(tmp_path):
     from datetime import UTC, datetime
