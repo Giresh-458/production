@@ -713,14 +713,14 @@ def analyze_document(document: ExpertDocument) -> ExpertAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback expert extraction for '%s': %s", document.title, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise ExpertAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     source_type = document.source_type
     evidence_type = document.evidence_type
-    expert_name = document.expert_name_hint, document.title
-    affiliation = document.affiliation_hint, infer_affiliation(document.content, document.url)
-    role = document.role_hint, "Expert"
+    expert_name = document.expert_name_hint or document.title
+    affiliation = document.affiliation_hint or infer_affiliation(document.content, document.url)
+    role = document.role_hint or "Expert"
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")
