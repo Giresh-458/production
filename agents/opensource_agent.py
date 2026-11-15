@@ -326,7 +326,7 @@ def load_sources(sources_path: Path) -> list[OpenSourceSource]:
         raise OpenSourceAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("opensource_sources", {})
     if not isinstance(root, dict):
-        raise OpenSourceAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise OpenSourceAgentError(f"Expected 'opensource_sources' to be a mapping in {sources_path}.")
     sources: list[OpenSourceSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
