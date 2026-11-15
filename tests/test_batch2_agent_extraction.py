@@ -261,7 +261,21 @@ def test_hackathon_partial_llm_json_uses_safe_document_defaults(monkeypatch):
     from agents import hackathon_agent
 
     monkeypatch.setattr(hackathon_agent, "build_analysis_prompt", lambda _document: "prompt")
-    monkeypatch.setattr(hackathon_agent, "llm_generate", lambda _prompt: "{}")
+    parsed = {
+        "challenge_name": "RWA Builder Challenge",
+        "source_type": "Hackathon Platform",
+        "area": "RWA",
+        "problem_statement": "",
+        "sponsor_or_organizer": "Test Organizer",
+        "required_technology": "zero-knowledge proofs",
+        "expected_output": "prototype demo",
+        "industry_research_relevance": "Prototype-oriented ecosystem need",
+        "prototype_idea": "Build a verification prototype",
+        "funding_collaboration_signal": "Sponsor signal",
+        "keywords": [],
+        "confidence": "Medium",
+    }
+    monkeypatch.setattr(hackathon_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
     document = SimpleNamespace(
         challenge_name="RWA Builder Challenge",
         source_type="Hackathon Platform",
