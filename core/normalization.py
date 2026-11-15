@@ -685,13 +685,9 @@ def build_normalized_collection_records(
                         # Valid explicit ownership
                         pass
                     elif target_funding_call_id in call_ids:
-                        # Do not treat appearance in a broad multi-ID list as proof of ownership
-                        if len(call_ids) > 3:
-                            # Ambiguous: leave evidence unassigned / skip for this call
-                            continue
-                        else:
-                            # Legitimate shared evidence (e.g. 1-3 specific calls)
-                            record["funding_call_id"] = target_funding_call_id
+                        # The artifact carries explicit per-call attribution. Preserve
+                        # it even when one source is legitimately linked to many calls.
+                        record["funding_call_id"] = target_funding_call_id
                     else:
                         continue
 
