@@ -17,6 +17,9 @@ on:
       - "run_pipeline.py"
       - "tests/test_agent_normalization_refresh.py"
       - "tests/test_batch4_normalization.py"
+      - "tests/test_funding_normalization_artifact.py"
+      - "tests/test_funding_artifact_collision.py"
+      - "tests/test_funding_persistence_identity.py"
       - "tests/test_multi_call_evidence_attribution.py"
       - "tests/test_stale_index.py"
       - "tests/test_stale_index_deep.py"
@@ -58,6 +61,9 @@ jobs:
             tests/test_agent_normalization_refresh.py \
             tests/test_literature_run_provenance.py \
             tests/test_batch4_normalization.py \
+            tests/test_funding_normalization_artifact.py \
+            tests/test_funding_artifact_collision.py \
+            tests/test_funding_persistence_identity.py \
             tests/test_normalization_atomic_publish.py \
             tests/test_multi_call_evidence_attribution.py \
             tests/test_stale_index.py \
