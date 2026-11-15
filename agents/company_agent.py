@@ -473,7 +473,10 @@ def discover_company_candidates(query: str, limit: int = 10) -> list[CompanyDocu
 
 def build_auto_documents(sources_path: Path, area: str | None = None, warnings: list[str] | None = None) -> list[CompanyDocument]:
     import yaml
-    raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
+    try:
+        raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise CompanyAgentError(f"Could not read source configuration {sources_path}: {exc}") from exc
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
     from core.crawl_context import current_crawl_context
