@@ -196,3 +196,49 @@ def test_parallel_deadline_returns_without_waiting_for_unresponsive_worker(
     finally:
         release.set()
         assert finished.wait(timeout=2)
+
+
+def test_parallel_registry_sync_is_deferred_and_flushed_once_per_agent(
+    tmp_path, monkeypatch
+):
+    from core import source_registry
+
+    calls = []
+    refresh_plan_calls = []
+
+    def fake_mark(agent_name, *, attempted_urls=None, **kwargs):
+        calls.append((agent_name, set(attempted_urls or [])))
+
+    monkeypatch.setattr(source_registry, "mark_agent_sources_checked", fake_mark)
+    monkeypatch.setattr(
+        source_registry,
+        "build_source_refresh_plan",
+        lambda **kwargs: refresh_plan_calls.append(kwargs),
+    )
+
+    def fake_agent(agent_name, **kwargs):
+        assert kwargs["input_data"]["defer_registry_sync"] is True
+        return {
+            **_success_response(),
+            "outputs": [{"source": f"https://{agent_name}.example/source"}],
+            "warnings": [f"Fetch failed at https://{agent_name}.example/failed"],
+        }
+
+    monkeypatch.setattr(batch_runner, "run_registered_agent", fake_agent)
+    report = batch_runner.execute_batch_run(
+        agent_names=["company", "expert"],
+        area_names=[None],
+        mode="configured_scan",
+        execution_mode="parallel",
+        max_workers=2,
+        dry_run=False,
+        report_path=tmp_path / "registry.json",
+    )
+
+    assert len(calls) == 2
+    assert {agent for agent, _ in calls} == {"company", "expert"}
+    for agent, urls in calls:
+        assert f"https://{agent}.example/source" in urls
+        assert f"https://{agent}.example/failed" in urls
+    assert len(refresh_plan_calls) == 1
+    assert report["registry_sync_warnings"] == []
