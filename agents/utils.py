@@ -29,6 +29,55 @@ def is_valid_http_url(value: str | None) -> bool:
         return False
 
 
+def append_collection_diagnostics(
+    warnings: list[str] | None,
+    source_name: str,
+    *,
+    pages: list | None = None,
+    result: object | None = None,
+    review: dict | None = None,
+) -> None:
+    """Expose per-source crawl failures and coverage gaps to the agent response."""
+    if warnings is None:
+        return
+
+    failed_urls = getattr(result, "failed_urls", []) if result is not None else []
+    if isinstance(failed_urls, list) and failed_urls:
+        examples = []
+        for item in failed_urls[:3]:
+            if isinstance(item, dict):
+                examples.append(
+                    f"{item.get('url', 'unknown URL')}: {item.get('reason', 'fetch failed')}"
+                )
+            else:
+                examples.append(str(item))
+        warnings.append(
+            f"Source '{source_name}' had {len(failed_urls)} failed URL(s): "
+            + "; ".join(examples)
+        )
+
+    skipped_links = review.get("skipped_links", []) if isinstance(review, dict) else []
+    if isinstance(skipped_links, list) and skipped_links:
+        reasons = []
+        for item in skipped_links[:3]:
+            if isinstance(item, dict):
+                reasons.append(
+                    f"{item.get('url', 'unknown URL')}: {item.get('reason', 'skipped')}"
+                )
+            else:
+                reasons.append(str(item))
+        warnings.append(
+            f"Source '{source_name}' had {len(skipped_links)} skipped link(s): "
+            + "; ".join(reasons)
+        )
+
+    if pages is not None and not pages and not failed_urls:
+        warnings.append(f"Source '{source_name}' produced no pages.")
+    
+    if result is not None and not getattr(result, "pages", []) and not failed_urls:
+        warnings.append(f"Source '{source_name}' produced no pages.")
+
+
 def cleaned_text(value: str | None) -> str:
     return " ".join((value or "").split())
 
