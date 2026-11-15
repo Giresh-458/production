@@ -100,8 +100,8 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
 
         # We need to simulate the records.json existence since save_normalized isn't actually writing it
         def create_records_mock(*args, **kwargs):
-            # args[0] is call_root
-            call_root = args[0]
+            # args[1] is the call-scoped output root; args[0] contains input roots.
+            call_root = args[1]
             records_path = call_root / "normalized" / "records.json"
             records_path.parent.mkdir(parents=True, exist_ok=True)
             records_path.write_text('[{"record_id": 1, "title": "test"}]')
