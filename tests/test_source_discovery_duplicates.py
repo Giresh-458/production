@@ -29,6 +29,7 @@ def test_source_discovery_duplicate_preservation(
 
     call_id = "CALL-TEST-DISC"
     mock_evaluate_health.return_value = (True, 10)
+    mock_run_stage.return_value = {"status": "success", "outputs": [{"title": "test"}], "outputs_count": 1, "metadata": {}}
 
     selected_call = {
         "selected": {
