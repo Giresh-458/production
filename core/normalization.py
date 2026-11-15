@@ -1036,27 +1036,31 @@ def save_normalized_collection_records(
 
 def resolve_refresh_context(outputs_root: Path):
     if outputs_root.parent.name == "calls":
-        target_funding_call_id = outputs_root.name
-        run_root = outputs_root.parent.parent
-        intermediate_roots = [run_root / "intermediate", outputs_root / "intermediate"]
-    else:
-        target_funding_call_id = None
-        intermediate_roots = [outputs_root / "intermediate"]
-
-    filter_func = None
-    if target_funding_call_id:
         selected_path = outputs_root / "workflow" / "selected_funding_call.json"
         if not selected_path.exists():
-            raise FileNotFoundError(f"Cannot safely refresh collection records for call '{target_funding_call_id}': {selected_path} is missing, so mission gate cannot be applied.")
+            raise FileNotFoundError(
+                f"Cannot safely refresh collection records for call directory '{outputs_root.name}': "
+                f"{selected_path} is missing, so mission gate cannot be applied."
+            )
 
-        from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
-        from core.mission_gate import relevance as mission_relevance
         try:
-            import json
             wrapper = json.loads(selected_path.read_text(encoding="utf-8"))
-            record = wrapper.get("selected")
-            if not record:
-                raise ValueError("Missing 'selected' key in selected_funding_call.json")
+            record = wrapper.get("selected") if isinstance(wrapper, dict) else None
+            if not isinstance(record, dict):
+                raise ValueError("Missing selected funding-call record")
+            target_funding_call_id = _clean(
+                str(
+                    wrapper.get("selected_funding_call_id")
+                    or record.get("funding_call_id")
+                    or record.get("call_id")
+                    or ""
+                )
+            )
+            if not target_funding_call_id:
+                raise ValueError("Missing selected_funding_call_id/call_id in selected call manifest")
+
+            from core.funding_selection import FundingCallContext, ScoredCall, ValidationResult
+            from core.mission_gate import relevance as mission_relevance
 
             scored = ScoredCall(
                 call_id=target_funding_call_id,
@@ -1064,14 +1068,30 @@ def resolve_refresh_context(outputs_root: Path):
                 score=10.0,
                 validation=ValidationResult(True, ["Reconstructed during refresh."]),
             )
-            context = FundingCallContext.from_scored_call(scored, mode="autonomous_live", extra_reasons=["Reconstructed during refresh."])
+            context = FundingCallContext.from_scored_call(
+                scored,
+                mode="autonomous_live",
+                extra_reasons=["Reconstructed during refresh."],
+            )
+
             def apply_gate(rec):
                 gate = mission_relevance(rec, context)
                 rec["mission_relevance"] = gate
                 return gate["passed"]
-            filter_func = apply_gate
-        except Exception as e:
-            raise RuntimeError(f"Cannot safely refresh collection records for call '{target_funding_call_id}': failed to reconstruct mission context. Details: {e}")
+
+        except Exception as exc:
+            raise RuntimeError(
+                f"Cannot safely refresh collection records for call directory '{outputs_root.name}': "
+                f"failed to reconstruct selected funding-call context. Details: {exc}"
+            ) from exc
+
+        run_root = outputs_root.parent.parent
+        intermediate_roots = [run_root / "intermediate", outputs_root / "intermediate"]
+        filter_func = apply_gate
+    else:
+        target_funding_call_id = None
+        intermediate_roots = [outputs_root / "intermediate"]
+        filter_func = None
 
     return intermediate_roots, target_funding_call_id, filter_func
 
