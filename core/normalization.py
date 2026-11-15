@@ -318,7 +318,19 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
         "quoted_passages": _parse_list_block(evidence_subsections.get("Quoted Passages", "")),
         "links_found": _parse_list_block(evidence_subsections.get("Links Found", "")),
         "named_entities_or_programs": _parse_list_block(evidence_subsections.get("Named Entities Or Programs", "")),
-        "evidence_snippets": _parse_list_block(evidence_subsections.get("Evidence Snippets", "")),
+        "evidence_snippets": [
+            value
+            for value in _parse_list_block(evidence_subsections.get("Evidence Snippets", ""))
+            if value.strip().casefold() not in {
+                "no explicit evidence snippets provided.",
+                "no evidence snippets provided.",
+                "no evidence captured.",
+                "none",
+                "n/a",
+                "na",
+                "unknown",
+            }
+        ],
         "excerpt_windows": _parse_list_block(evidence_subsections.get("Excerpt Windows", "")),
     }
 
