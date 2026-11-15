@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/batch1-eu-live-quality-20261016
+      - fix/batch2-scraping-infrastructure
   pull_request:
     branches:
       - main
