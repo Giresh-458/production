@@ -806,6 +806,16 @@ def main() -> int:
 
         if input_count == 0:
             print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+            atomic_write_json(
+                call_root / "workflow" / "mission_relevance_gate.json",
+                {
+                    "input_records": 0,
+                    "accepted_records": 0,
+                    "rejected_records": 0,
+                    "details": [],
+                    "failure_reason": "no_normalized_evidence",
+                },
+            )
             report = {
                 "run_id": run_id,
                 "status": "no_normalized_evidence",
