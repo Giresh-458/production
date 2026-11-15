@@ -594,6 +594,7 @@ def process_area(
     *,
     allow_llm_analysis: bool = False,
     funding_context: FundingCallContext | None = None,
+    funding_contexts: list[FundingCallContext] | None = None,
     run_id: str | None = None,
 ) -> int:
     LOGGER.info("Starting collection for area: %s", area)
@@ -694,12 +695,29 @@ def process_area(
     ]
     if primary_source_url:
         lines.append(f"- source: {primary_source_url}")
+    resolved_call_ids: list[str] = []
     if funding_context and funding_context.funding_call_id:
-        lines.append(f"- funding_call_id: {funding_context.funding_call_id}")
-        lines.append(f"- funding_call_ids: {funding_context.funding_call_id}")
+        resolved_call_ids = [funding_context.funding_call_id]
+    elif funding_contexts:
+        from core.agent_interface import assign_funding_calls
+        evidence_text = "\\n".join(
+            f"{paper.title}\\n{paper.summary}" for paper in semantically_ranked
+        )
+        resolved_call_ids = assign_funding_calls(
+            f"Research Gap: {effective_area}",
+            evidence_text,
+            funding_contexts,
+        )
+    if len(resolved_call_ids) == 1:
+        lines.append(f"- funding_call_id: {resolved_call_ids[0]}")
+    if resolved_call_ids:
+        lines.append(f"- funding_call_ids: {', '.join(resolved_call_ids)}")
     if run_id:
         lines.append(f"- run_id: {run_id}")
     lines.extend([
+        "",
+        "## Source",
+        primary_source_url or "Unknown",
         "",
         "## Problem", analysis.problem, "",
         "## Gap", analysis.gap, "",
@@ -788,6 +806,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 datetime.now(UTC),
                 allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
                 funding_context=funding_context,
+                funding_contexts=funding_contexts,
                 run_id=payload.get("run_id"),
             )
             return finalize_file_agent_response(
