@@ -337,7 +337,7 @@ def load_sources(sources_path: Path) -> list[RegulationSource]:
         raise RegulationAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("regulation_sources", {})
     if not isinstance(root, dict):
-        raise RegulationAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise RegulationAgentError(f"Expected 'regulation_sources' to be a mapping in {sources_path}.")
     sources: list[RegulationSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
