@@ -486,7 +486,12 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     entity_tokens = (evidence.get("named_entities_or_programs", []) or [actor, title])[:12]
     linked_urls = list(dict.fromkeys(([source_url] if source_url else []) + evidence.get("links_found", [])))[:20]
 
-    content_hash = generate_content_hash(title, source_type, normalized_problem, context_summary)
+    content_hash = generate_content_hash(
+        title,
+        source_type,
+        normalized_problem,
+        "\n".join([context_summary, *evidence.get("evidence_snippets", [])]),
+    )
     identity_metadata = dict(machine_metadata)
     identity_metadata.update({
         "agent_name": agent_name,
@@ -748,11 +753,14 @@ def save_normalized_collection_records(
             record["first_seen"] = record["collected_at"]
             record["last_seen"] = record["collected_at"]
             record["content_versions"] = [record["content_hash"]]
+            record["run_ids"] = [record["run_id"]] if record["run_id"] else []
             deduped_records[evidence_key] = record
             continue
 
         existing = deduped_records[evidence_key]
         existing["observation_count"] += 1
+        if record["run_id"] and record["run_id"] not in existing["run_ids"]:
+            existing["run_ids"].append(record["run_id"])
         if record["collected_at"] and (
             not existing["first_seen"] or record["collected_at"] < existing["first_seen"]
         ):
@@ -853,6 +861,7 @@ def save_normalized_collection_records(
                         "agent": record["agent_name"],
                         "funding_call_id": record["funding_call_id"],
                         "run_id": record["run_id"],
+                        "run_ids": record.get("run_ids", []),
                         "retrieved_at": record["collected_at"],
                         "raw_record_id": record["file_path"],
                     },
