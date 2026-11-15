@@ -353,8 +353,8 @@ def load_sources(sources_path: Path) -> list[DataSource]:
             url = cleaned_text(str(entry.get("url", "")))
             focus = cleaned_text(str(entry.get("focus", "")))
             if name and url and not is_valid_http_url(url):
-            raise DataAvailabilityAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise DataAvailabilityAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(DataSource(name=name, type=source_type, url=url, focus=focus))
     if not sources:
         raise DataAvailabilityAgentError("No data sources were loaded from sources/data_sources.yaml.")
