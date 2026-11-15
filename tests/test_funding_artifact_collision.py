@@ -88,7 +88,12 @@ def test_funding_artifact_collision_safe(tmp_path: Path):
     
     # Save second artifact
     path2 = save_markdown_output(doc2, analysis2, tmp_path, run_id="run_test")
+    path1_second_run = save_markdown_output(doc1, analysis1, tmp_path, run_id="run_test_second")
     
+    # A repeat collection of the same call must not overwrite the previous run snapshot.
+    assert path1_second_run != path1
+    assert path1.exists() and path1_second_run.exists()
+
     # 1. Distinct paths
     assert path1 != path2
     
