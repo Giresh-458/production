@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlsplit
 from typing import Callable, Iterable
 
 LOGGER = logging.getLogger("rif.agents.utils")
@@ -10,6 +11,22 @@ LOGGER = logging.getLogger("rif.agents.utils")
 
 class AgentUtilsError(Exception):
     """Raised when a shared agent utility cannot complete its task."""
+
+
+def is_valid_http_url(value: str | None) -> bool:
+    """Return True only for absolute HTTP(S) URLs without credentials or whitespace."""
+    if not isinstance(value, str) or not value.strip() or any(ch.isspace() for ch in value):
+        return False
+    try:
+        parsed = urlsplit(value.strip())
+        return (
+            parsed.scheme.lower() in {"http", "https"}
+            and bool(parsed.netloc)
+            and not parsed.username
+            and not parsed.password
+        )
+    except ValueError:
+        return False
 
 
 def cleaned_text(value: str | None) -> str:
