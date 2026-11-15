@@ -317,7 +317,7 @@ def load_sources(sources_path: Path) -> list[InvestmentSource]:
         raise InvestmentAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("investment_sources", {})
     if not isinstance(root, dict):
-        raise InvestmentAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise InvestmentAgentError(f"Expected 'investment_sources' to be a mapping in {sources_path}.")
     sources: list[InvestmentSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
