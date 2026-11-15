@@ -1048,11 +1048,20 @@ def resolve_refresh_context(outputs_root: Path):
             record = wrapper.get("selected") if isinstance(wrapper, dict) else None
             if not isinstance(record, dict):
                 raise ValueError("Missing selected funding-call record")
+            # New run directories use a slug+digest component. Legacy call
+            # directories used the raw funding-call ID as their directory name.
+            import re
+            legacy_directory_id = (
+                outputs_root.name
+                if not re.fullmatch(r".+-[0-9a-f]{10}", outputs_root.name)
+                else ""
+            )
             target_funding_call_id = _clean(
                 str(
                     wrapper.get("selected_funding_call_id")
                     or record.get("funding_call_id")
                     or record.get("call_id")
+                    or legacy_directory_id
                     or ""
                 )
             )
@@ -1082,7 +1091,7 @@ def resolve_refresh_context(outputs_root: Path):
         except Exception as exc:
             raise RuntimeError(
                 f"Cannot safely refresh collection records for call directory '{outputs_root.name}': "
-                f"failed to reconstruct selected funding-call context. Details: {exc}"
+                f"failed to reconstruct mission context for selected funding call. Details: {exc}"
             ) from exc
 
         run_root = outputs_root.parent.parent
