@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -530,6 +530,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, warnings: 
             ),
         )
         save_recursive_review(review)
+        append_collection_diagnostics(warnings, source.name, pages=pages, review=review)
         title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
         full_text = cleaned_text(f"{source.name} {source.focus} {content}")
         area_hint = area or source.area
