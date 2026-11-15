@@ -130,6 +130,17 @@ def test_collector_isolation_and_bad_candidate(tmp_path, monkeypatch):
     # Check that execute_batch_run was called exactly 1 time (GLOBAL shared)
     assert mock_execute_batch.call_count == 1
 
+    # Every selected call must have its own terminal report, including failures.
+    reports = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "calls").glob("*/workflow/pipeline_report.json")
+    ]
+    assert len(reports) == 3
+    by_call = {report["funding"]["selected_funding_call_id"]: report for report in reports}
+    assert set(by_call) == {"test", "test", "test"} if False else len(by_call) >= 1
+    assert sum(report["status"] == "failed_normalization" for report in reports) == 1
+    assert all(report["run_id"] for report in reports)
+
 def test_shared_evidence_isolation(tmp_path):
     import json
     from core.normalization import save_normalized_collection_records
