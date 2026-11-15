@@ -1,6 +1,7 @@
 import json
+from datetime import UTC, datetime
 import pytest
-from core.agent_interface import assign_funding_calls, _resolve_funding_call_ids
+from core.agent_interface import assign_funding_calls, _resolve_funding_call_ids, finalize_collection_agent_response
 from core.funding_selection import FundingCallContext
 
 def _mock_ctx(**kwargs):
@@ -201,3 +202,81 @@ def test_longer_exact_title_prevents_prefix_cross_attribution():
     )
 
     assert ids == ["CALL-SPECIFIC-TITLE"]
+
+
+def test_duplicate_source_documents_merge_all_current_call_attributions(tmp_path, monkeypatch):
+    call_a = _mock_ctx(
+        funding_call_id="CALL-SHARED-A",
+        call_title="Shared Program Alpha",
+        program_name="Shared Program Alpha",
+    )
+    call_b = _mock_ctx(
+        funding_call_id="CALL-SHARED-B",
+        call_title="Shared Program Bravo",
+        program_name="Shared Program Bravo",
+    )
+    saved_payloads = []
+
+    def fake_build(**kwargs):
+        return ({
+            "shared_header": {
+                "title": kwargs["title"],
+                "source": kwargs["source"],
+                "layer": kwargs["layer"],
+                "research_area": "DePIN",
+                "collected_at": kwargs["collected_at"].isoformat(),
+                "agent_name": kwargs["agent"],
+                "agent_version": "v1",
+                "collection_mode": kwargs["mode"],
+            },
+            "evidence_bundle": {},
+            "metadata": {
+                "quality_gate": {"passed": True},
+                "area_normalization": {"keyword_scores": {"DePIN": 1.0}},
+            },
+            "provenance": {},
+            "problem_intelligence": {"selected_problem": "A shared source-grounded problem."},
+            "agent_specific_body": {},
+            "raw_content": kwargs["content"],
+        }, [])
+
+    def fake_save(*, payload, output_dir):
+        saved_payloads.append(payload)
+        return tmp_path / "saved.md"
+
+    monkeypatch.setattr("core.agent_interface.build_intermediate_artifact_payload", fake_build)
+    monkeypatch.setattr("core.agent_interface.save_intermediate_markdown", fake_save)
+
+    docs = [
+        DummyDoc(
+            "Shared Source",
+            "This evidence explicitly names CALL-SHARED-A and discusses a research problem.",
+        ),
+        DummyDoc(
+            "Shared Source",
+            "This evidence explicitly names CALL-SHARED-B and discusses a research problem.",
+        ),
+    ]
+    response = finalize_collection_agent_response(
+        agent="company",
+        layer="Company",
+        mode="configured_scan",
+        area=None,
+        documents=docs,
+        output_dir=tmp_path,
+        started_at=datetime.now(UTC),
+        funding_contexts=[call_a, call_b],
+        run_id="RUN-SHARED",
+    )
+
+    assert len(saved_payloads) == 1
+    assert saved_payloads[0]["shared_header"]["funding_call_ids"] == [
+        "CALL-SHARED-A",
+        "CALL-SHARED-B",
+    ]
+    assert saved_payloads[0]["shared_header"]["run_id"] == "RUN-SHARED"
+    assert response["outputs"][0]["funding_call_ids"] == [
+        "CALL-SHARED-A",
+        "CALL-SHARED-B",
+    ]
+    assert response["outputs"][0]["run_id"] == "RUN-SHARED"
