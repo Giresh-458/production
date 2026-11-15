@@ -317,8 +317,17 @@ def _normalize_intermediate_sections(path: Path) -> dict[str, Any]:
         "excerpt_windows": _parse_list_block(evidence_subsections.get("Excerpt Windows", "")),
     }
 
-    body_subsections = sections.get("Agent-Specific Body", {}).get("subsections", {})
-    agent_body = {name: _clean(value) for name, value in body_subsections.items() if _clean(value)}
+    agent_section = sections.get("Agent-Specific Body", {})
+    body_subsections = agent_section.get("subsections", {})
+    # Shared-interface agents serialize fields as H3 sections; the funding
+    # collector historically serialized the same fields as Markdown bullets.
+    # Parse both layouts so the normalized record does not silently lose them.
+    agent_body = _parse_bullet_map(agent_section.get("body", ""))
+    agent_body.update({
+        name: _clean(value)
+        for name, value in body_subsections.items()
+        if _clean(value)
+    })
 
     if not agent_body and isinstance(machine_metadata.get("source_hints"), dict):
         # Legacy fallback: if old artifact stored useful hints only in metadata.
@@ -424,7 +433,12 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         "",
     )
     canonical_url = canonicalize_url(source_url)
-    collected_at = _coalesce(shared_header.get("collected_at", ""), provenance.get("collected_at", ""))
+    collected_at = _coalesce(
+        shared_header.get("collected_at", ""),
+        provenance.get("collected_at", ""),
+        provenance.get("retrieved_at", ""),
+        shared_header.get("retrieved_at", ""),
+    )
     collection_mode = _coalesce(shared_header.get("collection_mode", ""))
 
     funding_call_id = _clean(shared_header.get("funding_call_id", ""))
@@ -451,7 +465,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         str(source_hints.get("evidence_type", "")),
     )
     actor = _coalesce(
-        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
+        _body_field(body, "Funding Organization", "Funding Body", "Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
         _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
         str(source_hints.get("organization", "")),
         str(source_hints.get("company_name", "")),
@@ -466,10 +480,11 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         source_url,
     )
     focus = _coalesce(
-        _body_field(body, "Focus"),
+        _body_field(body, "Focus", "Focus Area"),
         str(source_hints.get("focus", "")),
         str(machine_metadata.get("focus", "")),
         str(machine_metadata.get("source_hints", "")),
+        artifact.get("focus_area", ""),
     )
     keywords = _tokenize(
         " ".join(
