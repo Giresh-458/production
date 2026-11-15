@@ -334,9 +334,13 @@ def load_sources(sources_path: Path) -> list[DataSource]:
         raise DataAvailabilityAgentError(f"Data sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise DataAvailabilityAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise DataAvailabilityAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
     root = data.get("data_sources", {})
+    if not isinstance(root, dict):
+        raise DataAvailabilityAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
     sources: list[DataSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
