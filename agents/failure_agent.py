@@ -624,8 +624,8 @@ def analyze_document(document: FailureDocument) -> FailureAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback failure extraction for '%s': %s", document.incident_name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise FailureAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     incident_name = document.incident_name
     area = document.area_hint
