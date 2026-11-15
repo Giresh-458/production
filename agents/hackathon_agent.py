@@ -343,7 +343,7 @@ def load_sources(sources_path: Path) -> list[HackathonSource]:
         raise HackathonAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("hackathon_sources", {})
     if not isinstance(root, dict):
-        raise HackathonAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise HackathonAgentError(f"Expected 'hackathon_sources' to be a mapping in {sources_path}.")
     sources: list[HackathonSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
