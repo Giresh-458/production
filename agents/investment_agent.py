@@ -311,9 +311,13 @@ def load_sources(sources_path: Path) -> list[InvestmentSource]:
         raise InvestmentAgentError(f"Investment sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise InvestmentAgentError(f"Expected a YAML mapping in {sources_path}.")
     except yaml.YAMLError as exc:
         raise InvestmentAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
     root = data.get("investment_sources", {})
+    if not isinstance(root, dict):
+        raise InvestmentAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
     sources: list[InvestmentSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
