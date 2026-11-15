@@ -155,3 +155,44 @@ def test_parallel_tasks_keep_funding_context_and_run_attribution_isolated(
     assert all(task["funding_call_ids"] == ["CALL-A", "CALL-B"] for task in report["tasks"])
     assert all(task["run_id"] == "PIPELINE-RUN-1" for task in report["tasks"])
     assert report["worker_lifecycle"]["active_executor_workers_after_batch_return"] == 0
+
+
+def test_parallel_deadline_returns_without_waiting_for_unresponsive_worker(
+    tmp_path, monkeypatch
+):
+    import time
+
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def slow_agent(agent_name, **kwargs):
+        started.set()
+        release.wait(timeout=5)
+        finished.set()
+        return _success_response()
+
+    monkeypatch.setattr(batch_runner, "run_registered_agent", slow_agent)
+    begin = time.monotonic()
+    try:
+        report = batch_runner.execute_batch_run(
+            agent_names=["company"],
+            area_names=[None],
+            mode="configured_scan",
+            execution_mode="parallel",
+            max_workers=1,
+            timeout_budget_seconds=1,
+            dry_run=False,
+            report_path=tmp_path / "deadline.json",
+        )
+        elapsed = time.monotonic() - begin
+
+        assert started.is_set()
+        assert elapsed < 2.5
+        assert report["stats"]["timed_out_tasks"] == 1
+        assert report["tasks"][0]["status"] == "timeout_budget_exceeded"
+        assert report["worker_lifecycle"]["active_executor_workers_after_batch_return"] == 1
+        assert "cannot be forcibly stopped" in report["tasks"][0]["warnings"][0]
+    finally:
+        release.set()
+        assert finished.wait(timeout=2)
