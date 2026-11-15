@@ -58,6 +58,13 @@ def test_funding_artifact_normalization(tmp_path: Path):
     
     assert norm["funding_call_id"] == "CALL-12345"
     assert norm["source_url"] == "https://example.com"
+    assert norm["agent_name"] == "funding"
+    assert norm["source_type"] == "API"
+    assert norm["actor"] == "Test Body"
+    assert norm["focus"] == "DePIN"
+    assert norm["collected_at"] == "2026-10-08T00:00:00Z"
+    assert norm["agent_specific_fields"]["organization"] == "Test Org"
+    assert norm["agent_specific_fields"]["year"] == "2026"
     assert len(norm["evidence_snippets"]) > 0
     assert "Solve X." in norm["evidence_snippets"][0]
     
