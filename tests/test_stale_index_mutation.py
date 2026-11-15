@@ -10,7 +10,7 @@ import copy
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.normalization import ensure_normalized_collection_records, _normalization_input_manifest
 
-def test_cache_mutation_is_isolated(tmp_path):
+def test_cache_mutation_is_isolated(tmp_path, seed_normalized_ledger):
     call_id = "CALL-TEST-MUTATION"
     run_root = tmp_path / "outputs" / "run_mutation"
     call_root = run_root / "calls" / call_id
@@ -74,6 +74,7 @@ def test_cache_mutation_is_isolated(tmp_path):
 
     records_json = normalized / "records.json"
     records_json.write_text(json.dumps([good_record]), encoding="utf-8")
+    seed_normalized_ledger(normalized, [good_record])
 
     by_area_json = normalized / "by_area.json"
     by_area_json.write_text(json.dumps({"DePIN": [conflicting_record]}), encoding="utf-8")
