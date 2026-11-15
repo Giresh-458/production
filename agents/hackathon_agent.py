@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url, normalize_confidence
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -799,10 +799,10 @@ def analyze_document(document: HackathonDocument) -> HackathonAnalysis:
         funding_collaboration_signal=cleaned_text(str(parsed.get("funding_collaboration_signal", ""))) or f"Sponsor signal from {document.sponsor_or_organizer}.",
         problem_signature=build_problem_signature(area, required_technology, problem_statement),
         keywords=sanitize_list(parsed.get("keywords"), max_items=5),
-        confidence=cleaned_text(str(parsed.get("confidence", "Medium"))) or "Medium",
+        confidence=normalize_confidence(parsed.get("confidence")),
         source_method="ollama",
         signal_class="emerging_demand",
-        evidence_strength=cleaned_text(str(parsed.get("evidence_strength", "Low"))) or "Low",
+        evidence_strength=coalesce_text(parsed.get("evidence_strength"), "Low").title() if coalesce_text(parsed.get("evidence_strength"), "Low").title() in {"Very High", "High", "Medium", "Low"} else "Low",
         corroboration_required=_coerce_bool(parsed.get("corroboration_required", True)),
     )
 
