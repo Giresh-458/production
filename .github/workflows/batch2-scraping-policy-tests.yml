@@ -57,4 +57,4 @@ jobs:
           python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
       - name: Run scraping policy and crawler limit regressions
         run: |
-          python -m pytest tests/test_batch2_scraping_policy.py tests/test_crawler_limits.py tests/test_playwright_fallback.py tests/test_shared_collection.py tests/test_antibot_security.py tests/test_redirect_security.py tests/test_adaptive_scraper.py tests/test_sitemap_semantics.py tests/test_http_deadline.py tests/test_http_policy_extra.py -q
+          python -m pytest tests/test_batch2_scraping_policy.py tests/test_batch2_agent_extraction.py tests/test_all_collection_agents.py tests/test_collection_provenance.py tests/test_literature_run_provenance.py tests/test_literature_contract.py tests/test_crawler_limits.py tests/test_playwright_fallback.py tests/test_shared_collection.py tests/test_antibot_security.py tests/test_redirect_security.py tests/test_adaptive_scraper.py tests/test_sitemap_semantics.py tests/test_http_deadline.py tests/test_http_policy_extra.py -q
