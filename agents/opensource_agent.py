@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import append_collection_diagnostics, cleaned_text, coalesce_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, coalesce_text, is_valid_http_url, normalize_confidence
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -836,9 +836,7 @@ def analyze_document(document: OpenSourceDocument) -> OpenSourceAnalysis:
     
     problem_signature = build_problem_signature(area, issue_or_item, technical_problem)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
-    if confidence not in {"High", "Medium", "Low"}:
-        confidence = "Medium"
+    confidence = normalize_confidence(parsed.get("confidence"))
     source_type = document.source_type
     evidence_type = document.evidence_type
     return OpenSourceAnalysis(
