@@ -458,7 +458,7 @@ def collect_source(
                     script_bytes = sum(
                         len(m) for m in re.findall(r"<script[^>]*>.*?</script>", h, re.I | re.S)
                     )
-                    script_count = len(re.findall(r"<script\\b", h, re.I))
+                    script_count = lower_html.count("<script")
                     explicit_js_shell = any(
                         marker in lower_html
                         for marker in (
