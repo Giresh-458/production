@@ -240,7 +240,7 @@ def test_robots_disallow_rule_is_respected(monkeypatch):
             return False
 
         def read(self, _limit):
-            return b"User-agent: *\\nDisallow: /private\\n"
+            return b"User-agent: *\nDisallow: /private\n"
 
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: RobotsResponse())
     assert web_collection._robots_allowed(
