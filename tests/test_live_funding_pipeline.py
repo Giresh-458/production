@@ -1471,7 +1471,9 @@ def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
 
     opportunity = analyze_document(document)
     assert opportunity.status == "OPEN_CALL"
-    assert opportunity.deadline == "2026-11-04"
+    # The November 2026 installment is already past on the current test date;
+    # the next official deadline is March 4, 2027.
+    assert opportunity.deadline == "2027-03-04"
     assert opportunity.application_url is None
 
 
