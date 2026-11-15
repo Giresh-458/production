@@ -334,10 +334,10 @@ def load_sources(sources_path: Path) -> list[FailureSource]:
         raise FailureAgentError(f"Failure sources file not found: {sources_path}")
     try:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise FailureAgentError(f"Expected a YAML mapping in {sources_path}.")
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise FailureAgentError(f"Could not read valid YAML from {sources_path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise FailureAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("failure_sources", {})
     if not isinstance(root, dict):
         raise FailureAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
