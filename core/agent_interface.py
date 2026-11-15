@@ -915,16 +915,26 @@ def finalize_collection_agent_response(
         response["metadata"]["collection_quality"] = collection_quality_metadata
         return response
 
-    # Successful artifacts do not make a partially failed collection complete.
-    # Only the routine collection-only notice is informational; any other warning
-    # means source coverage, quality, deduplication, or area assignment was partial.
-    informational_notice = (
-        "Collection-only mode saved intermediate artifacts; deeper synthesis is deferred."
+    # Downgrade only on concrete collection failures or rejected evidence.
+    # Area-normalization notes and intentional duplicate suppression are informative,
+    # not proof that source acquisition was incomplete.
+    partial_warning_markers = (
+        "failed",
+        "quality gate",
+        "skipped link",
+        "failed url",
+        "produced no pages",
     )
     partial_warnings = [
-        warning for warning in collected_warnings if warning != informational_notice
+        warning
+        for warning in collected_warnings
+        if any(marker in warning.lower() for marker in partial_warning_markers)
     ]
-    response_builder = create_partial_response if partial_warnings else create_success_response
+    response_builder = (
+        create_partial_response
+        if partial_warnings or rejected_pages
+        else create_success_response
+    )
     response = response_builder(
         agent=agent,
         layer=layer,
