@@ -1135,9 +1135,7 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     manifest_path = outputs_root / "normalized" / "input_manifest.json"
     errors_path = outputs_root / "normalized" / "errors.json"
     ledger_path = outputs_root / "normalized" / "evidence_ledger.db"
-    if not errors_path.is_file() or not _evidence_ledger_is_consistent(ledger_path, -1):
-        # A negative expected count only checks ledger structure here; the exact
-        # row count is checked after loading the cached records below.
+    if not errors_path.is_file():
         force_refresh = True
     if not force_refresh:
         try:
