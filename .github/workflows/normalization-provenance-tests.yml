@@ -30,6 +30,17 @@ on:
       - "tests/test_multiple_funding_calls.py"
       - "tests/test_funding_call_separation.py"
       - "tests/test_funding_routing_golden.py"
+      - "tests/test_funding_selection.py"
+      - "tests/test_funding_output_quality.py"
+      - "tests/test_funding_status_model.py"
+      - "tests/test_funding_sources_config.py"
+      - "tests/test_funding_domain_filter.py"
+      - "tests/test_eu_query_budget.py"
+      - "tests/test_collection_quality_gate.py"
+      - "tests/test_funding_quality.py"
+      - "tests/test_funding_source_registry_hardening.py"
+      - "tests/test_pipeline_proposal_gates.py"
+      - "tests/test_pipeline_live_guards.py"
       - "tests/test_batch2_orchestration_integrity.py"
       - "tests/test_pipeline_runtime.py"
       - "tests/test_context_propagation.py"
@@ -61,7 +72,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright python-docx
 
       - name: Run normalization, attribution, and cache regressions
         run: |
@@ -83,6 +94,17 @@ jobs:
             tests/test_multiple_funding_calls.py \
             tests/test_funding_call_separation.py \
             tests/test_funding_routing_golden.py \
+            tests/test_funding_selection.py \
+            tests/test_funding_output_quality.py \
+            tests/test_funding_status_model.py \
+            tests/test_funding_sources_config.py \
+            tests/test_funding_domain_filter.py \
+            tests/test_eu_query_budget.py \
+            tests/test_collection_quality_gate.py \
+            tests/test_funding_quality.py \
+            tests/test_funding_source_registry_hardening.py \
+            tests/test_pipeline_proposal_gates.py \
+            tests/test_pipeline_live_guards.py \
             tests/test_batch2_orchestration_integrity.py \
             tests/test_pipeline_runtime.py \
             tests/test_context_propagation.py \
