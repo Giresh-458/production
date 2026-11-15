@@ -499,16 +499,24 @@ def fallback_analysis(document: Any) -> Any:
     raise ValueError("LLM extraction failed and synthetic fallback is disabled")
 
 
+def _bounded_fit_score(value: Any) -> float:
+    try:
+        score = float(value or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
+    return max(0.0, min(1.0, score))
+
+
 def analyze_document(document: LabDocument) -> LabAnalysis:
     prompt = build_analysis_prompt(document)
     LOGGER.info("Analyzing lab '%s' with local llm_provider", document.name)
     try:
         parsed = parse_llm_response(llm_generate(prompt))
     except Exception as exc:
-        LOGGER.warning("Using fallback lab extraction for '%s': %s", document.name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise LabAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
-    research_area = "General"
+    research_area = cleaned_text(str(parsed.get("research_area") or ""))
     if research_area not in FOCUS_AREAS:
         research_area = infer_research_area(json.dumps(parsed))
     research_themes = sanitize_list(parsed.get("research_themes"), 5)
@@ -518,7 +526,7 @@ def analyze_document(document: LabDocument) -> LabAnalysis:
     industry_signals = sanitize_list(parsed.get("industry_signals"), 4)
     combined_text = " ".join(page.content for page in document.pages)
     problem_signatures = sanitize_list(parsed.get("problem_signatures"), 4) or build_problem_signatures(keywords, research_themes)
-    problem = active_problems[0] if active_problems else "", combined_text[:220]
+    problem = coalesce_text(parsed.get("problem"), active_problems[0] if active_problems else combined_text[:220])
     why_important = coalesce_text(parsed.get("why_important"), "UNKNOWN")
     
     existing_solutions = coalesce_text(parsed.get("existing_solutions"), "UNKNOWN")
@@ -551,7 +559,7 @@ def analyze_document(document: LabDocument) -> LabAnalysis:
         funding_history=sanitize_list(parsed.get("funding_history"), 6),
         potential_project_role="Research partner",
         partner_fit="Unknown",
-        fit_score=max(0.0, min(1.0, float(parsed.get("fit_score") or 0.0))),
+        fit_score=_bounded_fit_score(parsed.get("fit_score")),
     )
 
 
