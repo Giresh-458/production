@@ -416,3 +416,44 @@ def test_data_availability_analysis_uses_model_access_and_dataset_metadata(monke
     assert result.benchmark_gap == "No labeled recovery events"
     assert result.reproducibility == "High"
 
+def test_failure_agent_uses_model_incident_type_and_evidence_metadata(monkeypatch):
+    from agents import failure_agent
+    from core.schemas import AREA_KEYWORDS
+
+    area = next(iter(AREA_KEYWORDS))
+    parsed = {
+        "incident_type": "Bridge Hack",
+        "what_failed": "Bridge validator compromise",
+        "root_cause": "Compromised signing keys",
+        "impact": "Unauthorized asset transfer",
+        "technical_problem": "Insufficient key isolation",
+        "research_opportunity": "Threshold signing with monitoring",
+        "prototype_idea": "A threshold-signature bridge monitor",
+        "prevention_mechanism": "Independent signer quorum",
+        "confidence": "High",
+        "incident_date": "2026-01-15",
+        "estimated_loss": "Unknown",
+        "attack_vector": "Validator key compromise",
+        "affected_system": "Example Bridge",
+        "recurrence_signal": "Repeated validator compromise",
+        "evidence_strength": "High",
+        "keywords": ["bridge", "validator"],
+    }
+    monkeypatch.setattr(failure_agent, "build_analysis_prompt", lambda _document: "prompt")
+    monkeypatch.setattr(failure_agent, "llm_generate", lambda _prompt: json.dumps(parsed))
+    document = SimpleNamespace(
+        incident_name="Example Bridge incident",
+        source_type="Security Report",
+        evidence_type="Incident Report",
+        area_hint=area,
+        content="Bridge validator exploit caused unauthorized asset transfer.",
+    )
+
+    result = failure_agent.analyze_document(document)
+
+    assert result.incident_type == "Bridge Hack"
+    assert result.confidence == "High"
+    assert result.incident_date == "2026-01-15"
+    assert result.attack_vector == "Validator key compromise"
+    assert result.evidence_strength == "High"
+
