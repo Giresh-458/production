@@ -63,6 +63,8 @@ def test_funding_artifact_normalization(tmp_path: Path):
     assert norm["actor"] == "Test Body"
     assert norm["focus"] == "DePIN"
     assert norm["collected_at"] == "2026-10-08T00:00:00Z"
+    assert norm["published_at"] == "2026-01-01T00:00:00Z"
+    assert norm["last_verified_at"] == "2026-10-08T00:00:00Z"
     assert norm["agent_specific_fields"]["organization"] == "Test Org"
     assert norm["agent_specific_fields"]["year"] == "2026"
     assert len(norm["evidence_snippets"]) > 0
