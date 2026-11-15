@@ -681,12 +681,12 @@ def analyze_document(document: PractitionerDocument) -> PractitionerAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback practitioner extraction for '%s': %s", document.title, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise PractitionerAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     source_type = document.source_type
     evidence_type = document.evidence_type
-    practitioner_role = document.practitioner_role_hint, "Unknown"
+    practitioner_role = document.practitioner_role_hint or "Unknown"
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")
