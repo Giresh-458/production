@@ -59,6 +59,7 @@ def test_legacy_ungated_records_bypass(tmp_path):
         "collected_at": "2026-08-24T10:00:00+00:00"
     }]
     records_json.write_text(json.dumps(legacy_records), encoding="utf-8")
+    seed_normalized_ledger(normalized, legacy_records)
 
     # New timestamp for records to force cache hit
     new_time = time.time()
@@ -76,7 +77,7 @@ def test_legacy_ungated_records_bypass(tmp_path):
     records = json.loads(records_json.read_text(encoding="utf-8"))
     assert len(records) == 0, "Legacy ungated record bypassed the mission gate!"
 
-def test_cache_hit_global_refresh_is_preserved(tmp_path):
+def test_cache_hit_global_refresh_is_preserved(tmp_path, seed_normalized_ledger):
     run_root = tmp_path / "outputs" / "run_cache_global"
     run_root.mkdir(parents=True)
 
