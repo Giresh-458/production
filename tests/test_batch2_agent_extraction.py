@@ -507,11 +507,18 @@ def test_literature_arxiv_provider_failure_is_returned_as_collection_warning(mon
     assert any("arXiv" in warning and "service unavailable" in warning for warning in warnings)
 
 
-def test_literature_json_provider_failure_is_returned_as_collection_warning():
+def test_literature_json_provider_failure_is_returned_as_collection_warning(monkeypatch):
     from agents import literature_agent
+
+    import core.http_client as http_client
 
     warnings = []
     token = literature_agent._literature_collection_warnings.set(warnings)
+    monkeypatch.setattr(
+        http_client,
+        "fetch_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("provider unavailable")),
+    )
     try:
         payload = literature_agent._fetch_provider_json(
             "https://api.example.org/papers",
