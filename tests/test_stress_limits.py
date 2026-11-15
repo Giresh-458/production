@@ -18,7 +18,9 @@ def test_recursive_stress_timeout(monkeypatch):
 
     import urllib.request
     def mock_urlopen(url, *args, **kwargs):
-        raise Exception("Mocked out")
+        # A confirmed missing robots.txt is an explicit allow; a generic
+        # transport exception must fail closed under the crawler policy.
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
     monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
     monkeypatch.setattr("core.http_client.get_response", mock_get_response)
 
