@@ -685,11 +685,15 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     
     usable_for = coalesce_text(parsed.get("usable_for"), "UNKNOWN")
     
-    access_type = infer_access_type(document.content, source_type).title()
-    if access_type not in {"Open", "Restricted", "Paid", "Manual", "Api", "API"}:
-        access_type = "Open"
+    access_type = coalesce_text(
+        parsed.get("access_type"), infer_access_type(document.content, source_type)
+    ).title()
     if access_type == "Api":
         access_type = "API"
+    if access_type not in {"Open", "Restricted", "Paid", "Manual", "API"}:
+        access_type = infer_access_type(document.content, source_type)
+        if access_type == "Api":
+            access_type = "API"
     evaluation_possibility = coalesce_text(parsed.get("evaluation_possibility"), "UNKNOWN")
     
     limitations = coalesce_text(parsed.get("limitations"), "UNKNOWN")
@@ -699,14 +703,12 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     problem_signature = build_problem_signature(area, source_name, evaluation_possibility)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
     confidence = normalize_confidence(parsed.get("confidence"))
-    dataset_scope = "Unknown"
-    coverage_period = "Unknown"
-    license_or_access_terms = "Unknown"
-    benchmark_metrics = "Unknown"
-    benchmark_gap = "None identified"
-    reproducibility = "Medium".title()
-    if reproducibility not in {"High", "Medium", "Low"}:
-        reproducibility = "Medium"
+    dataset_scope = coalesce_text(parsed.get("dataset_scope"), "Unknown")
+    coverage_period = coalesce_text(parsed.get("coverage_period"), "Unknown")
+    license_or_access_terms = coalesce_text(parsed.get("license_or_access_terms"), "Unknown")
+    benchmark_metrics = coalesce_text(parsed.get("benchmark_metrics"), "Unknown")
+    benchmark_gap = coalesce_text(parsed.get("benchmark_gap"), "None identified")
+    reproducibility = normalize_confidence(parsed.get("reproducibility"))
     return DataAnalysis(
         source_name=source_name,
         source_type=source_type,
