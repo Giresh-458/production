@@ -12,6 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,6 +40,17 @@ from agents.db import (
 from agents.utils import cleaned_text
 from core.llm_provider import generate as llm_generate
 from core.schemas import AREA_KEYWORDS
+
+_literature_collection_warnings: ContextVar[list[str] | None] = ContextVar(
+    "literature_collection_warnings", default=None
+)
+
+
+def _record_literature_warning(message: str) -> None:
+    warnings = _literature_collection_warnings.get()
+    if warnings is not None:
+        warnings.append(message)
+
 
 ARXIV_API_URL = "http://export.arxiv.org/api/query"
 ARXIV_ATOM_NAMESPACE = {"atom": "http://www.w3.org/2005/Atom"}
@@ -270,6 +282,7 @@ def fetch_arxiv_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -
             ))
     except Exception as exc:
         LOGGER.warning("arXiv fetch failed: %s", exc)
+        _record_literature_warning(f"Literature provider arXiv failed: {exc}")
     return papers
 
 def _fetch_provider_json(url: str, source_name: str) -> dict:
@@ -280,6 +293,7 @@ def _fetch_provider_json(url: str, source_name: str) -> dict:
         return data
     except Exception as exc:
         LOGGER.warning("%s fetch failed: %s", source_name, exc)
+        _record_literature_warning(f"Literature provider {source_name} failed: {exc}")
         return {}
 
 def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -> list[Paper]:
@@ -311,6 +325,7 @@ def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE
             )
         except Exception as exc:
             LOGGER.warning("OpenAlex query failed for %r: %s", query, exc)
+            _record_literature_warning(f"Literature provider OpenAlex query {query!r} failed: {exc}")
             continue
         for item in data.get("results", []) or []:
             item_id = str(item.get("id") or item.get("doi") or item.get("display_name") or "")
@@ -803,21 +818,26 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Adaptive/unscoped mode: derive compact research terms from the selected call
                 # rather than forcing the call into a fixed taxonomy.
                 scan_area = None
-            count = process_area(
-                connection,
-                scan_area,
-                output_dir,
-                datetime.now(UTC),
-                allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
-                funding_context=funding_context,
-                funding_contexts=funding_contexts,
-                run_id=payload.get("run_id"),
-            )
+            collection_warnings: list[str] = []
+            warning_token = _literature_collection_warnings.set(collection_warnings)
+            try:
+                count = process_area(
+                    connection,
+                    scan_area,
+                    output_dir,
+                    datetime.now(UTC),
+                    allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
+                    funding_context=funding_context,
+                    funding_contexts=funding_contexts,
+                    run_id=payload.get("run_id"),
+                )
+            finally:
+                _literature_collection_warnings.reset(warning_token)
             return finalize_file_agent_response(
                 agent=agent_name, layer=layer, mode=mode, area=area,
                 items_processed=count, items_saved=count, output_dir=output_dir,
                 before_snapshot=before_snapshot, problem_headings=("Gap", "Insight"),
-                started_at=started_at,
+                started_at=started_at, warnings=collection_warnings,
             )
 
         if mode == "manual_url":
