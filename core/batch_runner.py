@@ -218,6 +218,11 @@ def execute_batch_run(
                 "timeout_budget_seconds": timeout_budget_seconds,
                 "max_workers": max_workers,
                 "funding_call_id": funding_context.funding_call_id if funding_context else None,
+                "funding_call_ids": list(dict.fromkeys(
+                    str(ctx.funding_call_id).strip() for ctx in (funding_contexts or ([funding_context] if funding_context else []))
+                    if str(getattr(ctx, "funding_call_id", "") or "").strip()
+                )),
+                "run_id": run_id,
             },
             "stats": {
                 "planned_tasks": len(tasks),
@@ -453,11 +458,13 @@ def execute_batch_run(
                             "duration_seconds": 0,
                         })
             with _wl_lock:
-                _worker_active_after = _wl_started - _wl_completed
+                _worker_active_at_shutdown = _wl_started - _wl_completed
 
             _executor_shutdown_started = _time.time()
         # ThreadPoolExecutor.__exit__ calls shutdown(wait=True) here
         _executor_shutdown_finished = _time.time()
+        with _wl_lock:
+            _worker_active_after = _wl_started - _wl_completed
 
     finished_at = datetime.now(UTC)
     status_counts: Dict[str, int] = {}
@@ -497,11 +504,18 @@ def execute_batch_run(
             "per_agent_limits": per_agent_limits or {},
             "timeout_budget_seconds": timeout_budget_seconds,
             "max_workers": max_workers,
+            "funding_call_id": funding_context.funding_call_id if funding_context else None,
+            "funding_call_ids": list(dict.fromkeys(
+                str(ctx.funding_call_id).strip() for ctx in (funding_contexts or ([funding_context] if funding_context else []))
+                if str(getattr(ctx, "funding_call_id", "") or "").strip()
+            )),
+            "run_id": run_id,
         },
         "metadata": {
             "started_at": started_at.isoformat(),
             "finished_at": finished_at.isoformat(),
             "duration_seconds": round((finished_at - started_at).total_seconds(), 3),
+            "deadline_overrun_seconds": round(max(0.0, (finished_at - deadline).total_seconds()), 3) if deadline else 0.0,
         },
         "stats": {
             "planned_tasks": len(tasks),
@@ -518,6 +532,7 @@ def execute_batch_run(
             "tasks_started": _wl_started if execution_mode == "parallel" else len(task_results),
             "tasks_completed": _wl_completed if execution_mode == "parallel" else len(task_results),
             "executor_max_workers": max_workers,
+            "active_executor_workers_at_shutdown": _worker_active_at_shutdown if execution_mode == "parallel" else 0,
             "active_executor_workers_after_batch_return": _worker_active_after if execution_mode == "parallel" else 0,
             "executor_shutdown_started": _executor_shutdown_started if execution_mode == "parallel" else None,
             "executor_shutdown_finished": _executor_shutdown_finished if execution_mode == "parallel" else None,
