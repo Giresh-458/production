@@ -714,8 +714,8 @@ def analyze_document(document: CompanyDocument) -> CompanyAnalysis:
     try:
         parsed = parse_llm_response(llm_generate(build_analysis_prompt(document)))
     except Exception as exc:
-        LOGGER.warning("Using fallback company extraction for '%s': %s", document.company_name, exc)
-        return fallback_analysis(document)
+        LOGGER.error("Local LLM analysis failed; synthetic fallback is disabled: %s", exc)
+        raise CompanyAgentError(f"Local LLM analysis failed; synthetic fallback is disabled: {exc}") from exc
 
     area = document.area_hint
     if area not in AREA_KEYWORDS:
@@ -725,7 +725,7 @@ def analyze_document(document: CompanyDocument) -> CompanyAnalysis:
     use_case = document.focus
     target_sector = infer_sector(document.content)
     problem = coalesce_text(parsed.get("problem"), "UNKNOWN")
-    product_or_deployment = document.focus, document.title
+    product_or_deployment = coalesce_text(document.focus, document.title)
     technical_components = sanitize_list(parsed.get("technical_components"), max_items=6) or detect_components(document.content) or [
         "blockchain",
         "smart contracts",
