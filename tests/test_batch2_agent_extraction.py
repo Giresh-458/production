@@ -39,7 +39,7 @@ def test_agent_reports_local_llm_failure_as_typed_agent_error(
         module.analyze_document(document)
 
 
-@pytest.mark.parametrize(("agent", "error_name", _log_field), AGENTS)
+@pytest.mark.parametrize(("agent", "error_name", "log_field"), AGENTS)
 def test_source_loader_rejects_non_mapping_yaml(tmp_path, agent, error_name, _log_field):
     module = importlib.import_module(f"agents.{agent}_agent")
     source_path = tmp_path / f"{agent}.yaml"
