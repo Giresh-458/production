@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -339,8 +339,8 @@ def load_sources(sources_path: Path) -> list[HackathonSource]:
         data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise HackathonAgentError(f"Expected a YAML mapping in {sources_path}.")
-    except yaml.YAMLError as exc:
-        raise HackathonAgentError(f"Invalid YAML in {sources_path}: {exc}") from exc
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise HackathonAgentError(f"Could not read valid YAML from {sources_path}: {exc}") from exc
 
     root = data.get("hackathon_sources", {})
     if not isinstance(root, dict):
@@ -356,7 +356,9 @@ def load_sources(sources_path: Path) -> list[HackathonSource]:
             url = cleaned_text(str(entry.get("url", "")))
             raw_type = cleaned_text(str(entry.get("type", ""))) or "hackathon_platform"
             focus = cleaned_text(str(entry.get("focus", "")))
-            if name and url:
+            if name and url and not is_valid_http_url(url):
+            raise HackathonAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+        if name and url:
                 sources.append(HackathonSource(name=name, type=raw_type, url=url, focus=focus))
     if not sources:
         raise HackathonAgentError("No hackathon sources were loaded from sources/hackathon_sources.yaml.")
