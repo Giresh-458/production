@@ -781,6 +781,19 @@ def main() -> int:
             )
         except Exception as exc:
             print(f"❌ Normalization failed with exception: {exc}")
+            report = {
+                "run_id": run_id,
+                "status": "failed_normalization",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "failure_reason": f"{type(exc).__name__}: {exc}",
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            workflow = call_root / "workflow"
+            workflow.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(workflow / "pipeline_report.json", report)
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
@@ -793,6 +806,20 @@ def main() -> int:
 
         if input_count == 0:
             print("❌ No normalized evidence. Stopping rather than inventing a research gap.")
+            report = {
+                "run_id": run_id,
+                "status": "no_normalized_evidence",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "mission_relevance_gate": {"input_records": 0, "accepted": 0, "rejected": 0},
+                "failure_reason": "no_normalized_evidence",
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            workflow = call_root / "workflow"
+            workflow.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(workflow / "pipeline_report.json", report)
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
@@ -818,6 +845,7 @@ def main() -> int:
         else:
             process_area = "Unscoped"
         processing_failed = False
+        processing_failure_reason = None
         for agent, payload in [
             ("tagging", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "tags"), "run_id": run_id, "funding_call_id": context.funding_call_id}),
             ("clustering", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "clusters"), "threshold": 0.20, "llm_ambiguity_resolution": False, "run_id": run_id, "funding_call_id": context.funding_call_id}),
@@ -829,13 +857,29 @@ def main() -> int:
                 if str(res.get("status", "")).lower() not in ("success", "partial_success"):
                     print(f"❌ Processing stage '{agent}' failed with status: {res.get('status')}")
                     processing_failed = True
+                    processing_failure_reason = f"{agent}: status={res.get('status')}"
                     break
             except Exception as exc:
                 print(f"❌ Processing stage '{agent}' failed with exception: {exc}")
                 processing_failed = True
+                processing_failure_reason = f"{agent}: {type(exc).__name__}: {exc}"
                 break
 
         if processing_failed:
+            report = {
+                "run_id": run_id,
+                "status": "failed_processing",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "stage_results": stage_results,
+                "failure_reason": processing_failure_reason,
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            workflow = call_root / "workflow"
+            workflow.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(workflow / "pipeline_report.json", report)
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 4)
             continue
 
@@ -872,9 +916,24 @@ def main() -> int:
         except Exception as exc:
             print(f"❌ Idea generation failed with exception: {exc}")
             idea_ok = False
+            idea_failure_reason = f"{type(exc).__name__}: {exc}"
 
         if not idea_ok:
             print("❌ Idea generation failed; refusing to generate a proposal from incomplete intelligence.")
+            report = {
+                "run_id": run_id,
+                "status": "failed_idea_generation",
+                "output_root": str(call_root.resolve()),
+                "funding": {"selected": selected, "selected_funding_call_id": context.funding_call_id},
+                "stage_results": stage_results,
+                "failure_reason": locals().get("idea_failure_reason", "idea_stage_failed_or_empty"),
+                "final_output": None,
+                "proposal_count": 0,
+            }
+            workflow = call_root / "workflow"
+            workflow.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(workflow / "pipeline_report.json", report)
+            all_reports.append(report)
             global_exit_code = max(global_exit_code, 5)
             continue
 
