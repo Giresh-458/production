@@ -719,6 +719,16 @@ def save_normalized_collection_records(
     *,
     target_run_id: str | None = None,
 ) -> dict[str, Path]:
+    """Build a complete normalized generation and publish it only after it is valid.
+
+    Intermediate-artifact parse failures remain visible in errors.json. Evidence
+    ledger failures are fatal: the staged generation is discarded and the
+    previously published normalized directory remains untouched.
+    """
+    import os
+    import shutil
+    import tempfile
+
     errors: list[str] = []
     input_manifest = _normalization_input_manifest(
         intermediate_root, output_dir, target_funding_call_id, target_run_id
@@ -729,162 +739,184 @@ def save_normalized_collection_records(
         target_run_id=target_run_id,
         errors=errors,
     )
-    target_dir = output_dir / "normalized"
-    normalized_root = target_dir
-    deduped_records = {}
-    for r in records:
-        sid = r["evidence_id"]
-        if sid not in deduped_records:
-            r["observation_count"] = 1
-            r["first_seen"] = r["collected_at"]
-            r["last_seen"] = r["collected_at"]
-            r["content_versions"] = [r["content_hash"]]
-            deduped_records[sid] = r
-        else:
-            existing = deduped_records[sid]
-            existing["observation_count"] += 1
-            if r["collected_at"] < existing["first_seen"]:
-                existing["first_seen"] = r["collected_at"]
-            if r["collected_at"] > existing["last_seen"]:
-                existing["last_seen"] = r["collected_at"]
-                # keep latest data
-                existing["problem_statement"] = r["problem_statement"]
-                existing["context_summary"] = r["context_summary"]
-                existing["content_hash"] = r["content_hash"]
-                existing["evidence_snippets"] = r["evidence_snippets"]
 
-            if r["content_hash"] not in existing["content_versions"]:
-                existing["content_versions"].append(r["content_hash"])
+    deduped_records: dict[str, dict[str, Any]] = {}
+    for record in records:
+        evidence_key = record["evidence_id"]
+        if evidence_key not in deduped_records:
+            record["observation_count"] = 1
+            record["first_seen"] = record["collected_at"]
+            record["last_seen"] = record["collected_at"]
+            record["content_versions"] = [record["content_hash"]]
+            deduped_records[evidence_key] = record
+            continue
+
+        existing = deduped_records[evidence_key]
+        existing["observation_count"] += 1
+        if record["collected_at"] and (
+            not existing["first_seen"] or record["collected_at"] < existing["first_seen"]
+        ):
+            existing["first_seen"] = record["collected_at"]
+        if record["collected_at"] and record["collected_at"] > existing["last_seen"]:
+            existing["last_seen"] = record["collected_at"]
+            existing["problem_statement"] = record["problem_statement"]
+            existing["context_summary"] = record["context_summary"]
+            existing["content_hash"] = record["content_hash"]
+            existing["evidence_snippets"] = record["evidence_snippets"]
+        if record["content_hash"] not in existing["content_versions"]:
+            existing["content_versions"].append(record["content_hash"])
 
     records = list(deduped_records.values())
     if filter_func:
-        records = [r for r in records if filter_func(r)]
+        records = [record for record in records if filter_func(record)]
 
-    import shutil
-    if normalized_root.exists():
-        shutil.rmtree(normalized_root)
-    normalized_root.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = output_dir / "normalized"
+    stage_dir = Path(tempfile.mkdtemp(prefix=".normalized-stage-", dir=output_dir))
+    backup_dir: Path | None = None
 
-    records_path = normalized_root / "records.json"
-    records_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    (normalized_root / "input_manifest.json").write_text(
-        json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-
-    by_area, by_layer = _build_indexes(records)
-
-    by_area_path = normalized_root / "by_area.json"
-    by_area_path.write_text(json.dumps(by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    by_layer_path = normalized_root / "by_layer.json"
-    by_layer_path.write_text(json.dumps(by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    # DB Insertion Layer for Evidence Ledger
     try:
-        db_path = normalized_root / "evidence_ledger.db"
-        conn = get_ledger_connection(db_path)
+        records_path = stage_dir / "records.json"
+        records_path.write_text(
+            json.dumps(records, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+        )
+        (stage_dir / "input_manifest.json").write_text(
+            json.dumps(input_manifest, indent=2, ensure_ascii=False) + "\\n",
+            encoding="utf-8",
+        )
 
-        # We need to compute independence groups.
-        # Deterministic clustering based on content_hash
-        content_hash_to_group = {}
-        for rec in records:
-            if rec["content_hash"] not in content_hash_to_group:
-                content_hash_to_group[rec["content_hash"]] = rec["source_id"]
+        by_area, by_layer = _build_indexes(records)
+        (stage_dir / "by_area.json").write_text(
+            json.dumps(by_area, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+        )
+        (stage_dir / "by_layer.json").write_text(
+            json.dumps(by_layer, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+        )
 
-        for record in records:
-            if record["normalization_status"] == "NEEDS_REVIEW":
-                independence_status = "UNKNOWN"
-                independence_group = "UNKNOWN"
-            else:
-                independence_group = content_hash_to_group[record["content_hash"]]
-                if independence_group == record["source_id"]:
-                    independence_status = "INDEPENDENT"
+        # Build the SQLite ledger in the staging directory. Do not publish JSON
+        # files if any ledger row or relationship fails to persist.
+        db_path = stage_dir / "evidence_ledger.db"
+        conn = None
+        try:
+            conn = get_ledger_connection(db_path)
+            content_hash_to_group: dict[str, str] = {}
+            for record in records:
+                content_hash_to_group.setdefault(record["content_hash"], record["source_id"])
+
+            for record in records:
+                if record["normalization_status"] == "NEEDS_REVIEW":
+                    independence_status = "UNKNOWN"
+                    independence_group = "UNKNOWN"
                 else:
-                    independence_status = "DERIVED"
+                    independence_group = content_hash_to_group[record["content_hash"]]
+                    independence_status = (
+                        "INDEPENDENT" if independence_group == record["source_id"] else "DERIVED"
+                    )
 
-            # Flatten to canonical schema
-            canonical_rec = {
-                "evidence_id": record["evidence_id"],
-                "record_id": record["record_id"],
-                "funding_call_id": record["funding_call_id"],
-                "run_id": record["run_id"],
-                "agent": record["agent_name"],
-                "layer": record["layer"],
-                "source_id": record["source_id"],
-                "source_url": record["source_url"],
-                "canonical_url": record["canonical_url"],
-                "source_type": record["source_type"],
-                "source_name": record["actor"],
-                "title": record["title"],
-                "problem": record["problem_statement"],
-                "problem_signature": "pending-synthesis",
-                "evidence": "\n".join(record["evidence_snippets"]),
-                "evidence_excerpt": "\n".join(record["excerpt_windows"]),
-                "evidence_type": record["evidence_type"],
-                "research_area": record["research_area"],
-                "published_at": record["machine_metadata"].get("source_hints", {}).get("published_at"),
-                "retrieved_at": record["collected_at"],
-                "updated_at": None,
-                "content_hash": record["content_hash"],
-                "source_quality": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
-                "evidence_strength": record["evidence_strength"],
-                "confidence": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
-                "independence_group": independence_group,
-                "independence_status": independence_status,
-                "normalization_status": record["normalization_status"],
-                "provenance": {
-                    "source_url": record["source_url"],
-                    "source_id": record["source_id"],
-                    "agent": record["agent_name"],
+                machine_metadata = record.get("machine_metadata") or {}
+                source_hints = machine_metadata.get("source_hints", {})
+                if not isinstance(source_hints, dict):
+                    source_hints = {}
+
+                canonical_record = {
+                    "evidence_id": record["evidence_id"],
+                    "record_id": record["record_id"],
                     "funding_call_id": record["funding_call_id"],
                     "run_id": record["run_id"],
-                    "retrieved_at": record["collected_at"],
-                    "raw_record_id": record["file_path"]
-                },
-                "raw_record_id": record["file_path"]
-            }
+                    "agent": record["agent_name"],
+                    "layer": record["layer"],
+                    "source_id": record["source_id"],
+                    "source_url": record["source_url"],
+                    "canonical_url": record["canonical_url"],
+                    "source_type": record["source_type"],
+                    "source_name": record["actor"],
+                    "title": record["title"],
+                    "problem": record["problem_statement"],
+                    "problem_signature": "pending-synthesis",
+                    "evidence": "\\n".join(record["evidence_snippets"]),
+                    "evidence_excerpt": "\\n".join(record["excerpt_windows"]),
+                    "evidence_type": record["evidence_type"],
+                    "research_area": record["research_area"],
+                    "published_at": source_hints.get("published_at"),
+                    "retrieved_at": record["collected_at"] or "",
+                    "updated_at": None,
+                    "content_hash": record["content_hash"],
+                    "source_quality": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
+                    "evidence_strength": record["evidence_strength"],
+                    "confidence": max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0))),
+                    "independence_group": independence_group,
+                    "independence_status": independence_status,
+                    "normalization_status": record["normalization_status"],
+                    "provenance": {
+                        "source_url": record["source_url"],
+                        "source_id": record["source_id"],
+                        "agent": record["agent_name"],
+                        "funding_call_id": record["funding_call_id"],
+                        "run_id": record["run_id"],
+                        "retrieved_at": record["collected_at"],
+                        "raw_record_id": record["file_path"],
+                    },
+                    "raw_record_id": record["file_path"],
+                }
+                upsert_canonical_evidence(conn, canonical_record)
 
-            try:
-                upsert_canonical_evidence(conn, canonical_rec)
-
-                # Extract claims
-                claims = extract_claims(record["evidence_snippets"])
-                for claim in claims:
+                for claim in extract_claims(record["evidence_snippets"]):
                     upsert_claim(conn, claim)
-                    link_evidence_claim(conn, canonical_rec["evidence_id"], claim["claim_id"])
+                    link_evidence_claim(conn, canonical_record["evidence_id"], claim["claim_id"])
 
-                # Extract entities
                 for entity_name in record["named_entities"]:
-                    eid = hashlib.sha256(entity_name.lower().encode('utf-8')).hexdigest()[:16]
-                    entity = {
-                        "entity_id": eid,
+                    entity_id = hashlib.sha256(entity_name.lower().encode("utf-8")).hexdigest()[:16]
+                    upsert_entity(conn, {
+                        "entity_id": entity_id,
                         "canonical_name": entity_name,
                         "entity_type": "extracted_entity",
                         "aliases": [entity_name],
-                        "external_ids": {}
-                    }
-                    upsert_entity(conn, entity)
-                    link_evidence_entity(conn, canonical_rec["evidence_id"], eid)
+                        "external_ids": {},
+                    })
+                    link_evidence_entity(conn, canonical_record["evidence_id"], entity_id)
 
-            except Exception as e:
-                errors.append(f"DB Error for {record['record_id']}: {e}")
+            conn.commit()
+        except Exception as exc:
+            if conn is not None:
+                conn.rollback()
+            raise RuntimeError(
+                f"Evidence ledger generation failed; previous normalized outputs were preserved: {exc}"
+            ) from exc
+        finally:
+            if conn is not None:
+                conn.close()
 
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        errors.append(f"Ledger DB Init Error: {e}")
+        (stage_dir / "errors.json").write_text(
+            json.dumps(errors, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8"
+        )
 
-    errors_path = normalized_root / "errors.json"
-    errors_path.write_text(json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # Replace the published generation only after every staged artifact and
+        # the complete ledger have been written successfully. Keep a rollback
+        # copy until the new directory is in place.
+        if target_dir.exists():
+            backup_dir = Path(tempfile.mkdtemp(prefix=".normalized-backup-", dir=output_dir))
+            backup_dir.rmdir()
+            os.replace(target_dir, backup_dir)
+        try:
+            os.replace(stage_dir, target_dir)
+            stage_dir = None
+        except Exception:
+            if backup_dir is not None and backup_dir.exists() and not target_dir.exists():
+                os.replace(backup_dir, target_dir)
+                backup_dir = None
+            raise
+    finally:
+        if stage_dir is not None and stage_dir.exists():
+            shutil.rmtree(stage_dir, ignore_errors=True)
+        if backup_dir is not None and backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
 
     return {
-        "records": records_path,
-        "by_area": by_area_path,
-        "by_layer": by_layer_path,
-        "errors": errors_path,
+        "records": target_dir / "records.json",
+        "by_area": target_dir / "by_area.json",
+        "by_layer": target_dir / "by_layer.json",
+        "errors": target_dir / "errors.json",
     }
-
 
 def resolve_refresh_context(outputs_root: Path):
     if outputs_root.parent.name == "calls":
