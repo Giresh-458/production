@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import append_collection_diagnostics, cleaned_text, coalesce_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, coalesce_text, is_valid_http_url, normalize_confidence
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -437,6 +437,27 @@ def infer_evidence_type(raw_type: str) -> str:
     return mapping.get(raw_type, "Incident Report")
 
 
+def infer_incident_type(text: str) -> str:
+    lowered = (text or "").lower()
+    if "depeg" in lowered or "de-peg" in lowered or "lost its peg" in lowered:
+        return "Depeg"
+    if "oracle" in lowered and any(word in lowered for word in ("failure", "manipulation", "attack", "exploit")):
+        return "Oracle Failure"
+    if "bridge" in lowered and any(word in lowered for word in ("hack", "exploit", "attack", "compromise")):
+        return "Bridge Hack"
+    if "governance" in lowered and any(word in lowered for word in ("attack", "hijack", "manipulation", "takeover")):
+        return "Governance Attack"
+    if "carbon" in lowered and any(word in lowered for word in ("fraud", "credit", "offset", "double count")):
+        return "Carbon Fraud"
+    if "privacy" in lowered and any(word in lowered for word in ("leak", "exposure", "breach", "failure")):
+        return "Privacy Failure"
+    if any(word in lowered for word in ("exploit", "hack", "vulnerability", "attack")):
+        return "Exploit"
+    if any(word in lowered for word in ("outage", "downtime", "operational failure", "service disruption", "incident")):
+        return "Operational Failure"
+    return "Unknown"
+
+
 def is_relevant(text: str, area_hint: str) -> bool:
     lowered = text.lower()
     normalized_area = area_hint if area_hint in AREA_KEYWORDS else None
@@ -640,9 +661,13 @@ def analyze_document(document: FailureDocument) -> FailureAnalysis:
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")
-    incident_type = infer_incident_type(document.content)
+    incident_type = coalesce_text(parsed.get("incident_type"))
     if incident_type not in FAILURE_TYPES:
         incident_type = infer_incident_type(document.content)
+    if incident_type not in FAILURE_TYPES:
+        raise FailureAgentError(
+            "The source does not contain enough evidence to classify the incident type."
+        )
     what_failed = coalesce_text(parsed.get("what_failed"), "UNKNOWN")
     root_cause = coalesce_text(parsed.get("root_cause"), "UNKNOWN")
     
@@ -657,15 +682,13 @@ def analyze_document(document: FailureDocument) -> FailureAnalysis:
     
     problem_signature = build_problem_signature(area, incident_type, technical_problem)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
-    if confidence not in {"High", "Medium", "Low"}:
-        confidence = "Medium"
-    incident_date = "Unknown"
-    estimated_loss = "Unknown"
-    attack_vector = technical_problem
-    affected_system = document.incident_name
-    recurrence_signal = "Unknown"
-    evidence_strength = "Medium".title()
+    confidence = normalize_confidence(parsed.get("confidence"))
+    incident_date = coalesce_text(parsed.get("incident_date"), "Unknown")
+    estimated_loss = coalesce_text(parsed.get("estimated_loss"), "Unknown")
+    attack_vector = coalesce_text(parsed.get("attack_vector"), technical_problem)
+    affected_system = coalesce_text(parsed.get("affected_system"), document.incident_name)
+    recurrence_signal = coalesce_text(parsed.get("recurrence_signal"), "Unknown")
+    evidence_strength = coalesce_text(parsed.get("evidence_strength"), "Medium").title()
     if evidence_strength not in {"Very High", "High", "Medium", "Low"}:
         evidence_strength = "Medium"
     source_type = document.source_type
