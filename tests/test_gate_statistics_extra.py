@@ -55,7 +55,8 @@ def test_conflicting_duplicate_mission_gate_statistics(
 
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        intermediate_dir = root / "calls" / call_id / "intermediate"
+        from run_pipeline import _safe_call_directory_name
+        intermediate_dir = root / "calls" / _safe_call_directory_name(call_id) / "intermediate"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Conflicting Evidence 1 (Fails gate - title doesn't match, snippet is empty so no match)
@@ -128,7 +129,8 @@ Classic
     # Run the pipeline
     main()
 
-    call_root = list(tmp_path.glob("202*"))[0] / "calls" / call_id
+    from run_pipeline import _safe_call_directory_name
+    call_root = list(tmp_path.glob("202*"))[0] / "calls" / _safe_call_directory_name(call_id)
     gate_report_path = call_root / "workflow" / "mission_relevance_gate.json"
     assert gate_report_path.exists()
     gate_report = json.loads(gate_report_path.read_text(encoding="utf-8"))
