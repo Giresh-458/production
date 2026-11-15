@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.schemas import normalize_area, rank_research_areas, ALLOWED_RESEARCH_AREAS
+from core.file_lock import atomic_write_text
 from core.evidence_ledger import (
     get_ledger_connection,
     upsert_canonical_evidence,
@@ -1046,6 +1047,66 @@ def resolve_refresh_run_id(outputs_root: Path) -> str | None:
     return _clean(str(run_value or "")) or None
 
 
+
+def _evidence_ledger_is_consistent(db_path: Path, expected_records: int) -> bool:
+    """Check SQLite integrity, expected row counts, and relationship references."""
+    import sqlite3
+
+    if not db_path.is_file() or db_path.stat().st_size == 0:
+        return False
+    try:
+        database_uri = db_path.resolve().as_uri() + "?mode=ro"
+        with sqlite3.connect(database_uri, uri=True) as conn:
+            quick_check = conn.execute("PRAGMA quick_check").fetchone()
+            if not quick_check or quick_check[0] != "ok":
+                return False
+
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            required_tables = {
+                "canonical_evidence",
+                "claims",
+                "evidence_claims",
+                "entities",
+                "evidence_entities",
+                "independence_groups",
+            }
+            if not required_tables.issubset(tables):
+                return False
+
+            row_count = conn.execute(
+                "SELECT COUNT(*) FROM canonical_evidence"
+            ).fetchone()[0]
+            if row_count != expected_records:
+                return False
+
+            orphan_checks = (
+                """
+                SELECT COUNT(*) FROM evidence_claims ec
+                LEFT JOIN canonical_evidence ce ON ce.evidence_id = ec.evidence_id
+                LEFT JOIN claims c ON c.claim_id = ec.claim_id
+                WHERE ce.evidence_id IS NULL OR c.claim_id IS NULL
+                """,
+                """
+                SELECT COUNT(*) FROM evidence_entities ee
+                LEFT JOIN canonical_evidence ce ON ce.evidence_id = ee.evidence_id
+                LEFT JOIN entities e ON e.entity_id = ee.entity_id
+                WHERE ce.evidence_id IS NULL OR e.entity_id IS NULL
+                """,
+                """
+                SELECT COUNT(*) FROM canonical_evidence ce
+                LEFT JOIN independence_groups ig ON ig.group_id = ce.independence_group
+                WHERE ce.independence_group <> 'UNKNOWN' AND ig.group_id IS NULL
+                """,
+            )
+            return all(conn.execute(query).fetchone()[0] == 0 for query in orphan_checks)
+    except (OSError, sqlite3.Error, ValueError):
+        return False
+
 def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     records_path = outputs_root / "normalized" / "records.json"
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
@@ -1072,6 +1133,12 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     # The mtime-only cache check misses deleted inputs, edits with restored
     # timestamps, and call-context changes. Require an exact input manifest match.
     manifest_path = outputs_root / "normalized" / "input_manifest.json"
+    errors_path = outputs_root / "normalized" / "errors.json"
+    ledger_path = outputs_root / "normalized" / "evidence_ledger.db"
+    if not errors_path.is_file() or not _evidence_ledger_is_consistent(ledger_path, -1):
+        # A negative expected count only checks ledger structure here; the exact
+        # row count is checked after loading the cached records below.
+        force_refresh = True
     if not force_refresh:
         try:
             cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1089,6 +1156,16 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
             cached = json.loads(records_path.read_text(encoding="utf-8"))
             if not isinstance(cached, list):
                 raise ValueError("normalized records cache must contain a JSON list")
+            if any(
+                record.get("normalization_schema_version") != NORMALIZATION_SCHEMA_VERSION
+                for record in cached
+            ):
+                raise ValueError("normalized records use an outdated schema version")
+            if not _evidence_ledger_is_consistent(ledger_path, len(cached)):
+                raise ValueError("normalized evidence ledger is missing or inconsistent")
+            cached_errors = json.loads(errors_path.read_text(encoding="utf-8"))
+            if not isinstance(cached_errors, list):
+                raise ValueError("normalization errors cache must contain a JSON list")
 
             if filter_func:
                 for record in cached:
@@ -1117,8 +1194,14 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
                     needs_repair = True
 
                 if needs_repair:
-                    area_path.write_text(json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                    layer_path.write_text(json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    atomic_write_text(
+                        area_path,
+                        json.dumps(expected_by_area, indent=2, ensure_ascii=False) + "\n",
+                    )
+                    atomic_write_text(
+                        layer_path,
+                        json.dumps(expected_by_layer, indent=2, ensure_ascii=False) + "\n",
+                    )
         except Exception:
             force_refresh = True
 
