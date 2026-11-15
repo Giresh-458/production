@@ -356,8 +356,8 @@ def load_sources(sources_path: Path) -> list[HackathonSource]:
             raw_type = cleaned_text(str(entry.get("type", ""))) or "hackathon_platform"
             focus = cleaned_text(str(entry.get("focus", "")))
             if name and url and not is_valid_http_url(url):
-            raise HackathonAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise HackathonAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(HackathonSource(name=name, type=raw_type, url=url, focus=focus))
     if not sources:
         raise HackathonAgentError("No hackathon sources were loaded from sources/hackathon_sources.yaml.")
