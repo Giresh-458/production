@@ -268,7 +268,8 @@ def execute_batch_run(
                 combined_queries.extend(generate_funding_queries(ctx))
                 
             token_ctx = current_funding_prompt_context.set(combined_prompt_ctx)
-            token_q = current_funding_queries.set(list(set(combined_queries)))
+            # Preserve source/context order while removing duplicates for reproducible runs.
+            token_q = current_funding_queries.set(list(dict.fromkeys(combined_queries)))
             
         inp["deadline"] = deadline.timestamp() if deadline else None
 
