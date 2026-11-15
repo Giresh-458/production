@@ -850,19 +850,39 @@ def finalize_collection_agent_response(
         selected_score = score_map.get(selected_area, 0) if isinstance(score_map, dict) else 0
         existing = deduped_documents.get(dedupe_key)
         if existing:
-            existing_payload, _ = existing
+            existing_payload, existing_content = existing
             existing_scores = existing_payload["metadata"].get("area_normalization", {}).get("keyword_scores", {})
             existing_area = existing_payload["shared_header"]["research_area"]
             existing_score = existing_scores.get(existing_area, 0) if isinstance(existing_scores, dict) else 0
+
+            def _payload_call_ids(payload: Dict[str, Any]) -> list[str]:
+                header = payload.get("shared_header", {})
+                ids = header.get("funding_call_ids") or []
+                singular = header.get("funding_call_id")
+                if singular:
+                    ids = [*ids, singular]
+                return list(dict.fromkeys(str(value).strip() for value in ids if str(value).strip()))
+
+            merged_call_ids = list(dict.fromkeys(
+                _payload_call_ids(existing_payload) + _payload_call_ids(artifact_payload)
+            ))
+            selected_payload = artifact_payload if selected_score > existing_score else existing_payload
+            selected_payload["shared_header"]["funding_call_ids"] = merged_call_ids
+            if len(merged_call_ids) == 1:
+                selected_payload["shared_header"]["funding_call_id"] = merged_call_ids[0]
+            else:
+                selected_payload["shared_header"].pop("funding_call_id", None)
+
             if selected_score > existing_score:
                 collected_warnings.append(
                     f"Replaced weaker area assignment '{existing_area}' with '{selected_area}' for '{artifact_payload['shared_header']['title']}'."
                 )
-                deduped_documents[dedupe_key] = (artifact_payload, content)
+                deduped_documents[dedupe_key] = (selected_payload, content)
             else:
                 collected_warnings.append(
-                    f"Skipped duplicate intermediate artifact for '{artifact_payload['shared_header']['title']}' with weaker or equal area evidence."
+                    f"Merged duplicate artifact attribution for '{artifact_payload['shared_header']['title']}' and retained the stronger or equal area assignment."
                 )
+                deduped_documents[dedupe_key] = (selected_payload, existing_content)
             continue
         deduped_documents[dedupe_key] = (artifact_payload, content)
 
@@ -887,6 +907,8 @@ def finalize_collection_agent_response(
                 "problem_signature": "pending-synthesis",
                 "confidence": "Medium",
                 "source": artifact_payload["shared_header"]["source"],
+                "funding_call_ids": artifact_payload["shared_header"].get("funding_call_ids", []),
+                "run_id": artifact_payload["shared_header"].get("run_id"),
                 "provenance_type": "real_source_evidence",
                 "markdown_path": str(output_path.resolve()),
             }
