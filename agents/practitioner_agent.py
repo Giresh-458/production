@@ -329,7 +329,7 @@ def load_sources(sources_path: Path) -> list[PractitionerSource]:
         raise PractitionerAgentError(f"Expected a YAML mapping in {sources_path}.")
     root = data.get("practitioner_sources", {})
     if not isinstance(root, dict):
-        raise PractitionerAgentError(f"Expected '{key}' to be a mapping in {sources_path}.")
+        raise PractitionerAgentError(f"Expected 'practitioner_sources' to be a mapping in {sources_path}.")
     sources: list[PractitionerSource] = []
     for _, entries in root.items():
         if not isinstance(entries, list):
