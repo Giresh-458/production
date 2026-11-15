@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -547,6 +547,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None, warnings: 
                 warnings.append(f"Source '{source.name}' failed: {exc}")
             continue
         content = combine_pages(result, prefix=f"{source.name} {source.focus}")
+        append_collection_diagnostics(warnings, source.name, result=result)
         title = result.pages[0].title if result.pages else source.name
         full_text = cleaned_text(content)
         area_hint = area or infer_area(full_text, "Unscoped")
