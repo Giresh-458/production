@@ -465,12 +465,10 @@ def test_saved_artifacts_with_source_failure_warning_return_partial_success(tmp_
         title="Substantive source evidence",
         url="https://example.org/research",
         content=(
-            "The research programme identifies a concrete technical limitation in "
-            "cross-chain verification. Current systems depend on centralized relayers "
-            "and provide limited fault tolerance. This creates measurable security and "
-            "availability risks for tokenized assets. A distributed verification design "
-            "could reduce these risks through independent validation and auditable proofs. "
-        ) * 8,
+            "This is a traceable evidence document demonstrating substantive research "
+            "provenance for a source collection. It describes a concrete technical problem, "
+            "its operational impact, and a research direction supported by source material. "
+        ) * 50,
     )
     result = finalize_collection_agent_response(
         agent="company",
