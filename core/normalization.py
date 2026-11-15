@@ -19,6 +19,7 @@ from core.evidence_ledger import (
 )
 
 NORMALIZED_OUTPUT_DIR = Path("outputs/normalized")
+NORMALIZATION_SCHEMA_VERSION = 2
 
 LAYER_EVIDENCE_WEIGHTS = {
     "literature": 1.00,
@@ -552,6 +553,7 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         "run_id": run_id,
         "file_path": str(path.resolve()),
         "record_kind": "normalized_intermediate",
+        "normalization_schema_version": NORMALIZATION_SCHEMA_VERSION,
         "agent_name": agent_name,
         "layer": layer,
         "research_area": research_area,
@@ -717,7 +719,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 1,
+        "schema_version": NORMALIZATION_SCHEMA_VERSION,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
