@@ -1002,6 +1002,14 @@ def save_normalized_collection_records(
             json.dumps(errors, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
 
+        latest_input_manifest = _normalization_input_manifest(
+            intermediate_root, output_dir, target_funding_call_id, target_run_id
+        )
+        if latest_input_manifest != input_manifest:
+            raise RuntimeError(
+                "Intermediate inputs changed during normalization; staged outputs were discarded. Retry normalization."
+            )
+
         # Replace the published generation only after every staged artifact and
         # the complete ledger have been written successfully. Keep a rollback
         # copy until the new directory is in place.
