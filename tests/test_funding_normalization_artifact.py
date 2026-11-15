@@ -75,3 +75,13 @@ def test_funding_artifact_normalization(tmp_path: Path):
     assert len(records) == 1
     assert records[0]["normalization_status"] == "NORMALIZED"
     assert records[0]["funding_call_id"] == "CALL-12345"
+
+    # The writer's human-readable fallback is not evidence and must not become a claim.
+    analysis.evidence = {}
+    empty_evidence_path = tmp_path / "empty_evidence.md"
+    empty_evidence_path.write_text(
+        build_markdown(doc, analysis, tags, run_id=run_id),
+        encoding="utf-8",
+    )
+    empty_evidence = normalize_intermediate_artifact(empty_evidence_path)
+    assert empty_evidence["evidence_snippets"] == []
