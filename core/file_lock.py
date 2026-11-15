@@ -53,3 +53,23 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         except OSError:
             pass
         raise
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    """Atomically replace a UTF-8 text file using a temporary sibling file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name + ".", suffix=".tmp", text=True
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
