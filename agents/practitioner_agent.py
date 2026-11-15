@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import append_collection_diagnostics, cleaned_text, is_valid_http_url
+from agents.utils import append_collection_diagnostics, cleaned_text, coalesce_text, is_valid_http_url
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
