@@ -180,8 +180,8 @@ def test_normalization_schema_version_is_recorded_and_fingerprinted(tmp_path: Pa
 
     manifest = json.loads((outputs / "normalized" / "input_manifest.json").read_text(encoding="utf-8"))
     records = json.loads(paths["records"].read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 2
-    assert records[0]["normalization_schema_version"] == 2
+    assert manifest["schema_version"] == 3
+    assert records[0]["normalization_schema_version"] == 3
 
 
 
