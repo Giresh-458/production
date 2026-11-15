@@ -2916,7 +2916,8 @@ def save_markdown_output(document: FundingDocument, analysis: FundingOpportunity
         url_hash = hashlib.sha256(document.source.encode('utf-8')).hexdigest()[:8]
         unique_suffix = url_hash
         
-    filename = f"{base_slug}-{unique_suffix}.md"
+    run_suffix = f"-{hashlib.sha256(run_id.encode('utf-8')).hexdigest()[:10]}" if run_id else ""
+    filename = f"{base_slug}-{unique_suffix}{run_suffix}.md"
     output_path = org_dir / filename
     tags = build_tags(analysis)
     atomic_write_text(output_path, build_markdown(document, analysis, tags, run_id=run_id))
