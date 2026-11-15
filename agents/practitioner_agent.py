@@ -342,8 +342,8 @@ def load_sources(sources_path: Path) -> list[PractitionerSource]:
             url = cleaned_text(str(entry.get("url", "")))
             focus = cleaned_text(str(entry.get("focus", "")))
             if name and url and not is_valid_http_url(url):
-            raise PractitionerAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
-        if name and url:
+                raise PractitionerAgentError(f"Invalid HTTP(S) source URL for '{name}': {url}")
+            if name and url:
                 sources.append(PractitionerSource(name=name, type=source_type, url=url, focus=focus))
     if not sources:
         raise PractitionerAgentError("No practitioner sources were loaded from sources/practitioner_sources.yaml.")
