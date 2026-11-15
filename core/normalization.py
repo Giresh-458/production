@@ -211,9 +211,12 @@ def _coalesce(*values: str) -> str:
 
 
 def _body_field(body: dict[str, str], *names: str) -> str:
-    lowered = {key.lower(): value for key, value in body.items()}
+    def normalized_key(value: str) -> str:
+        return re.sub(r"[\\s-]+", "_", str(value).strip().lower())
+
+    lowered = {normalized_key(key): value for key, value in body.items()}
     for name in names:
-        value = lowered.get(name.lower())
+        value = lowered.get(normalized_key(name))
         if value:
             return _clean(value)
     return ""
