@@ -786,6 +786,7 @@ def save_normalized_collection_records(
             record["content_versions"] = [record["content_hash"]]
             record["run_ids"] = [record["run_id"]] if record["run_id"] else []
             record["raw_record_paths"] = [record["file_path"]]
+            record["source_urls"] = [record["source_url"]] if record["source_url"] else []
             deduped_records[evidence_key] = record
             continue
 
@@ -803,6 +804,12 @@ def save_normalized_collection_records(
             existing["run_ids"].append(record["run_id"])
         if record["file_path"] not in existing["raw_record_paths"]:
             existing["raw_record_paths"].append(record["file_path"])
+        if record["source_url"] and record["source_url"] not in existing["source_urls"]:
+            existing["source_urls"].append(record["source_url"])
+        for list_field in ("linked_urls", "named_entities", "excerpt_windows", "keywords"):
+            for value in record.get(list_field, []):
+                if value not in existing[list_field]:
+                    existing[list_field].append(value)
 
         record_time = record.get("collected_at") or ""
         existing_time = existing.get("last_seen") or ""
@@ -913,6 +920,7 @@ def save_normalized_collection_records(
                     "normalization_status": record["normalization_status"],
                     "provenance": {
                         "source_url": record["source_url"],
+                        "source_urls": record.get("source_urls", [record["source_url"]]),
                         "source_id": record["source_id"],
                         "agent": record["agent_name"],
                         "funding_call_id": record["funding_call_id"],
