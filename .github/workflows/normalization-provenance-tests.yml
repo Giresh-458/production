@@ -27,6 +27,9 @@ on:
       - "tests/test_stale_index_advanced.py"
       - "tests/test_cache_bypass.py"
       - "tests/test_pipeline_multi_call_behavior.py"
+      - "tests/test_multiple_funding_calls.py"
+      - "tests/test_funding_call_separation.py"
+      - "tests/test_funding_routing_golden.py"
       - "tests/test_batch2_orchestration_integrity.py"
       - "tests/test_pipeline_runtime.py"
       - "tests/test_context_propagation.py"
@@ -77,6 +80,9 @@ jobs:
             tests/test_stale_index_advanced.py \
             tests/test_cache_bypass.py \
             tests/test_pipeline_multi_call_behavior.py \
+            tests/test_multiple_funding_calls.py \
+            tests/test_funding_call_separation.py \
+            tests/test_funding_routing_golden.py \
             tests/test_batch2_orchestration_integrity.py \
             tests/test_pipeline_runtime.py \
             tests/test_context_propagation.py \
