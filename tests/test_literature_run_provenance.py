@@ -159,6 +159,7 @@ def test_configured_literature_scan_preserves_multiple_call_ids(tmp_path: Path, 
             "run_id": run_id,
             "defer_registry_sync": True,
         },
+        funding_context=call_a,
         funding_contexts=[call_a, call_b],
     )
 
