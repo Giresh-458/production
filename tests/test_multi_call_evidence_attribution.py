@@ -180,3 +180,24 @@ def test_duplicate_explicit_matches_return_each_funding_call_once():
     )
 
     assert ids == ["CALL-DEDUP-1"]
+
+
+def test_longer_exact_title_prevents_prefix_cross_attribution():
+    short_call = _mock_ctx(
+        funding_call_id="CALL-SHORT-TITLE",
+        call_title="Research Program",
+        program_name="Research Program",
+    )
+    specific_call = _mock_ctx(
+        funding_call_id="CALL-SPECIFIC-TITLE",
+        call_title="Research Program for Quantum Systems",
+        program_name="Quantum Systems Research Program",
+    )
+
+    ids = _get_matched_ids(
+        "Research Program for Quantum Systems",
+        "The Research Program for Quantum Systems is accepting proposals.",
+        [short_call, specific_call],
+    )
+
+    assert ids == ["CALL-SPECIFIC-TITLE"]
