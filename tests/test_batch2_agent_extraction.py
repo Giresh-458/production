@@ -210,11 +210,12 @@ SOURCE_CONFIGS = [
 
 
 @pytest.mark.parametrize(("agent", "filename"), SOURCE_CONFIGS)
-def test_checked_in_source_configuration_loads_and_has_http_urls(agent, filename):
+def test_checked_in_source_configuration_loads_and_has_http_urls(monkeypatch, agent, filename):
     from pathlib import Path
     from agents.utils import is_valid_http_url
 
     module = importlib.import_module(f"agents.{agent}_agent")
+    monkeypatch.setattr(module, "apply_refresh_policy", lambda _agent, sources: sources)
     sources = module.load_sources(Path("sources") / filename)
 
     assert sources, f"{filename} loaded no source entries"
