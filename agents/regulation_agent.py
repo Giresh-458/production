@@ -766,6 +766,16 @@ def fallback_analysis(document: Any) -> Any:
     raise ValueError("LLM extraction failed and synthetic fallback is disabled")
 
 
+def _bounded_evidence_weight(value: Any, default: float) -> float:
+    try:
+        weight = float(value)
+    except (TypeError, ValueError):
+        weight = default
+    if not math.isfinite(weight):
+        weight = default
+    return max(0.0, min(1.0, weight))
+
+
 def analyze_document(document: RegulationDocument) -> RegulationAnalysis:
     LOGGER.info("Analyzing regulation source '%s' with local llm_provider", document.name)
     try:
@@ -790,7 +800,7 @@ def analyze_document(document: RegulationDocument) -> RegulationAnalysis:
     
     problem_signature = build_problem_signature(area, constraint, technical_problem)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
+    confidence = cleaned_text(str(parsed.get("confidence", "Medium"))).title()
     if confidence not in {"High", "Medium", "Low"}:
         confidence = "Medium"
     source_type = document.source_type
@@ -813,12 +823,12 @@ def analyze_document(document: RegulationDocument) -> RegulationAnalysis:
         document_type=cleaned_text(str(parsed.get("document_type", ""))) or normalize_document_type(document.source_type, document.evidence_type),
         jurisdiction=cleaned_text(str(parsed.get("jurisdiction", ""))) or infer_jurisdiction(f"{issuing_body} {document.content}"),
         legal_force=cleaned_text(str(parsed.get("legal_force", ""))) or infer_legal_force(cleaned_text(str(parsed.get("document_type", ""))) or normalize_document_type(document.source_type, document.evidence_type)),
-        effective_date=None,
+        effective_date=coalesce_text(parsed.get("effective_date")) or None,
         expiry_date=coalesce_text(parsed.get("expiry_date")) or None,
         status=cleaned_text(str(parsed.get("status", ""))).upper() or _status_from_dates(None, coalesce_text(parsed.get("expiry_date")) or None),
-        supersedes=None,
+        supersedes=coalesce_text(parsed.get("supersedes")) or None,
         superseded_by=coalesce_text(parsed.get("superseded_by")) or None,
-        evidence_weight=float(parsed.get("evidence_weight") or EVIDENCE_WEIGHTS.get(cleaned_text(str(parsed.get("document_type", ""))) or normalize_document_type(document.source_type, document.evidence_type), 0.30)),
+        evidence_weight=_bounded_evidence_weight(parsed.get("evidence_weight"), EVIDENCE_WEIGHTS.get(cleaned_text(str(parsed.get("document_type", ""))) or normalize_document_type(document.source_type, document.evidence_type), 0.30)),
     )
 
 
