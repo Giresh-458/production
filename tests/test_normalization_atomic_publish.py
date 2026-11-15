@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from core.normalization import normalize_intermediate_artifact, save_normalized_collection_records
+from core.normalization import (
+    ensure_normalized_collection_records,
+    normalize_intermediate_artifact,
+    save_normalized_collection_records,
+)
 from core.agent_interface import save_intermediate_markdown
 
 
@@ -222,3 +226,92 @@ def test_intermediate_writer_keeps_distinct_run_snapshots(tmp_path: Path) -> Non
     assert first != second
     assert first.exists()
     assert second.exists()
+
+
+
+def test_dedupe_merges_call_ids_and_raw_artifact_provenance(tmp_path: Path) -> None:
+    import json
+    import sqlite3
+
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    evidence = "The same shared evidence is attributed to multiple explicit funding calls."
+    first = _artifact(evidence, "RUN-A").replace(
+        "- Funding Call Id: CALL-ATOMIC",
+        "- Funding Call Ids: CALL-A, CALL-B",
+    )
+    second = _artifact(evidence, "RUN-B").replace(
+        "- Funding Call Id: CALL-ATOMIC",
+        "- Funding Call Ids: CALL-B, CALL-C",
+    )
+    (intermediate / "first.md").write_text(first, encoding="utf-8")
+    (intermediate / "second.md").write_text(second, encoding="utf-8")
+
+    paths = save_normalized_collection_records(outputs, outputs)
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    assert len(records) == 1
+    record = records[0]
+    assert record["funding_call_ids"] == ["CALL-A", "CALL-B", "CALL-C"]
+    assert record["run_ids"] == ["RUN-A", "RUN-B"]
+    assert len(record["raw_record_paths"]) == 2
+
+    with sqlite3.connect(outputs / "normalized" / "evidence_ledger.db") as conn:
+        row = conn.execute("SELECT provenance FROM canonical_evidence").fetchone()
+        groups = conn.execute("SELECT COUNT(*) FROM independence_groups").fetchone()[0]
+    provenance = json.loads(row[0])
+    assert provenance["funding_call_ids"] == ["CALL-A", "CALL-B", "CALL-C"]
+    assert len(provenance["raw_record_paths"]) == 2
+    assert groups == 1
+
+
+def test_latest_content_version_wins_when_collection_timestamps_match(tmp_path: Path) -> None:
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    evidence = "A stable evidence snippet shared by two content versions."
+    first = _artifact(evidence).replace(
+        "A sufficiently detailed research problem statement for atomic publication.",
+        "Earlier context says the research system has a narrow capability.",
+    )
+    second = _artifact(evidence).replace(
+        "A sufficiently detailed research problem statement for atomic publication.",
+        "Later context says the research system has a broader capability.",
+    )
+    (intermediate / "a.md").write_text(first, encoding="utf-8")
+    (intermediate / "z.md").write_text(second, encoding="utf-8")
+
+    paths = save_normalized_collection_records(outputs, outputs)
+    import json
+
+    records = json.loads(paths["records"].read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert "broader capability" in records[0]["problem_statement"]
+    assert len(records[0]["content_versions"]) == 2
+
+
+def test_missing_or_corrupt_ledger_forces_cache_rebuild(tmp_path: Path) -> None:
+    import sqlite3
+
+    outputs = tmp_path / "outputs"
+    intermediate = outputs / "intermediate"
+    intermediate.mkdir(parents=True)
+    (intermediate / "source.md").write_text(
+        _artifact("A complete evidence statement for the cache consistency test."),
+        encoding="utf-8",
+    )
+    save_normalized_collection_records(outputs, outputs)
+
+    ledger = outputs / "normalized" / "evidence_ledger.db"
+    ledger.unlink()
+    ensure_normalized_collection_records(outputs)
+    assert ledger.is_file()
+    assert sqlite3.connect(ledger).execute(
+        "SELECT COUNT(*) FROM canonical_evidence"
+    ).fetchone()[0] == 1
+
+    ledger.write_bytes(b"not a valid sqlite database")
+    ensure_normalized_collection_records(outputs)
+    with sqlite3.connect(ledger) as conn:
+        assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert conn.execute("SELECT COUNT(*) FROM canonical_evidence").fetchone()[0] == 1
