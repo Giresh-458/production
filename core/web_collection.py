@@ -224,43 +224,108 @@ def _extract_discovery_urls(base_url: str, html: str, robots_text: str = "") -> 
     return list(dict.fromkeys(canonicalize_url(u) for u in urls if u))
 
 
-def _sitemap_urls(sitemap_url: str, *, limit: int = 200, allowed_origin: str | None = None, depth: int = 0, max_depth: int = 3) -> list[str]:
+def _sitemap_urls(
+    sitemap_url: str,
+    *,
+    limit: int = 200,
+    allowed_origin: str | None = None,
+    depth: int = 0,
+    max_depth: int = 3,
+    robots_cache: dict[str, robotparser.RobotFileParser | None] | None = None,
+    errors: list[dict[str, str]] | None = None,
+) -> list[str]:
+    """Read an origin-bound sitemap only when robots policy permits it.
+
+    Acquisition and XML failures are recorded for the caller instead of being
+    silently converted into an apparently successful empty discovery result.
+    """
     if depth >= max_depth:
         return []
     parsed = urlparse(sitemap_url)
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "invalid_sitemap_url"})
         return []
-    
+
     current_origin = f"{parsed.scheme}://{parsed.netloc}"
     if allowed_origin is None:
         allowed_origin = current_origin
     if current_origin != allowed_origin:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "cross_origin_sitemap_rejected"})
         return []
-        
+
+    if not _robots_allowed(
+        sitemap_url, sitemap_url, cache=robots_cache, fail_open=False
+    ):
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "robots_disallow_sitemap"})
+        return []
+
     try:
         response = get_response(sitemap_url, timeout=(5.0, 15.0), retries=1)
+        final_url = canonicalize_url(str(response.url))
+        final = urlparse(final_url)
+        final_origin = f"{final.scheme}://{final.netloc}"
+        if final_origin != allowed_origin:
+            if errors is not None:
+                errors.append({"url": sitemap_url, "reason": "cross_origin_sitemap_redirect"})
+            return []
+        if not _robots_allowed(
+            final_url, final_url, cache=robots_cache, fail_open=False
+        ):
+            if errors is not None:
+                errors.append({"url": final_url, "reason": "robots_disallow_sitemap_redirect"})
+            return []
         text = response.text
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append({
+                "url": sitemap_url,
+                "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:160]}",
+            })
         return []
+
     if "<html" in text[:500].lower():
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "sitemap_returned_html"})
         return []
-        
+
     try:
         import defusedxml.ElementTree as ET
     except ImportError:
         import xml.etree.ElementTree as ET
-        
+
     try:
         root = ET.fromstring(text)
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append({
+                "url": sitemap_url,
+                "reason": f"sitemap_xml_invalid:{type(exc).__name__}:{str(exc)[:120]}",
+            })
         return []
-        
+
     tag = root.tag.lower().split("}")[-1]
-    locs = [str(el.text).strip() for el in root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text]
+    locs = [
+        str(el.text).strip()
+        for el in root.iter()
+        if el.tag.lower().split("}")[-1] == "loc" and el.text
+    ]
     if tag == "sitemapindex":
         out: list[str] = []
         for child in locs[:20]:
-            out.extend(_sitemap_urls(child, limit=max(1, limit - len(out)), allowed_origin=allowed_origin, depth=depth + 1, max_depth=max_depth))
+            out.extend(
+                _sitemap_urls(
+                    child,
+                    limit=max(1, limit - len(out)),
+                    allowed_origin=allowed_origin,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    robots_cache=robots_cache,
+                    errors=errors,
+                )
+            )
             if len(out) >= limit:
                 break
         return out[:limit]
@@ -579,7 +644,13 @@ def collect_source(
                 if hint.endswith("/robots.txt"):
                     continue
                 if "sitemap" in urlparse(hint).path.lower():
-                    for discovered_url in _sitemap_urls(hint, limit=max_pages * 6, allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"):
+                    for discovered_url in _sitemap_urls(
+                        hint,
+                        limit=max_pages * 6,
+                        allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}",
+                        robots_cache=robots_cache,
+                        errors=failed,
+                    ):
                         s = _score(discovered_url, "sitemap", keywords)
                         if s > 0.0:
                             push(discovered_url, 0, final_url, "sitemap", s + 1.0)
