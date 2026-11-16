@@ -303,7 +303,13 @@ def update_recursive_review(
 
 
 
-def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
+def _sitemap_links(
+    root_url: str,
+    limit: int = 150,
+    *,
+    robots_cache: dict[str, Any] | None = None,
+    errors: list[dict[str, str]] | None = None,
+) -> list[str]:
     """Best-effort, origin-bound sitemap discovery.
 
     Prefer Sitemap directives in robots.txt and use /sitemap.xml only as a
@@ -312,6 +318,7 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
     try:
         from core.http_client import get_response
         from core.crawl_context import current_crawl_context
+        from core.web_collection import _robots_allowed
         import time
         
         ctx = current_crawl_context.get(None)
@@ -339,10 +346,28 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
         for candidate in candidates[:3]:
             if _check_deadline():
                 break
+            if not _robots_allowed(
+                candidate, candidate, cache=robots_cache, fail_open=False
+            ):
+                if errors is not None:
+                    errors.append({"url": candidate, "reason": "robots_disallow_sitemap"})
+                continue
             try:
                 response = get_response(candidate, timeout=(5.0, 15.0), retries=1)
+                final_url = canonicalize_url(str(response.url))
+                if _normalize_domain(final_url) != _normalize_domain(root_url):
+                    raise ValueError("cross_origin_sitemap_redirect")
+                if not _robots_allowed(
+                    final_url, final_url, cache=robots_cache, fail_open=False
+                ):
+                    raise PermissionError("robots_disallow_sitemap_redirect")
                 root = ET.fromstring(response.text)
-            except Exception:
+            except Exception as exc:
+                if errors is not None:
+                    errors.append({
+                        "url": candidate,
+                        "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:120]}",
+                    })
                 continue
             locs = [str(el.text).strip() for el in root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text]
             if root.tag.lower().split("}")[-1] == "sitemapindex":
@@ -350,12 +375,32 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
                     if _check_deadline():
                         break
                     if _normalize_domain(child) != _normalize_domain(root_url):
+                        if errors is not None:
+                            errors.append({"url": child, "reason": "cross_origin_sitemap_rejected"})
+                        continue
+                    if not _robots_allowed(
+                        child, child, cache=robots_cache, fail_open=False
+                    ):
+                        if errors is not None:
+                            errors.append({"url": child, "reason": "robots_disallow_sitemap"})
                         continue
                     try:
                         child_response = get_response(child, timeout=(5.0, 15.0), retries=1)
+                        child_final = canonicalize_url(str(child_response.url))
+                        if _normalize_domain(child_final) != _normalize_domain(root_url):
+                            raise ValueError("cross_origin_sitemap_redirect")
+                        if not _robots_allowed(
+                            child_final, child_final, cache=robots_cache, fail_open=False
+                        ):
+                            raise PermissionError("robots_disallow_sitemap_redirect")
                         child_root = ET.fromstring(child_response.text)
                         locs.extend(str(el.text).strip() for el in child_root.iter() if el.tag.lower().split("}")[-1] == "loc" and el.text)
-                    except Exception:
+                    except Exception as exc:
+                        if errors is not None:
+                            errors.append({
+                                "url": child,
+                                "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:120]}",
+                            })
                         continue
             out.extend(locs)
             if len(out) >= limit:
@@ -486,9 +531,27 @@ def collect_recursive_pages_with_review(
     _schedule(root_url, initial_html, 0, None, 999)
     # Sitemaps reveal pages that are not linked from navigation (common for
     # grant PDFs, archived calls and program pages). Keep the crawl bounded.
-    for sitemap_url in _sitemap_links(root_url, limit=min(150, config.max_pages * 6)):
+    sitemap_errors: list[dict[str, str]] = []
+    for sitemap_url in _sitemap_links(
+        root_url,
+        limit=min(150, config.max_pages * 6),
+        robots_cache=robots_cache,
+        errors=sitemap_errors,
+    ):
         if sitemap_url not in seen_urls and _normalize_domain(sitemap_url) in allowed_domains:
             _schedule(sitemap_url, "", 1, root_url, 3)
+    for item in sitemap_errors:
+        skipped_links.append(
+            RecursiveLinkDecision(
+                url=item.get("url", root_url),
+                parent_url=root_url,
+                anchor_text="sitemap",
+                score=0,
+                depth=1,
+                action="skipped",
+                reason=item.get("reason", "sitemap_discovery_failed"),
+            )
+        )
 
     while queue and len(pages) < config.max_pages:
         from core.crawl_context import current_crawl_context
