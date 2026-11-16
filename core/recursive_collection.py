@@ -397,7 +397,12 @@ def _get_response_with_robots(
     raise RuntimeError("too_many_redirects")
 
 
-def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
+def _sitemap_links(
+    root_url: str,
+    limit: int = 150,
+    *,
+    errors: list[dict[str, str]] | None = None,
+) -> list[str]:
     """Discover same-origin sitemap URLs without bypassing robots or redirects."""
     try:
         from core.crawl_context import current_crawl_context
@@ -409,6 +414,8 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
             return []
         root_allowed, _, _ = check_robots(root_url)
         if not root_allowed:
+            if errors is not None:
+                errors.append({"url": root_url, "reason": "robots_denied_sitemap_root"})
             return []
 
         parsed = urlparse(root_url)
@@ -438,7 +445,9 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
                     allowed_domains=allowed_domains,
                 )
                 root = ET.fromstring(response.text)
-            except Exception:
+            except Exception as exc:
+                if errors is not None:
+                    errors.append({"url": candidate, "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:160]}"})
                 continue
             locs = [
                 str(element.text).strip()
@@ -465,7 +474,9 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
                             for element in child_root.iter()
                             if element.tag.lower().split("}")[-1] == "loc" and element.text
                         )
-                    except Exception:
+                    except Exception as exc:
+                        if errors is not None:
+                            errors.append({"url": child, "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:160]}"})
                         continue
             out.extend(locs)
             if len(out) >= limit:
@@ -475,7 +486,9 @@ def _sitemap_links(root_url: str, limit: int = 150) -> list[str]:
             for candidate in out
             if candidate and _normalize_domain(candidate) in allowed_domains
         ))[:limit]
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append({"url": root_url, "reason": f"sitemap_discovery_failed:{type(exc).__name__}:{str(exc)[:160]}"})
         return []
 
 
@@ -617,9 +630,26 @@ def collect_recursive_pages_with_review(
     _schedule(root_url, initial_html, 0, None, 999)
     # Sitemaps reveal pages that are not linked from navigation (common for
     # grant PDFs, archived calls and program pages). Keep the crawl bounded.
-    for sitemap_url in _sitemap_links(root_url, limit=min(150, config.max_pages * 6)):
+    sitemap_errors: list[dict[str, str]] = []
+    for sitemap_url in _sitemap_links(
+        root_url,
+        limit=min(150, config.max_pages * 6),
+        errors=sitemap_errors,
+    ):
         if sitemap_url not in seen_urls and _normalize_domain(sitemap_url) in allowed_domains:
             _schedule(sitemap_url, "", 1, root_url, 3)
+    for item in sitemap_errors:
+        skipped_links.append(
+            RecursiveLinkDecision(
+                url=item.get("url", root_url),
+                parent_url=root_url,
+                anchor_text="sitemap",
+                score=0,
+                depth=1,
+                action="skipped",
+                reason=item.get("reason", "sitemap_discovery_failed"),
+            )
+        )
 
     while queue and len(pages) < config.max_pages:
         from core.crawl_context import current_crawl_context
