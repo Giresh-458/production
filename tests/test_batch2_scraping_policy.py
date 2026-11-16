@@ -418,7 +418,7 @@ def test_recursive_sitemap_is_not_fetched_when_robots_disallows_it(monkeypatch):
             return False
 
         def read(self, _limit):
-            return b"Sitemap: https://example.org/sitemap.xml\\n"
+            return b"Sitemap: https://example.org/sitemap.xml\n"
 
     monkeypatch.setattr(
         urllib.request,
