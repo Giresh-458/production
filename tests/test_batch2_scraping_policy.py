@@ -351,3 +351,57 @@ def test_shared_crawler_deadline_bounds_domain_semaphore_wait():
         current_crawl_context.reset(token)
 
     assert result.error == "deadline_exceeded"
+
+
+def test_sitemap_fetch_is_blocked_by_robots_and_reported(monkeypatch):
+    errors: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        web_collection,
+        "_robots_allowed",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        web_collection,
+        "get_response",
+        lambda *args, **kwargs: pytest.fail("robots-disallowed sitemap must not be fetched"),
+    )
+
+    result = web_collection._sitemap_urls(
+        "https://example.org/sitemap.xml",
+        allowed_origin="https://example.org",
+        robots_cache={},
+        errors=errors,
+    )
+
+    assert result == []
+    assert errors == [{
+        "url": "https://example.org/sitemap.xml",
+        "reason": "robots_disallow_sitemap",
+    }]
+
+
+def test_sitemap_fetch_failure_is_reported(monkeypatch):
+    errors: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        web_collection,
+        "_robots_allowed",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        web_collection,
+        "get_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            requests.Timeout("sitemap request timed out")
+        ),
+    )
+
+    result = web_collection._sitemap_urls(
+        "https://example.org/sitemap.xml",
+        allowed_origin="https://example.org",
+        robots_cache={},
+        errors=errors,
+    )
+
+    assert result == []
+    assert errors
+    assert errors[0]["reason"].startswith("sitemap_fetch_failed:Timeout:")
