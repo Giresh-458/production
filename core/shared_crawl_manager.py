@@ -333,11 +333,16 @@ class SharedCrawlManager:
         if status_code != 200:
             return False
         html_lower = html.lower()
+        if (
+            ("cloudflare" in html_lower and "challenge" in html_lower)
+            or "vercel security checkpoint" in html_lower
+            or "pardon our interruption" in html_lower
+            or ("verify you are" in html_lower and "human" in html_lower)
+        ):
+            return False
         if "enable javascript" in html_lower or "enable js" in html_lower or "javascript is required" in html_lower:
             return True
         if "<noscript>" in html_lower and len(html) < 2000:
-            return True
-        if "cloudflare" in html_lower and "challenge" in html_lower:
             return True
         return False
 
