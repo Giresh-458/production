@@ -521,6 +521,16 @@ def collect_source(
                     text = better[1]
                 
                 def _needs_browser(h, t):
+                    lower_html = h.lower()
+                    # Anti-bot challenges are policy denials, not JavaScript
+                    # application shells; never escalate them to a browser.
+                    if (
+                        ("cloudflare" in lower_html and "challenge" in lower_html)
+                        or "vercel security checkpoint" in lower_html
+                        or "pardon our interruption" in lower_html
+                        or ("verify you are" in lower_html and "human" in lower_html)
+                    ):
+                        return False
                     if len(t.strip()) >= 800:
                         return False
                     lower_html = h.lower()
@@ -535,8 +545,7 @@ def collect_source(
                             "enable javascript",
                             "javascript is required",
                             "please turn on javascript",
-                            "checking your browser",
-                        )
+                         )
                     )
                     app_mount = bool(
                         re.search(r"""id=["'](?:root|app|__next|__nuxt)["']""", lower_html)
