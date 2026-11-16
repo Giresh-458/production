@@ -60,4 +60,5 @@ def test_recursive_sitemap_discovery(monkeypatch):
         raise RuntimeError(url)
 
     monkeypatch.setattr("core.http_client.get_response", fake_get)
+    monkeypatch.setattr("core.web_collection._robots_allowed", lambda *args, **kwargs: True)
     assert "https://example.org/rfp-2026.pdf" in recursive_collection._sitemap_links("https://example.org/")
