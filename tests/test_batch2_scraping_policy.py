@@ -448,3 +448,26 @@ def test_recursive_sitemap_is_not_fetched_when_robots_disallows_it(monkeypatch):
         "url": "https://example.org/sitemap.xml",
         "reason": "robots_disallow_sitemap",
     }]
+
+
+def test_http_429_records_shared_origin_cooldown(monkeypatch):
+    response = requests.Response()
+    response.status_code = 429
+    response.url = "https://example.org/research"
+    response.headers["Retry-After"] = "9"
+    response._content = b"rate limited"
+    session = type("Session", (), {"get": lambda self, *args, **kwargs: response})()
+
+    with http_client._ORIGIN_COOLDOWN_LOCK:
+        http_client._ORIGIN_COOLDOWNS.pop("https://example.org", None)
+
+    with pytest.raises(requests.HTTPError):
+        http_client.get_response(
+            "https://example.org/research",
+            session=session,
+            retries=0,
+        )
+
+    assert http_client._origin_cooldown_remaining(
+        "https://example.org/another-path"
+    ) > 0
