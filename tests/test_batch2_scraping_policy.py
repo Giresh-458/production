@@ -405,3 +405,46 @@ def test_sitemap_fetch_failure_is_reported(monkeypatch):
     assert result == []
     assert errors
     assert errors[0]["reason"].startswith("sitemap_fetch_failed:Timeout:")
+
+
+def test_recursive_sitemap_is_not_fetched_when_robots_disallows_it(monkeypatch):
+    import urllib.request
+
+    class RobotsResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _limit):
+            return b"Sitemap: https://example.org/sitemap.xml\\n"
+
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: RobotsResponse(),
+    )
+    monkeypatch.setattr(
+        web_collection,
+        "_robots_allowed",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        http_client,
+        "get_response",
+        lambda *args, **kwargs: pytest.fail("robots-disallowed sitemap must not be fetched"),
+    )
+    errors: list[dict[str, str]] = []
+
+    result = recursive_collection._sitemap_links(
+        "https://example.org/",
+        robots_cache={},
+        errors=errors,
+    )
+
+    assert result == []
+    assert errors == [{
+        "url": "https://example.org/sitemap.xml",
+        "reason": "robots_disallow_sitemap",
+    }]
