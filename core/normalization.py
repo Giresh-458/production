@@ -771,6 +771,73 @@ def _normalization_input_manifest(
     }
 
 
+def _normalized_record_provenance(record: dict[str, Any]) -> dict[str, Any]:
+    """Return the exact provenance object persisted in the canonical evidence ledger."""
+    return {
+        "source_url": record["source_url"],
+        "source_urls": record.get("source_urls", [record["source_url"]]),
+        "source_id": record["source_id"],
+        "agent": record["agent_name"],
+        "funding_call_id": record["funding_call_id"],
+        "funding_call_ids": record.get("funding_call_ids", []),
+        "run_id": record["run_id"],
+        "run_ids": record.get("run_ids", []),
+        "retrieved_at": record["collected_at"],
+        "published_at": record.get("published_at") or None,
+        "last_verified_at": record.get("last_verified_at") or None,
+        "raw_record_id": record["file_path"],
+        "raw_record_paths": record.get("raw_record_paths", [record["file_path"]]),
+    }
+
+
+def _canonical_evidence_ledger_record(
+    record: dict[str, Any],
+    content_hash_to_group: dict[str, str],
+) -> dict[str, Any]:
+    """Build the exact SQLite row used by the current normalization publisher."""
+    if record["normalization_status"] == "NEEDS_REVIEW":
+        independence_status = "UNKNOWN"
+        independence_group = "UNKNOWN"
+    else:
+        independence_group = content_hash_to_group[record["content_hash"]]
+        independence_status = (
+            "INDEPENDENT" if independence_group == record["source_id"] else "DERIVED"
+        )
+    strength = max(0.0, min(1.0, float(record.get("evidence_strength", 0.0) or 0.0)))
+    return {
+        "evidence_id": record["evidence_id"],
+        "record_id": record["record_id"],
+        "funding_call_id": record["funding_call_id"],
+        "run_id": record["run_id"],
+        "agent": record["agent_name"],
+        "layer": record["layer"],
+        "source_id": record["source_id"],
+        "source_url": record["source_url"],
+        "canonical_url": record["canonical_url"],
+        "source_type": record["source_type"],
+        "source_name": record["actor"],
+        "title": record["title"],
+        "problem": record["problem_statement"],
+        "problem_signature": "pending-synthesis",
+        "evidence": "\\n".join(record["evidence_snippets"]),
+        "evidence_excerpt": "\\n".join(record["excerpt_windows"]),
+        "evidence_type": record["evidence_type"],
+        "research_area": record["research_area"],
+        "published_at": record.get("published_at") or None,
+        "retrieved_at": record["collected_at"] or "",
+        "updated_at": None,
+        "content_hash": record["content_hash"],
+        "source_quality": strength,
+        "evidence_strength": record["evidence_strength"],
+        "confidence": strength,
+        "independence_group": independence_group,
+        "independence_status": independence_status,
+        "normalization_status": record["normalization_status"],
+        "provenance": _normalized_record_provenance(record),
+        "raw_record_id": record["file_path"],
+    }
+
+
 def save_normalized_collection_records(
     intermediate_root: Path | list[Path],
     output_dir: Path,
