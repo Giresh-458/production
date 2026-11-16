@@ -11,6 +11,13 @@ on:
     paths:
       - "core/agent_interface.py"
       - "core/normalization.py"
+      - "core/batch2.py"
+      - "scripts/pipeline_tools/run_batch2.py"
+      - "tests/test_batch2_runner.py"
+      - "tests/test_batch2_live_evidence_regressions.py"
+      - "tests/test_batch2_lab_artifact_contract.py"
+      - "tests/batch2_test_helpers.py"
+      - "docs/BATCH2_COLLECTION_NORMALIZATION.md"
       - "core/intelligence.py"
       - "agents/literature_agent.py"
       - "tests/test_literature_run_provenance.py"
@@ -115,4 +122,7 @@ jobs:
             tests/test_adaptive_area_filtering.py \
             tests/test_intelligence_exceptions.py \
             tests/test_refresh_mission_gate_preservation.py \
+            tests/test_batch2_runner.py \
+            tests/test_batch2_live_evidence_regressions.py \
+            tests/test_batch2_lab_artifact_contract.py \
             -q
