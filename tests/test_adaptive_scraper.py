@@ -49,14 +49,15 @@ def test_recursive_sitemap_discovery(monkeypatch):
     sitemap = '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.org/rfp-2026.pdf</loc></url></urlset>'
 
     class Response:
-        def __init__(self, text):
+        def __init__(self, text, url):
             self.text = text
+            self.url = url
             self.content = text.encode()
             self.headers = {"Content-Type": "application/xml"}
 
     def fake_get(url, **kwargs):
         if url.endswith("sitemap.xml"):
-            return Response(sitemap)
+            return Response(sitemap, url)
         raise RuntimeError(url)
 
     monkeypatch.setattr("core.http_client.get_response", fake_get)
