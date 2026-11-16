@@ -35,6 +35,40 @@ from requests.adapters import HTTPAdapter
 
 _SESSION_LOCAL = threading.local()
 
+# A 429 response throttles the whole origin, not only the worker that received it.
+# Monotonic time avoids wall-clock adjustments extending or shortening a cooldown.
+_ORIGIN_COOLDOWN_LOCK = threading.Lock()
+_ORIGIN_COOLDOWNS: dict[str, float] = {}
+
+
+def _origin_key(url: str) -> str:
+    parts = urlsplit(canonicalize_url(url))
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def _record_origin_cooldown(url: str, delay: float) -> None:
+    if delay <= 0:
+        return
+    origin = _origin_key(url)
+    until = time.monotonic() + delay
+    with _ORIGIN_COOLDOWN_LOCK:
+        _ORIGIN_COOLDOWNS[origin] = max(_ORIGIN_COOLDOWNS.get(origin, 0.0), until)
+
+
+def _wait_for_origin_cooldown(url: str) -> None:
+    origin = _origin_key(url)
+    with _ORIGIN_COOLDOWN_LOCK:
+        remaining = max(0.0, _ORIGIN_COOLDOWNS.get(origin, 0.0) - time.monotonic())
+    if remaining > 0:
+        _sleep_or_abort(remaining)
+
+
+def _origin_cooldown_remaining(url: str) -> float:
+    origin = _origin_key(url)
+    with _ORIGIN_COOLDOWN_LOCK:
+        return max(0.0, _ORIGIN_COOLDOWNS.get(origin, 0.0) - time.monotonic())
+
+
 def _get_session() -> requests.Session:
     client = getattr(_SESSION_LOCAL, "session", None)
     if client is None:
@@ -120,8 +154,10 @@ def get_response(
     ctx = current_crawl_context.get(None)
 
     for attempt in range(retries + 1):
-        if ctx: ctx.http_requests += 1
+        if ctx:
+            ctx.http_requests += 1
         try:
+            _wait_for_origin_cooldown(target)
             effective_timeout = _apply_context_timeout(timeout)
             response = client.get(
                 target,
@@ -165,8 +201,16 @@ def get_response(
                 response._content = body
                 response._content_consumed = True
 
+            cooldown_delay = None
+            if response.status_code == 429:
+                cooldown_delay = _retry_delay(response, attempt)
+                _record_origin_cooldown(target, cooldown_delay)
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
-                delay = _retry_delay(response, attempt)
+                delay = (
+                    cooldown_delay
+                    if cooldown_delay is not None
+                    else _retry_delay(response, attempt)
+                )
                 LOGGER.warning("Transient HTTP %s for %s; retrying in %.1fs", response.status_code, target, delay)
                 _sleep_or_abort(delay)
                 continue
