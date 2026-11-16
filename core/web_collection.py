@@ -209,11 +209,14 @@ def _sitemap_urls(
     max_depth: int = 3,
     robots_cache: dict[str, Any] | None = None,
     allow_loopback: bool = False,
+    errors: list[dict[str, str]] | None = None,
 ) -> list[str]:
     if depth >= max_depth:
         return []
     parsed = urlparse(sitemap_url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "invalid_sitemap_url"})
         return []
 
     current_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
@@ -221,16 +224,22 @@ def _sitemap_urls(
         allowed_origin = current_origin
     allowed_origin = allowed_origin.lower()
     if current_origin != allowed_origin:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "cross_origin_sitemap_rejected"})
         return []
 
     try:
         current_url = canonicalize_url(sitemap_url)
         redirect_statuses = {301, 302, 303, 307, 308}
         for _ in range(11):
-            allowed, _, crawl_delay = check_robots(current_url, cache=robots_cache)
+            allowed, robots_reason, crawl_delay = check_robots(current_url, cache=robots_cache)
             if not allowed:
+                if errors is not None:
+                    errors.append({"url": current_url, "reason": f"robots_denied_sitemap:{robots_reason or 'disallowed'}"})
                 return []
             if not wait_for_host_slot(current_url, crawl_delay=crawl_delay):
+                if errors is not None:
+                    errors.append({"url": current_url, "reason": "sitemap_wait_aborted_by_deadline_or_host_policy"})
                 return []
             response = get_response(
                 current_url,
@@ -245,8 +254,15 @@ def _sitemap_urls(
             if callable(close_response):
                 close_response()
             if not location:
+                if errors is not None:
+                    errors.append({"url": current_url, "reason": "sitemap_redirect_missing_location"})
                 return []
-            next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback)
+            try:
+                next_url = _safe_redirect_target(current_url, location, allow_loopback=allow_loopback)
+            except Exception as exc:
+                if errors is not None:
+                    errors.append({"url": current_url, "reason": f"sitemap_redirect_rejected:{type(exc).__name__}:{str(exc)[:120]}"})
+                return []
             next_parsed = urlparse(next_url)
             if (
                 next_parsed.scheme not in ("http", "https")
@@ -255,22 +271,39 @@ def _sitemap_urls(
                 or next_parsed.password
                 or f"{next_parsed.scheme.lower()}://{next_parsed.netloc.lower()}" != allowed_origin
             ):
+                if errors is not None:
+                    errors.append({"url": current_url, "reason": "cross_origin_sitemap_redirect_rejected"})
                 return []
             current_url = next_url
         else:
+            if errors is not None:
+                errors.append({"url": current_url, "reason": "sitemap_redirect_limit_exceeded"})
             return []
 
         if response.status_code < 200 or response.status_code >= 300:
+            if errors is not None:
+                errors.append({"url": current_url, "reason": f"sitemap_http_status_{response.status_code}"})
             response.raise_for_status()
             return []
         final_url = canonicalize_url(str(response.url or current_url))
         final_parsed = urlparse(final_url)
         if f"{final_parsed.scheme.lower()}://{final_parsed.netloc.lower()}" != allowed_origin:
+            if errors is not None:
+                errors.append({"url": final_url, "reason": "cross_origin_sitemap_final_url_rejected"})
+            return []
+        final_allowed, final_reason, _ = check_robots(final_url, cache=robots_cache)
+        if not final_allowed:
+            if errors is not None:
+                errors.append({"url": final_url, "reason": f"robots_denied_sitemap_redirect:{final_reason or 'disallowed'}"})
             return []
         text = response.text
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": f"sitemap_fetch_failed:{type(exc).__name__}:{str(exc)[:160]}"})
         return []
     if "<html" in text[:500].lower():
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": "sitemap_returned_html"})
         return []
 
     try:
@@ -280,7 +313,9 @@ def _sitemap_urls(
 
     try:
         root = ET.fromstring(text)
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append({"url": sitemap_url, "reason": f"sitemap_xml_invalid:{type(exc).__name__}:{str(exc)[:120]}"})
         return []
 
     tag = root.tag.lower().split("}")[-1]
@@ -301,6 +336,7 @@ def _sitemap_urls(
                     max_depth=max_depth,
                     robots_cache=robots_cache,
                     allow_loopback=allow_loopback,
+                    errors=errors,
                 )
             )
             if len(out) >= limit:
@@ -862,6 +898,7 @@ def collect_source(
                         allowed_origin=f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}",
                         robots_cache=robots_cache,
                         allow_loopback=allow_loopback_for_tests,
+                        errors=failed,
                     ):
                         s = _score(discovered_url, "sitemap", keywords)
                         if s > 0.0:
