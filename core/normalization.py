@@ -223,9 +223,97 @@ def _body_field(body: dict[str, str], *names: str) -> str:
             return _clean(value)
     return ""
 
-def generate_content_hash(title: str, source_type: str, problem_statement: str, context_summary: str) -> str:
-    text = f"{_clean(title)}|{_clean(source_type)}|{_clean(problem_statement)}|{_clean(context_summary)}"
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _safe_metadata_text(value: Any) -> str:
+    """Use scalar metadata only; never stringify nested dictionaries into evidence."""
+    if isinstance(value, str):
+        return _clean(value)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _normalized_actor_and_focus(
+    body: dict[str, str],
+    source_hints: dict[str, Any],
+    machine_metadata: dict[str, Any],
+    research_area: str,
+) -> tuple[str, str]:
+    authors = source_hints.get("authors")
+    author_text = ""
+    if isinstance(authors, (list, tuple)):
+        author_text = ", ".join(
+            text for author in authors[:3] if (text := _safe_metadata_text(author))
+        )
+    actor = _coalesce(
+        _body_field(body, "Funding Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
+        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
+        _safe_metadata_text(source_hints.get("organization")),
+        _safe_metadata_text(source_hints.get("company_name")),
+        _safe_metadata_text(source_hints.get("source_name")),
+        _safe_metadata_text(source_hints.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("investor_or_organization")),
+        author_text,
+        _safe_metadata_text(source_hints.get("venue")),
+        _safe_metadata_text(source_hints.get("publisher")),
+        _safe_metadata_text(machine_metadata.get("organization")),
+        _safe_metadata_text(machine_metadata.get("investor_or_organization")),
+        _safe_metadata_text(machine_metadata.get("source_name")),
+        _safe_metadata_text(machine_metadata.get("company_name")),
+        _safe_metadata_text(machine_metadata.get("issuing_body")),
+        _safe_metadata_text(source_hints.get("source")),
+    )
+    focus = _coalesce(
+        _body_field(body, "Focus"),
+        _safe_metadata_text(source_hints.get("focus")),
+        _safe_metadata_text(machine_metadata.get("focus")),
+        _safe_metadata_text(source_hints.get("research_area")),
+        research_area,
+    )
+    return actor or "Unknown", focus
+
+
+def _normalized_record_dedupe_key(record: dict[str, Any]) -> str:
+    """Collapse exact duplicate literature content across DOI/version aliases."""
+    if (
+        str(record.get("agent_name") or "").casefold() == "literature"
+        and str(record.get("source_id") or "").casefold().startswith("doi:")
+        and record.get("content_hash")
+    ):
+        return f"literature-content:{record['content_hash']}"
+    return str(record.get("evidence_id") or "")
+
+
+def generate_content_hash(
+    title: str,
+    source_type: str,
+    problem_statement: str,
+    context_summary: str,
+    *,
+    evidence_snippets: list[str] | None = None,
+    excerpt_windows: list[str] | None = None,
+    raw_content: str = "",
+) -> str:
+    """Fingerprint extracted source evidence, not only the generated summary."""
+    payload = {
+        "title": _clean(title),
+        "source_type": _clean(source_type),
+        "problem_statement": _clean(problem_statement),
+        "context_summary": _clean(context_summary),
+        "evidence_snippets": [
+            _clean(value) for value in (evidence_snippets or []) if _clean(value)
+        ],
+        "excerpt_windows": [
+            _clean(value) for value in (excerpt_windows or []) if _clean(value)
+        ],
+        "raw_content": _clean(raw_content),
+    }
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 def extract_source_identity(title: str, source_url: str, canonical_url: str, metadata: dict) -> str:
     # 1. DOI
@@ -495,27 +583,11 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         str(machine_metadata.get("evidence_type", "")),
         str(source_hints.get("evidence_type", "")),
     )
-    actor = _coalesce(
-        _body_field(body, "Funding Organization", "Funding Body", "Organization", "Investor / Organization", "Sponsor / Organizer", "Issuing Body"),
-        _body_field(body, "Source Name", "Company Name", "Project Name", "Lab Name"),
-        str(source_hints.get("organization", "")),
-        str(source_hints.get("company_name", "")),
-        str(source_hints.get("source_name", "")),
-        str(source_hints.get("issuing_body", "")),
-        str(source_hints.get("investor_or_organization", "")),
-        str(machine_metadata.get("organization", "")),
-        str(machine_metadata.get("investor_or_organization", "")),
-        str(machine_metadata.get("source_name", "")),
-        str(machine_metadata.get("company_name", "")),
-        str(machine_metadata.get("issuing_body", "")),
-        source_url,
-    )
-    focus = _coalesce(
-        _body_field(body, "Focus", "Focus Area"),
-        str(source_hints.get("focus", "")),
-        str(machine_metadata.get("focus", "")),
-        str(machine_metadata.get("source_hints", "")),
-        artifact.get("focus_area", ""),
+    actor, focus = _normalized_actor_and_focus(
+        body,
+        source_hints,
+        machine_metadata,
+        research_area,
     )
     keywords = _tokenize(
         " ".join(
@@ -546,7 +618,10 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         title,
         source_type,
         normalized_problem,
-        "\n".join([context_summary, *evidence.get("evidence_snippets", [])]),
+        context_summary,
+        evidence_snippets=evidence.get("evidence_snippets", []),
+        excerpt_windows=evidence.get("excerpt_windows", []),
+        raw_content=raw_content,
     )
     identity_metadata = dict(machine_metadata)
     identity_metadata.update({
@@ -869,12 +944,15 @@ def save_normalized_collection_records(
 
     deduped_records: dict[str, dict[str, Any]] = {}
     for record in records:
-        evidence_key = record["evidence_id"]
+        evidence_key = _normalized_record_dedupe_key(record)
         if evidence_key not in deduped_records:
             record["observation_count"] = 1
             record["first_seen"] = record["collected_at"]
             record["last_seen"] = record["collected_at"]
             record["content_versions"] = [record["content_hash"]]
+            record["source_id_variants"] = [record["source_id"]] if record.get("source_id") else []
+            record["source_url_variants"] = [record["source_url"]] if record.get("source_url") else []
+            record["title_variants"] = [record["title"]] if record.get("title") else []
             record["run_ids"] = [record["run_id"]] if record["run_id"] else []
             record["raw_record_paths"] = [record["file_path"]]
             record["source_urls"] = [record["source_url"]] if record["source_url"] else []
@@ -882,6 +960,13 @@ def save_normalized_collection_records(
             continue
 
         existing = deduped_records[evidence_key]
+        for field, candidate in (
+            ("source_id_variants", record.get("source_id")),
+            ("source_url_variants", record.get("source_url")),
+            ("title_variants", record.get("title")),
+        ):
+            if candidate and candidate not in existing.setdefault(field, []):
+                existing[field].append(candidate)
         existing["observation_count"] += 1
 
         # Preserve every explicit attribution and raw artifact location when
