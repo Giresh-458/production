@@ -375,6 +375,9 @@ sources:
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf
+        # Generic EU submission-account page, not a call or eligibility document.
+        exclude_url_patterns:
+        - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
