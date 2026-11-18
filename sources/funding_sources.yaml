@@ -142,8 +142,9 @@ sources:
         - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
-        # Leave room for current opportunities while excluding non-call social/docs links.
-        max_pages: 40
+        # The previous 40-page cap truncated the approved portals before
+        # all configured roots and current detail routes could be inspected.
+        max_pages: 80
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
@@ -234,7 +235,7 @@ sources:
     research_domains: [DePIN]
     url: https://fil.org/grants
     direct_page: false
-    focus: Official Filecoin Foundation grants directory plus authoritative programme descriptions for Open Grants and FIL Builder Next Step Grants. The directory is a discovery hub; use the seeded programme pages as direct evidence and do not treat historical applicant issues as separate funding calls.
+    focus: Official Filecoin Foundation grants directory and its current public funding programme status. Treat archived programme documents as historical context, and do not infer that a funding application is open unless an authoritative current call explicitly confirms it.
     collection:
       mode: web
       engine: crawl4ai
@@ -244,34 +245,25 @@ sources:
       - fil.org
       - www.fil.org
       discovery:
-        # The foundation directory has returned HTTP 429 for robots.txt. Respect
-        # that access signal and verify against the official Filecoin-maintained
-        # programme documents instead of retrying the blocked directory.
+        # The foundation directory's robots endpoint has returned HTTP 429.
+        # Respect that access signal and use the current official repository README.
         start_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        # Official Filecoin Foundation grants page links to this separate builder programme.
-        # Seed its authoritative programme description because fil.org/grants is rate-limited
-        # at robots.txt in some runs; this does not bypass that site's access policy.
-        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         currentness_verification_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        # These two official programme descriptions are complete bounded roots;
-        # do not fan out into unrelated GitHub navigation or issue history.
         max_depth: 0
-        max_pages: 2
+        max_pages: 1
         direct_page_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         follow_detail_pages: false
         follow_pdfs: false
         pagination: false
         exclude_url_patterns:
-          # GitHub issue history is not current Filecoin Foundation programme detail content.
-          - '^https?://github\.com/filecoin-project/devgrants/(?:issues|milestones|labels)(?:/|[?#]|$)'
+          # GitHub issue history and archived programme proposals are not current calls.
+          - '^https?://github\\.com/filecoin-project/devgrants/(?:issues|milestones|labels|tree/master/Archive)(?:/|[?#]|$)'
           # The separate IPFS devgrants repository and IPFS Implementation Fund are outside Filecoin Foundation scope.
-          - '^https?://github\.com/ipfs/devgrants(?:/|[?#]|$)'
-          - '^https?://(?:www\.)?ipfsgrants\.io(?:/|[?#]|$)'
+          - '^https?://github\\.com/ipfs/devgrants(?:/|[?#]|$)'
+          - '^https?://(?:www\\.)?ipfsgrants\\.io(?:/|[?#]|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
