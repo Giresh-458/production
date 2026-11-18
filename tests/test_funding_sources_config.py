@@ -139,7 +139,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
         "Program%20Resources/Open%20Grants%20README.md"
     )
     next_step_url = (
-        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
+        "https://github.com/filecoin-project/devgrants/blob/master/"
         "Program%20Resources/Builder%20Next%20Step%20Grants.md"
     )
     entry = by_name["Filecoin Grants and Funding"]
