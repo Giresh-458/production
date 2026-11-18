@@ -66,6 +66,8 @@ sources:
         exclude_url_patterns:
           - '^https?://earn\.superteam\.fun/grants(?:/|\?|$)'
           - '^https?://solana\.com/news/'
+          # Application form is not a public call record; keep the official RFP table crawlable.
+          - '^https?://airtable[.]com/app683f1deSq018D4/pagPjvaFp8VZsSD3A/form(?:[/?#].*)?$'
   - name: Superteam Development Grants
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://superteam.fun/earn/opportunities/development-grants/
@@ -170,6 +172,11 @@ sources:
           - '^https?://airtable[.]com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form(?:[/?#].*)?$'
           # The current Protocol Rewards CTA links to this Airtable submission form.
           - '^https?://airtable[.]com/appFoIqAoY0ikoVIb/shr4u30KcGeNJwhKu(?:[/?#].*)?$'
+          # Historical forum grant reports and tag archives are award reporting, not current calls.
+          - '^https?://gov[.]near[.]org/t/(?:report-mpdao|mpdao-grant|defi-meta-pool)(?:/|[-/?#]|$)'
+          - '^https?://gov[.]near[.]org/tag/(?:grants|mpdao-grants)(?:/|[?#]|$)'
+          # These Meta Pool documentation routes are retired/404 or describe historical programmes.
+          - '^https?://docs[.]metapool[.]app/(?:meta-pool-ecosystem/tokenomics-and-governance/mpdao-governance/mpdao-grants|meta-pool-ecosystem/vote-governance/grants/my-votes|contribute-to-meta-pool/(?:retroactive-public-goods-funding-rpgf|bug-bounty-program))(?:/|[?#]|$)'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -245,20 +252,19 @@ sources:
         # Official Filecoin Foundation grants page links to this separate builder programme.
         # Seed its authoritative programme description because fil.org/grants is rate-limited
         # at robots.txt in some runs; this does not bypass that site's access policy.
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
+        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
         currentness_verification_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        max_depth: 3
-        max_pages: 30
-        # The root URL is a directory. Force-record only official programme
-        # descriptions; selection still requires source-backed status, eligibility,
-        # and domain evidence.
+        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
+        # These two official programme descriptions are complete bounded roots;
+        # do not fan out into unrelated GitHub navigation or issue history.
+        max_depth: 0
+        max_pages: 2
         direct_page_urls:
         - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        follow_detail_pages: true
-        follow_pdfs: true
+        - https://github.com/filecoin-project/devgrants/blob/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
+        follow_detail_pages: false
+        follow_pdfs: false
         pagination: false
         exclude_url_patterns:
           # GitHub issue history is not current Filecoin Foundation programme detail content.
@@ -382,6 +388,8 @@ sources:
           # These historical announcements are not canonical call pages; current call details are seeded above.
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-proposals-for-citizen-engagement/(?:[?#].*)?$'
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-regions-cities-or-affiliated-entities-capitalising-on-existing-public-realm-solutions/(?:[?#].*)?$'
+          # Unrelated road-safety awards article; current EIT Urban Mobility calls are seeded directly.
+          - '^https?://www[.]eiturbanmobility[.]eu/roadscor-world-smart-city-awards-road-safety/?(?:[?#].*)?$'
           # The EIT-HEI partner route is blocked by Cloudflare, but its current call is
           # represented by the directly seeded official Climate KIC call page above.
           - '^https?://(?:www[.])?eit-hei[.]eu/funding-support/funding-opportunities/open-calls/call-for-proposals-2026/?(?:[?#].*)?$'
