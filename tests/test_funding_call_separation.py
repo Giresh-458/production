@@ -1705,3 +1705,25 @@ def test_xrpl_application_manager_explicit_empty_state_is_recognized_only_on_its
         "Application Manager",
         message,
     ) is False
+
+def test_xrpl_empty_state_sets_no_active_and_is_not_a_funding_record(monkeypatch):
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://submit.xrplgrants.org/submit"
+    def fake_fetch(requested_url):
+        return {
+            "html": "<html><body>There are presently no open calls for applications.</body></html>",
+            "markdown": "RippleX Ecosystem Programs. There are presently no open calls for applications.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": requested_url, "title": "RippleX Ecosystem Programs Application Manager",
+            "links": [], "pagination_links": [],
+        }
+    monkeypatch.setattr("core.crawl4ai_web._fetch_sync", fake_fetch)
+    result = crawl_funding_source(
+        "XRPL Grants Program", "https://xrplgrants.org/",
+        {"start_urls": [url], "max_depth": 0, "max_pages": 1},
+        ["xrplgrants.org", "submit.xrplgrants.org"],
+    )
+    assert result.no_active_opportunities_confirmed is True
+    assert result.opportunities == []
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
