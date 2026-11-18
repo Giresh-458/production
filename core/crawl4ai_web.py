@@ -585,6 +585,25 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
     ):
         return True
 
+    # These Climate KIC/EIT partner URLs are supporting guidance or
+    # retrospective programme articles, not independent funding calls. Keep
+    # their content available to the crawl, but do not let generic page text
+    # (for example a footer's "Request for Proposals") turn them into call
+    # records or fail source-level currentness verification.
+    if (
+        host in {"foodbiocluster.dk", "www.foodbiocluster.dk"}
+        and path == "/bionetzero-application-platform-guide"
+    ):
+        return True
+    if (
+        host in {"eiturbanmobility.eu", "www.eiturbanmobility.eu"}
+        and path in {
+            "/types-of-funding-for-startups",
+            "/ris-education-open-call-2026-16-projects-selected-across-europe",
+        }
+    ):
+        return True
+
     filename = path.rsplit("/", 1)[-1]
     # These artifacts support an application process but are not opportunities
     # in their own right. Match filenames rather than arbitrary body text so a
@@ -603,6 +622,10 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])womentecheu.*(?:eligibility|application[-_ ]form).*[.](?:pdf|docx|xlsx)$",
+        # EIT Urban Mobility companion documents, not standalone opportunities.
+        r"(?:^|[-_ ])4[-_ ]financial[-_ ]sustainability[-_ ]guidelines(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
+        r"(?:^|[-_ ])9[-_ ]financial[-_ ]support[-_ ]agreement(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
+        r"(?:^|[-_ ])10[-_ ]aga(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
         r"(?:^|[-_ ])(?:annex[-_ ]1|wteu2eic).*application[-_ ]form.*[.](?:pdf|docx|xlsx)$",
     )
     if any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns):
