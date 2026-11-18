@@ -174,7 +174,7 @@ sources:
           - '^https?://airtable[.]com/appFoIqAoY0ikoVIb/shr4u30KcGeNJwhKu(?:[/?#].*)?$'
           # Historical forum grant reports and tag archives are award reporting, not current calls.
           - '^https?://gov[.]near[.]org/t/(?:report-mpdao|mpdao-grant|defi-meta-pool)(?:/|[-/?#]|$)'
-          - '^https?://gov[.]near[.]org/tag/(?:grants|mpdao-grants)(?:/|[?#]|$)'
+          - '^https?://gov[.]near[.]org/tag/(?:grants|mpdao-grants)(?:[-/]|[?#]|$)'
           # These Meta Pool documentation routes are retired/404 or describe historical programmes.
           - '^https?://docs[.]metapool[.]app/(?:meta-pool-ecosystem/tokenomics-and-governance/mpdao-governance/mpdao-grants|meta-pool-ecosystem/vote-governance/grants/my-votes|contribute-to-meta-pool/(?:retroactive-public-goods-funding-rpgf|bug-bounty-program))(?:/|[?#]|$)'
   - name: Ripple UBRI
