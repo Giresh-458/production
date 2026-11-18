@@ -1684,3 +1684,24 @@ def test_substantive_call_manual_pdf_remains_discoverable():
     assert len(result.opportunities) == 1
     assert result.records_discovered == 1
 
+
+
+def test_xrpl_application_manager_explicit_empty_state_is_recognized_only_on_its_exact_route():
+    from core.crawl4ai_web import _reports_no_active_funding
+
+    message = "RippleX Ecosystem Programs. There are presently no open calls for applications."
+    assert _reports_no_active_funding(
+        "https://submit.xrplgrants.org/submit",
+        "RippleX Ecosystem Programs Application Manager",
+        message,
+    ) is True
+    assert _reports_no_active_funding(
+        "https://submit.xrplgrants.org/other",
+        "RippleX Ecosystem Programs",
+        message,
+    ) is False
+    assert _reports_no_active_funding(
+        "https://example.org/submit",
+        "Application Manager",
+        message,
+    ) is False
