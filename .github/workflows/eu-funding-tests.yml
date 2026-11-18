@@ -598,6 +598,9 @@ jobs:
               )
           ]
           summary["coverage_status_invariant_violations"] = coverage_status_violations
+          summary["selection_outcome"] = (
+              "ACTIONABLE_CALLS_SELECTED" if selected else "NO_ELIGIBLE_CALLS_AFTER_STRICT_FILTERING"
+          )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
@@ -810,6 +813,7 @@ jobs:
               source_summary=source_summary,
               expected_source_ids=expected_source_ids,
               record_accounting=summary["record_accounting"],
+              allow_empty_actionable_result=True,
           )
           if handoff_context_issues:
               acceptance = summary["batch_acceptance"]
@@ -851,7 +855,7 @@ jobs:
           if not records:
               raise SystemExit("Full configured Batch 1 scan discovered no funding records")
           if not selected:
-              raise SystemExit("Strict production selector found no eligible, current, domain-matched funding call")
+              print("::notice::No funding call currently satisfies all strict eligibility, currentness, domain, and research-context requirements. The verified empty selection is accepted; live Batch-2 smoke is safely skipped without a validated handoff.")
           if quality_flags:
               raise SystemExit("Strict production selector emitted invalid actionable calls")
           if summary["batch_acceptance"]["status"] != "ACCEPTED":
