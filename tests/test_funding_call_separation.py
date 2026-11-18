@@ -1754,3 +1754,29 @@ def test_xrpl_empty_state_sets_no_active_and_is_not_a_funding_record(monkeypatch
     assert result.no_active_opportunities_confirmed is True
     assert result.opportunities == []
     assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+def test_standalone_applications_open_badge_retains_status_evidence_and_honors_past_deadline():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Filecoin ProPGF",
+        title="ProPGF General Track",
+        source="https://filpgf.io/propgf/",
+        source_type="Official Filecoin ProPGF programme page",
+        content=(
+            "### Applications Open\n"
+            "26 May 2000\n"
+            "### Final Application Deadline\n"
+            "16 Jun 2000\n"
+            "Apply Now"
+        ),
+        year=2000,
+    )
+
+    analysis = analyze_document(document)
+
+    assert analysis.status == "CLOSED_CALL"
+    assert analysis.opening_date == "2000-05-26"
+    assert analysis.deadline == "2000-06-16"
+    assert analysis.evidence.get("status") == "Applications Open"
+
