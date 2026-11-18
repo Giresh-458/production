@@ -180,10 +180,10 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
     assert discovery["follow_pdfs"] is False
     assert discovery["pagination"] is False
 
-def test_near_page_budget_is_raised_after_exhausting_the_previous_cap():
+def test_near_page_budget_respects_the_global_crawl_limit():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 80
+    assert discovery["max_pages"] == 40
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -275,7 +275,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     near_entry = by_name["NEAR Ecosystem Funding"]
     assert near_entry["url"] == "https://near.org/funding"
     near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 80 and near["max_depth"] == 3 and near["exclude_url_patterns"]
+    assert near["max_pages"] == 40 and near["max_depth"] == 3 and near["exclude_url_patterns"]
     assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
     assert "https://near.org/funding" in near["start_urls"]
     assert "https://nearn.io/devhub/" in near["start_urls"]
@@ -300,8 +300,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert filecoin["url"] == "https://fil.org/grants"
     filecoin_starts = filecoin["collection"]["discovery"]["start_urls"]
     assert filecoin["url"] not in filecoin_starts
-    assert any("raw.githubusercontent.com/filecoin-project/devgrants" in url for url in filecoin_starts)
-    assert any("github.com/filecoin-project/devgrants/blob/master/" in url for url in filecoin_starts)
+    assert filecoin_starts == ["https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md"]
+    assert not any("Builder%20Next%20Step" in url for url in filecoin_starts)
 
     climate = by_name["Climate KIC Open Calls"]
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
@@ -596,7 +596,8 @@ def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_progr
     patterns = discovery.get("exclude_url_patterns", [])
     assert "ipfsgrants.io" not in entry["collection"]["allowed_domains"]
     assert discovery["max_depth"] == 0
-    assert discovery["max_pages"] == 2
+    assert discovery["max_pages"] == 1
+    assert discovery["start_urls"] == ["https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md"]
 
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
