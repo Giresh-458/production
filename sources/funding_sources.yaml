@@ -182,6 +182,8 @@ sources:
           - '^https?://gov[.]near[.]org/tag/(?:grants|mpdao-grants)(?:[-/]|[?#]|$)'
           # These Meta Pool documentation routes are retired/404 or describe historical programmes.
           - '^https?://docs[.]metapool[.]app/(?:meta-pool-ecosystem/tokenomics-and-governance/mpdao-governance/mpdao-grants|meta-pool-ecosystem/vote-governance/grants/my-votes|contribute-to-meta-pool/(?:retroactive-public-goods-funding-rpgf|bug-bounty-program))(?:/|[?#]|$)'
+          # Meta Pool's general FAQ is not a grant/call detail page.
+          - '^https?://docs[.]metapool[.]app/faq-frequently-asked-questions/faq-meta-pool(?:/|[?#]|$)'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -237,37 +239,26 @@ sources:
           - '^https?://manager[.]submittable[.]com/user/submissions(?:[/?#].*)?$'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
-    url: https://fil.org/grants
-    direct_page: false
-    focus: Official Filecoin Foundation grants directory and its current public funding programme status. Treat archived programme documents as historical context, and do not infer that a funding application is open unless an authoritative current call explicitly confirms it.
+    url: https://filpgf.io/propgf/
+    direct_page: true
+    focus: Official Filecoin ProPGF funding programme. Verify the published round, application window, RFP requirements and current status from the programme's own page; do not infer that a past round is still open from an Apply button.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - raw.githubusercontent.com
-      - github.com
-      - fil.org
-      - www.fil.org
+      - filpgf.io
+      - www.filpgf.io
+      - app.filpgf.io
       discovery:
-        # The foundation directory's robots endpoint has returned HTTP 429.
-        # Respect that access signal and use the current official repository README.
         start_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        currentness_verification_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
+        - https://filpgf.io/propgf/
+        direct_page_urls:
+        - https://filpgf.io/propgf/
         max_depth: 0
         max_pages: 1
-        direct_page_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
         follow_detail_pages: false
         follow_pdfs: false
         pagination: false
-        exclude_url_patterns:
-          # GitHub issue history and archived programme proposals are not current calls.
-          - '^https?://github[.]com/filecoin-project/devgrants/(?:issues|milestones|labels|tree/master/Archive)(?:/|[?#]|$)'
-          # The separate IPFS devgrants repository and IPFS Implementation Fund are outside Filecoin Foundation scope.
-          - '^https?://github[.]com/ipfs/devgrants(?:/|[?#]|$)'
-          - '^https?://(?:www[.])?ipfsgrants[.]io(?:/|[?#]|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
@@ -365,6 +356,15 @@ sources:
         # Official companion announcement contains additional eligibility criteria
         # (minimum three FTE and TRL 7+) omitted from the call-detail page.
         - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
+        # Explicitly seed the current partner call's supporting application documents.
+        # They were discovered from the official parent pages but hit the depth boundary.
+        - https://www.foodbiocluster.dk/bionetzero-application-platform-guide
+        - https://www.foodbiocluster.dk/Files/Files/BIONetZero/BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf
+        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/1_RIS-Education_Call-Manual_03.09.25_cover-page.pdf
+        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf
+        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf
+        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf
+        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
