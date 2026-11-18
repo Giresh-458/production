@@ -2586,6 +2586,9 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active|closed|paused|upcoming|funded)",
             r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals)",
             r"applications? (?:are|now) open",
+            # Some publisher timelines use a standalone "Applications Open"
+            # badge followed by the date on the next line.
+            r"applications? open",
             r"open for applications",
             r"open for proposals",
             r"open for submissions",
