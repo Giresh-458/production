@@ -147,7 +147,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is False
-    assert {"raw.githubusercontent.com", "fil.org"}.issubset(
+    assert {"raw.githubusercontent.com", "github.com", "fil.org"}.issubset(
         set(collection["allowed_domains"])
     )
     assert "ipfsgrants.io" not in collection["allowed_domains"]
@@ -155,10 +155,11 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     # Do not retry the foundation directory while its robots endpoint is rate-limited.
     # The official Filecoin-maintained programme documents are the crawl roots.
     assert discovery["start_urls"] == [readme_url, next_step_url]
-    assert discovery["max_depth"] == 3
-    assert discovery["max_pages"] == 30
+    assert discovery["max_depth"] == 0
+    assert discovery["max_pages"] == 2
     assert discovery["direct_page_urls"] == [readme_url, next_step_url]
-    assert discovery["follow_detail_pages"] is True
+    assert discovery["currentness_verification_urls"] == [readme_url, next_step_url]
+    assert discovery["follow_detail_pages"] is False
     assert any("devgrants/" in pattern and "milestones" in pattern for pattern in discovery["exclude_url_patterns"])
 
 def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
@@ -254,6 +255,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://airtable.com/apppDmK2Pin9WX8jV/shrR0uMKu4N57TGW7/tbli2ERM3sdhyHJYB" in solana_start_urls
     assert "superteam.fun" not in solana["collection"]["allowed_domains"]
     assert any("/news/" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
+    assert any("app683f1deSq018D4" in p for p in solana["collection"]["discovery"]["exclude_url_patterns"])
     assert solana["collection"]["discovery"]["max_pages"] == 30
     # The official Public RFP Database must remain crawlable because it is linked
     # from the Foundation funding page; exclude application forms, not RFP tables.
@@ -279,6 +281,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "https://app.potlock.org/pots" in near["start_urls"]
     assert "https://www.near.org/founder-hub" in near["start_urls"]
     assert any("retroactive-public-goods-funding-rpgf" in pattern for pattern in near["exclude_url_patterns"])
+    assert any("gov[.]near[.]org/t/" in pattern for pattern in near["exclude_url_patterns"])
+    assert any("docs[.]metapool[.]app" in pattern and "bug-bounty-program" in pattern for pattern in near["exclude_url_patterns"])
 
     xrpl_entry = by_name["XRPL Grants Program"]
     xrpl = xrpl_entry["collection"]
@@ -804,3 +808,11 @@ def test_full_live_audit_preserves_per_record_rejection_details():
     assert '"title": candidate.get("title")' in workflow
     assert '"source_url": candidate.get("source_url")' in workflow
     assert '"reasons": list(candidate.get("reasons") or [])' in workflow
+
+
+def test_climate_kic_excludes_unrelated_road_safety_awards_article_from_call_coverage():
+    by_name = {entry["name"]: entry for entry in _entries()}
+    patterns = by_name["Climate KIC Open Calls"]["collection"]["discovery"]["exclude_url_patterns"]
+    import re
+    unrelated = "https://www.eiturbanmobility.eu/roadscor-world-smart-city-awards-road-safety/"
+    assert any(re.search(pattern, unrelated, re.IGNORECASE) for pattern in patterns)
