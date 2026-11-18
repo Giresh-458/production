@@ -299,7 +299,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert filecoin["url"] == "https://fil.org/grants"
     filecoin_starts = filecoin["collection"]["discovery"]["start_urls"]
     assert filecoin["url"] not in filecoin_starts
-    assert all("raw.githubusercontent.com/filecoin-project/devgrants" in url for url in filecoin_starts)
+    assert any("raw.githubusercontent.com/filecoin-project/devgrants" in url for url in filecoin_starts)
+    assert any("github.com/filecoin-project/devgrants/blob/master/" in url for url in filecoin_starts)
 
     climate = by_name["Climate KIC Open Calls"]
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
