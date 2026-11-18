@@ -138,7 +138,7 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
         "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
         "Program%20Resources/Open%20Grants%20README.md"
     )
-    next_step_url = (
+    archive_builder_url = (
         "https://github.com/filecoin-project/devgrants/blob/master/"
         "Program%20Resources/Builder%20Next%20Step%20Grants.md"
     )
@@ -153,12 +153,13 @@ def test_filecoin_source_crawls_program_details_and_official_grants_directory():
     assert "ipfsgrants.io" not in collection["allowed_domains"]
     discovery = collection["discovery"]
     # Do not retry the foundation directory while its robots endpoint is rate-limited.
-    # The official Filecoin-maintained programme documents are the crawl roots.
-    assert discovery["start_urls"] == [readme_url, next_step_url]
+    # The old Builder Next Step URL is absent from the current upstream tree.
+    assert archive_builder_url not in discovery["start_urls"]
+    assert discovery["start_urls"] == [readme_url]
     assert discovery["max_depth"] == 0
-    assert discovery["max_pages"] == 2
-    assert discovery["direct_page_urls"] == [readme_url, next_step_url]
-    assert discovery["currentness_verification_urls"] == [readme_url, next_step_url]
+    assert discovery["max_pages"] == 1
+    assert discovery["direct_page_urls"] == [readme_url]
+    assert discovery["currentness_verification_urls"] == [readme_url]
     assert discovery["follow_detail_pages"] is False
     assert any("devgrants/" in pattern and "milestones" in pattern for pattern in discovery["exclude_url_patterns"])
 
@@ -182,7 +183,7 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
 def test_near_page_budget_is_raised_after_exhausting_the_previous_cap():
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
-    assert discovery["max_pages"] == 40
+    assert discovery["max_pages"] == 80
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -274,7 +275,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     near_entry = by_name["NEAR Ecosystem Funding"]
     assert near_entry["url"] == "https://near.org/funding"
     near = near_entry["collection"]["discovery"]
-    assert near["max_pages"] == 40 and near["max_depth"] == 3 and near["exclude_url_patterns"]
+    assert near["max_pages"] == 80 and near["max_depth"] == 3 and near["exclude_url_patterns"]
     assert {"near.org", "www.near.org", "nearn.io", "app.potlock.org"}.issubset(set(near_entry["collection"]["allowed_domains"]))
     assert "https://near.org/funding" in near["start_urls"]
     assert "https://nearn.io/devhub/" in near["start_urls"]
