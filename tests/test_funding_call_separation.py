@@ -1706,6 +1706,33 @@ def test_xrpl_application_manager_explicit_empty_state_is_recognized_only_on_its
         message,
     ) is False
 
+def test_configured_xrpl_empty_state_is_independently_reverified(monkeypatch):
+    from agents.funding_agent import FundingSource
+    from agents.funding_collector import _verify_configured_empty_state
+
+    url = "https://submit.xrplgrants.org/submit"
+    monkeypatch.setattr(
+        "core.http_client.fetch_text",
+        lambda requested_url, **kwargs: (
+            "RippleX Ecosystem Programs. There are presently no open calls for applications.",
+            requested_url,
+        ),
+    )
+    source = FundingSource(
+        name="XRPL Grants Program",
+        url="https://xrplgrants.org/",
+        tier="tier_2",
+        collection={"discovery": {"empty_state_verification_urls": [url]}},
+    )
+
+    assert _verify_configured_empty_state(source) is True
+
+    source.collection["discovery"]["empty_state_verification_urls"] = [
+        "https://submit.xrplgrants.org/other"
+    ]
+    assert _verify_configured_empty_state(source) is False
+
+
 def test_xrpl_empty_state_sets_no_active_and_is_not_a_funding_record(monkeypatch):
     from core.crawl4ai_web import crawl_funding_source
 
