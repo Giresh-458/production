@@ -826,6 +826,9 @@ jobs:
               acceptance["status"] = "BLOCKED"
               acceptance["accepted"] = False
               acceptance["blocker_count"] = len(blockers)
+          summary["selection_outcome"] = (
+              "ACTIONABLE_CALLS_SELECTED" if selected else "NO_ELIGIBLE_CALLS_AFTER_STRICT_FILTERING"
+          )
           (output_dir / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
           )
