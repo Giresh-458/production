@@ -1558,6 +1558,12 @@ def test_idapt_proposal_template_is_fetched_but_not_emitted_as_opportunity(monke
         "https://example.org/docs/application-form-template.docx",
         "https://example.org/docs/Guidelines-for-evaluators.pdf",
         "https://example.org/events/Info-session-presentation.pdf",
+        "https://www.foodbiocluster.dk/bionetzero-application-platform-guide",
+        "https://www.eiturbanmobility.eu/types-of-funding-for-startups/",
+        "https://www.eiturbanmobility.eu/ris-education-open-call-2026-16-projects-selected-across-europe/",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf",
     ],
 )
 def test_supporting_funding_documents_are_not_classified_as_calls(url):
@@ -1576,6 +1582,9 @@ def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
     # its contents may itself be the only substantive call document.
     assert _is_supporting_funding_document(
         "https://example.org/docs/proposal-template.docx"
+    ) is False
+    assert _is_supporting_funding_document(
+        "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
     ) is False
 
 
