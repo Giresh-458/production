@@ -562,19 +562,57 @@ def test_eu_collector_filters_records_without_eligibility_or_strong_domain_evide
     assert result.records_filtered_by_reason["off_domain_or_weak_domain_evidence"] == 1
 
 
-def test_eu_document_detail_helper_uses_official_reference_endpoint(monkeypatch):
+def test_eu_topic_details_helper_uses_documented_identifier_search_endpoint(monkeypatch):
     calls = []
 
-    def fake_fetch_json(url, **kwargs):
-        calls.append((url, kwargs))
-        return {"reference": "a/b", "metadata": {"beneficiaryAdministration": ["<p>content</p>"]}}, url
+    def fake_post(url, *, params, fields, headers, timeout, retries):
+        calls.append((url, params, fields, headers, timeout, retries))
+        return {
+            "results": [
+                {
+                    "reference": "opaque-search-reference",
+                    "metadata": {
+                        "callIdentifier": ["HORIZON-CL5-2027-TEST-01"],
+                        "beneficiaryAdministration": ["<p>Eligible applicants are EU SMEs.</p>"],
+                    },
+                }
+            ]
+        }, url
 
-    monkeypatch.setattr(structured_sources, "fetch_json", fake_fetch_json)
-    result = structured_sources.eu_funding_tenders_fetch_document("a/b")
+    monkeypatch.setattr(structured_sources, "post_multipart_json", fake_post)
+    result = structured_sources.eu_funding_tenders_fetch_document(
+        "HORIZON-CL5-2027-TEST-01"
+    )
 
-    assert result["reference"] == "a/b"
-    assert calls[0][0].endswith("/document/a%2Fb")
-    assert calls[0][1]["params"] == {"apiKey": "SEDIA"}
+    assert result["reference"] == "opaque-search-reference"
+    assert calls[0][0].endswith("/search")
+    assert calls[0][1]["apiKey"] == "SEDIA"
+    assert calls[0][1]["text"] == '"HORIZON-CL5-2027-TEST-01"'
+    assert calls[0][1]["pageNumber"] == 1
+    assert calls[0][1]["pageSize"] == 10
+    assert calls[0][2]["languages"][1] == '["en"]'
+    assert calls[0][2]["displayLanguage"][1] == "en"
+    assert '"type":["1","2","8"]' in calls[0][2]["query"][1]
+    assert '"status":["31094501","31094502"]' in calls[0][2]["query"][1]
+
+
+def test_eu_topic_details_helper_rejects_ambiguous_nonmatching_results(monkeypatch):
+    monkeypatch.setattr(
+        structured_sources,
+        "post_multipart_json",
+        lambda *args, **kwargs: (
+            {
+                "results": [
+                    {"metadata": {"callIdentifier": ["OTHER-2027-01"]}},
+                    {"metadata": {"callIdentifier": ["OTHER-2027-02"]}},
+                ]
+            },
+            "https://api.tech.ec.europa.eu/search-api/prod/rest/search",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="exact identifier match"):
+        structured_sources.eu_funding_tenders_fetch_document("HORIZON-CL5-2027-TEST-01")
 
 
 
