@@ -1442,6 +1442,7 @@ def _fetch_currentness_verification_context(
         r"applying is as simple as creating a github issue",
         r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
         r"proposals are accepted on a rolling basis",
+        r"open grants applications? for funding up to",
     )
     verified = []
     for url in configured_urls:
