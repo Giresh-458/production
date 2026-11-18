@@ -359,6 +359,7 @@ sources:
         # Pin this batch to the current official call pages below to avoid false coverage gaps.
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
+        - https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
         - https://womentecheurope.eu/active-calls/
         # This 2027 EIT Urban Mobility call is current but was linked only from a
@@ -384,7 +385,7 @@ sources:
         exclude_url_patterns:
           # The directory separates four live Climate KIC calls from a large closed-call archive.
           # Keep current call pages and seeded partner programmes; do not fan out through historical detail pages.
-          - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
+          - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|bioeconomy-giants-open-call-2(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
           # These historical announcements are not canonical call pages; current call details are seeded above.
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-proposals-for-citizen-engagement/(?:[?#].*)?$'
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-regions-cities-or-affiliated-entities-capitalising-on-existing-public-realm-solutions/(?:[?#].*)?$'
