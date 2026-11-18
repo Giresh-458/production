@@ -224,6 +224,10 @@ sources:
         start_urls:
         - https://xrplgrants.org/
         - https://submit.xrplgrants.org/submit
+        # Independently re-fetch the exact application-manager route when the
+        # crawler's browser-rendered text omits its server-side empty-state marker.
+        empty_state_verification_urls:
+        - https://submit.xrplgrants.org/submit
         max_depth: 3
         max_pages: 24
         follow_detail_pages: true
