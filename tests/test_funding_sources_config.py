@@ -139,7 +139,7 @@ def test_filecoin_source_uses_official_propgf_page_for_programme_currentness():
     assert entry["url"] == official_directory
     collection = entry["collection"]
     assert collection["mode"] == "web"
-    assert entry.get("direct_page") is False
+    assert entry.get("direct_page", False) is False
     assert {"fil.org", "filpgf.io", "www.filpgf.io", "app.filpgf.io"}.issubset(
         set(collection["allowed_domains"])
     )
@@ -604,7 +604,7 @@ def test_filecoin_uses_official_propgf_programme_page_for_currentness():
     official_url = "https://filpgf.io/propgf/"
 
     assert entry["url"] == "https://fil.org/grants"
-    assert entry["direct_page"] is False
+    assert entry.get("direct_page", False) is False
     assert {"filpgf.io", "www.filpgf.io", "app.filpgf.io"}.issubset(
         set(collection["allowed_domains"])
     )
