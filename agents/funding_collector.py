@@ -28,7 +28,7 @@ from core.structured_sources import (
     eu_funding_tenders_paginated_search,
     eu_funding_tenders_fetch_document,
 )
-from core.crawl4ai_web import crawl_funding_source
+from core.crawl4ai_web import crawl_funding_source, _reports_no_active_funding
 from agents.funding_agent import (
     FundingSource,
     FundingDocument,
@@ -1473,6 +1473,48 @@ def _fetch_currentness_verification_context(
     return "\n".join(dict.fromkeys(verified))
 
 
+
+def _verify_configured_empty_state(
+    source: FundingSource,
+    warnings: Optional[List[str]] = None,
+) -> bool:
+    """Independently verify an explicitly configured publisher empty-state route."""
+    discovery = source.collection.get("discovery", {}) or {}
+    urls = discovery.get("empty_state_verification_urls", []) or []
+    if not isinstance(urls, list):
+        return False
+
+    from core.http_client import fetch_text
+
+    for url in urls:
+        if not isinstance(url, str) or not url.startswith("https://"):
+            continue
+        expected = urlparse(url)
+        try:
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+        except Exception as exc:
+            if warnings is not None:
+                warnings.append(
+                    f"{source.name}: explicit empty-state verification failed for {url}: {exc}"
+                )
+            LOGGER.warning(
+                "Empty-state verification fetch failed for %s (%s): %s",
+                source.name, url, exc,
+            )
+            continue
+
+        final = urlparse(str(final_url or url))
+        if (
+            final.scheme.casefold() != "https"
+            or (final.hostname or "").casefold() != (expected.hostname or "").casefold()
+            or final.path.rstrip("/") != expected.path.rstrip("/")
+        ):
+            continue
+        if _reports_no_active_funding(url, source.name, str(body or "")):
+            return True
+    return False
+
+
 def _is_generic_sbir_topic_title(value: str | None) -> bool:
     normalized = re.sub(r"[^a-z0-9]+", " ", cleaned_text(str(value or "")).casefold()).strip()
     return normalized in {
@@ -1684,6 +1726,13 @@ def _collect_web_source(
     result = crawl_funding_source(
         source.name, source.url, config, allowed_domains, test_limits, source_limits
     )
+    # Some application managers render their empty-state text client-side.
+    # Re-fetch only explicitly configured exact routes so an inaccessible or
+    # changed page can never be silently treated as an empty programme.
+    if not result.no_active_opportunities_confirmed:
+        result.no_active_opportunities_confirmed = _verify_configured_empty_state(
+            source, warnings
+        )
 
     # Normalize: convert raw dicts +' FundingDocument +' analyze_document
     raw_opps = list(result.opportunities)
