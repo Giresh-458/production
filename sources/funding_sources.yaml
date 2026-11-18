@@ -142,9 +142,10 @@ sources:
         - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
-        # The previous 40-page cap truncated the approved portals before
-        # all configured roots and current detail routes could be inspected.
-        max_pages: 80
+        # Preserve the shared crawler's 40-page ceiling. Keep the approved
+        # funding roots explicit and exclude known historical/navigation routes
+        # rather than increasing the per-source or global crawl budget.
+        max_pages: 40
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
