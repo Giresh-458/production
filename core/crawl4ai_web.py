@@ -394,6 +394,17 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     """
     path = urlparse(url).path.rstrip("/").lower()
     combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() == "submit.xrplgrants.org"
+        and path == "/submit"
+        and re.search(
+            r"\bthere are presently no open calls for applications\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
     if path == "/applicants/rfp" and re.search(
         r"\bno rfp items available\b|\bthere are currently no active requests? for proposals? available for application\b",
         combined,
