@@ -841,3 +841,11 @@ def test_climate_kic_excludes_unrelated_road_safety_awards_article_from_call_cov
     import re
     unrelated = "https://www.eiturbanmobility.eu/roadscor-world-smart-city-awards-road-safety/"
     assert any(re.search(pattern, unrelated, re.IGNORECASE) for pattern in patterns)
+    generic_applicant_account = (
+        "https://ec.europa.eu/info/funding-tenders/opportunities/portal/"
+        "sme/public/organisation-name"
+    )
+    assert any(
+        re.search(pattern, generic_applicant_account, re.IGNORECASE)
+        for pattern in patterns
+    )
