@@ -131,37 +131,27 @@ def test_idapt_stale_awards_and_historical_fellows_are_excluded():
     assert any(re.search(pattern, historical_fellows_url) for pattern in patterns)
 
 
-def test_filecoin_source_crawls_program_details_and_official_grants_directory():
+def test_filecoin_source_uses_official_propgf_page_for_programme_currentness():
     by_name = {entry["name"]: entry for entry in _entries()}
-    official_url = "https://fil.org/grants"
-    readme_url = (
-        "https://raw.githubusercontent.com/filecoin-project/devgrants/master/"
-        "Program%20Resources/Open%20Grants%20README.md"
-    )
-    archive_builder_url = (
-        "https://github.com/filecoin-project/devgrants/blob/master/"
-        "Program%20Resources/Builder%20Next%20Step%20Grants.md"
-    )
+    official_directory = "https://fil.org/grants"
+    propgf_url = "https://filpgf.io/propgf/"
     entry = by_name["Filecoin Grants and Funding"]
-    assert entry["url"] == official_url
+    assert entry["url"] == official_directory
     collection = entry["collection"]
     assert collection["mode"] == "web"
     assert entry.get("direct_page") is False
-    assert {"raw.githubusercontent.com", "github.com", "fil.org"}.issubset(
+    assert {"fil.org", "filpgf.io", "www.filpgf.io", "app.filpgf.io"}.issubset(
         set(collection["allowed_domains"])
     )
-    assert "ipfsgrants.io" not in collection["allowed_domains"]
     discovery = collection["discovery"]
-    # Do not retry the foundation directory while its robots endpoint is rate-limited.
-    # The old Builder Next Step URL is absent from the current upstream tree.
-    assert archive_builder_url not in discovery["start_urls"]
-    assert discovery["start_urls"] == [readme_url]
+    assert discovery["start_urls"] == [propgf_url]
+    assert discovery["direct_page_urls"] == [propgf_url]
+    assert discovery["currentness_verification_urls"] == [propgf_url]
     assert discovery["max_depth"] == 0
     assert discovery["max_pages"] == 1
-    assert discovery["direct_page_urls"] == [readme_url]
-    assert discovery["currentness_verification_urls"] == [readme_url]
     assert discovery["follow_detail_pages"] is False
-    assert any("devgrants/" in pattern and "milestones" in pattern for pattern in discovery["exclude_url_patterns"])
+    assert discovery["follow_pdfs"] is False
+    assert discovery["pagination"] is False
 
 def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
     by_name = {entry["name"]: entry for entry in _entries()}
@@ -320,8 +310,7 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert filecoin["url"] == "https://fil.org/grants"
     filecoin_starts = filecoin["collection"]["discovery"]["start_urls"]
     assert filecoin["url"] not in filecoin_starts
-    assert filecoin_starts == ["https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md"]
-    assert not any("Builder%20Next%20Step" in url for url in filecoin_starts)
+    assert filecoin_starts == ["https://filpgf.io/propgf/"]
 
     climate = by_name["Climate KIC Open Calls"]
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
@@ -614,13 +603,14 @@ def test_filecoin_uses_official_propgf_programme_page_for_currentness():
     discovery = collection["discovery"]
     official_url = "https://filpgf.io/propgf/"
 
-    assert entry["url"] == official_url
-    assert entry["direct_page"] is True
+    assert entry["url"] == "https://fil.org/grants"
+    assert entry["direct_page"] is False
     assert {"filpgf.io", "www.filpgf.io", "app.filpgf.io"}.issubset(
         set(collection["allowed_domains"])
     )
     assert discovery["start_urls"] == [official_url]
     assert discovery["direct_page_urls"] == [official_url]
+    assert discovery["currentness_verification_urls"] == [official_url]
     assert discovery["max_depth"] == 0
     assert discovery["max_pages"] == 1
     assert discovery["follow_detail_pages"] is False
