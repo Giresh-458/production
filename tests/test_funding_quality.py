@@ -582,3 +582,64 @@ def test_official_esgf_climate_call_stays_unscoped_and_questions_follow_source_t
     assert questions
     assert not re.search(r"\bESG\b|\bcarbon\b|\bMRV\b", questions, flags=re.IGNORECASE)
     assert "climate" in questions.casefold() or "data" in questions.casefold()
+
+
+def test_verified_empty_selector_result_can_be_accepted_without_relaxing_source_gates():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=0,
+        allow_empty_actionable_result=True,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+        source_summary=[{
+            "source_id": "fully-verified-empty-or-rejected",
+            "final_status": "VERIFIED",
+            "discovery_exhausted": True,
+            "pagination_detected": False,
+            "pagination_complete": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+            "coverage_gaps_count": 0,
+            "relevant_urls_skipped": 0,
+            "pages_failed": 0,
+            "detail_pages_failed": 0,
+            "documents_failed": 0,
+            "records_failed": 0,
+            "truncated": False,
+            "errors": [],
+        }],
+    )
+    assert result["status"] == "ACCEPTED"
+    assert result["accepted"] is True
+    assert result["blockers"] == []
+
+
+def test_empty_selector_opt_in_does_not_allow_incomplete_source_coverage():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=0,
+        allow_empty_actionable_result=True,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+        source_summary=[{
+            "source_id": "partial-source",
+            "final_status": "PARTIAL",
+            "discovery_exhausted": False,
+            "evidence_verified": True,
+            "currentness_verified": False,
+            "coverage_gaps_count": 1,
+            "relevant_urls_skipped": 1,
+            "pages_failed": 1,
+            "errors": [{"error": "timeout"}],
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    assert any(item["code"] == "source_coverage_incomplete" for item in result["blockers"])
