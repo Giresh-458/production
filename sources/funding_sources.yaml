@@ -243,20 +243,26 @@ sources:
           - '^https?://manager[.]submittable[.]com/user/submissions(?:[/?#].*)?$'
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
-    url: https://filpgf.io/propgf/
-    direct_page: true
-    focus: Official Filecoin ProPGF funding programme. Verify the published round, application window, RFP requirements and current status from the programme's own page; do not infer that a past round is still open from an Apply button.
+    url: https://fil.org/grants
+    focus: Official Filecoin Foundation grants directory and its current public funding programme status. The current funding route is Filecoin ProPGF; verify the published round, application window, RFP requirements and current status from the programme's own page, and do not infer that a past round is still open from an Apply button.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
+      - fil.org
+      - www.fil.org
       - filpgf.io
       - www.filpgf.io
       - app.filpgf.io
       discovery:
+        # The Foundation directory previously returned HTTP 429. The README
+        # redirects applicants to ProPGF, whose official round page publishes
+        # the current application dates and status.
         start_urls:
         - https://filpgf.io/propgf/
         direct_page_urls:
+        - https://filpgf.io/propgf/
+        currentness_verification_urls:
         - https://filpgf.io/propgf/
         max_depth: 0
         max_pages: 1
