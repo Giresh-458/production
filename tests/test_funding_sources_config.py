@@ -307,6 +307,9 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     climate_discovery = climate["collection"]["discovery"]
     assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
     assert "https://www.climate-kic.org/open-call/desirmed-climate-ambassador/" in climate_discovery["start_urls"]
+    bioeconomy_call = "https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/"
+    assert bioeconomy_call in climate_discovery["start_urls"]
+    assert bioeconomy_call in climate_discovery["direct_page_urls"]
     assert "https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/" in climate_discovery["start_urls"]
     assert "https://womentecheurope.eu/active-calls/" in climate_discovery["start_urls"]
     assert "https://www.climate-kic.org/get-involved/open-calls/" not in climate_discovery["start_urls"]
