@@ -18,13 +18,16 @@ def assess_batch_acceptance(
     source_summary: Iterable[dict[str, Any]] = (),
     expected_source_ids: Iterable[str] | None = None,
     record_accounting: dict[str, Any] | None = None,
+    allow_empty_actionable_result: bool = False,
 ) -> dict[str, Any]:
     """Return ACCEPTED/BLOCKED plus explicit, deterministic blockers.
 
-    A batch is blocked when the scan failed, no records/actionable calls were
-    emitted, selected calls have quality/manual-review flags, or a source has
-    unresolved evidence of incomplete acquisition. This function does not
-    infer that a source is complete from a successful HTTP response.
+    A batch is blocked when the scan failed, no records were emitted, selected calls
+    have quality/manual-review flags, or a source has unresolved evidence of
+    incomplete acquisition. Callers may explicitly accept a zero-result selector
+    outcome; this never relaxes source coverage, evidence, currentness, or accounting
+    checks. This function does not infer that a source is complete from a successful
+    HTTP response.
     """
     blockers: list[dict[str, str]] = []
 
@@ -39,7 +42,7 @@ def assess_batch_acceptance(
         add("funding_scan_not_successful", f"Funding scan status is {run_status!r}, not 'success'.")
     if raw_records_count <= 0:
         add("no_records_discovered", "The scan emitted no raw funding records.")
-    if selected_actionable_count <= 0:
+    if selected_actionable_count <= 0 and not allow_empty_actionable_result:
         add("no_actionable_calls", "The strict selector emitted no actionable funding calls.")
 
     if not isinstance(record_accounting, dict):
