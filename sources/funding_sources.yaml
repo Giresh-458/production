@@ -375,9 +375,6 @@ sources:
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf
         - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf
-        # Generic EU submission-account page, not a call or eligibility document.
-        exclude_url_patterns:
-        - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'
         direct_page_urls:
         - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
@@ -393,6 +390,8 @@ sources:
         max_depth: 3
         max_pages: 100
         exclude_url_patterns:
+          # Generic EU applicant-account registration is not a call or eligibility document.
+          - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'
           # The directory separates four live Climate KIC calls from a large closed-call archive.
           # Keep current call pages and seeded partner programmes; do not fan out through historical detail pages.
           - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|bioeconomy-giants-open-call-2(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
