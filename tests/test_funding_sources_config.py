@@ -594,8 +594,8 @@ def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_progr
     discovery = entry["collection"]["discovery"]
     patterns = discovery.get("exclude_url_patterns", [])
     assert "ipfsgrants.io" not in entry["collection"]["allowed_domains"]
-    assert discovery["max_depth"] == 3
-    assert discovery["max_pages"] == 30
+    assert discovery["max_depth"] == 0
+    assert discovery["max_pages"] == 2
 
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
