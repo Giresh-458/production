@@ -201,6 +201,9 @@ def test_near_page_budget_respects_the_global_crawl_limit():
     assert excluded(
         "https://gov.near.org/t/report-mpdao-grant-7-meta-pool-vietnam-x-medoo-learn-2-earn-series-decentralized-education/39782"
     )
+    assert excluded(
+        "https://docs.metapool.app/faq-frequently-asked-questions/faq-meta-pool/"
+    )
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -604,28 +607,27 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     assert excluded("https://assets.eitfood.eu/files/EIT-Food-LumpSum-Subgrant-Agreement_Seedbed-Venture-Catalyst.pdf")
 
 
-def test_filecoin_excludes_github_issue_query_navigation_and_separate_ipfs_programme():
-    import re
-
+def test_filecoin_uses_official_propgf_programme_page_for_currentness():
     by_name = {entry["name"]: entry for entry in _entries()}
     entry = by_name["Filecoin Grants and Funding"]
-    discovery = entry["collection"]["discovery"]
-    patterns = discovery.get("exclude_url_patterns", [])
-    assert "ipfsgrants.io" not in entry["collection"]["allowed_domains"]
+    collection = entry["collection"]
+    discovery = collection["discovery"]
+    official_url = "https://filpgf.io/propgf/"
+
+    assert entry["url"] == official_url
+    assert entry["direct_page"] is True
+    assert {"filpgf.io", "www.filpgf.io", "app.filpgf.io"}.issubset(
+        set(collection["allowed_domains"])
+    )
+    assert discovery["start_urls"] == [official_url]
+    assert discovery["direct_page_urls"] == [official_url]
     assert discovery["max_depth"] == 0
     assert discovery["max_pages"] == 1
-    assert discovery["start_urls"] == ["https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md"]
+    assert discovery["follow_detail_pages"] is False
+    assert discovery["follow_pdfs"] is False
+    assert discovery["pagination"] is False
 
-    def excluded(url):
-        return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert excluded("https://github.com/filecoin-project/devgrants/issues?q=is%3Aissue+state%3Aopen")
-    assert excluded("https://github.com/filecoin-project/devgrants/issues/293")
-    assert excluded("https://github.com/filecoin-project/devgrants/milestones")
-    assert excluded("https://github.com/ipfs/devgrants/issues/293")
-    assert excluded("https://github.com/ipfs/devgrants/tree/main/open-grants")
-    assert not excluded("https://github.com/filecoin-project/devgrants")
-    assert excluded("https://ipfsgrants.io/")
 
 
 def test_eu_bounded_audit_keeps_detail_fetch_failures_visible_without_blocking_other_valid_records():
@@ -664,6 +666,16 @@ def test_eit_urban_mobility_companion_page_is_configured_for_eligibility_context
 
     assert context_url in discovery["start_urls"]
     assert context_url in discovery["direct_page_urls"]
+    expected_supporting_documents = {
+        "https://www.foodbiocluster.dk/bionetzero-application-platform-guide",
+        "https://www.foodbiocluster.dk/Files/Files/BIONetZero/BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/1_RIS-Education_Call-Manual_03.09.25_cover-page.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf",
+    }
+    assert expected_supporting_documents.issubset(set(discovery["start_urls"]))
     assert {
         "primary_url": primary_url,
         "context_url": context_url,
