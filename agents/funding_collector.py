@@ -1078,7 +1078,7 @@ def _collect_eu_funding_tenders(
                         "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
                         f"?apiKey=SEDIA&text={identifier}"
                     ),
-                    "operation": "fetch_topic_details",
+                    "operation": "fetch_detail_metadata",
                     "error": str(exc),
                     "timestamp": datetime.now(UTC).isoformat(),
                 })
