@@ -181,9 +181,26 @@ def test_flashbots_markdown_source_uses_bounded_raw_content_endpoint():
     assert discovery["pagination"] is False
 
 def test_near_page_budget_respects_the_global_crawl_limit():
+    import re
+
     by_name = {entry["name"]: entry for entry in _entries()}
     discovery = by_name["NEAR Ecosystem Funding"]["collection"]["discovery"]
     assert discovery["max_pages"] == 40
+
+    def excluded(url):
+        return any(
+            re.search(pattern, url, flags=re.IGNORECASE)
+            for pattern in discovery.get("exclude_url_patterns", [])
+        )
+
+    # These routes caused the previous 40-page crawl to spend its final page
+    # on historical governance documentation and report-thread pagination.
+    assert excluded(
+        "https://docs.metapool.app/tokenomics-and-governance/meta-pool-improvement-proposals/"
+    )
+    assert excluded(
+        "https://gov.near.org/t/report-mpdao-grant-7-meta-pool-vietnam-x-medoo-learn-2-earn-series-decentralized-education/39782"
+    )
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
