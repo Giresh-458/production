@@ -1,6 +1,8 @@
 """Regression coverage for the EU Funding & Tenders Search API adapter."""
 import json
 
+import pytest
+
 from core import structured_sources
 
 
