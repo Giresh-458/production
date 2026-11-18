@@ -998,35 +998,6 @@ def _collect_eu_funding_tenders(
             _extract_eu_eligibility_from_html(metadata.get(key))
             for key in detail_keys
         )
-        if (
-            api_config.get("detail_fetch_missing_metadata", True)
-            and detail_reference
-            and not metadata_eligibility_present
-        ):
-            result.detail_pages_discovered += 1
-            try:
-                detail = eu_funding_tenders_fetch_document(detail_reference)
-                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
-                if isinstance(detail_metadata, dict):
-                    for key, value in detail_metadata.items():
-                        if metadata.get(key) in (None, "", []):
-                            metadata[key] = value
-                result.detail_pages_fetched += 1
-            except Exception as exc:
-                result.detail_pages_failed += 1
-                result.errors.append({
-                    "url": (
-                        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
-                        + detail_reference
-                    ),
-                    "operation": "fetch_detail_metadata",
-                    "error": str(exc),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                })
-                LOGGER.warning(
-                    "EU detail metadata fetch failed for reference %s: %s",
-                    detail_reference, exc,
-                )
         title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
         if not title:
             title = _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name")
@@ -1084,6 +1055,37 @@ def _collect_eu_funding_tenders(
         identifier = _eu_metadata_value(
             metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
         )
+        # SEDIA Topic Details lookup is keyed by the publisher's call/topic
+        # identifier, not the opaque internal search-result reference.
+        if (
+            api_config.get("detail_fetch_missing_metadata", True)
+            and identifier
+            and not metadata_eligibility_present
+        ):
+            result.detail_pages_discovered += 1
+            try:
+                detail = eu_funding_tenders_fetch_document(str(identifier))
+                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                if isinstance(detail_metadata, dict):
+                    for key, value in detail_metadata.items():
+                        if metadata.get(key) in (None, "", []):
+                            metadata[key] = value
+                result.detail_pages_fetched += 1
+            except Exception as exc:
+                result.detail_pages_failed += 1
+                result.errors.append({
+                    "url": (
+                        "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+                        f"?apiKey=SEDIA&text={identifier}"
+                    ),
+                    "operation": "fetch_topic_details",
+                    "error": str(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                LOGGER.warning(
+                    "EU topic detail fetch failed for identifier %s: %s",
+                    identifier, exc,
+                )
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
