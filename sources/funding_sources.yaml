@@ -39,12 +39,14 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
-    direct_page: false
+    direct_page: true
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
       mode: web
       engine: crawl4ai
+      currentness_verification_urls:
+      - https://solana.org/grants-funding
       allowed_domains:
       - solana.org
       - solana.com
@@ -66,6 +68,8 @@ sources:
         exclude_url_patterns:
           - '^https?://earn\.superteam\.fun/grants(?:/|\?|$)'
           - '^https?://solana\.com/news/'
+          # Application form is not a public call record; keep the official RFP table crawlable.
+          - '^https?://airtable[.]com/app683f1deSq018D4/pagPjvaFp8VZsSD3A/form(?:[/?#].*)?$'
   - name: Superteam Development Grants
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://superteam.fun/earn/opportunities/development-grants/
@@ -140,13 +144,18 @@ sources:
         - https://www.hzn.xyz/
         # Explicit portal roots allow shallow traversal to current individual calls.
         max_depth: 3
-        # Leave room for current opportunities while excluding non-call social/docs links.
+        # Preserve the shared crawler's 40-page ceiling. Keep the approved
+        # funding roots explicit and exclude known historical/navigation routes
+        # rather than increasing the per-source or global crawl budget.
         max_pages: 40
         follow_detail_pages: true
         follow_pdfs: true
         pagination: true
         # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
         exclude_url_patterns:
+          # This source uses Meta Pool's grants page only; unrelated chain-staking
+          # documentation must not consume the fixed NEAR discovery budget.
+          - '^https?://docs[.]metapool[.]app/(?!meta-pool-ecosystem/vote-governance/grants/?(?:[?#]|$))'
           # NEAR's social-media amplification form is not a funding application.
           - '^https?://near-foundation[.]notion[.]site/1d0da22d7b6480e6a423cd2681fd8a00(?:[/?#].*)?$'
           - '^https?://(?:www\.)?x\.com/'
@@ -157,6 +166,9 @@ sources:
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/as-validator(?:/|$)'
           - '^https?://docs\.metapool\.app/master/.*\.md(?:[?#].*)?$'
           - '^https?://docs\.metapool\.app/master/tokenomics-and-governance/'
+          # The live documentation URL also exists without the /master/ prefix;
+          # it is governance/IP, not a current grant opportunity.
+          - '^https?://docs[.]metapool[.]app/tokenomics-and-governance/'
           - '^https?://docs\.metapool\.app/master/meta-pool-ecosystem/vote-governance/(?!grants/?$)'
           - '^https?://docs\.metapool\.app/master/contribute-to-meta-pool/bug-bounty-program(?:/|$)'
           # This is explicitly RPGF Round #1 with registration in November-December 2024;
@@ -170,6 +182,13 @@ sources:
           - '^https?://airtable[.]com/appc0ZVhbKj8hMLvH/pagVX3hSxzIj4Y680/form(?:[/?#].*)?$'
           # The current Protocol Rewards CTA links to this Airtable submission form.
           - '^https?://airtable[.]com/appFoIqAoY0ikoVIb/shr4u30KcGeNJwhKu(?:[/?#].*)?$'
+          # Historical forum grant reports and tag archives are award reporting, not current calls.
+          - '^https?://gov[.]near[.]org/t/(?:report-mpdao|mpdao-grant|defi-meta-pool)(?:/|[-/?#]|$)'
+          - '^https?://gov[.]near[.]org/tag/(?:grants|mpdao-grants)(?:[-/]|[?#]|$)'
+          # These Meta Pool documentation routes are retired/404 or describe historical programmes.
+          - '^https?://docs[.]metapool[.]app/(?:meta-pool-ecosystem/tokenomics-and-governance/mpdao-governance/mpdao-grants|meta-pool-ecosystem/vote-governance/grants/my-votes|contribute-to-meta-pool/(?:retroactive-public-goods-funding-rpgf|bug-bounty-program))(?:/|[?#]|$)'
+          # Meta Pool's general FAQ is not a grant/call detail page.
+          - '^https?://docs[.]metapool[.]app/faq-frequently-asked-questions/faq-meta-pool(?:/|[?#]|$)'
   - name: Ripple UBRI
     research_domains: [RWA, DID, Stablecoins]
     url: https://ripple.com/impact/ubri/
@@ -210,6 +229,10 @@ sources:
         start_urls:
         - https://xrplgrants.org/
         - https://submit.xrplgrants.org/submit
+        # Independently re-fetch the exact application-manager route when the
+        # crawler's browser-rendered text omits its server-side empty-state marker.
+        empty_state_verification_urls:
+        - https://submit.xrplgrants.org/submit
         max_depth: 3
         max_pages: 24
         follow_detail_pages: true
@@ -226,46 +249,31 @@ sources:
   - name: Filecoin Grants and Funding
     research_domains: [DePIN]
     url: https://fil.org/grants
-    direct_page: false
-    focus: Official Filecoin Foundation grants directory plus authoritative programme descriptions for Open Grants and FIL Builder Next Step Grants. The directory is a discovery hub; use the seeded programme pages as direct evidence and do not treat historical applicant issues as separate funding calls.
+    focus: Official Filecoin Foundation grants directory and its current public funding programme status. The current funding route is Filecoin ProPGF; verify the published round, application window, RFP requirements and current status from the programme's own page, and do not infer that a past round is still open from an Apply button.
     collection:
       mode: web
       engine: crawl4ai
       allowed_domains:
-      - raw.githubusercontent.com
-      - github.com
       - fil.org
       - www.fil.org
+      - filpgf.io
+      - www.filpgf.io
+      - app.filpgf.io
       discovery:
-        # The foundation directory has returned HTTP 429 for robots.txt. Respect
-        # that access signal and verify against the official Filecoin-maintained
-        # programme documents instead of retrying the blocked directory.
+        # The Foundation directory previously returned HTTP 429. The README
+        # redirects applicants to ProPGF, whose official round page publishes
+        # the current application dates and status.
         start_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        # Official Filecoin Foundation grants page links to this separate builder programme.
-        # Seed its authoritative programme description because fil.org/grants is rate-limited
-        # at robots.txt in some runs; this does not bypass that site's access policy.
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        currentness_verification_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        max_depth: 3
-        max_pages: 30
-        # The root URL is a directory. Force-record only official programme
-        # descriptions; selection still requires source-backed status, eligibility,
-        # and domain evidence.
+        - https://filpgf.io/propgf/
         direct_page_urls:
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Open%20Grants%20README.md
-        - https://raw.githubusercontent.com/filecoin-project/devgrants/master/Program%20Resources/Builder%20Next%20Step%20Grants.md
-        follow_detail_pages: true
-        follow_pdfs: true
+        - https://filpgf.io/propgf/
+        currentness_verification_urls:
+        - https://filpgf.io/propgf/
+        max_depth: 0
+        max_pages: 1
+        follow_detail_pages: false
+        follow_pdfs: false
         pagination: false
-        exclude_url_patterns:
-          # GitHub issue history is not current Filecoin Foundation programme detail content.
-          - '^https?://github\.com/filecoin-project/devgrants/(?:issues|milestones|labels)(?:/|[?#]|$)'
-          # The separate IPFS devgrants repository and IPFS Implementation Fund are outside Filecoin Foundation scope.
-          - '^https?://github\.com/ipfs/devgrants(?:/|[?#]|$)'
-          - '^https?://(?:www\.)?ipfsgrants\.io(?:/|[?#]|$)'
   - name: Flashbots MEV Research Grants
     research_domains: [MEV]
     url: https://raw.githubusercontent.com/flashbots/mev-research/main/grants.md
@@ -347,41 +355,38 @@ sources:
       - primary_url: https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
         context_url: https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
         fields: [eligibility]
+      - primary_url: https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        context_url: https://womentecheurope.eu/frequently-asked-questions-wteu2/
+        fields: [eligibility]
       discovery:
         start_urls:
-        # The directory was checked for current calls, but its index fans out to 112 closed calls.
-        # Pin this batch to the current official call pages below to avoid false coverage gaps.
-        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
+        - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
+        - https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
-        - https://womentecheurope.eu/active-calls/
-        # This 2027 EIT Urban Mobility call is current but was linked only from a
-        # historical news page in the previous crawl. Seed its canonical detail
-        # page so depth reached from the old news page cannot hide the live call.
-        - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
-        # Official companion announcement contains additional eligibility criteria
-        # (minimum three FTE and TRL 7+) omitted from the call-detail page.
-        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
+        - https://neb.eitcommunity.eu/catalyse-neb-2027/
+        - https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        - https://womentecheurope.eu/frequently-asked-questions-wteu2/
         direct_page_urls:
-        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
+        - https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
-        - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
-        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        # One extra level fetches current-call attachments linked from official
-        # partner detail pages; max_pages remains a hard cap against crawl fan-out.
-        # The official index separates live calls from its large closed-call archive.
-        # One detail-page level preserves current-call discovery without recursively
-        # fetching years of obsolete attachments and third-party application portals.
-        max_depth: 3
-        max_pages: 100
+        - https://neb.eitcommunity.eu/catalyse-neb-2027/
+        - https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        - https://womentecheurope.eu/frequently-asked-questions-wteu2/
+        max_depth: 0
+        max_pages: 7
         exclude_url_patterns:
+          # Generic EU applicant-account registration is not a call or eligibility document.
+          - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'
           # The directory separates four live Climate KIC calls from a large closed-call archive.
           # Keep current call pages and seeded partner programmes; do not fan out through historical detail pages.
-          - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
+          - '^https?://www[.]climate-kic[.]org/open-call/(?!enhance-neb-2027-open-call(?:/|[?#]|$)|desirmed-climate-ambassador(?:/|[?#]|$)|eit-higher-education-initiative-eit-hei-2026(?:/|[?#]|$)|bioeconomy-giants-open-call-2(?:/|[?#]|$)|women-techeu-2-eic(?:/|[?#]|$))'
           # These historical announcements are not canonical call pages; current call details are seeded above.
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-proposals-for-citizen-engagement/(?:[?#].*)?$'
           - '^https?://www[.]eiturbanmobility[.]eu/launch-of-cross-kic-new-european-bauhaus-call-for-regions-cities-or-affiliated-entities-capitalising-on-existing-public-realm-solutions/(?:[?#].*)?$'
+          # Unrelated road-safety awards article; current EIT Urban Mobility calls are seeded directly.
+          - '^https?://www[.]eiturbanmobility[.]eu/roadscor-world-smart-city-awards-road-safety/?(?:[?#].*)?$'
           # The EIT-HEI partner route is blocked by Cloudflare, but its current call is
           # represented by the directly seeded official Climate KIC call page above.
           - '^https?://(?:www[.])?eit-hei[.]eu/funding-support/funding-opportunities/open-calls/call-for-proposals-2026/?(?:[?#].*)?$'
@@ -566,9 +571,9 @@ sources:
           - '^https?://(?:www[.])?cleancities-accelerator[.]com(?:/|[?#]|$)'
           - '^https?://(?:www[.])?blackseaclimaccelerator[.]eu(?:/|[?#]|$)'
           - '^https?://(?:www[.])?cdr-accelerator[.]com(?:/|[?#]|$)'
-        follow_detail_pages: true
-        follow_pdfs: true
-        follow_documents: true
+        follow_detail_pages: false
+        follow_pdfs: false
+        follow_documents: false
         pagination: false
   # Individual SBIR.gov mirror topic URLs are intentionally not configured as
   # independent sources: their own stale-copy disclaimer means they cannot
@@ -705,7 +710,7 @@ sources:
     research_domains: [ESG, ZK-IoV]
     url: https://www.idapthub.org/applications/call_for_proposals
     direct_page: true
-    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, plus the separately published Chanakya fellowships; verify each route independently.
     collection:
       mode: web
       engine: crawl4ai
@@ -714,20 +719,23 @@ sources:
       - www.idapthub.org
       status_verification_urls:
       - https://www.idapthub.org/applications/call_for_proposals
+      status_verification_url_map:
+        https://www.idapthub.org/applications/call_for_proposals:
+        - https://www.idapthub.org/applications/call_for_proposals
       discovery:
         start_urls:
         - https://www.idapthub.org/applications/call_for_proposals
-        max_depth: 2
-        # The last live scan discovered 12 URLs, including downloadable DOCX
-        # proposal/call documents. Keep a bounded budget large enough to inspect
-        # that observed frontier instead of stopping after the fifth successful fetch.
-        max_pages: 20
-        follow_detail_pages: true
-        follow_pdfs: true
-        follow_documents: true
-        pagination: true
-        # This navigation target is stale (HTTP 404), not an application call.
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        direct_page_urls:
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        currentness_verification_urls:
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        max_depth: 0
+        max_pages: 2
+        follow_detail_pages: false
+        follow_pdfs: false
+        follow_documents: false
+        pagination: false
         exclude_url_patterns:
-          - '^https?://(?:www\.)?idapthub\.org/awards/?$'
-          # Historical portfolio of already-selected fellows, not an application call.
-          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?idapthub[.]org/awards/?$'
+          - '^https?://(?:www[.])?idapthub[.]org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'

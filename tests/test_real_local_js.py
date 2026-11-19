@@ -43,7 +43,11 @@ def test_real_local_js():
             t.start()
             
             test_url = f"http://127.0.0.1:{port}/test_js.html"
-            result = collect_source(test_url, keywords=("rendered",))
+            result = collect_source(
+                test_url,
+                keywords=("rendered",),
+                allow_loopback_for_tests=True,
+            )
             
             httpd.shutdown()
             

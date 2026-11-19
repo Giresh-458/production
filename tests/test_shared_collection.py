@@ -7,7 +7,9 @@ from pathlib import Path
 from core.shared_crawl_manager import SharedCrawlManager, CrawlResult
 
 @pytest.fixture
-def mock_db(tmp_path):
+def mock_db(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.shared_crawl_manager.check_robots", lambda *a, **k: (True, None, 0.0))
+    monkeypatch.setattr("core.shared_crawl_manager.wait_for_host_slot", lambda *a, **k: True)
     manager = SharedCrawlManager()
     manager.db_path = str(tmp_path / "shared_crawl_cache.db")
     manager._init_db()
@@ -57,12 +59,12 @@ def test_d_inflight_deduplication(mock_db, monkeypatch):
 
 def test_f_fallback_playwright(mock_db, monkeypatch):
     def fetch_http_side_effect(url):
-        return CrawlResult(url, url, 403, "text/html", "title", "error", "error", "hash", "http", False)
+        return CrawlResult(url, url, 200, "text/html", "title", "<html><body>Please enable JavaScript to view this page.</body></html>", "Please enable JavaScript to view this page.", "hash", "http", False)
         
     monkeypatch.setattr(mock_db, "_do_http_fetch", fetch_http_side_effect)
     
     called_pw = [False]
-    def fetch_pw_side_effect(url):
+    def fetch_pw_side_effect(url, *args, **kwargs):
         called_pw[0] = True
         return CrawlResult("http://test.com", "http://test.com", 200, "text/html", "title", "html", "text", "hash", "playwright", False)
         
@@ -114,3 +116,174 @@ def test_j_sqlite_wal(mock_db):
 
 def test_l_pipeline_report(mock_db):
     assert "unique_urls_requested" in mock_db.get_stats()
+
+
+
+def test_429_never_uses_browser_fallback(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: CrawlResult(
+            url, url, 429, "text/html", "", "", "", "",
+            "http", False, error="http_status_429", retry_after="60",
+        ),
+    )
+    called = []
+    monkeypatch.setattr(
+        mock_db,
+        "_do_browser_fetch",
+        lambda *args, **kwargs: called.append(True),
+    )
+    result = mock_db.fetch("https://example.test/rate-limited", bypass_cache=True)
+    assert result.status_code == 429
+    assert result.retry_after == "60"
+    assert result.error.startswith("http_status_429")
+    assert called == []
+
+
+def test_robots_denial_precedes_cache_and_network(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda *args, **kwargs: (False, "robots.txt disallows this URL", 0.0),
+    )
+    called = []
+    monkeypatch.setattr(mock_db, "_do_http_fetch", lambda url: called.append(url))
+    result = mock_db.fetch("https://example.test/private")
+    assert result.fetch_method == "robots"
+    assert result.error == "robots.txt disallows this URL"
+    assert called == []
+
+
+def test_deadline_expires_while_waiting_for_domain_slot(mock_db, monkeypatch):
+    import time
+    from core.crawl_context import CrawlContext, current_crawl_context
+
+    url = "https://example.test/deadline"
+    domain = "example.test"
+    def wait_slot_fails_at_deadline(*args, **kwargs):
+        ctx = current_crawl_context.get(None)
+        if ctx:
+            ctx.stop_reasons.add("deadline")
+        return False
+
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.wait_for_host_slot",
+        wait_slot_fails_at_deadline,
+    )
+    ctx = CrawlContext(deadline=time.time() + 0.1)
+    token = current_crawl_context.set(ctx)
+    called = []
+    monkeypatch.setattr(mock_db, "_do_http_fetch", lambda target: called.append(target))
+    try:
+        result = mock_db._execute_fetch(url)
+    finally:
+        current_crawl_context.reset(token)
+    assert result.error == "deadline_exceeded_before_request"
+    assert called == []
+
+
+
+def test_http_redirect_target_is_checked_against_robots(mock_db, monkeypatch):
+    from core.shared_crawl_manager import check_robots
+
+    requested = []
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "https://example.test/private"}
+        def close(self):
+            pass
+
+    def fake_get_response(url, **kwargs):
+        requested.append((url, kwargs.get("allow_redirects")))
+        return RedirectResponse()
+
+    monkeypatch.setattr("core.shared_crawl_manager.get_response", fake_get_response)
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda url, **kwargs: (False, "robots disallow", 0.0)
+        if url.endswith("/private") else (True, None, 0.0),
+    )
+    result = mock_db._do_http_fetch("https://example.test/start")
+    assert "robots_disallow_redirect" in result.error
+    assert requested == [("https://example.test/start", False)]
+
+def test_shared_manager_rejects_private_initial_url_before_robots_or_network(mock_db, monkeypatch):
+    robots_calls = []
+    network_calls = []
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.check_robots",
+        lambda *args, **kwargs: robots_calls.append(args[0]) or (True, None, 0.0),
+    )
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: network_calls.append(url),
+    )
+
+    result = mock_db.fetch(
+        "http://127.0.0.1/private",
+        bypass_cache=True,
+    )
+
+    assert result.fetch_method == "security"
+    assert "redirect_to_non_public_ip" in result.error
+    assert robots_calls == []
+    assert network_calls == []
+
+
+def test_shared_http_fetch_rejects_private_redirect_before_request(mock_db, monkeypatch):
+    requested = []
+
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+
+        def close(self):
+            pass
+
+    def fake_get_response(url, **kwargs):
+        requested.append(url)
+        return RedirectResponse()
+
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.get_response",
+        fake_get_response,
+    )
+
+    result = mock_db._do_http_fetch("https://example.test/start")
+
+    assert "redirect_to_non_public_ip" in result.error
+    assert requested == ["https://example.test/start"]
+
+def test_js_shell_is_reported_as_failure_when_browser_fallback_is_unavailable(mock_db, monkeypatch):
+    monkeypatch.setattr(
+        "core.shared_crawl_manager.HAS_PLAYWRIGHT",
+        False,
+    )
+    monkeypatch.setattr(
+        mock_db,
+        "_do_http_fetch",
+        lambda url: CrawlResult(
+            canonical_url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/html",
+            title="JavaScript required",
+            html="<html><body>Please enable JavaScript to view this page.</body></html>",
+            clean_text="Please enable JavaScript to view this page.",
+            content_hash="",
+            fetch_method="http",
+            from_cache=False,
+        ),
+    )
+
+    result = mock_db.fetch(
+        "https://example.test/js-shell",
+        bypass_cache=True,
+    )
+
+    assert result.status_code == 200
+    assert result.error == "browser_fallback_unavailable: Playwright is not installed"
+    assert result.html == ""
+    assert result.fetch_method == "error"
+

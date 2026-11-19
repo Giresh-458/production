@@ -1428,6 +1428,14 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
 
 
 def test_sbir_mirror_currentness_requires_official_topic_identity(monkeypatch):
+    # The first listed deadline is November 4, 2026. Freeze the funding
+    # classifier before that date so this assertion is deterministic.
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 3, tzinfo=tz or UTC)
+
+    monkeypatch.setattr("agents.funding_agent.datetime", FrozenDateTime)
     from agents.funding_agent import FundingDocument, analyze_document
     from agents.funding_collector import _fetch_linked_official_sbir_context
     import core.http_client

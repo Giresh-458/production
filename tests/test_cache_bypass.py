@@ -68,6 +68,10 @@ def test_legacy_ungated_records_bypass(tmp_path):
         json.dumps(_normalization_input_manifest([run_root / "intermediate", call_root / "intermediate"], call_root, call_id)),
         encoding="utf-8",
     )
+    (normalized / "errors.json").write_text("[]", encoding="utf-8")
+    (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+    from tests.batch2_test_helpers import write_cache_test_ledger
+    write_cache_test_ledger(normalized / "evidence_ledger.db", legacy_records)
 
     # Invoke
     ensure_normalized_collection_records(call_root)
@@ -109,6 +113,10 @@ def test_cache_hit_global_refresh_is_preserved(tmp_path):
         json.dumps(_normalization_input_manifest([run_root / "intermediate"], run_root, None)),
         encoding="utf-8",
     )
+    (normalized / "errors.json").write_text("[]", encoding="utf-8")
+    (normalized / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+    from tests.batch2_test_helpers import write_cache_test_ledger
+    write_cache_test_ledger(normalized / "evidence_ledger.db", legacy_records)
 
     from unittest.mock import patch
     with patch("core.normalization.save_normalized_collection_records") as mock_save:

@@ -33,6 +33,7 @@ from core.recursive_collection import (
     combine_recursive_pages,
     default_allowed_domains,
     save_recursive_review,
+    source_focus_link_keywords,
     update_recursive_review,
 )
 from core.source_registry import apply_refresh_policy
@@ -345,6 +346,9 @@ def fetch_html(url: str) -> str:
     from core.shared_crawl_manager import SharedCrawlManager
     try:
         res = SharedCrawlManager.get().fetch(url)
+        if res.error:
+            LOGGER.warning("Crawl failed for %s: %s", url, res.error)
+            raise OpenSourceAgentError(f"Unable to fetch page {url}: {res.error}")
         if res.status_code and res.status_code >= 400:
             LOGGER.warning("HTTP %s for %s", res.status_code, url)
             raise OpenSourceAgentError(f"Unable to fetch page {url}: HTTP {res.status_code}")
@@ -376,6 +380,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -445,10 +453,28 @@ def classify_github_item(title: str, body: str, labels: list[str] | None = None)
 
 
 def _github_repo_parts(url: str) -> tuple[str, str] | None:
-    match = re.search(r"github\.com/([^/]+)/([^/#?]+)", url)
-    if not match:
+    """Parse only genuine GitHub repository URLs, never lookalike hosts."""
+    try:
+        parsed = urlparse(str(url).strip())
+    except ValueError:
         return None
-    return match.group(1), match.group(2).removesuffix(".git")
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or (parsed.hostname or "").lower() not in {"github.com", "www.github.com"}
+        or parsed.username
+        or parsed.password
+    ):
+        return None
+    segments = [part for part in parsed.path.split("/") if part]
+    if len(segments) < 2:
+        return None
+    owner, repository = segments[:2]
+    repository = repository.removesuffix(".git")
+    if not owner or not repository or owner in {".", ".."} or repository in {".", ".."}:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repository):
+        return None
+    return owner, repository
 
 
 def fetch_github_snapshot(source: OpenSourceSource) -> tuple[str, dict[str, object]]:
@@ -532,22 +558,31 @@ def fetch_github_snapshot(source: OpenSourceSource) -> tuple[str, dict[str, obje
     return cleaned_text("\n".join(parts_text)), metadata
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[OpenSourceDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[OpenSourceDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import recursive_collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[OpenSourceDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting open-source intelligence from %s", source.name)
         github_metadata: dict[str, object] = {}
         if source.type == "github_repo":
             try:
                 content, github_metadata = fetch_github_snapshot(source)
-                title = source.name
-                area_hint = area or infer_area(cleaned_text(f"{source.name} {source.focus} {content}"), "Unscoped")
-                if not is_relevant(cleaned_text(f"{source.name} {area_hint} {source.focus or ''} {content}"), area_hint):
+                title = next(
+                    (
+                        line.split(":", 1)[1].strip()
+                        for line in content.splitlines()
+                        if line.startswith("GitHub repository:") and ":" in line
+                    ),
+                    "GitHub repository snapshot",
+                )
+                area_hint = area or infer_area(content, "Unscoped")
+                if not is_relevant(content, area_hint):
                     LOGGER.info("Skipping GitHub source %s because it is not relevant.", source.name)
                     continue
                 documents.append(
@@ -559,7 +594,7 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
                         focus=source.focus,
                         url=source.url,
                         title=title,
-                        content=cleaned_text(f"{source.name} {source.focus} {content}"),
+                        content=content,
                         source_mode="Automatic",
                     )
                 )
@@ -569,7 +604,9 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
         try:
             html = fetch_html(source.url)
         except OpenSourceAgentError as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
         from core.http_client import canonicalize_url
         limits = limits_by_url.get(source.url)
@@ -605,14 +642,17 @@ def build_auto_documents(sources_path: Path, area: str | None = None) -> list[Op
                 max_documents=limits.get('max_documents', getattr(RECURSIVE_CONFIG, 'max_documents', None)),
                 max_seconds=limits.get('max_seconds', getattr(RECURSIVE_CONFIG, 'max_seconds', None)),
                 allowed_domains=default_allowed_domains(source.url),
-                link_keywords=RECURSIVE_CONFIG.link_keywords,
+                link_keywords=source_focus_link_keywords(source.name, source.focus),
                 relevance_threshold=RECURSIVE_CONFIG.relevance_threshold,
                 char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
             ),
         )
         save_recursive_review(review)
-        title, content = combine_recursive_pages(pages, root_name=source.name, focus=source.focus)
-        full_text = cleaned_text(f"{source.name} {source.focus} {title} {content}")
+        collected_warnings.extend(recursive_collection_failure_warnings(source.name, review))
+        if not pages:
+            collected_warnings.append(f"Source '{source.name}' produced no usable pages.")
+        title, content = combine_recursive_pages(pages)
+        full_text = cleaned_text(f"{title} {content}")
         area_hint = area or infer_area(full_text, "Unscoped")
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text is not relevant to the selected areas.", source.name)
@@ -657,6 +697,9 @@ def build_manual_url_document(
     area: str | None,
     focus: str | None,
 ) -> OpenSourceDocument:
+    # Manual URLs are not backed by a YAML source-limit entry.
+    # Use the bounded RecursiveCollectionConfig defaults for this one-off fetch.
+    limits = {}
     html = fetch_html(url)
     pages = collect_recursive_pages(
         root_url=url,
@@ -672,11 +715,11 @@ def build_manual_url_document(
             char_limit_per_page=RECURSIVE_CONFIG.char_limit_per_page,
         ),
     )
-    title, content = combine_recursive_pages(pages, root_name=project_name or cleaned_text(urlparse(url).netloc), focus=focus or "")
+    title, content = combine_recursive_pages(pages)
     name = project_name or title or cleaned_text(urlparse(url).netloc)
     source_type_value = source_type or "Documentation"
     evidence_type_value = evidence_type or "Documentation"
-    full_text = cleaned_text(f"{name} {area or ''} {focus or ''} {title} {content}")
+    full_text = cleaned_text(f"{title} {content}")
     area_hint = area or infer_area(full_text, "Unscoped")
     if not is_relevant(full_text, area_hint):
         raise OpenSourceAgentError("Manual URL content does not map to the selected research areas or engineering signals.")
@@ -1105,13 +1148,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting open-source agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1149,10 +1193,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished opensource agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)

@@ -31,7 +31,6 @@ from core.schemas import AREA_KEYWORDS
 from core.funding_context import funding_context_relevance
 from core.web_collection import collect_source
 from core.structured_sources import collect_structured_source
-from core.web_collection import combine_pages
 
 DEFAULT_OUTPUT_DIR = Path("outputs/data_availability")
 DEFAULT_DB_PATH = DEFAULT_OUTPUT_DIR / "data_availability_memory.db"
@@ -359,6 +358,9 @@ def fetch_html(url: str) -> str:
     from core.shared_crawl_manager import SharedCrawlManager
     try:
         res = SharedCrawlManager.get().fetch(url)
+        if res.error:
+            LOGGER.warning("Crawl failed for %s: %s", url, res.error)
+            raise DataAvailabilityAgentError(f"Unable to fetch page {url}: {res.error}")
         if res.status_code and res.status_code >= 400:
             LOGGER.warning("HTTP %s for %s", res.status_code, url)
             raise DataAvailabilityAgentError(f"Unable to fetch page {url}: HTTP {res.status_code}")
@@ -390,6 +392,10 @@ def extract_page_text(html: str) -> tuple[str, str]:
 
 
 def infer_area(text: str, default: str = "Unscoped") -> str:
+    # Do not infer a legacy RIF domain from incidental page keywords while a
+    # funding-specific query context is active.
+    if current_funding_queries.get() and default == "Unscoped":
+        return default
     lowered = text.lower()
     if default in AREA_KEYWORDS and any(keyword in lowered for keyword in AREA_KEYWORDS[default]):
         return default
@@ -463,36 +469,75 @@ def is_relevant(text: str, area_hint: str) -> bool:
     return any(keyword in lowered for keyword in AREA_KEYWORDS[normalized_area])
 
 
-def build_auto_documents(sources_path: Path, area: str | None = None) -> list[DataDocument]:
+def build_auto_documents(sources_path: Path, area: str | None = None, *, warnings: list[str] | None = None) -> list[DataDocument]:
     import yaml
     raw_sources = yaml.safe_load(sources_path.read_text(encoding="utf-8")) if sources_path.exists() else {}
     from core.source_registry import extract_yaml_limits
     limits_by_url = extract_yaml_limits(raw_sources)
+    from core.agent_interface import collection_failure_warnings
     from core.crawl_context import current_crawl_context
     documents: list[DataDocument] = []
+    collected_warnings = warnings if warnings is not None else []
     for source in load_sources(sources_path):
         LOGGER.info("Collecting data availability intelligence from %s", source.name)
         try:
             structured = collect_structured_source(source.url, source.type, area)
             if structured:
-                full_text = structured.text
-                title = structured.title or source.name
-                collected_url = structured.url
+                # Structured adapters must return source-derived text. Never pad
+                # an empty response with configured source names or focus hints.
+                full_text = cleaned_text(str(getattr(structured, "text", "") or ""))
+                title = cleaned_text(str(getattr(structured, "title", "") or "")) or source.name
+                collected_url = str(getattr(structured, "url", "") or source.url)
+                if len(full_text) < 80:
+                    message = f"Structured source '{source.name}' returned no substantive source text."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
+                    continue
             else:
                 limits = limits_by_url.get(source.url, {})
-
                 ctx = current_crawl_context.get(None)
-
-                if ctx: ctx.begin_source()
-
-                result = collect_source(source.url, keywords=('dataset'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-                title = result.pages[0].title if result.pages else source.name
-                full_text = cleaned_text(combine_pages(result, prefix=f"{source.name} {source.focus}"))
-                collected_url = source.url
+                if ctx:
+                    ctx.begin_source()
+                result = collect_source(
+                    source.url,
+                    keywords=("dataset",),
+                    max_depth=limits.get("max_depth", 2),
+                    max_pages=limits.get("max_pages", 8),
+                    max_documents=limits.get("max_documents"),
+                    max_seconds=limits.get("max_seconds"),
+                )
+                collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
+                pages = list(getattr(result, "pages", []) or [])
+                title = cleaned_text(str(getattr(pages[0], "title", "") or "")) if pages else source.name
+                page_texts = []
+                for page in pages:
+                    # WebCollectionResult pages expose extracted text as `.text`.
+                    # The `.content` fallback keeps compatible adapters working.
+                    page_body = cleaned_text(str(getattr(page, "text", "") or getattr(page, "content", "") or ""))
+                    if len(page_body) < 40:
+                        continue
+                    page_title = cleaned_text(str(getattr(page, "title", "") or ""))
+                    page_texts.append(cleaned_text(f"{page_title}\n{page_body}") if page_title else page_body)
+                if not page_texts:
+                    message = f"Crawler returned no substantive page text for source '{source.name}'."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
+                    continue
+                # Source names/focus are metadata, not observations. Only actual
+                # extracted page bodies may enter the evidence bundle.
+                full_text = "\n\n".join(page_texts)
+                if len(full_text) < 80:
+                    message = f"Extracted source text for '{source.name}' was too short to use."
+                    LOGGER.warning(message)
+                    collected_warnings.append(message)
+                    continue
+                collected_url = str(getattr(pages[0], "url", "") or source.url)
         except Exception as exc:
-            LOGGER.warning("Skipping source %s: %s", source.name, exc)
+            message = f"Source '{source.name}' collection failed: {exc}"
+            LOGGER.warning(message)
+            collected_warnings.append(message)
             continue
-        area_hint = area or infer_area(full_text, "Unscoped")
+        area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
         if not is_relevant(full_text, area_hint):
             LOGGER.info("Skipping %s because the source text did not pass relevance filters.", source.name)
             continue
@@ -511,9 +556,9 @@ def build_manual_url_document(
     html = fetch_html(url)
     title, content = extract_page_text(html)
     resolved_name = source_name or title or cleaned_text(urlparse(url).netloc)
-    full_text = cleaned_text(f"{resolved_name} {focus or ''} {content}")
-    area_hint = area or infer_area(full_text, "Unscoped")
-    if not is_relevant(full_text, area_hint):
+    full_text = cleaned_text(content)
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(full_text, "Unscoped"))
+    if len(full_text) < 40 or not is_relevant(full_text, area_hint):
         raise DataAvailabilityAgentError("Manual URL content does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=resolved_name,
@@ -536,8 +581,8 @@ def build_manual_text_document(
     focus: str | None,
 ) -> DataDocument:
     content = cleaned_text(text)
-    area_hint = area or infer_area(cleaned_text(f"{source_name} {focus or ''} {content}"), "Unscoped")
-    if not is_relevant(cleaned_text(f"{area_hint} {focus or ''} {content}"), area_hint):
+    area_hint = area or ("Unscoped" if current_funding_queries.get() else infer_area(content, "Unscoped"))
+    if len(content) < 20 or not is_relevant(content, area_hint):
         raise DataAvailabilityAgentError("Manual text does not map to the selected research areas or evaluation signals.")
     return DataDocument(
         source_name=source_name,
@@ -585,7 +630,7 @@ def build_analysis_prompt(document: DataDocument) -> str:
 
         Rules:
         - source_type: Dataset, Benchmark, API, Simulator, Testnet, Explorer, Registry, Report, Dashboard, Documentation, or Manual
-        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, or Stablecoins
+        - area: RWA, ESG, ZK-IoV, DID, DePIN, MEV, Stablecoins, General, or Unscoped. Use General/Unscoped when the source does not clearly belong to a canonical domain; never force-fit a source.
         - access_type: Open, Restricted, Paid, Manual, or API
         - keywords: list of up to 6 lowercase items
         - confidence: High, Medium, or Low
@@ -637,6 +682,14 @@ def sanitize_list(values: object, max_items: int = 6, lowercase: bool = False) -
     return items
 
 
+def coalesce_text(value: object, fallback: str = "UNKNOWN") -> str:
+    """Return a cleaned non-empty scalar or a safe fallback."""
+    if value is None:
+        return fallback
+    text = cleaned_text(str(value))
+    return text if text else fallback
+
+
 def infer_access_type(text: str, source_type: str = "") -> str:
     lowered = text.lower()
     if "api" in source_type.lower() or "api" in lowered:
@@ -674,28 +727,25 @@ def analyze_document(document: DataDocument) -> DataAnalysis:
     
     usable_for = coalesce_text(parsed.get("usable_for"), "UNKNOWN")
     
-    access_type = infer_access_type(document.content, source_type).title()
+    access_type = infer_access_type(f"{document.url}\n{document.content}", source_type).title()
     if access_type not in {"Open", "Restricted", "Paid", "Manual", "Api", "API"}:
         access_type = "Open"
     if access_type == "Api":
         access_type = "API"
     evaluation_possibility = coalesce_text(parsed.get("evaluation_possibility"), "UNKNOWN")
-    
     limitations = coalesce_text(parsed.get("limitations"), "UNKNOWN")
-    
     prototype_use = coalesce_text(parsed.get("prototype_use"), "UNKNOWN")
-    
     problem_signature = build_problem_signature(area, source_name, evaluation_possibility)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
-    confidence = "Medium".title()
+    confidence = coalesce_text(parsed.get("confidence"), "Medium").title()
     if confidence not in {"High", "Medium", "Low"}:
         confidence = "Medium"
-    dataset_scope = "Unknown"
-    coverage_period = "Unknown"
-    license_or_access_terms = "Unknown"
-    benchmark_metrics = "Unknown"
-    benchmark_gap = "None identified"
-    reproducibility = "Medium".title()
+    dataset_scope = coalesce_text(parsed.get("dataset_scope"), "Unknown")
+    coverage_period = coalesce_text(parsed.get("coverage_period"), "Unknown")
+    license_or_access_terms = coalesce_text(parsed.get("license_or_access_terms"), "Unknown")
+    benchmark_metrics = coalesce_text(parsed.get("benchmark_metrics"), "Unknown")
+    benchmark_gap = coalesce_text(parsed.get("benchmark_gap"), "None identified")
+    reproducibility = coalesce_text(parsed.get("reproducibility"), "Medium").title()
     if reproducibility not in {"High", "Medium", "Low"}:
         reproducibility = "Medium"
     return DataAnalysis(
@@ -1004,13 +1054,14 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
     db_path = Path(payload.get("db_path", DEFAULT_DB_PATH))
     before_snapshot = snapshot_markdown_files(output_dir)
     documents = []
+    collection_warnings: list[str] = []
 
     LOGGER.info("Starting data-availability agent run: mode=%s area=%s", mode, area)
 
     try:
         if mode == "configured_scan":
             sources_path = Path(payload.get("sources_path", DEFAULT_SOURCES_PATH))
-            documents = build_auto_documents(sources_path, area)
+            documents = build_auto_documents(sources_path, area, warnings=collection_warnings)
         elif mode == "manual_url":
             url = payload["url"]
             documents = [
@@ -1048,10 +1099,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 documents=documents,
                 output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
                 default_source=payload.get("url") or payload.get("source"),
                 allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
             LOGGER.info("Finished data_availability agent run: status=%s outputs=%s", response["status"], len(response["outputs"]))
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
             return response
 
         created = process_documents(documents, output_dir, db_path)

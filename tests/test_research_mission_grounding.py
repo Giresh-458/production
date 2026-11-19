@@ -20,13 +20,18 @@ def build_context(
     challenges=(
         "Investigate barriers affecting the transition of stem, tcup, nsf toward validation, deployment, adoption and commercialization.",
     ),
+    funding_priorities=(),
+    target_outcomes=(),
+    selected_domains=(),
+    domain_relevance=(),
+    domain="General",
 ):
     rc = FundingResearchContext(
         funding_call_id="CALL-TCUP",
-        domain="General",
+        domain=domain,
         technology_themes=tuple(themes),
-        funding_priorities=(),
-        target_outcomes=(),
+        funding_priorities=tuple(funding_priorities),
+        target_outcomes=tuple(target_outcomes),
         investigation_questions=tuple(questions),
         inferred_challenges=tuple(challenges),
         evidence_refs=(),
@@ -34,8 +39,8 @@ def build_context(
         confidence=confidence,
         research_intent="research",
         research_intent_evidence=("NSF TCUP synopsis",),
-        selected_domains=(),
-        domain_relevance=(),
+        selected_domains=tuple(selected_domains),
+        domain_relevance=tuple(domain_relevance),
     )
     return FundingCallContext(
         funding_call_id="CALL-TCUP",
@@ -121,6 +126,120 @@ def test_sponsor_identifiers_are_not_substantive_research_anchors():
     assert result["passed"] is False
 
 
+def test_weak_secondary_domain_and_market_adoption_do_not_admit_depin_evidence():
+    ctx = build_context(
+        themes=("ESG", "Carbon and MRV"),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        funding_priorities=("Deployment", "Market adoption"),
+        target_outcomes=("Market adoption",),
+        selected_domains=("ESG", "DePIN"),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.7143,
+                "raw_score": 6.0,
+                "matched_terms": ["esg", "sustainability reporting", "greenhouse gas emissions"],
+            },
+            {
+                "domain": "DePIN",
+                "score": 0.2857,
+                "raw_score": 2.4,
+                "matched_terms": ["iot"],
+            },
+        ),
+    )
+    record = {
+        "title": "Are DePIN Tokens AI-Infrastructure Assets? Market Evidence",
+        "problem_statement": (
+            "Decentralized physical infrastructure networks (DePINs) are "
+            "presented as investable exposure to computing, connectivity, "
+            "and energy infrastructure."
+        ),
+        "context_summary": (
+            "The studied DePIN tokens behave predominantly as crypto-risk assets."
+        ),
+    }
+
+    result = relevance(record, ctx)
+
+    assert result["passed"] is False
+    assert "depin" not in result["matched_terms"]
+    assert "market" not in result["matched_terms"]
+    assert result["matched_phrases"] == []
+
+
+def test_verified_esg_domain_terms_allow_substantive_sustainability_evidence():
+    ctx = build_context(
+        themes=("ESG", "Carbon and MRV"),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG", "DePIN"),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.7143,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability reporting", "greenhouse gas emissions"],
+            },
+            {
+                "domain": "DePIN",
+                "score": 0.2857,
+                "raw_score": 2.4,
+                "matched_terms": ["iot"],
+            },
+        ),
+    )
+    record = {
+        "title": "Corporate sustainability reporting and emissions assurance",
+        "problem_statement": (
+            "The report describes ESG disclosure controls, sustainability reporting, "
+            "greenhouse gas emissions data quality, and independent assurance."
+        ),
+        "context_summary": (
+            "It identifies gaps in traceable carbon markets and greenhouse gas emissions reporting."
+        ),
+    }
+
+    result = relevance(record, ctx)
+
+    assert result["passed"] is True
+    assert {"esg", "sustainability", "greenhouse", "gas", "emissions"}.issubset(set(result["matched_terms"]))
+
+
+def test_strongly_supported_selected_secondary_domain_remains_eligible():
+    ctx = build_context(
+        themes=("decentralized physical infrastructure", "compute network"),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("DePIN",),
+        domain_relevance=(
+            {
+                "domain": "DePIN",
+                "score": 0.8,
+                "raw_score": 3.0,
+                "matched_terms": ["depin", "compute network"],
+            },
+        ),
+    )
+    record = {
+        "title": "DePIN research on decentralized physical infrastructure",
+        "problem_statement": "The study evaluates decentralized physical infrastructure and compute network design.",
+        "context_summary": "The paper measures scaling constraints in DePIN networks.",
+    }
+
+    result = relevance(record, ctx)
+
+    assert result["passed"] is True
+    assert "depin" in result["matched_terms"]
+
+
 def test_low_confidence_queries_do_not_use_generic_inferred_questions():
     ctx = build_context()
     queries = generate_funding_queries(ctx, max_queries=6)
@@ -162,3 +281,67 @@ def test_adaptive_research_does_not_emit_synthetic_evidence_when_all_sources_fai
     assert result.get("outputs") == []
     assert not list(output_dir.rglob("*.md"))
     assert any("no synthetic mission artifact" in warning.lower() for warning in result.get("warnings", []))
+
+
+def test_one_esg_concept_group_is_not_enough_to_support_a_secondary_domain():
+    ctx = build_context(
+        themes=("ESG",),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG", "DePIN"),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.72,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability reporting", "sustainability disclosure"],
+            },
+            {
+                "domain": "DePIN",
+                "score": 0.28,
+                "raw_score": 2.4,
+                "matched_terms": ["iot"],
+            },
+        ),
+    )
+    record = {
+        "title": "Sustainability reporting controls",
+        "problem_statement": "The report describes sustainability reporting controls and disclosure assurance.",
+        "context_summary": "The report identifies gaps in sustainability reporting.",
+    }
+
+    result = relevance(record, ctx)
+
+    from core.mission_gate import _supported_domain_evidence
+    supported_domains = _supported_domain_evidence(ctx.research_context)
+    assert result["passed"] is False
+    assert supported_domains is not None
+    assert "ESG" not in supported_domains
+
+
+def test_primary_esg_call_can_use_one_focused_esg_anchor_group():
+    ctx = build_context(
+        themes=("sustainability reporting",),
+        confidence="High",
+        provenance=("OBSERVED",),
+        questions=(),
+        challenges=(),
+        selected_domains=("ESG",),
+        domain_relevance=(
+            {
+                "domain": "ESG",
+                "score": 0.9,
+                "raw_score": 6.0,
+                "matched_terms": ["sustainability reporting"],
+            },
+        ),
+        domain="ESG",
+    )
+
+    from core.mission_gate import _supported_domain_evidence
+
+    supported = _supported_domain_evidence(ctx.research_context)
+    assert supported is not None
+    assert "ESG" in supported

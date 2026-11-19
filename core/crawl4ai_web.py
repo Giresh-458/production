@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 from urllib.robotparser import RobotFileParser
 from collections import deque
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from typing import Any, List, Optional
 from urllib.parse import urljoin, urlparse, urldefrag, parse_qsl, urlencode
@@ -83,36 +84,42 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
             retries=2,
             expected_status=(200, *range(400, 500)),
+            check_redirect_robots=False,
         )
-        status_code = int(response.status_code)
-        if status_code == 429:
-            raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
-        if 400 <= status_code < 500:
+        try:
+            status_code = int(response.status_code)
+            if status_code == 429:
+                raise RuntimeError("robots.txt returned HTTP 429; rate-limited access is deferred")
+            if 400 <= status_code < 500:
+                with _ROBOTS_LOCK:
+                    _ROBOTS_CACHE[origin] = (
+                        time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
+                        _DEFAULT_HOST_DELAY, None,
+                    )
+                return True, _DEFAULT_HOST_DELAY, None
+            if status_code != 200:
+                raise RuntimeError(f"robots.txt returned HTTP {status_code}")
+
+            parser = RobotFileParser(robots_url)
+            parser.parse(str(response.text or "").splitlines())
+            delays = [
+                float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
+                float(parser.crawl_delay("*") or 0.0),
+            ]
+            for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
+                if rate and rate.requests > 0:
+                    delays.append(float(rate.seconds) / float(rate.requests))
+            delay = max([_DEFAULT_HOST_DELAY, *delays])
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
-                    time.monotonic() + _ROBOTS_FAILURE_TTL, None, True,
-                    _DEFAULT_HOST_DELAY, None,
+                    time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
                 )
-            return True, _DEFAULT_HOST_DELAY, None
-        if status_code != 200:
-            raise RuntimeError(f"robots.txt returned HTTP {status_code}")
-
-        parser = RobotFileParser(robots_url)
-        parser.parse(str(response.text or "").splitlines())
-        delays = [
-            float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
-            float(parser.crawl_delay("*") or 0.0),
-        ]
-        for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
-            if rate and rate.requests > 0:
-                delays.append(float(rate.seconds) / float(rate.requests))
-        delay = max([_DEFAULT_HOST_DELAY, *delays])
-        with _ROBOTS_LOCK:
-            _ROBOTS_CACHE[origin] = (
-                time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
-            )
-        allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
-        return allowed, delay, None if allowed else "robots.txt disallows this URL"
+            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+            return allowed, delay, None if allowed else "robots.txt disallows this URL"
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
     except Exception as exc:
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None)
@@ -126,7 +133,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
 
 
 def _wait_for_host_slot(url: str, delay_seconds: float) -> bool:
-    """Reserve a per-host request slot without serializing unrelated hosts."""
+    """Reserve a local pacing slot and honor shared HTTP 429 cooldowns."""
+    from core.crawl_context import current_crawl_context
+    from core.robots_policy import wait_for_host_slot as wait_for_shared_cooldown
+
+    crawl_ctx = current_crawl_context.get(None)
+    if not wait_for_shared_cooldown(
+        url,
+        crawl_delay=0.0,
+        default_delay=0.0,
+        deadline=crawl_ctx.deadline if crawl_ctx else None,
+    ):
+        return False
+
     host = urlparse(url).netloc.lower()
     now = time.monotonic()
     with _HOST_LOCK:
@@ -376,6 +395,17 @@ def _reports_no_active_funding(url: str, title: str, content: str) -> bool:
     """
     path = urlparse(url).path.rstrip("/").lower()
     combined = re.sub(r"\s+", " ", f"{title} {content}".lower())
+    parsed = urlparse(url)
+    if (
+        (parsed.hostname or "").casefold() == "submit.xrplgrants.org"
+        and path == "/submit"
+        and re.search(
+            r"\bthere are presently no open calls for applications\b",
+            combined,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return True
     if path == "/applicants/rfp" and re.search(
         r"\bno rfp items available\b|\bthere are currently no active requests? for proposals? available for application\b",
         combined,
@@ -556,6 +586,25 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
     ):
         return True
 
+    # These Climate KIC/EIT partner URLs are supporting guidance or
+    # retrospective programme articles, not independent funding calls. Keep
+    # their content available to the crawl, but do not let generic page text
+    # (for example a footer's "Request for Proposals") turn them into call
+    # records or fail source-level currentness verification.
+    if (
+        host in {"foodbiocluster.dk", "www.foodbiocluster.dk"}
+        and path == "/bionetzero-application-platform-guide"
+    ):
+        return True
+    if (
+        host in {"eiturbanmobility.eu", "www.eiturbanmobility.eu"}
+        and path in {
+            "/types-of-funding-for-startups",
+            "/ris-education-open-call-2026-16-projects-selected-across-europe",
+        }
+    ):
+        return True
+
     filename = path.rsplit("/", 1)[-1]
     # These artifacts support an application process but are not opportunities
     # in their own right. Match filenames rather than arbitrary body text so a
@@ -574,6 +623,10 @@ def _is_supporting_funding_document(url: str, title: str | None = None) -> bool:
         r"(?:^|[-_ ])(?:eligibility[-_ ]of[-_ ]expenditures)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])(?:application[-_ ]form|fullproposal[-_ ]application[-_ ]form|application[-_ ]form[-_ ]for[-_ ]evaluators)(?:[-_ ][a-z0-9.%()]+)*\.(?:pdf|docx|xlsx)$",
         r"(?:^|[-_ ])womentecheu.*(?:eligibility|application[-_ ]form).*[.](?:pdf|docx|xlsx)$",
+        # EIT Urban Mobility companion documents, not standalone opportunities.
+        r"(?:^|[-_ ])4[-_ ]financial[-_ ]sustainability[-_ ]guidelines(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
+        r"(?:^|[-_ ])9[-_ ]financial[-_ ]support[-_ ]agreement(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
+        r"(?:^|[-_ ])10[-_ ]aga(?:[-_ ][a-z0-9.%()]+)*[.]pdf$",
         r"(?:^|[-_ ])(?:annex[-_ ]1|wteu2eic).*application[-_ ]form.*[.](?:pdf|docx|xlsx)$",
     )
     if any(re.search(pattern, filename, flags=re.IGNORECASE) for pattern in patterns):
@@ -815,6 +868,28 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
     return links
 
 
+def _retry_after_seconds(headers: Any) -> float | None:
+    """Parse Retry-After as delay-seconds or an HTTP-date."""
+    if not isinstance(headers, dict):
+        return None
+    value = next(
+        (str(item).strip() for key, item in headers.items() if str(key).casefold() == "retry-after"),
+        "",
+    )
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
 async def _fetch_url(url: str) -> dict:
     """Fetch a single URL using Crawl4AI and extract links with context."""
     from core.crawl_context import current_crawl_context
@@ -835,15 +910,94 @@ async def _fetch_url(url: str) -> dict:
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
+        initial_navigation_error = None
         try:
-            result = await asyncio.wait_for(crawler.arun(url=url, config=run_config), timeout=timeout + 5.0)
-        except asyncio.TimeoutError:
-            class DummyResult:
-                success = False
-                error_message = "Timeout"
-                html = ""
-                markdown_v2 = type("M", (), {"raw_markdown": ""})
-            result = DummyResult()
+            result = await asyncio.wait_for(
+                crawler.arun(url=url, config=run_config),
+                timeout=timeout + 5.0,
+            )
+        except asyncio.TimeoutError as exc:
+            initial_navigation_error = exc
+            result = None
+        except Exception as exc:
+            # Crawl4AI wraps Playwright's Page.goto timeout in RuntimeError
+            # ("Failed on navigating ACS-GOTO"), so it does not reach the
+            # asyncio.TimeoutError branch above. Retry only that specific
+            # navigation-timeout failure; do not retry HTTP, robots, or
+            # extraction errors.
+            error_text = str(exc).casefold()
+            if "failed on navigating acs-goto" not in error_text or "timeout" not in error_text:
+                raise
+            initial_navigation_error = exc
+            result = None
+
+        if result is None:
+            # A bounded second attempt waits only for the response commit rather
+            # than DOMContentLoaded. This is useful for slow publishers and
+            # client-rendered apps whose navigation event can hang despite the
+            # response being available. It does not increase the source's page
+            # budget and never bypasses robots policy.
+            retry_timeout = min(timeout, 20.0)
+            retry_options = dict(run_options)
+            retry_options.update({
+                "wait_until": "commit",
+                "page_timeout": max(5000, int(retry_timeout * 1000)),
+                "delay_before_return_html": max(
+                    1.5, float(run_options.get("delay_before_return_html", 0.1) or 0.1)
+                ),
+            })
+            retry_config = CrawlerRunConfig(**retry_options)
+            try:
+                result = await asyncio.wait_for(
+                    crawler.arun(url=url, config=retry_config),
+                    timeout=retry_timeout + 5.0,
+                )
+            except Exception as retry_error:
+                raise RuntimeError(
+                    "Browser navigation failed after bounded commit retry; "
+                    f"initial error: {initial_navigation_error}; "
+                    f"retry error: {retry_error}"
+                ) from retry_error
+
+        # HTTP 429 is a publisher rate-limit signal. Retry only after a
+        # bounded wait, honoring Retry-After when the server provides it.
+        rate_limit_retries = 0
+        while (
+            result is not None
+            and int(getattr(result, "status_code", 0) or 0) == 429
+            and rate_limit_retries < 2
+        ):
+            headers = getattr(result, "response_headers", None) or {}
+            retry_delay = _retry_after_seconds(headers)
+            if retry_delay is None:
+                retry_delay = 5.0 * (2 ** rate_limit_retries)
+            if retry_delay > 60.0:
+                LOGGER.warning(
+                    "HTTP 429 for %s requested Retry-After %.1fs; exceeds bounded 60s retry budget",
+                    url, retry_delay,
+                )
+                break
+            await asyncio.sleep(max(1.0, retry_delay))
+            retry_timeout = min(timeout, 20.0)
+            retry_options = dict(run_options)
+            retry_options.update({
+                "wait_until": "commit",
+                "page_timeout": max(5000, int(retry_timeout * 1000)),
+            })
+            retry_config = CrawlerRunConfig(**retry_options)
+            try:
+                retried = await asyncio.wait_for(
+                    crawler.arun(url=url, config=retry_config),
+                    timeout=retry_timeout + 5.0,
+                )
+            except Exception as retry_error:
+                LOGGER.warning(
+                    "HTTP 429 retry %s failed for %s: %s",
+                    rate_limit_retries + 1, url, retry_error,
+                )
+                break
+            result = retried
+            rate_limit_retries += 1
 
         page_url = _get_final_page_url(result, url)
         markdown_text = _raw_markdown_text(result)
@@ -933,6 +1087,7 @@ async def _fetch_url(url: str) -> dict:
             # Crawl4AI exposes first-response and final redirect statuses separately.
             "status_code": getattr(result, "status_code", None),
             "redirected_status_code": getattr(result, "redirected_status_code", None),
+            "response_headers": getattr(result, "response_headers", None),
             "url": page_url,
             "requested_url": url,
             "redirected_url": getattr(result, "redirected_url", None),
@@ -955,7 +1110,13 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
 
     try:
         response = get_response(url, timeout=(8.0, 30.0), retries=2)
-        reader = PdfReader(BytesIO(response.content))
+        try:
+            pdf_bytes = response.content
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+        reader = PdfReader(BytesIO(pdf_bytes))
         total_pages = len(reader.pages)
 
         if max_pdf_pages is not None and total_pages > max_pdf_pages:
@@ -966,7 +1127,17 @@ def _fetch_pdf(url: str, max_pdf_pages: int | None = None) -> dict:
             truncated = False
 
         pages_processed = len(pages_to_process)
-        content = "\n".join((page.extract_text() or "") for page in pages_to_process)
+        content = "\n".join((page.extract_text() or "") for page in pages_to_process).strip()
+        if not content:
+            return {
+                "success": False,
+                "error": "pdf_contains_no_extractable_text",
+                "url": url,
+                "content": "",
+                "total_pages": total_pages,
+                "pages_processed": pages_processed,
+                "truncated": truncated,
+            }
 
         return {
             "success": True,

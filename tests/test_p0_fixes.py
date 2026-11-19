@@ -95,6 +95,9 @@ def test_normalization_behavior(tmp_path):
 - Agent Name: funding
 - Collection Mode: manual
 - Collected At: 2023-01-01T00:00:00Z
+## Evidence Bundle
+### Evidence Snippets
+- Stable excerpt identifying this same source evidence item across revisions.
 ## Problem Intelligence
 **Selected Problem**: Problem V1
 **Mode**: deterministic

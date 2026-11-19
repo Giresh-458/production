@@ -15,6 +15,7 @@ def test_unknown_site_discovers_sitemap_and_relevant_deep_page(monkeypatch):
             self.url = url
             self.text = text
             self.content = text.encode()
+            self.status_code = 200
             self.headers = {"Content-Type": content_type}
 
     def fake_get(url, **kwargs):
@@ -24,6 +25,10 @@ def test_unknown_site_discovers_sitemap_and_relevant_deep_page(monkeypatch):
 
     monkeypatch.setattr(web_collection, "get_response", fake_get)
     monkeypatch.setattr(web_collection, "_robots_allowed", lambda *args, **kwargs: True)
+    monkeypatch.setattr(web_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(web_collection, "get_robots_sitemaps", lambda *args, **kwargs: [])
+    monkeypatch.setattr("core.robots_policy.check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     monkeypatch.setattr(web_collection, "_extract_with_trafilatura", lambda *args, **kwargs: None)
     monkeypatch.setattr(web_collection, "_render_with_browser", lambda *args, **kwargs: None)
 
@@ -52,6 +57,8 @@ def test_recursive_sitemap_discovery(monkeypatch):
         def __init__(self, text):
             self.text = text
             self.content = text.encode()
+            self.status_code = 200
+            self.url = "https://example.org/sitemap.xml"
             self.headers = {"Content-Type": "application/xml"}
 
     def fake_get(url, **kwargs):
@@ -60,4 +67,45 @@ def test_recursive_sitemap_discovery(monkeypatch):
         raise RuntimeError(url)
 
     monkeypatch.setattr("core.http_client.get_response", fake_get)
+    monkeypatch.setattr(recursive_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(recursive_collection, "get_robots_sitemaps", lambda *args, **kwargs: [])
+    monkeypatch.setattr("core.robots_policy.check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(recursive_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
     assert "https://example.org/rfp-2026.pdf" in recursive_collection._sitemap_links("https://example.org/")
+
+def test_collect_source_accepts_json_api_dataset_response(monkeypatch):
+    payload = {
+        "class": "dataset",
+        "label": "Electricity supply, transformation and consumption - monthly data",
+        "source": "Eurostat",
+        "updated": "2026-10-22T23:00:00+0200",
+        "dimension": {
+            "geo": {"label": "Geopolitical entity"},
+            "time": {"label": "Time"},
+        },
+        "value": {"0": 12.5, "1": 13.1},
+    }
+
+    class Response:
+        url = "https://api.example.org/nrg_cb_em.json"
+        text = __import__("json").dumps(payload)
+        content = text.encode("utf-8")
+        status_code = 200
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+
+    monkeypatch.setattr(web_collection, "get_response", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(web_collection, "_robots_allowed", lambda *args, **kwargs: True)
+
+    result = web_collection.collect_source(
+        "https://api.example.org/nrg_cb_em.json",
+        keywords=("electricity", "dataset", "consumption"),
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert result.failed_urls == []
+    assert len(result.pages) == 1
+    assert "Electricity supply" in result.pages[0].title
+    assert '"class": "dataset"' in result.pages[0].text
+    assert "consumption" in result.pages[0].text.lower()
+

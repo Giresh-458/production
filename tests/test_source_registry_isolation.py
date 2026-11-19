@@ -9,11 +9,41 @@ from core.source_registry import (
     REFRESH_PLAN_PATH,
     SOURCE_REGISTRY_PATH,
     SOURCES_DIR,
+    add_candidate_source,
     build_source_refresh_plan,
+    pause_source,
+    promote_candidate_source,
     record_source_check_result,
     sync_source_registry,
 )
 import run_pipeline
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
+
+
+def test_nested_registry_lifecycle_operations_are_reentrant(tmp_path):
+    registry_path = tmp_path / "source_registry.json"
+    candidate = add_candidate_source(
+        agent_name="company",
+        name="Reentrant lock fixture",
+        url="https://example.org/reentrant-lock-fixture",
+        notes="Test nested registry lock operations.",
+        registry_path=registry_path,
+    )
+
+    promoted = promote_candidate_source(
+        source_id=candidate.source_id,
+        activate=True,
+        notes="Promote the fixture through both lifecycle transitions.",
+        registry_path=registry_path,
+    )
+    assert promoted.new_status == "active"
+
+    paused = pause_source(
+        source_id=candidate.source_id,
+        notes="Pause the fixture.",
+        registry_path=registry_path,
+    )
+    assert paused.new_status == "paused"
 
 
 def _sample_registry_payload() -> dict:
@@ -179,31 +209,87 @@ def test_pipeline_execution_does_not_mutate_default_registry(tmp_path: Path, mon
         return {"status": "success", "outputs": [{"prop": 1}], "outputs_count": 1}
 
     def fake_save(roots, call_root, call_id, **kwargs):
-        if "filter_func" in kwargs and kwargs["filter_func"]:
-            kwargs["filter_func"]({"evidence_id": "e1", "title": "t", "research_area": "DePIN"})
         norm = call_root / "normalized"
         norm.mkdir(parents=True, exist_ok=True)
-        (norm / "records.json").write_text('[{"evidence_id": "e1", "record_id": "r1"}]', encoding="utf-8")
+        import hashlib
+        source_url = "https://example.com/evidence"
+        record = {
+            "evidence_id": hashlib.sha256(f"evidence-{call_id}".encode()).hexdigest()[:16],
+            "record_id": hashlib.sha1(f"record-{call_id}".encode()).hexdigest()[:16],
+            "source_id": f"url:{source_url}",
+            "content_hash": hashlib.sha256(f"content-{call_id}".encode()).hexdigest(),
+            "agent_name": "literature",
+            "layer": "Literature",
+            "source_type": "web_page",
+            "evidence_type": "web_source",
+            "evidence_strength": 0.7,
+            "run_id": kwargs.get("target_run_id"),
+            "funding_call_id": call_id,
+            "funding_call_ids": [call_id],
+            "source_funding_call_ids": [call_id],
+            "source_url": source_url,
+            "normalization_status": "NORMALIZED",
+            "research_area": "DePIN",
+            "title": "Test evidence",
+            "collected_at": "2026-11-01T10:00:00+00:00",
+            "problem_statement": "A source-grounded research limitation.",
+            "context_summary": "A source-grounded research limitation.",
+            "evidence_snippets": ["A measurable source-grounded limitation."],
+            "excerpt_windows": [],
+        }
+        if "filter_func" in kwargs and kwargs["filter_func"]:
+            kwargs["filter_func"](record)
+        (norm / "records.json").write_text(json.dumps([record]), encoding="utf-8")
+        (norm / "by_area.json").write_text(json.dumps({"DePIN": [record]}), encoding="utf-8")
+        (norm / "by_layer.json").write_text(json.dumps({"Literature": [record]}), encoding="utf-8")
+        (norm / "input_manifest.json").write_text("{}", encoding="utf-8")
+        (norm / "errors.json").write_text("[]", encoding="utf-8")
+        (norm / "skipped_artifacts.json").write_text("[]", encoding="utf-8")
+        from tests.batch2_test_helpers import write_test_evidence_ledger
+        write_test_evidence_ledger(norm / "evidence_ledger.db", [record])
         prop_dir = call_root / "proposals"
         prop_dir.mkdir(parents=True, exist_ok=True)
         (prop_dir / "proposal_1.md").write_text("# Proposal", encoding="utf-8")
-        return [{"record_id": "r1"}]
+        return {
+            "records": norm / "records.json",
+            "by_area": norm / "by_area.json",
+            "by_layer": norm / "by_layer.json",
+            "errors": norm / "errors.json",
+            "skipped_artifacts": norm / "skipped_artifacts.json",
+        }
 
     monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--output-root", str(tmp_path)])
 
+    def fake_execute_batch(**kwargs):
+        from tests.batch2_test_helpers import write_test_collector_artifacts
+        write_test_collector_artifacts(
+            Path(kwargs["base_input_data"]["pipeline_run_dir"]),
+            kwargs["base_input_data"]["run_id"],
+            kwargs["agent_names"],
+        )
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": 1}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
+
     with patch("run_pipeline.run_stage", side_effect=fake_run_stage), \
-         patch("run_pipeline.execute_batch_run", return_value={"tasks": [{"agent_name": f"a_{i}", "status": "success", "outputs_count": 1} for i in range(11)]}), \
+         patch("run_pipeline.execute_batch_run", side_effect=fake_execute_batch), \
          patch("run_pipeline.evaluate_collection_health", return_value=(True, 11)), \
          patch("run_pipeline.save_normalized_collection_records", side_effect=fake_save), \
          patch("run_pipeline.mission_relevance", return_value={"passed": True}), \
-         patch("core.source_registry.sync_source_registry") as mock_sync, \
-         patch("core.source_registry.build_source_refresh_plan") as mock_plan:
+         patch(
+             "run_pipeline.prepare_batch2_source_registry",
+             return_value={
+                 "agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS),
+                 "refresh_due_entries": 0,
+             },
+         ) as mock_prepare_registry:
 
         exit_code = run_pipeline.main()
 
     assert exit_code == 0
-    assert mock_sync.call_count == 1
-    assert mock_plan.call_count == 1
+    mock_prepare_registry.assert_called_once()
+    assert mock_prepare_registry.call_args.kwargs["force"] is False
 
     # Verify default registry was not mutated
     assert SOURCE_REGISTRY_PATH.stat().st_mtime_ns == initial_mtime

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import logging
 import re
@@ -68,6 +69,14 @@ CONCEPT_VOCAB = [
     "auditability", "resilience", "tokenization",
 ]
 LOGGER = logging.getLogger("rif.literature_agent")
+_COLLECTION_WARNINGS = contextvars.ContextVar("literature_collection_warnings", default=None)
+
+
+def _record_collection_warning(source_name: str, exc: Exception) -> None:
+    warnings = _COLLECTION_WARNINGS.get()
+    if warnings is not None:
+        warnings.append(f"{source_name} collection failed: {exc}")
+
 
 
 @dataclass(slots=True)
@@ -90,6 +99,8 @@ class Paper:
     recency_score: float = 0.0
     problem_clarity_score: float = 0.0
     semantic_score: float = 0.0
+    source_type: str = "Research publication"
+    evidence_type: str = "Scholarly publication record"
 
 
 @dataclass(slots=True)
@@ -270,6 +281,7 @@ def fetch_arxiv_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -
             ))
     except Exception as exc:
         LOGGER.warning("arXiv fetch failed: %s", exc)
+        _record_collection_warning("arXiv", exc)
     return papers
 
 def _fetch_provider_json(url: str, source_name: str) -> dict:
@@ -280,6 +292,7 @@ def _fetch_provider_json(url: str, source_name: str) -> dict:
         return data
     except Exception as exc:
         LOGGER.warning("%s fetch failed: %s", source_name, exc)
+        _record_collection_warning(source_name, exc)
         return {}
 
 def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -> list[Paper]:
@@ -311,6 +324,7 @@ def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE
             )
         except Exception as exc:
             LOGGER.warning("OpenAlex query failed for %r: %s", query, exc)
+            _record_collection_warning(f"OpenAlex query {query!r}", exc)
             continue
         for item in data.get("results", []) or []:
             item_id = str(item.get("id") or item.get("doi") or item.get("display_name") or "")
@@ -595,22 +609,41 @@ def process_area(
     allow_llm_analysis: bool = False,
     funding_context: FundingCallContext | None = None,
     run_id: str | None = None,
-) -> int:
+    return_papers: bool = False,
+    collection_warnings: list[str] | None = None,
+) -> int | list[Paper]:
     LOGGER.info("Starting collection for area: %s", area)
     
     all_papers = []
-    all_papers.extend(fetch_arxiv_entries(area))
-    all_papers.extend(fetch_openalex_entries(area))
-    all_papers.extend(fetch_semanticscholar_entries(area))
-    all_papers.extend(fetch_crossref_entries(area))
-    all_papers.extend(fetch_dblp_entries(area))
+    effective_warnings = collection_warnings if collection_warnings is not None else []
+    warning_token = _COLLECTION_WARNINGS.set(effective_warnings)
+    try:
+        all_papers.extend(fetch_arxiv_entries(area))
+        all_papers.extend(fetch_openalex_entries(area))
+        all_papers.extend(fetch_semanticscholar_entries(area))
+        all_papers.extend(fetch_crossref_entries(area))
+        all_papers.extend(fetch_dblp_entries(area))
+    finally:
+        _COLLECTION_WARNINGS.reset(warning_token)
     
     unique_papers = deduplicate_papers(all_papers)
     
     scored_papers = []
     for p in unique_papers:
         paper_year = p.published.year if p.published else 0
-        if paper_exists(connection, title=p.title, url=p.url, doi=p.doi or "", source_id=p.source_id, authors="; ".join(p.authors), year=paper_year):
+        # CLI/incremental scans keep the historical duplicate suppression. A
+        # run-scoped pipeline scan must re-emit matching papers as this run's
+        # evidence, even when the cross-run SQLite ledger already knows them;
+        # normalization intentionally excludes prior-run artifacts.
+        if not return_papers and paper_exists(
+            connection,
+            title=p.title,
+            url=p.url,
+            doi=p.doi or "",
+            source_id=p.source_id,
+            authors="; ".join(p.authors),
+            year=paper_year,
+        ):
             continue
         cutoff = now - timedelta(days=LOOKBACK_YEARS * 365)
         if p.published is not None and p.published < cutoff:
@@ -626,7 +659,7 @@ def process_area(
     
     if not semantically_ranked:
         LOGGER.info("No valid new papers found for %s", area)
-        return 0
+        return [] if return_papers else 0
 
     if allow_llm_analysis:
         try:
@@ -648,6 +681,13 @@ def process_area(
         )
         
     effective_area = area or "Unscoped"
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", effective_area.lower()).strip("-")
+    # In a pipeline collection run, persist each paper as its own canonical
+    # intermediate artifact below. Keep the aggregate summary in insights.md,
+    # which downstream normalization intentionally skips. CLI / legacy callers
+    # retain the historical per-area summary filename.
+    summary_name = "insights.md" if return_papers else f"{slug}.md"
+    md_path = output_dir / summary_name
     for p in semantically_ranked:
         save_paper_record(
             connection,
@@ -657,7 +697,7 @@ def process_area(
             authors="; ".join(p.authors),
             year=(p.published.year if p.published else 0),
             research_area=effective_area,
-            path=str(output_dir / f"{re.sub(r'[^a-zA-Z0-9]+', '-', effective_area.lower()).strip('-')}.md"),
+            path=str(md_path),
             tags=["#Literature", STATIC_TAGS.get(area, "")],
             concept_tags=[],
             static_tags_by_area=STATIC_TAGS,
@@ -666,8 +706,6 @@ def process_area(
         )
         
     output_dir.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", effective_area.lower()).strip("-")
-    md_path = output_dir / f"{slug}.md"
     
     # The literature collector uses a legacy file-based finalizer rather than
     # the shared intermediate-artifact writer. Add the same machine-readable
@@ -695,6 +733,9 @@ def process_area(
     if primary_source_url:
         lines.append(f"- source: {primary_source_url}")
     if funding_context and funding_context.funding_call_id:
+        # Legacy aggregate summary keeps singular-call metadata when available.
+        # Pipeline-owned per-paper artifacts are finalized separately below and
+        # receive the full active funding_contexts list from the orchestrator.
         lines.append(f"- funding_call_id: {funding_context.funding_call_id}")
         lines.append(f"- funding_call_ids: {funding_context.funding_call_id}")
     if run_id:
@@ -713,7 +754,7 @@ def process_area(
     
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     LOGGER.info("Saved analysis for %s to %s", area, md_path)
-    return len(semantically_ranked)
+    return semantically_ranked if return_papers else len(semantically_ranked)
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -772,6 +813,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
 
     output_dir = Path(payload.get("output_dir", default_intermediate_output_dir(agent_name)))
     before_snapshot = snapshot_markdown_files(output_dir)
+    collection_warnings: list[str] = []
     try:
         if mode == "configured_scan":
             connection = db_connect(Path(payload.get("db_path", DEFAULT_DB_PATH)))
@@ -781,7 +823,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 # Adaptive/unscoped mode: derive compact research terms from the selected call
                 # rather than forcing the call into a fixed taxonomy.
                 scan_area = None
-            count = process_area(
+            papers = process_area(
                 connection,
                 scan_area,
                 output_dir,
@@ -789,13 +831,55 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                 allow_llm_analysis=bool(payload.get("allow_llm_analysis", False)),
                 funding_context=funding_context,
                 run_id=payload.get("run_id"),
+                return_papers=True,
+                collection_warnings=collection_warnings,
             )
-            return finalize_file_agent_response(
-                agent=agent_name, layer=layer, mode=mode, area=area,
-                items_processed=count, items_saved=count, output_dir=output_dir,
-                before_snapshot=before_snapshot, problem_headings=("Gap", "Insight"),
+            response = finalize_collection_agent_response(
+                agent=agent_name,
+                layer=layer,
+                mode=mode,
+                area=area,
+                documents=papers,
+                output_dir=output_dir,
                 started_at=started_at,
+                warnings=collection_warnings,
+                funding_context=funding_context,
+                funding_contexts=funding_contexts,
+                run_id=payload.get("run_id"),
+                allow_llm_refinement=bool(payload.get("allow_llm_refinement", False)),
             )
+
+            # The canonical intermediate Markdown paths now point at individual
+            # paper artifacts. Update the literature ledger from the aggregate
+            # insights.md path to each artifact path that passed collection.
+            persisted_paths = {
+                (str(item.get("title") or "").casefold(), str(item.get("source") or "").strip().casefold()):
+                    str(item.get("markdown_path") or "")
+                for item in (response.get("outputs") or [])
+                if item.get("markdown_path")
+            }
+            for paper in papers:
+                artifact_path = persisted_paths.get((paper.title.casefold(), paper.url.strip().casefold()))
+                if not artifact_path:
+                    continue
+                save_paper_record(
+                    connection,
+                    title=paper.title,
+                    summary=paper.summary,
+                    url=paper.url,
+                    authors="; ".join(paper.authors),
+                    year=(paper.published.year if paper.published else 0),
+                    research_area=area or "Unscoped",
+                    path=artifact_path,
+                    tags=["#Literature", STATIC_TAGS.get(area, "")],
+                    concept_tags=[],
+                    static_tags_by_area=STATIC_TAGS,
+                    source_id=paper.source_id,
+                    doi=paper.doi,
+                )
+            if collection_warnings and response.get("status") == "success":
+                response["status"] = "partial_success"
+            return response
 
         if mode == "manual_url":
             raise LiteratureAgentError("manual_url is not supported for literature because a single URL is not a bibliographic source. Use manual_text or configured_scan.")
@@ -834,7 +918,5 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
             agent=agent_name, layer=layer, mode=mode, area=area, errors=[str(exc)],
             started_at=started_at, finished_at=datetime.now(UTC),
         )
-
-
 if __name__ == "__main__":
     raise SystemExit(main())

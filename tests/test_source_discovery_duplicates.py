@@ -6,18 +6,17 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run_pipeline import main
+from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')
 @patch('run_pipeline.execute_batch_run')
 @patch('run_pipeline.evaluate_collection_health')
-@patch('core.source_registry.sync_source_registry')
-@patch('core.source_registry.build_source_refresh_plan')
+@patch('run_pipeline.prepare_batch2_source_registry')
 @patch('core.intelligence.save_source_discovery_candidates')
 def test_source_discovery_duplicate_preservation(
     mock_save_discovery,
-    mock_build_source_refresh,
-    mock_sync_registry,
+    mock_prepare_registry,
     mock_evaluate_health,
     mock_execute_batch,
     mock_get_calls,
@@ -29,12 +28,17 @@ def test_source_discovery_duplicate_preservation(
 
     call_id = "CALL-TEST-DISC"
     mock_evaluate_health.return_value = (True, 10)
+    mock_prepare_registry.return_value = {"agents_synced": sorted(DOWNSTREAM_FUNDING_CONTEXT_AGENTS), "refresh_due_entries": 0}
 
     selected_call = {
         "selected": {
             "call_id": call_id,
+            "status": "OPEN_CALL",
             "title": "Blockchain Networking",
             "organization": "TestOrg",
+            "source_url": f"https://funding.example.org/calls/{call_id}",
+            "application_url": f"https://funding.example.org/calls/{call_id}",
+            "eligibility": "Eligible applicants: research universities and technology organizations may apply.",
             "research_area": "DePIN", "domain_relevance": [{"domain": "DePIN", "score": 1.0}],
             "research_context": {
                 "funding_call_id": call_id, "research_intent": "research",
@@ -54,86 +58,73 @@ def test_source_discovery_duplicate_preservation(
     }
     mock_get_calls.return_value = ([selected_call["selected"]], [])
 
+    def fake_run_stage(agent, *args, **kwargs):
+        if agent == "funding":
+            return {"status": "success", "outputs": [selected_call["selected"]], "errors": []}
+        return {"status": "success", "outputs_count": 1, "outputs": []}
+
+    mock_run_stage.side_effect = fake_run_stage
+
     def fake_execute_batch(**kwargs):
         root = Path(kwargs["base_input_data"]["pipeline_run_dir"])
-        intermediate_dir = root / "calls" / call_id / "intermediate"
+        run_id = kwargs["base_input_data"]["run_id"]
+        intermediate_dir = root / "intermediate" / "literature"
         intermediate_dir.mkdir(parents=True, exist_ok=True)
+        from tests.batch2_test_helpers import write_test_collector_artifacts, write_test_intermediate_artifact
 
         # 1. Accepted evidence (matches 'blockchain' & 'ledger')
-        (intermediate_dir / "acc1.md").write_text("""# Signal
-## Shared Metadata
-- title: Blockchain basics
-- source: https://example.org/accepted
-- layer: Literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:00+00:00
-
-## Problem Preview
-Blockchain ledger systems.
-## Evidence Bundle
-### Evidence Snippets
-- Blockchain ledger systems.
-### Links Found
-- https://example.org/link-acc
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Blockchain networking basics",
+            source_url="https://example.org/accepted",
+            content="Blockchain networking ledger systems.\n\nBlockchain networking ledger systems.\n\nhttps://example.org/link-acc",
+            research_area="DePIN",
+            evidence_snippets=["Blockchain networking ledger systems."],
+            collected_at="2026-08-24T10:00:00+00:00",
+        )
 
         # 2. Rejected evidence
-        (intermediate_dir / "rej1.md").write_text("""# Signal
-## Shared Metadata
-- title: Nothing matches here
-- source: https://example.org/rejected
-- layer: Literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:01+00:00
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Nothing matches here",
+            source_url="https://example.org/rejected",
+            content="Trees and leaves.\n\nTrees and leaves.",
+            research_area="DePIN",
+            evidence_snippets=["Trees and leaves."],
+            collected_at="2026-08-24T10:00:01+00:00",
+        )
 
-## Problem Preview
-Trees and leaves.
-## Evidence Bundle
-### Evidence Snippets
-- Trees and leaves.
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Missing title keywords",
+            source_url="https://example.org/conflict",
+            content="A completely unrelated problem statement.\n\nShared blockchain networking conflict ledger snippet.\n\nhttps://example.org/link-confB",
+            research_area="Unscoped",
+            evidence_snippets=["Shared blockchain networking conflict ledger snippet."],
+            collected_at="2026-08-24T10:00:02+00:00",
+        )
 
-        (intermediate_dir / "confB.md").write_text("""# Signal
-## Shared Metadata
-- title: Missing title keywords
-- source: https://example.org/conflict
-- layer: Literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: Unscoped
-- collected_at: 2026-08-24T10:00:02+00:00
-
-## Problem Preview
-A completely unrelated problem statement.
-## Evidence Bundle
-### Evidence Snippets
-- Shared conflict ledger snippet.
-### Links Found
-- https://example.org/link-confB
-""", encoding="utf-8")
-
-        (intermediate_dir / "confA.md").write_text("""# Signal
-## Shared Metadata
-- title: Blockchain conflict resolution
-- source: https://example.org/conflict
-- layer: Literature
-- funding_call_id: CALL-TEST-DISC
-- research_area: DePIN
-- collected_at: 2026-08-24T10:00:03+00:00
-
-## Problem Preview
-Blockchain ledger systems.
-## Evidence Bundle
-### Evidence Snippets
-- Shared conflict ledger snippet.
-### Links Found
-- https://example.org/link-confA
-""", encoding="utf-8")
+        write_test_intermediate_artifact(
+            root,
+            run_id=run_id,
+            funding_call_id=call_id,
+            title="Blockchain networking conflict resolution",
+            source_url="https://example.org/conflict",
+            content="Blockchain networking ledger systems.\n\nShared blockchain networking conflict ledger snippet.\n\nhttps://example.org/link-confA",
+            research_area="DePIN",
+            evidence_snippets=["Shared blockchain networking conflict ledger snippet."],
+            collected_at="2026-08-24T10:00:03+00:00",
+        )
 
         # These fixtures represent evidence collected in this pipeline run.
         # Production normalization deliberately excludes records from other runs.
-        run_id = kwargs["base_input_data"]["run_id"]
+        write_test_collector_artifacts(root, run_id, kwargs["agent_names"])
         for artifact in intermediate_dir.glob("*.md"):
             artifact_text = artifact.read_text(encoding="utf-8")
             marker = f"- funding_call_id: {call_id}\n"
@@ -143,7 +134,10 @@ Blockchain ledger systems.
                 )
                 artifact.write_text(artifact_text, encoding="utf-8")
 
-        return {"tasks": []}
+        return {"tasks": [
+            {"agent_name": agent, "status": "success", "outputs_count": len(list((root / "intermediate" / agent).glob("*.md")))}
+            for agent in sorted(set(DOWNSTREAM_FUNDING_CONTEXT_AGENTS))
+        ]}
 
     mock_execute_batch.side_effect = fake_execute_batch
 
@@ -163,7 +157,10 @@ Blockchain ledger systems.
     assert len(records) == 2
 
     by_area = json.loads((call_root / "normalized" / "by_area.json").read_text(encoding="utf-8"))
-    assert len(by_area.get("DePIN", [])) == 2
+    # The duplicate source's earliest observation is explicitly Unscoped;
+    # a later observation cannot silently relabel its canonical evidence.
+    assert len(by_area.get("DePIN", [])) == 1
+    assert len(by_area.get("Unscoped", [])) == 1
 
     by_layer = json.loads((call_root / "normalized" / "by_layer.json").read_text(encoding="utf-8"))
     assert len(by_layer.get("Literature", [])) == 2
@@ -191,18 +188,21 @@ Blockchain ledger systems.
     assert len(discovery_args) == 3
 
     titles = [r.get("title", "") for r in discovery_args]
-    assert "Blockchain basics" in titles
-    assert titles.count("Blockchain conflict resolution") == 2
-    assert "Missing title keywords" not in titles
+    assert "Blockchain networking basics" in titles
+    # The earliest observation remains canonical when two observations share
+    # one evidence identity. A later title/area cannot relabel that evidence.
+    assert titles.count("Missing title keywords") == 2
+    assert "Blockchain networking conflict resolution" not in titles
     assert "Nothing matches here" not in titles
 
     problem_statements = [r.get("problem_statement", "") for r in discovery_args]
-    assert problem_statements.count("Blockchain ledger systems.") == 3
-    assert "A completely unrelated problem statement." not in problem_statements
+    # These short fixture descriptions do not satisfy deterministic problem
+    # extraction; the normalized fallback must remain explicit, not fabricated.
+    assert problem_statements == ["No explicit problem statement found."] * 3
 
     research_areas = [r.get("research_area", "") for r in discovery_args]
-    assert research_areas.count("DePIN") == 3
-    assert "Unscoped" not in research_areas
+    assert research_areas.count("DePIN") == 1
+    assert research_areas.count("Unscoped") == 2
 
     # Verify linked_urls were extracted and preserved physically
     linked_urls = [url for r in discovery_args for url in (r.get("linked_urls", []) or [])]

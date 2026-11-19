@@ -636,33 +636,81 @@ def eu_funding_tenders_paginated_search(
 
 
 
-def eu_funding_tenders_fetch_document(reference: str) -> dict[str, Any]:
-    """Fetch one full public EU Funding & Tenders document by its search reference.
+def eu_funding_tenders_fetch_document(identifier: str) -> dict[str, Any]:
+    """Fetch a topic's expanded metadata through the official Topic Details search API.
 
-    The Search API returns only indexed metadata for many records. The documented
-    /document/{reference} endpoint can expose additional publisher fields.
+    The public SEDIA API documents topic details as a search request using the
+    exact topic/call identifier. The /document/{reference} route is for the
+    Organisation Public Data service and is not valid for SEDIA topic records.
     """
-    value = str(reference or "").strip()
+    value = str(identifier or "").strip()
     if not value:
-        raise ValueError("EU Funding & Tenders document reference is empty")
-    endpoint = (
-        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
-        + quote(value, safe="")
-    )
+        raise ValueError("EU Funding & Tenders topic identifier is empty")
+
+    endpoint = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+    query = {
+        "bool": {
+            "must": [
+                {"terms": {"type": ["1", "2", "8"]}},
+                {"terms": {"status": ["31094501", "31094502"]}},
+            ]
+        }
+    }
+    fields = {
+        "query": (None, json.dumps(query, separators=(",", ":")), "application/json"),
+        "languages": (None, json.dumps(["en"]), "application/json"),
+        "displayLanguage": (None, "en", "text/plain"),
+    }
     headers = {
         "Accept": "application/json, text/plain, */*",
         "Referer": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
         "Origin": "https://ec.europa.eu",
         "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
     }
-    payload, _ = fetch_json(
+    payload, _ = post_multipart_json(
         endpoint,
-        params={"apiKey": "SEDIA"},
+        params={
+            "apiKey": "SEDIA",
+            "text": f'"{value}"',
+            "pageNumber": 1,
+            "pageSize": 10,
+        },
+        fields=fields,
         headers=headers,
         timeout=(8, 20),
         retries=1,
     )
-    return payload
+    results = payload.get("results", []) if isinstance(payload, dict) else []
+    if not isinstance(results, list) or not results:
+        raise ValueError(f"EU Topic Details API returned no result for identifier {value!r}")
+
+    def scalar(candidate: Any) -> str:
+        if isinstance(candidate, list):
+            candidate = next((item for item in candidate if item not in (None, "")), "")
+        return str(candidate or "").strip()
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        identifiers = (
+            scalar(metadata.get("callIdentifier")),
+            scalar(metadata.get("topicAbbreviation")),
+            scalar(metadata.get("identifier")),
+            scalar(metadata.get("topicIdentifier")),
+        )
+        if any(candidate.casefold() == value.casefold() for candidate in identifiers):
+            return item
+
+    # The API's exact-identifier search normally returns one topic. If it
+    # returns several records, do not silently attach unrelated metadata.
+    if len(results) == 1 and isinstance(results[0], dict):
+        return results[0]
+    raise ValueError(
+        f"EU Topic Details API did not return an exact identifier match for {value!r}"
+    )
 
 
 

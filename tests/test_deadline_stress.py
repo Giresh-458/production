@@ -46,8 +46,9 @@ def test_deadline_expiration_stops_recursive_crawl(monkeypatch):
     _fetch_count = 0
     _extract_counter = 0
     
-    # Patch out sitemap
+    # Patch out sitemap and robots network access.
     monkeypatch.setattr("core.recursive_collection._sitemap_links", lambda *a, **k: [])
+    monkeypatch.setattr("core.recursive_collection.check_robots", lambda *a, **k: (True, None, 0.0))
     # Patch extract_ranked_links to generate a massive frontier
     call_count = 0
     def massive_frontier(*args, **kwargs):

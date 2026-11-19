@@ -34,17 +34,17 @@ opensource_sources:
       max_depth: 1
       max_seconds: 60
   polygon_zk:
-  - name: Polygon zkEVM
+  - name: Polygon CDK
     type: github_repo
-    url: https://github.com/0xPolygonHermez/zkevm-node
-    focus: ZK, scalability, Ethereum L2
+    url: https://github.com/0xPolygon/kurtosis-cdk
+    focus: Polygon Chain Development Kit, ZK rollup deployment, Ethereum L2 interoperability and scalability
     limits:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
   - name: Polygon ID
     type: github_repo
-    url: https://github.com/iden3
+    url: https://github.com/iden3/contracts
     focus: DID, ZK identity, verifiable credentials
     limits:
       max_pages: 4
@@ -53,7 +53,7 @@ opensource_sources:
   starknet:
   - name: Starknet
     type: github_repo
-    url: https://github.com/starkware-libs
+    url: https://github.com/starkware-libs/cairo
     focus: ZK, scalability
     limits:
       max_pages: 4
@@ -69,10 +69,10 @@ opensource_sources:
       max_depth: 1
       max_seconds: 60
   solana:
-  - name: Solana
+  - name: Solana Agave Validator
     type: github_repo
-    url: https://github.com/solana-labs/solana
-    focus: high-performance blockchain, scalability
+    url: https://github.com/anza-xyz/agave
+    focus: Solana validator client, high-performance blockchain, scalability and networking
     limits:
       max_pages: 4
       max_depth: 1
@@ -80,7 +80,7 @@ opensource_sources:
   depin:
   - name: Filecoin
     type: github_repo
-    url: https://github.com/filecoin-project
+    url: https://github.com/filecoin-project/lotus
     focus: decentralized storage, DePIN
     limits:
       max_pages: 4
@@ -88,7 +88,7 @@ opensource_sources:
       max_seconds: 60
   - name: Helium
     type: github_repo
-    url: https://github.com/helium
+    url: https://github.com/helium/helium-program-library
     focus: DePIN, wireless infrastructure
     limits:
       max_pages: 4
@@ -105,7 +105,7 @@ opensource_sources:
   mev:
   - name: Flashbots
     type: github_repo
-    url: https://github.com/flashbots
+    url: https://github.com/flashbots/mev-boost
     focus: MEV, block building, transaction ordering
     limits:
       max_pages: 4
@@ -113,7 +113,7 @@ opensource_sources:
       max_seconds: 60
   - name: Jito
     type: github_repo
-    url: https://github.com/jito-foundation
+    url: https://github.com/jito-foundation/jito-solana
     focus: MEV, validator infrastructure
     limits:
       max_pages: 4
@@ -122,7 +122,7 @@ opensource_sources:
   stablecoins:
   - name: MakerDAO / Sky
     type: github_repo
-    url: https://github.com/makerdao
+    url: https://github.com/sky-ecosystem/dss
     focus: stablecoins, tokenomics, governance
     limits:
       max_pages: 4
@@ -212,8 +212,8 @@ opensource_sources:
       max_seconds: 60
   - name: OpenPLC
     type: github_repo
-    url: https://github.com/thiagoralves/OpenPLC_v3
-    focus: industrial control systems, PLC, OT security experimentation
+    url: https://github.com/thiagoralves/OpenPLC
+    focus: open-source industrial control systems, PLC runtime, OT security experimentation
     limits:
       max_pages: 4
       max_depth: 1

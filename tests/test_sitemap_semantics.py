@@ -29,6 +29,7 @@ def test_sitemap_semantics(monkeypatch):
             self.url = url
             self.text = text
             self.content = text.encode()
+            self.status_code = 200
             self.headers = {"Content-Type": content_type}
 
     def fake_get(url, **kwargs):
@@ -39,6 +40,9 @@ def test_sitemap_semantics(monkeypatch):
 
     monkeypatch.setattr(web_collection, "get_response", fake_get)
     monkeypatch.setattr(web_collection, "_robots_allowed", lambda *args, **kwargs: True)
+    monkeypatch.setattr(web_collection, "check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr(web_collection, "wait_for_host_slot", lambda *args, **kwargs: True)
+    monkeypatch.setattr(web_collection, "get_robots_sitemaps", lambda *args, **kwargs: ["https://example.org/sitemap.xml"])
     monkeypatch.setattr(web_collection, "_extract_with_trafilatura", lambda *args, **kwargs: None)
     monkeypatch.setattr(web_collection, "_render_with_browser", lambda url, **kwargs: (pages.get(url, "a")[:10], pages.get(url, "a") * 30, [], url))
     

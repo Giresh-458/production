@@ -618,3 +618,146 @@ def test_funding_problem_extraction_uses_risk_clause_not_eligibility_restriction
     assert "vulnerabilities" in intelligence["selected_problem"].lower()
     assert "participation is limited to" not in intelligence["selected_problem"].lower()
     assert all("participation is limited to" not in item.lower() for item in intelligence["problem_evidence"])
+
+
+
+def test_eit_hei_call_title_and_consortium_eligibility_are_extracted():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    source_url = (
+        "https://www.climate-kic.org/open-call/"
+        "eit-higher-education-initiative-eit-hei-2026/"
+    )
+    content = """OPEN CALL
+# EIT Higher Education Initiative (EIT HEI) 2026
+CALL FOR
+Proposals
+DEADLINE
+2027-01-13 17:00: CET
+## Call Information
+Launched under the EIT Higher Education Initiative, the call aims to help universities develop innovation and entrepreneurship skills, improve technology transfer services and build stronger links with businesses.
+With a budget of €40 million from the EIT, the 2026 Call for proposals will provide up to €1.25 million per selected project over 18 months. The EIT Higher Education Initiative invites consortia of higher education institutions, businesses, research organisations, public bodies and other innovation partners to apply.
+## How to apply
+Applications are now open for the EIT Higher Education Initiative (EIT HEI) call for proposals 2026.
+"""
+    document = _document(
+        content,
+        title="EIT Higher Education Initiative (EIT HEI) 2026 | Climate KIC",
+        source=source_url,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name == "EIT Higher Education Initiative (EIT HEI) 2026"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2027-01-13"
+    assert opportunity.eligibility
+    assert "consortia of higher education institutions" in opportunity.eligibility.lower()
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+
+
+def test_bioeconomy_circularity_is_recognized_as_esg_domain_evidence():
+    from core.schemas import rank_research_areas
+
+    text = (
+        "The Bioeconomy GIANTS call supports high-added-value bio-based products, "
+        "circular bio-based value chains, valorisation of underutilised biomass, "
+        "circularity and resource efficiency."
+    )
+    ranking = rank_research_areas(text)
+    esg = next(item for item in ranking if item["domain"] == "ESG")
+
+    assert esg["raw_score"] >= 4.0
+    assert {"bioeconomy", "bio-based products", "circularity"} & set(esg["matched_terms"])
+
+
+
+def test_sbir_united_states_sbc_eligibility_is_extracted_and_verified():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    content = (
+        "Solicitation Status: Open. This NOFO accepts SBIR Phase I and Phase II grant "
+        "applications from eligible United States SBCs. Applications from eligible "
+        "United States SBCs should propose a feasibility and R&D study."
+    )
+    document = _document(
+        content,
+        title="NIH Small Business Innovation Research Grant",
+        source="https://www.sbir.gov/topics/12563",
+    )
+    opportunity = analyze_document(document)
+
+    assert opportunity.eligibility
+    assert "eligible united states sbcs" in opportunity.eligibility.lower()
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+    assert "eligible united states sbcs" in opportunity.evidence["eligibility"].lower()
+
+
+def test_dapp_and_founder_chain_requirements_are_substantive_eligibility():
+    from agents.funding_agent import _extract_eligibility_from_prose
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    dapp_eligibility = _extract_eligibility_from_prose(
+        "Who can apply? Any dApp that supports and is building on Solana, Ethereum, "
+        "Polygon, Arbitrum, Optimism, BSC, Sei, Sui, Stellar, Ton, and Base."
+    )
+    founder_eligibility = _extract_eligibility_from_prose(
+        "The University Digital Asset Xcelerator supports founders developing on the XRP Ledger."
+    )
+
+    assert dapp_eligibility and has_substantive_eligibility_evidence(dapp_eligibility)
+    assert founder_eligibility and has_substantive_eligibility_evidence(founder_eligibility)
+
+
+def test_womentecheu_founder_and_startup_criteria_are_substantive():
+    from agents.funding_agent import _extract_eligibility_from_prose
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    text = (
+        "Women TechEU targets early-stage deep tech startups founded, or co-founded, "
+        "by women holding a top management position (CEO, CTO or equivalent)."
+    )
+    eligibility = _extract_eligibility_from_prose(text)
+
+    assert eligibility
+    assert has_substantive_eligibility_evidence(eligibility)
+
+
+def test_safe_signing_applicant_condition_is_not_a_research_problem():
+    from core.problem_extraction import _is_administrative_or_financial_rule
+
+    assert _is_administrative_or_financial_rule(
+        "Applicants should not apply if their venture is unable to sign the SAFE."
+    )
+
+
+def test_types_of_funding_is_a_generic_directory_title():
+    from agents.funding_agent import _is_generic_funding_title
+
+    assert _is_generic_funding_title("Types of Funding")
+
+
+def test_new_european_bauhaus_sustainability_is_esg_domain_evidence():
+    from core.schemas import rank_research_areas
+
+    ranking = rank_research_areas(
+        "Catalyse NEB is the New European Bauhaus accelerator integrating "
+        "sustainability, aesthetics and inclusion into start-up products and services."
+    )
+    esg = next(item for item in ranking if item["domain"] == "ESG")
+    assert esg["raw_score"] >= 4.0
+    assert "new european bauhaus" in esg["matched_terms"]
+
+
+
+def test_singular_company_and_unhyphenated_startup_eligibility_are_recognized():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    assert has_substantive_eligibility_evidence("Eligible startups founded by women.")
+    # Singular and plural company forms both occur in official eligibility rules.
+    assert has_substantive_eligibility_evidence(
+        "An eligible company must be registered in an EU Member State."
+    )
+    assert has_substantive_eligibility_evidence(
+        "Eligible companies must be registered in an EU Member State."
+    )

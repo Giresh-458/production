@@ -28,7 +28,7 @@ from core.structured_sources import (
     eu_funding_tenders_paginated_search,
     eu_funding_tenders_fetch_document,
 )
-from core.crawl4ai_web import crawl_funding_source
+from core.crawl4ai_web import crawl_funding_source, _reports_no_active_funding
 from agents.funding_agent import (
     FundingSource,
     FundingDocument,
@@ -998,35 +998,6 @@ def _collect_eu_funding_tenders(
             _extract_eu_eligibility_from_html(metadata.get(key))
             for key in detail_keys
         )
-        if (
-            api_config.get("detail_fetch_missing_metadata", True)
-            and detail_reference
-            and not metadata_eligibility_present
-        ):
-            result.detail_pages_discovered += 1
-            try:
-                detail = eu_funding_tenders_fetch_document(detail_reference)
-                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
-                if isinstance(detail_metadata, dict):
-                    for key, value in detail_metadata.items():
-                        if metadata.get(key) in (None, "", []):
-                            metadata[key] = value
-                result.detail_pages_fetched += 1
-            except Exception as exc:
-                result.detail_pages_failed += 1
-                result.errors.append({
-                    "url": (
-                        "https://api.tech.ec.europa.eu/search-api/prod/rest/document/"
-                        + detail_reference
-                    ),
-                    "operation": "fetch_detail_metadata",
-                    "error": str(exc),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                })
-                LOGGER.warning(
-                    "EU detail metadata fetch failed for reference %s: %s",
-                    detail_reference, exc,
-                )
         title = _eu_metadata_value(metadata, "title", "topicTitle", "callTitle", "name")
         if not title:
             title = _eu_metadata_value(item, "title", "topicTitle", "callTitle", "name")
@@ -1084,6 +1055,37 @@ def _collect_eu_funding_tenders(
         identifier = _eu_metadata_value(
             metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
         )
+        # SEDIA Topic Details lookup is keyed by the publisher's call/topic
+        # identifier, not the opaque internal search-result reference.
+        if (
+            api_config.get("detail_fetch_missing_metadata", True)
+            and identifier
+            and not metadata_eligibility_present
+        ):
+            result.detail_pages_discovered += 1
+            try:
+                detail = eu_funding_tenders_fetch_document(str(identifier))
+                detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
+                if isinstance(detail_metadata, dict):
+                    for key, value in detail_metadata.items():
+                        if metadata.get(key) in (None, "", []):
+                            metadata[key] = value
+                result.detail_pages_fetched += 1
+            except Exception as exc:
+                result.detail_pages_failed += 1
+                result.errors.append({
+                    "url": (
+                        "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+                        f"?apiKey=SEDIA&text={identifier}"
+                    ),
+                    "operation": "fetch_detail_metadata",
+                    "error": str(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                LOGGER.warning(
+                    "EU topic detail fetch failed for identifier %s: %s",
+                    identifier, exc,
+                )
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
@@ -1372,9 +1374,34 @@ def _collect_github(
 def _fetch_status_verification_context(
     source: FundingSource,
     warnings: Optional[List[str]] = None,
+    document: Optional[FundingDocument] = None,
 ) -> str:
-    """Fetch optional publisher-owned status pages and retain only explicit closure evidence."""
-    urls = source.collection.get("status_verification_urls", [])
+    """Fetch publisher-owned closure evidence for the exact mapped document route.
+
+    Legacy status_verification_urls remain source-wide for existing sources.
+    Sources with status_verification_url_map opt into exact document-to-status
+    routing so a closure notice for one programme cannot contaminate another.
+    """
+    collection = source.collection or {}
+    route_map = collection.get("status_verification_url_map")
+    document_url = urlparse(str(getattr(document, "source", "") or ""))
+    route_specific = isinstance(route_map, dict)
+    if route_specific:
+        if document is None:
+            return ""
+        urls = []
+        for document_route, candidates in route_map.items():
+            parsed_route = urlparse(str(document_route or ""))
+            if (
+                (parsed_route.hostname or "").casefold() == (document_url.hostname or "").casefold()
+                and parsed_route.path.rstrip("/") == document_url.path.rstrip("/")
+            ):
+                if isinstance(candidates, list):
+                    urls.extend(candidates)
+                elif isinstance(candidates, str):
+                    urls.append(candidates)
+    else:
+        urls = collection.get("status_verification_urls", [])
     if not isinstance(urls, list) or not urls:
         return ""
 
@@ -1390,19 +1417,28 @@ def _fetch_status_verification_context(
     for url in urls:
         if not isinstance(url, str) or not url.startswith(("https://", "http://")):
             continue
+        expected = urlparse(url)
         try:
-            text, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
         except Exception as exc:
             if warnings is not None:
                 warnings.append(f"{source.name}: status verification could not be fetched from {url}: {exc}")
             LOGGER.warning("Status verification fetch failed for %s (%s): %s", source.name, url, exc)
             continue
-        if not text:
+        if route_specific:
+            final = urlparse(str(final_url or url))
+            if (
+                (final.hostname or "").casefold() != (expected.hostname or "").casefold()
+                or final.path.rstrip("/") != expected.path.rstrip("/")
+            ):
+                continue
+        if not body:
             continue
-        matches = [cleaned_text(match.group(0)) for match in closure_pattern.finditer(text)]
+        matches = [cleaned_text(match.group(0)) for match in closure_pattern.finditer(str(body))]
         for match in matches[:5]:
             evidence.append(f"Official status page ({final_url or url}): {match}")
     return "\n".join(dict.fromkeys(evidence))
+
 
 
 def _fetch_currentness_verification_context(
@@ -1441,7 +1477,11 @@ def _fetch_currentness_verification_context(
         r"apply to horizon",
         r"applying is as simple as creating a github issue",
         r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
+        r"submit your proposal anytime",
+        r"applications? are evaluated regular intervals?",
+        r"applications? (?:are )?reviewed on a rolling basis",
         r"proposals are accepted on a rolling basis",
+        r"open grants applications? for funding up to",
     )
     verified = []
     for url in configured_urls:
@@ -1468,6 +1508,48 @@ def _fetch_currentness_verification_context(
                 )
                 break
     return "\n".join(dict.fromkeys(verified))
+
+
+
+def _verify_configured_empty_state(
+    source: FundingSource,
+    warnings: Optional[List[str]] = None,
+) -> bool:
+    """Independently verify an explicitly configured publisher empty-state route."""
+    discovery = source.collection.get("discovery", {}) or {}
+    urls = discovery.get("empty_state_verification_urls", []) or []
+    if not isinstance(urls, list):
+        return False
+
+    from core.http_client import fetch_text
+
+    for url in urls:
+        if not isinstance(url, str) or not url.startswith("https://"):
+            continue
+        expected = urlparse(url)
+        try:
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+        except Exception as exc:
+            if warnings is not None:
+                warnings.append(
+                    f"{source.name}: explicit empty-state verification failed for {url}: {exc}"
+                )
+            LOGGER.warning(
+                "Empty-state verification fetch failed for %s (%s): %s",
+                source.name, url, exc,
+            )
+            continue
+
+        final = urlparse(str(final_url or url))
+        if (
+            final.scheme.casefold() != "https"
+            or (final.hostname or "").casefold() != (expected.hostname or "").casefold()
+            or final.path.rstrip("/") != expected.path.rstrip("/")
+        ):
+            continue
+        if _reports_no_active_funding(url, source.name, str(body or "")):
+            return True
+    return False
 
 
 def _is_generic_sbir_topic_title(value: str | None) -> bool:
@@ -1681,6 +1763,13 @@ def _collect_web_source(
     result = crawl_funding_source(
         source.name, source.url, config, allowed_domains, test_limits, source_limits
     )
+    # Some application managers render their empty-state text client-side.
+    # Re-fetch only explicitly configured exact routes so an inaccessible or
+    # changed page can never be silently treated as an empty programme.
+    if not result.no_active_opportunities_confirmed:
+        result.no_active_opportunities_confirmed = _verify_configured_empty_state(
+            source, warnings
+        )
 
     # Normalize: convert raw dicts +' FundingDocument +' analyze_document
     raw_opps = list(result.opportunities)
@@ -1692,7 +1781,7 @@ def _collect_web_source(
     result.opportunities = []
     result.records_discovered = len(raw_opps)
 
-    verification_context = _fetch_status_verification_context(source, warnings)
+    # Resolve status evidence per document below to prevent cross-route leakage.
     # Cache linked agency solicitations within this source run so a shared
     # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
     official_verification_cache: dict[str, str] = {}
@@ -1706,6 +1795,7 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        verification_context = _fetch_status_verification_context(source, warnings, document=doc)
         currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
         linked_official_context = _fetch_linked_official_sbir_context(
             doc, warnings, official_verification_cache

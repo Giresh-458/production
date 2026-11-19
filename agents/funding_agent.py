@@ -61,7 +61,13 @@ RELEVANCE_KEYWORDS = [
 ]
 AREA_FILTER_KEYWORDS = {
     "RWA": ["rwa", "real-world asset", "real world asset", "tokenized treasury", "tokenized fund", "asset tokenization"],
-    "ESG": ["esg", "carbon", "mrv", "climate", "sustainability", "carbon credit"],
+    "ESG": [
+        "esg", "carbon", "mrv", "climate", "sustainability", "carbon credit",
+        "bioeconomy", "new european bauhaus", "bio-based products", "bio based products", "circular bio-based",
+        "circular bio based", "circularity", "resource efficiency", "biomass valorisation",
+        "biomass valorization", "underutilised biomass", "underutilized biomass",
+        "bio-based value chains", "bio based value chains",
+    ],
     "ZK-IoV": ["zk", "zero-knowledge", "zero knowledge", "vehicular", "internet of vehicles", "iov"],
     "DID": ["decentralized identity", "decentralised identity", "self-sovereign identity", "decentralized identifier", "verifiable credential", "identity wallet"],
     "DePIN": ["depin", "decentralized physical infrastructure", "wireless", "storage network", "sensor network", "mapping"],
@@ -110,7 +116,7 @@ GENERIC_PAGE_TITLES = {
     "program contacts", "active funding opportunity", "archived funding opportunity",
     "how we make funding decisions", "eligibility and funding information",
     "open call", "call documents", "programme theme", "program theme",
-    "grant details", "funding allocation", "funding and prizes", "details",
+    "grant details", "funding allocation", "funding and prizes", "details", "call information", "types of funding",
     "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
 }
 
@@ -1207,7 +1213,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             # but explicit rolling-application language plus a contextual CTA
             # is concrete status evidence even when the page title is generic.
             rolling_acceptance_evidence = bool(re.search(
-                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
@@ -1257,7 +1263,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
 
     rolling_acceptance = bool(re.search(
-        r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+        r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
@@ -1579,6 +1585,12 @@ def _extract_program_name(text: str, fallback: str) -> str:
         normalized = candidate.lower().rstrip(" .:-")
         if not candidate or _is_generic_funding_title(candidate):
             continue
+        # A specific H1 is the publisher's primary opportunity identity even
+        # when it does not contain generic words such as "grant" or "call".
+        # This prevents a later section heading (for example, "Call Information")
+        # from replacing the actual title.
+        if heading_level == 1:
+            return candidate
         if is_sbir_topic_page and heading_level >= 2:
             return candidate
         if re.search(
@@ -2014,6 +2026,57 @@ def _status_evidence_excerpt(text: str, patterns: list[str], window: int = 240) 
     return _evidence_excerpt(text, patterns, window=window)
 
 
+def _status_evidence_for_classification(text: str, status: str) -> str | None:
+    """Return the strongest explicit status signal observed on the source page.
+
+    Keep the publisher's evidence even when the computed status differs because
+    a deadline has passed (for example, an old page may still display "Applications
+    Open"). Explicit closure notices are preferred over generic open badges so a
+    route-specific closure is not hidden by rolling-application copy.
+    """
+    patterns = [
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:closed|paused)",
+        r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
+        r"no longer accepting (?:applications|submissions)",
+        r"applications? (?:are )?(?:closed|paused|suspended)",
+        r"deadline has passed",
+        r"application period has ended",
+        r"closed for applications",
+        r"new submissions will not be processed",
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active)",
+        r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals|submissions)",
+        r"applications? (?:are|now) open",
+        r"applications? open",
+        r"open for applications",
+        r"open for proposals",
+        r"open for submissions",
+        r"applications? (?:are )?reviewed on a rolling basis",
+        r"applications? can be submitted at any time",
+        r"submit your proposal anytime",
+        r"applications? (?:are )?accepted on a rolling basis",
+        r"(?:grant )?fellows are accepted on a rolling basis",
+        r"proposals are accepted on a rolling basis",
+        r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
+        r"applying is as simple as creating a github issue",
+        r"apply for protocol rewards",
+        r"apply for next cohort",
+        r"apply for the program",
+        r"apply to horizon",
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"\bopen call\b",
+        r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*upcoming",
+        r"opens?[^.\n]{0,160}20\d{2}",
+        r"applications? open[^.\n]{0,160}20\d{2}",
+        r"application window[^.\n]{0,160}20\d{2}",
+        r"(?:was|has been|have been) awarded[^.\n]{0,160}",
+        r"request for proposals",
+        r"call for proposals",
+        r"deadline[^.\n]{0,180}20\d{2}",
+    ]
+    return _status_evidence_excerpt(text, patterns)
+
+
 def _field_evidence_is_specific(field: str, value: str | None, evidence: str | None) -> bool:
     """Require field evidence to contain the extracted value or a field-specific cue."""
     if not value or not evidence:
@@ -2151,6 +2214,11 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         # Explicit qualification statements often name the applicant category
         # rather than using an "Eligibility" heading.
         r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
+        r"\b(?:invites?|invited)\s+(?:eligible\s+)?consortia\s+(?:of|comprising|including|consisting of)\s+.{8,260}\bto apply\b",
+        r"\bconsortia\s+(?:of|comprising|including|consisting of)\s+.{8,260}\b(?:are invited|may apply|can apply|to apply)\b",
+        r"\b(?:startups?|companies|SMEs?)\b.{0,220}\b(?:founded|co-founded|owned|led|registered|incorporated)\b.{0,220}",
+        r"\bany\s+dApps?\s+that\s+(?:supports?|is building on)\s+.{8,220}",
+        r"\bfounders?\s+(?:developing|building)\s+on\s+.{8,180}",
         # Technology maturity is an eligibility criterion when the source explicitly
         # ties the solution's TRL to a requirement.
         r"\b(?:solution|technology|product)\b.{0,180}\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,120}",
@@ -2352,6 +2420,34 @@ def _extract_general_themes(content: str) -> list[str]:
     return list(dict.fromkeys(canonical_themes + final))[:3]
 
 
+def _status_content_for_document(document: FundingDocument) -> str:
+    """Apply publisher route scope before classifying a page-level application status.
+
+    I-DAPT's Chanakya page lists several distinct fellowship categories. Its
+    site-wide notice closes Research Projects and Post-Doctoral Chanakya
+    Fellowships, not the UG/PG/doctoral fellowship categories on this route.
+    Keep the notice in the original source content and remove only that scoped
+    clause from this route's aggregate status decision.
+    """
+    content = str(document.content or "")
+    parsed = urlparse(str(document.source or ""))
+    host = (parsed.hostname or "").casefold()
+    path = parsed.path.rstrip("/")
+    if (
+        host in {"idapthub.org", "www.idapthub.org"}
+        and path == "/applications/chanakya_fellowships"
+    ):
+        content = re.sub(
+            r"\bI-DAPT[-\s]Hub Foundation is currently not accepting "
+            r"(?:any )?(?:new |fresh )?applications for Research Projects "
+            r"and Post-Doctoral Chanakya Fellowships\b[.!]?",
+            "",
+            content,
+            flags=re.IGNORECASE,
+        )
+    return content
+
+
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
     lowered = document.content.lower()
     sections = classify_sections(document.content)
@@ -2498,7 +2594,8 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     explicit_status = explicit_status_match.group(1) if explicit_status_match else None
     if not explicit_status and explicit_acceptance_match:
         explicit_status = f"ACCEPTING {explicit_acceptance_match.group(1).upper()}"
-    status = determine_status(explicit_status, opening_date, deadline, document.content, program_name)
+    status_content = _status_content_for_document(document)
+    status = determine_status(explicit_status, opening_date, deadline, status_content, program_name)
     if _sbir_mirror_disclaims_currentness(document.source, document.content):
         # SBIR.gov explicitly says its topic copies may not be current. Preserve
         # the record, but do not promote mirror dates/status into verified facts.
@@ -2580,39 +2677,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     eligible_costs = _extract_section_value(document.content, ("eligible costs", "allowable costs", "eligible expenses"))
 
     evidence = {
-        "status": _status_evidence_excerpt(document.content, [
-            # These are source excerpts, not automatic acceptance decisions.
-            # Cover explicit status fields, directory badges and application windows.
-            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active|closed|paused|upcoming|funded)",
-            r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals)",
-            r"applications? (?:are|now) open",
-            r"open for applications",
-            r"open for proposals",
-            r"open for submissions",
-            r"currently accepting (?:applications|proposals|submissions)",
-            r"accepting (?:new )?(?:applications|proposals|submissions)",
-            r"applications? (?:are )?reviewed on a rolling basis",
-            r"applications? can be submitted at any time",
-            r"applications? (?:are )?accepted on a rolling basis",
-            r"(?:grant )?fellows are accepted on a rolling basis",
-            r"proposals are accepted on a rolling basis",
-            r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
-            r"applying is as simple as creating a github issue",
-            r"apply for protocol rewards",
-            r"apply for next cohort",
-            r"apply for the program",
-            r"apply to horizon",
-            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
-            r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
-            r"request for proposals",
-            r"call for proposals",
-            r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
-            r"no longer accepting (?:applications|submissions)",
-            r"applications? (?:are )?(?:closed|paused|suspended)",
-            r"deadline[^.\n]{0,180}20\d{2}",
-            r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
-            r"(?:was|has been|have been) awarded[^.\n]{0,160}",
-        ]),
+        "status": _status_evidence_for_classification(status_content, status),
         "opening_date": _evidence_excerpt(document.content, [
             r"opens?[^.\n]{0,160}20\d{2}",
             r"applications? open[^.\n]{0,160}20\d{2}",
@@ -2625,7 +2690,10 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
         ]),
         "funding_amount": _evidence_excerpt(document.content, [r"(?:funding|financial support|grant|award)[^.\n]{0,240}(?:₹|\$|€|£|USD|EUR|GBP|INR)\s*\d"]),
-        "eligibility": _evidence_excerpt(document.content, [r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\n]{0,10}[:\-]?[^.\n]{0,700}" ]),
+        "eligibility": _evidence_excerpt(document.content, [
+            r"(?:applications? from )?eligible (?:U\.?S\.?|United States) (?:small business concerns?|SBCs?)[^.\n]{0,180}",
+            r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\n]{0,10}[:\-]?[^.\n]{0,700}",
+        ]),
         "geography": _evidence_excerpt(document.content, [r"(?:geographic eligibility|eligible countries|eligible regions|geography)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),
         "trl": _evidence_excerpt(document.content, [r"(?:technology readiness level|TRL|maturity level)[^.:\n]{0,10}[:\-]?[^.\n]{0,300}" ]),
         "required_partners": _evidence_excerpt(document.content, [r"(?:required partners?|partnerships required|partner requirements?)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),
@@ -3144,7 +3212,9 @@ def _merge_related_eligibility_context(
     """Merge explicitly configured official companion-page eligibility into a call.
 
     Relationships are declared in source configuration rather than inferred from
-    title similarity. Supplemental evidence is retained with its source URL, and a
+    title similarity. Each companion URL must also be seeded in discovery.start_urls
+    so the bounded crawler actually fetches it; direct_page_urls alone only classifies
+    fetched pages. Supplemental evidence is retained with its source URL, and a
     missing companion page is marked unresolved for the audit instead of guessed.
     """
     documents_by_url = {

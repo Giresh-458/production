@@ -11,7 +11,8 @@ from dataclasses import dataclass, asdict
 
 import requests
 from bs4 import BeautifulSoup
-from core.http_client import get_response, canonicalize_url
+from core.http_client import get_response, canonicalize_url, _safe_redirect_target
+from core.robots_policy import check_robots, wait_for_host_slot
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -34,6 +35,7 @@ class CrawlResult:
     fetch_method: str
     from_cache: bool
     error: Optional[str] = None
+    retry_after: Optional[str] = None
 
 class SharedCrawlManager:
     _instance = None
@@ -114,24 +116,44 @@ class SharedCrawlManager:
                 self.domain_locks[domain] = threading.Semaphore(2)
             return self.domain_locks[domain]
 
-    def _throttle_domain(self, domain: str):
-        sleep_time = 0
-        with self.lock:
-            last = self.domain_last_fetch.get(domain, 0.0)
-            now = time.time()
-            if now - last < 1.0: # 1 second delay between requests to same domain
-                sleep_time = 1.0 - (now - last)
-                self.domain_last_fetch[domain] = now + sleep_time
-            else:
-                self.domain_last_fetch[domain] = now
-                
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+    def _throttle_domain(
+        self,
+        url: str,
+        deadline: float | None = None,
+        minimum_delay: float = 0.0,
+    ) -> bool:
+        return wait_for_host_slot(
+            url,
+            crawl_delay=minimum_delay,
+            deadline=deadline,
+        )
 
     def fetch(self, url: str, bypass_cache: bool = False) -> CrawlResult:
         from core.source_registry import current_force_source_refresh
         canonical = canonicalize_url(url)
-        
+        try:
+            # The shared manager is a public-web crawler, not a local-service
+            # client. Reject loopback, private, link-local, and metadata targets
+            # before even requesting robots.txt for them.
+            _safe_redirect_target(canonical, canonical)
+        except ValueError as exc:
+            return CrawlResult(
+                canonical_url=canonical, final_url=canonical, status_code=0,
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="security", from_cache=False, error=str(exc),
+            )
+
+        # Check policy before cache lookup: a cached page must not bypass the
+        # origin's current robots.txt rules.
+        allowed, robots_reason, crawl_delay = check_robots(canonical)
+        if not allowed:
+            return CrawlResult(
+                canonical_url=canonical, final_url=canonical, status_code=0,
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="robots", from_cache=False,
+                error=robots_reason or "robots_disallow",
+            )
+
         # Merge explicitly passed bypass_cache with global refresh flag
         bypass_cache = bypass_cache or current_force_source_refresh.get()
         
@@ -169,7 +191,7 @@ class SharedCrawlManager:
 
         # Execute fetch outside the global lock, but manage domain concurrency
         try:
-            result = self._execute_fetch(canonical)
+            result = self._execute_fetch(canonical, crawl_delay=crawl_delay)
             
             # Save to caches
             if not result.error:
@@ -192,19 +214,30 @@ class SharedCrawlManager:
                 if canonical in self.in_flight:
                     del self.in_flight[canonical]
 
-    def _execute_fetch(self, url: str) -> CrawlResult:
+    def _execute_fetch(self, url: str, crawl_delay: float = 0.0) -> CrawlResult:
         import contextvars
         import time
         from concurrent.futures import TimeoutError as FuturesTimeoutError
         from core.crawl_context import current_crawl_context
         
-        domain = urlparse(url).netloc.lower()
         sem = self._get_domain_semaphore(url)
         
         with sem:
-            self._throttle_domain(domain)
-            
             ctx_obj = current_crawl_context.get(None)
+            deadline = ctx_obj.deadline if ctx_obj else None
+            if not self._throttle_domain(url, deadline=deadline, minimum_delay=crawl_delay):
+                wait_error = (
+                    "deadline_exceeded_before_request"
+                    if ctx_obj and "deadline" in ctx_obj.stop_reasons
+                    else "rate_limit_cooldown_exceeds_safe_wait"
+                )
+                return CrawlResult(
+                    canonical_url=url, final_url=url, status_code=0,
+                    content_type="", title="", html="", clean_text="",
+                    content_hash="", fetch_method="error", from_cache=False,
+                    error=wait_error,
+                )
+
             timeout = None
             if ctx_obj and ctx_obj.deadline:
                 timeout = max(0.1, ctx_obj.deadline - time.time())
@@ -223,8 +256,17 @@ class SharedCrawlManager:
             except FuturesTimeoutError:
                 return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
             
-            # Check if JS fallback is needed
-            if result.error or self._needs_browser(result.html, result.status_code):
+            # Browser rendering is only a rendering fallback. It must never
+            # bypass HTTP access controls or rate limits. A transport failure
+            # may use one bounded browser attempt; HTTP errors never may.
+            transport_failure = (
+                result.status_code == 0
+                and bool(result.error)
+                and result.error.startswith(("ConnectionError:", "Timeout:", "ConnectTimeout:", "ReadTimeout:"))
+            )
+            if transport_failure or (
+                not result.error and self._needs_browser(result.html, result.status_code)
+            ):
                 if HAS_PLAYWRIGHT:
                     LOGGER.info(f"Falling back to browser fetch for {url}")
                     if ctx_obj:
@@ -234,10 +276,19 @@ class SharedCrawlManager:
                         with ctx_obj.lock: ctx_obj.browser_escalations += 1
 
                     if ctx_obj and ctx_obj.deadline:
-                        timeout = max(0.1, ctx_obj.deadline - time.time())
+                        timeout = ctx_obj.deadline - time.time()
+                        if timeout <= 0.1:
+                            return CrawlResult(
+                                canonical_url=url, final_url=url, status_code=0,
+                                content_type="", title="", html="", clean_text="",
+                                content_hash="", fetch_method="error", from_cache=False,
+                                error="deadline_exceeded_before_browser_fallback",
+                            )
 
                     ctx2 = contextvars.copy_context()
-                    browser_future = self.browser_pool.submit(ctx2.run, self._do_browser_fetch, url)
+                    browser_future = self.browser_pool.submit(
+                        ctx2.run, self._do_browser_fetch, url, timeout
+                    )
                     try:
                         result = browser_future.result(timeout=timeout)
                         if result.error:
@@ -254,87 +305,272 @@ class SharedCrawlManager:
                         return CrawlResult(canonical_url=url, final_url=url, status_code=0, content_type="", title="", html="", clean_text="", content_hash="", fetch_method="error", from_cache=False, error="deadline_exceeded")
                 else:
                     LOGGER.warning(f"Browser fallback needed for {url}, but Playwright not installed.")
-            
+                    if not result.error and self._needs_browser(result.html, result.status_code):
+                        return CrawlResult(
+                            canonical_url=result.canonical_url,
+                            final_url=result.final_url,
+                            status_code=result.status_code,
+                            content_type=result.content_type,
+                            title=result.title,
+                            html="",
+                            clean_text="",
+                            content_hash="",
+                            fetch_method="error",
+                            from_cache=False,
+                            error="browser_fallback_unavailable: Playwright is not installed",
+                        )
+
             return result
 
+    @staticmethod
+    def _is_anti_bot_challenge(html: str, title: str, text: str) -> bool:
+        content = f"{html} {title} {text}".lower()
+        return bool(
+            ("cloudflare" in content and ("ray id" in content or "challenge" in content))
+            or ("verify you are" in content and "human" in content)
+            or ("just a moment" in content and "enable javascript" in content)
+            or "pardon our interruption" in content
+            or "vercel security checkpoint" in content
+            or "checking if the site connection is secure" in content
+            or "we're verifying your browser" in content
+        )
+
     def _needs_browser(self, html: str, status_code: int) -> bool:
-        if status_code in (403, 429, 503):
-            return True
+        if not 200 <= status_code < 300:
+            return False
         html_lower = html.lower()
+        if self._is_anti_bot_challenge(html, "", ""):
+            return False
         if "enable javascript" in html_lower or "enable js" in html_lower or "javascript is required" in html_lower:
             return True
         if "<noscript>" in html_lower and len(html) < 2000:
             return True
-        if "cloudflare" in html_lower and "challenge" in html_lower:
-            return True
         return False
 
     def _do_http_fetch(self, url: str) -> CrawlResult:
+        current_url = url
+        redirect_statuses = {301, 302, 303, 307, 308}
         try:
-            resp = get_response(url, timeout=(8.0, 20.0), retries=2)
-            html = resp.text
-            final_url = resp.url
-            status = resp.status_code
-            ctype = resp.headers.get("Content-Type", "")
-            
-            soup = BeautifulSoup(html, "html.parser")
-            title_tag = soup.find("title")
-            title = title_tag.get_text(strip=True) if title_tag else ""
-            clean_text = soup.get_text(separator=" ", strip=True)
-            content_hash = hashlib.sha256(clean_text.encode('utf-8')).hexdigest()
-            
+            for _ in range(11):
+                response = get_response(
+                    current_url,
+                    timeout=(8.0, 20.0),
+                    retries=2,
+                    allow_redirects=False,
+                )
+                try:
+                    status = int(response.status_code)
+                    if status in redirect_statuses:
+                        location = response.headers.get("Location")
+                        if not location:
+                            raise RuntimeError(f"HTTP {status} redirect missing Location header")
+                        next_url = _safe_redirect_target(current_url, location)
+                        allowed, reason, redirect_crawl_delay = check_robots(next_url)
+                        if not allowed:
+                            return CrawlResult(
+                                canonical_url=url, final_url=next_url, status_code=0,
+                                content_type="", title="", html="", clean_text="",
+                                content_hash="", fetch_method="http", from_cache=False,
+                                error=f"robots_disallow_redirect: {reason or 'robots policy denied redirect'}",
+                            )
+                        from core.crawl_context import current_crawl_context
+                        crawl_ctx = current_crawl_context.get(None)
+                        if not self._throttle_domain(
+                            next_url,
+                            deadline=crawl_ctx.deadline if crawl_ctx else None,
+                            minimum_delay=redirect_crawl_delay,
+                        ):
+                            raise TimeoutError("host_wait_unavailable_before_redirect_request")
+                        current_url = next_url
+                        continue
+
+                    if status < 200 or status >= 300:
+                        response.raise_for_status()
+                        raise RuntimeError(f"Unexpected HTTP status {status}")
+                    html = response.text
+                    final_url = str(response.url or current_url)
+                    ctype = response.headers.get("Content-Type", "")
+                    soup = BeautifulSoup(html, "html.parser")
+                    title_tag = soup.find("title")
+                    title = title_tag.get_text(strip=True) if title_tag else ""
+                    clean_text = soup.get_text(separator=" ", strip=True)
+                    content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
+                    if self._is_anti_bot_challenge(html, title, clean_text):
+                        return CrawlResult(
+                            canonical_url=url, final_url=final_url, status_code=status,
+                            content_type=ctype, title=title, html="", clean_text="",
+                            content_hash="", fetch_method="http", from_cache=False,
+                            error="anti_bot_challenge_detected",
+                        )
+                    return CrawlResult(
+                        canonical_url=url, final_url=final_url, status_code=status,
+                        content_type=ctype, title=title, html=html, clean_text=clean_text,
+                        content_hash=content_hash, fetch_method="http", from_cache=False,
+                    )
+                finally:
+                    close_response = getattr(response, "close", None)
+                    if callable(close_response):
+                        close_response()
+
+            raise RuntimeError("too_many_redirects")
+        except requests.HTTPError as exc:
+            response = getattr(exc, "response", None)
+            status = int(response.status_code) if response is not None else 0
+            headers = getattr(response, "headers", {}) or {}
+            retry_after = headers.get("Retry-After")
             return CrawlResult(
-                canonical_url=url, final_url=final_url, status_code=status,
-                content_type=ctype, title=title, html=html, clean_text=clean_text,
-                content_hash=content_hash, fetch_method="http", from_cache=False
+                canonical_url=url, final_url=current_url, status_code=status,
+                content_type=str(headers.get("Content-Type", "")), title="", html="",
+                clean_text="", content_hash="", fetch_method="http", from_cache=False,
+                error=f"http_status_{status}: {exc}",
+                retry_after=str(retry_after) if retry_after else None,
             )
-        except Exception as e:
+        except Exception as exc:
             return CrawlResult(
-                canonical_url=url, final_url=url, status_code=0,
-                content_type="", title="", html="", clean_text="",
-                content_hash="", fetch_method="http", from_cache=False, error=str(e)
+                canonical_url=url, final_url=current_url, status_code=0,
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="http", from_cache=False,
+                error=f"{type(exc).__name__}: {exc}",
             )
 
-    def _do_browser_fetch(self, url: str) -> CrawlResult:
+    def _do_browser_fetch(self, url: str, timeout_seconds: float | None = None) -> CrawlResult:
+        started = time.monotonic()
         try:
+            if timeout_seconds is not None and timeout_seconds <= 0.5:
+                raise TimeoutError("deadline_exceeded_before_browser_start")
             if not hasattr(self.pw_local, "playwright"):
                 import asyncio
-                # Playwright needs an asyncio loop per thread
                 try:
-                    loop = asyncio.get_event_loop()
+                    asyncio.get_event_loop()
                 except RuntimeError:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-                    
                 self.pw_local.playwright = sync_playwright().start()
-                self.pw_local.browser = self.pw_local.playwright.chromium.launch(headless=True)
-            
-            page = self.pw_local.browser.new_page()
+                launch_timeout_ms = (
+                    max(1, int(min(30.0, timeout_seconds) * 1000))
+                    if timeout_seconds is not None else 30_000
+                )
+                self.pw_local.browser = self.pw_local.playwright.chromium.launch(
+                    headless=True,
+                    timeout=launch_timeout_ms,
+                )
+
+            remaining = (
+                timeout_seconds - (time.monotonic() - started)
+                if timeout_seconds is not None else 30.0
+            )
+            if remaining <= 0.5:
+                raise TimeoutError("deadline_exceeded_before_browser_navigation")
+            browser_context = self.pw_local.browser.new_context(
+                user_agent="RIF/3.1 (+research-intelligence-pipeline)"
+            )
+            page = None
             try:
-                response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # wait a moment for JS to render
-                page.wait_for_timeout(2000)
+                page = browser_context.new_page()
+                remaining = (
+                    timeout_seconds - (time.monotonic() - started)
+                    if timeout_seconds is not None else 30.0
+                )
+                if remaining <= 0.5:
+                    raise TimeoutError("deadline_exceeded_before_browser_navigation")
+                navigation_timeout_ms = max(1, int(min(30.0, remaining) * 1000))
+                page.set_default_navigation_timeout(navigation_timeout_ms)
+
+                # Enforce robots policy for every top-level document navigation,
+                # including redirects, before the browser requests that document.
+                def guard_document_navigation(route):
+                    request = route.request
+                    if request.url.lower().startswith(("http://", "https://")):
+                        try:
+                            _safe_redirect_target(url, request.url)
+                        except ValueError:
+                            route.abort("blockedbyclient")
+                            return
+                        allowed, _, browser_crawl_delay = check_robots(request.url)
+                        if not allowed:
+                            route.abort("blockedbyclient")
+                            return
+                        from core.crawl_context import current_crawl_context
+                        from core.robots_policy import wait_for_host_slot
+                        crawl_ctx = current_crawl_context.get(None)
+                        deadline = crawl_ctx.deadline if crawl_ctx else None
+                        if request.resource_type == "document":
+                            throttled = self._throttle_domain(
+                                request.url,
+                                deadline=deadline,
+                                minimum_delay=browser_crawl_delay,
+                            )
+                        elif browser_crawl_delay > 0:
+                            throttled = wait_for_host_slot(
+                                request.url,
+                                crawl_delay=browser_crawl_delay,
+                                default_delay=0.0,
+                                deadline=deadline,
+                            )
+                        else:
+                            throttled = True
+                        if not throttled:
+                            route.abort("blockedbyclient")
+                            return
+                    elif request.resource_type == "document":
+                        route.abort("blockedbyclient")
+                        return
+                    route.continue_()
+
+                page.route("**/*", guard_document_navigation)
+                response = page.goto(
+                    url, wait_until="domcontentloaded", timeout=navigation_timeout_ms
+                )
+                final_url = page.url
+                _safe_redirect_target(url, final_url)
+                allowed, reason, _ = check_robots(final_url)
+                if not allowed:
+                    raise PermissionError(reason or "robots policy denied browser navigation target")
+                status = response.status if response else 200
+                if status < 200 or status >= 300:
+                    retry_after = response.headers.get("retry-after") if response else None
+                    return CrawlResult(
+                        canonical_url=url, final_url=final_url, status_code=status,
+                        content_type="text/html", title="", html="", clean_text="",
+                        content_hash="", fetch_method="browser", from_cache=False,
+                        error=f"http_status_{status}",
+                        retry_after=retry_after,
+                    )
+
+                remaining = (
+                    timeout_seconds - (time.monotonic() - started)
+                    if timeout_seconds is not None else 2.0
+                )
+                if remaining <= 0:
+                    raise TimeoutError("deadline_exceeded_during_browser_render")
+                page.wait_for_timeout(max(0, int(min(2.0, remaining) * 1000)))
                 html = page.content()
                 title = page.title()
-                final_url = page.url
-                status = response.status if response else 200
-                
                 soup = BeautifulSoup(html, "html.parser")
                 clean_text = soup.get_text(separator=" ", strip=True)
-                content_hash = hashlib.sha256(clean_text.encode('utf-8')).hexdigest()
-                
+                content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
+                if self._is_anti_bot_challenge(html, title, clean_text):
+                    return CrawlResult(
+                        canonical_url=url, final_url=final_url, status_code=status,
+                        content_type="text/html", title=title, html="", clean_text="",
+                        content_hash="", fetch_method="browser", from_cache=False,
+                        error="anti_bot_challenge_detected",
+                    )
                 return CrawlResult(
                     canonical_url=url, final_url=final_url, status_code=status,
                     content_type="text/html", title=title, html=html, clean_text=clean_text,
-                    content_hash=content_hash, fetch_method="browser", from_cache=False
+                    content_hash=content_hash, fetch_method="browser", from_cache=False,
                 )
             finally:
-                page.close()
-        except Exception as e:
+                if page is not None:
+                    page.close()
+                browser_context.close()
+        except Exception as exc:
             return CrawlResult(
                 canonical_url=url, final_url=url, status_code=0,
-                content_type="", title="", html="", clean_text="",
-                content_hash="", fetch_method="browser", from_cache=False, error=str(e)
+                content_type="", title="", html="", clean_text="", content_hash="",
+                fetch_method="browser", from_cache=False,
+                error=f"{type(exc).__name__}: {exc}",
             )
 
     def _read_cache(self, url: str) -> Optional[CrawlResult]:

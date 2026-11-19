@@ -16,6 +16,10 @@ def test_recursive_stress_timeout(monkeypatch):
             def raise_for_status(self): pass
         return MockResponse()
 
+    monkeypatch.setattr("core.recursive_collection.check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr("core.recursive_collection.get_robots_sitemaps", lambda *args, **kwargs: [])
+    monkeypatch.setattr("core.robots_policy.check_robots", lambda *args, **kwargs: (True, None, 0.0))
+    monkeypatch.setattr("core.recursive_collection.wait_for_host_slot", lambda *args, **kwargs: True)
     import urllib.request
     def mock_urlopen(url, *args, **kwargs):
         raise Exception("Mocked out")

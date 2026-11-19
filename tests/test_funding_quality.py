@@ -582,3 +582,132 @@ def test_official_esgf_climate_call_stays_unscoped_and_questions_follow_source_t
     assert questions
     assert not re.search(r"\bESG\b|\bcarbon\b|\bMRV\b", questions, flags=re.IGNORECASE)
     assert "climate" in questions.casefold() or "data" in questions.casefold()
+
+
+def test_verified_empty_selector_result_can_be_accepted_without_relaxing_source_gates():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=0,
+        allow_empty_actionable_result=True,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+        source_summary=[{
+            "source_id": "fully-verified-empty-or-rejected",
+            "final_status": "VERIFIED",
+            "discovery_exhausted": True,
+            "pagination_detected": False,
+            "pagination_complete": True,
+            "evidence_verified": True,
+            "currentness_verified": True,
+            "coverage_gaps_count": 0,
+            "relevant_urls_skipped": 0,
+            "pages_failed": 0,
+            "detail_pages_failed": 0,
+            "documents_failed": 0,
+            "records_failed": 0,
+            "truncated": False,
+            "errors": [],
+        }],
+    )
+    assert result["status"] == "ACCEPTED"
+    assert result["accepted"] is True
+    assert result["blockers"] == []
+
+
+def test_empty_selector_opt_in_does_not_allow_incomplete_source_coverage():
+    result = assess_batch_acceptance(
+        run_status="success",
+        raw_records_count=10,
+        selected_actionable_count=0,
+        allow_empty_actionable_result=True,
+        record_accounting={
+            "reconciled": True,
+            "unaccounted_source_to_documents_delta": 0,
+            "unaccounted_documents_to_outputs_delta": 0,
+        },
+        source_summary=[{
+            "source_id": "partial-source",
+            "final_status": "PARTIAL",
+            "discovery_exhausted": False,
+            "evidence_verified": True,
+            "currentness_verified": False,
+            "coverage_gaps_count": 1,
+            "relevant_urls_skipped": 1,
+            "pages_failed": 1,
+            "errors": [{"error": "timeout"}],
+        }],
+    )
+    assert result["status"] == "BLOCKED"
+    assert any(item["code"] == "source_coverage_incomplete" for item in result["blockers"])
+
+
+
+def test_solana_rolling_grant_page_is_used_as_currentness_evidence(monkeypatch):
+    from agents.funding_agent import FundingDocument, FundingSource
+    from agents.funding_collector import _fetch_currentness_verification_context
+    import core.http_client
+
+    url = "https://solana.org/grants-funding"
+    source = FundingSource(
+        name="Solana Grants and Funding",
+        url=url,
+        tier="tier_1",
+        collection={"currentness_verification_urls": [url]},
+    )
+    document = FundingDocument(
+        organization=source.name,
+        title=source.name,
+        source=url,
+        source_type="Web Traversal",
+        content=(
+            "All funding applicants are required to fill out the application here. "
+            "All applications are reviewed on a rolling basis."
+        ),
+        year=2026,
+    )
+    monkeypatch.setattr(
+        core.http_client,
+        "fetch_text",
+        lambda requested_url, **kwargs: (
+            "All funding applicants are required to fill out the application here. "
+            "All applications are reviewed on a rolling basis.",
+            requested_url,
+        ),
+    )
+
+    context = _fetch_currentness_verification_context(source, document, warnings=[])
+    assert "CURRENT APPLICATION EVIDENCE CONFIRMED" in context
+    assert url in context
+
+
+
+def test_currentness_verifier_does_not_leak_source_status_to_other_routes(monkeypatch):
+    from agents.funding_agent import FundingDocument, FundingSource
+    from agents.funding_collector import _fetch_currentness_verification_context
+    import core.http_client
+
+    url = "https://solana.org/grants-funding"
+    source = FundingSource(
+        name="Solana Grants and Funding",
+        url=url,
+        tier="tier_1",
+        collection={"currentness_verification_urls": [url]},
+    )
+    document = FundingDocument(
+        organization=source.name,
+        title="Unrelated Solana article",
+        source="https://solana.org/news/unrelated",
+        source_type="Web Traversal",
+        content="Applications are reviewed on a rolling basis.",
+        year=2026,
+    )
+
+    def unexpected_fetch(*args, **kwargs):
+        raise AssertionError("A source-level currentness URL must not verify another route")
+
+    monkeypatch.setattr(core.http_client, "fetch_text", unexpected_fetch)
+    assert _fetch_currentness_verification_context(source, document, warnings=[]) == ""

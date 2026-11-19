@@ -1558,6 +1558,12 @@ def test_idapt_proposal_template_is_fetched_but_not_emitted_as_opportunity(monke
         "https://example.org/docs/application-form-template.docx",
         "https://example.org/docs/Guidelines-for-evaluators.pdf",
         "https://example.org/events/Info-session-presentation.pdf",
+        "https://www.foodbiocluster.dk/bionetzero-application-platform-guide",
+        "https://www.eiturbanmobility.eu/types-of-funding-for-startups/",
+        "https://www.eiturbanmobility.eu/ris-education-open-call-2026-16-projects-selected-across-europe/",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf",
+        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf",
     ],
 )
 def test_supporting_funding_documents_are_not_classified_as_calls(url):
@@ -1576,6 +1582,9 @@ def test_substantive_call_manual_is_not_misclassified_as_supporting_material():
     # its contents may itself be the only substantive call document.
     assert _is_supporting_funding_document(
         "https://example.org/docs/proposal-template.docx"
+    ) is False
+    assert _is_supporting_funding_document(
+        "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
     ) is False
 
 
@@ -1683,4 +1692,100 @@ def test_substantive_call_manual_pdf_remains_discoverable():
     assert result.documents_fetched == 1
     assert len(result.opportunities) == 1
     assert result.records_discovered == 1
+
+
+
+def test_xrpl_application_manager_explicit_empty_state_is_recognized_only_on_its_exact_route():
+    from core.crawl4ai_web import _reports_no_active_funding
+
+    message = "RippleX Ecosystem Programs. There are presently no open calls for applications."
+    assert _reports_no_active_funding(
+        "https://submit.xrplgrants.org/submit",
+        "RippleX Ecosystem Programs Application Manager",
+        message,
+    ) is True
+    assert _reports_no_active_funding(
+        "https://submit.xrplgrants.org/other",
+        "RippleX Ecosystem Programs",
+        message,
+    ) is False
+    assert _reports_no_active_funding(
+        "https://example.org/submit",
+        "Application Manager",
+        message,
+    ) is False
+
+def test_configured_xrpl_empty_state_is_independently_reverified(monkeypatch):
+    from agents.funding_agent import FundingSource
+    from agents.funding_collector import _verify_configured_empty_state
+
+    url = "https://submit.xrplgrants.org/submit"
+    monkeypatch.setattr(
+        "core.http_client.fetch_text",
+        lambda requested_url, **kwargs: (
+            "RippleX Ecosystem Programs. There are presently no open calls for applications.",
+            requested_url,
+        ),
+    )
+    source = FundingSource(
+        name="XRPL Grants Program",
+        url="https://xrplgrants.org/",
+        tier="tier_2",
+        collection={"discovery": {"empty_state_verification_urls": [url]}},
+    )
+
+    assert _verify_configured_empty_state(source) is True
+
+    source.collection["discovery"]["empty_state_verification_urls"] = [
+        "https://submit.xrplgrants.org/other"
+    ]
+    assert _verify_configured_empty_state(source) is False
+
+
+def test_xrpl_empty_state_sets_no_active_and_is_not_a_funding_record(monkeypatch):
+    from core.crawl4ai_web import crawl_funding_source
+
+    url = "https://submit.xrplgrants.org/submit"
+    def fake_fetch(requested_url):
+        return {
+            "html": "<html><body>There are presently no open calls for applications.</body></html>",
+            "markdown": "RippleX Ecosystem Programs. There are presently no open calls for applications.",
+            "success": True, "error_message": None, "status_code": 200,
+            "url": requested_url, "title": "RippleX Ecosystem Programs Application Manager",
+            "links": [], "pagination_links": [],
+        }
+    monkeypatch.setattr("core.crawl4ai_web._fetch_sync", fake_fetch)
+    result = crawl_funding_source(
+        "XRPL Grants Program", "https://xrplgrants.org/",
+        {"start_urls": [url], "max_depth": 0, "max_pages": 1},
+        ["xrplgrants.org", "submit.xrplgrants.org"],
+    )
+    assert result.no_active_opportunities_confirmed is True
+    assert result.opportunities == []
+    assert result.final_status == "NO_ACTIVE_OPPORTUNITIES"
+
+def test_standalone_applications_open_badge_retains_status_evidence_and_honors_past_deadline():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    document = FundingDocument(
+        organization="Filecoin ProPGF",
+        title="ProPGF General Track",
+        source="https://filpgf.io/propgf/",
+        source_type="Official Filecoin ProPGF programme page",
+        content=(
+            "### Applications Open\n"
+            "26 May 2000\n"
+            "### Final Application Deadline\n"
+            "16 Jun 2000\n"
+            "Apply Now"
+        ),
+        year=2000,
+    )
+
+    analysis = analyze_document(document)
+
+    assert analysis.status == "CLOSED_CALL"
+    assert analysis.opening_date == "2000-05-26"
+    assert analysis.deadline == "2000-06-16"
+    assert analysis.evidence.get("status") == "Applications Open"
 
