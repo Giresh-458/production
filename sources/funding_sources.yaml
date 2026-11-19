@@ -357,43 +357,20 @@ sources:
         fields: [eligibility]
       discovery:
         start_urls:
-        # The directory was checked for current calls, but its index fans out to 112 closed calls.
-        # Pin this batch to the current official call pages below to avoid false coverage gaps.
-        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
+        - https://www.climate-kic.org/get-involved/open-calls/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
         - https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
-        - https://womentecheurope.eu/active-calls/
-        # This 2027 EIT Urban Mobility call is current but was linked only from a
-        # historical news page in the previous crawl. Seed its canonical detail
-        # page so depth reached from the old news page cannot hide the live call.
-        - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
-        # Official companion announcement contains additional eligibility criteria
-        # (minimum three FTE and TRL 7+) omitted from the call-detail page.
-        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        # Explicitly seed the current partner call's supporting application documents.
-        # They were discovered from the official parent pages but hit the depth boundary.
-        - https://www.foodbiocluster.dk/bionetzero-application-platform-guide
-        - https://www.foodbiocluster.dk/Files/Files/BIONetZero/BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf
-        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/1_RIS-Education_Call-Manual_03.09.25_cover-page.pdf
-        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf
-        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf
-        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf
-        - https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf
+        - https://neb.eitcommunity.eu/catalyse-neb-2027/
+        - https://www.climate-kic.org/open-call/women-techeu-2-eic/
         direct_page_urls:
-        - https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/
         - https://www.climate-kic.org/open-call/desirmed-climate-ambassador/
         - https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
-        - https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
-        - https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
-        # One extra level fetches current-call attachments linked from official
-        # partner detail pages; max_pages remains a hard cap against crawl fan-out.
-        # The official index separates live calls from its large closed-call archive.
-        # One detail-page level preserves current-call discovery without recursively
-        # fetching years of obsolete attachments and third-party application portals.
-        max_depth: 3
-        max_pages: 100
+        - https://neb.eitcommunity.eu/catalyse-neb-2027/
+        - https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        max_depth: 0
+        max_pages: 6
         exclude_url_patterns:
           # Generic EU applicant-account registration is not a call or eligibility document.
           - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'
@@ -589,9 +566,9 @@ sources:
           - '^https?://(?:www[.])?cleancities-accelerator[.]com(?:/|[?#]|$)'
           - '^https?://(?:www[.])?blackseaclimaccelerator[.]eu(?:/|[?#]|$)'
           - '^https?://(?:www[.])?cdr-accelerator[.]com(?:/|[?#]|$)'
-        follow_detail_pages: true
-        follow_pdfs: true
-        follow_documents: true
+        follow_detail_pages: false
+        follow_pdfs: false
+        follow_documents: false
         pagination: false
   # Individual SBIR.gov mirror topic URLs are intentionally not configured as
   # independent sources: their own stale-copy disclaimer means they cannot
@@ -728,7 +705,7 @@ sources:
     research_domains: [ESG, ZK-IoV]
     url: https://www.idapthub.org/applications/call_for_proposals
     direct_page: true
-    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, including road transport, health and energy/environment; validate the current submission process.
+    focus: Official NM-ICPS Technology Innovation Hub proposal call for data analytics and predictive technology in cyber-physical systems, plus the separately published Chanakya fellowships; verify each route independently.
     collection:
       mode: web
       engine: crawl4ai
@@ -737,20 +714,23 @@ sources:
       - www.idapthub.org
       status_verification_urls:
       - https://www.idapthub.org/applications/call_for_proposals
+      status_verification_url_map:
+        https://www.idapthub.org/applications/call_for_proposals:
+        - https://www.idapthub.org/applications/call_for_proposals
       discovery:
         start_urls:
         - https://www.idapthub.org/applications/call_for_proposals
-        max_depth: 2
-        # The last live scan discovered 12 URLs, including downloadable DOCX
-        # proposal/call documents. Keep a bounded budget large enough to inspect
-        # that observed frontier instead of stopping after the fifth successful fetch.
-        max_pages: 20
-        follow_detail_pages: true
-        follow_pdfs: true
-        follow_documents: true
-        pagination: true
-        # This navigation target is stale (HTTP 404), not an application call.
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        direct_page_urls:
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        currentness_verification_urls:
+        - https://www.idapthub.org/applications/chanakya_fellowships
+        max_depth: 0
+        max_pages: 2
+        follow_detail_pages: false
+        follow_pdfs: false
+        follow_documents: false
+        pagination: false
         exclude_url_patterns:
-          - '^https?://(?:www\.)?idapthub\.org/awards/?$'
-          # Historical portfolio of already-selected fellows, not an application call.
-          - '^https?://(?:www\.)?idapthub\.org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'
+          - '^https?://(?:www[.])?idapthub[.]org/awards/?$'
+          - '^https?://(?:www[.])?idapthub[.]org/portfolio/chanakya_fellowships/?(?:[?#].*)?$'

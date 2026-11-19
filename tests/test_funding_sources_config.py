@@ -108,16 +108,24 @@ def test_eu_funding_api_has_bounded_budget_for_all_targeted_queries():
     assert limits["max_documents"] >= limits["max_pages"] * 50
 
 
-def test_idapt_config_enables_bounded_docx_document_collection():
+def test_idapt_config_seeds_both_official_programme_routes_with_a_small_budget():
     by_name = {entry["name"]: entry for entry in _entries()}
     entry = by_name["I-DAPT Hub Cyber-Physical Systems Calls"]
-    discovery = entry["collection"]["discovery"]
+    collection = entry["collection"]
+    discovery = collection["discovery"]
+    proposal_url = "https://www.idapthub.org/applications/call_for_proposals"
+    fellowship_url = "https://www.idapthub.org/applications/chanakya_fellowships"
 
-    assert entry["collection"]["status_verification_urls"] == [entry["url"]]
-    assert discovery["follow_documents"] is True
-    # Recent live diagnostics discovered 12 URLs on this source. Keep a finite
-    # budget but allow the discovered frontier to be inspected after fixing DOCX.
-    assert 12 <= discovery["max_pages"] <= 30
+    assert collection["status_verification_urls"] == [proposal_url]
+    assert collection["status_verification_url_map"] == {proposal_url: [proposal_url]}
+    assert discovery["start_urls"] == [proposal_url, fellowship_url]
+    assert discovery["direct_page_urls"] == [fellowship_url]
+    assert discovery["currentness_verification_urls"] == [fellowship_url]
+    assert discovery["max_depth"] == 0
+    assert discovery["max_pages"] == 2
+    assert discovery["follow_documents"] is False
+    assert discovery["follow_pdfs"] is False
+    assert discovery["pagination"] is False
 
 
 def test_idapt_stale_awards_and_historical_fellows_are_excluded():
@@ -245,7 +253,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         if entry.get("name") == "Superteam Development Grants":
             page_cap = 70
         elif entry.get("name") == "Climate KIC Open Calls":
-            page_cap = 600
+            page_cap = 6
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 120
         elif entry.get("name") == "NEAR Ecosystem Funding":
@@ -327,32 +335,20 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     climate = by_name["Climate KIC Open Calls"]
     assert climate["url"] == "https://www.climate-kic.org/get-involved/open-calls/"
     climate_discovery = climate["collection"]["discovery"]
-    assert "https://www.climate-kic.org/open-call/enhance-neb-2027-open-call/" in climate_discovery["start_urls"]
-    assert "https://www.climate-kic.org/open-call/desirmed-climate-ambassador/" in climate_discovery["start_urls"]
-    bioeconomy_call = "https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/"
-    assert bioeconomy_call in climate_discovery["start_urls"]
-    assert bioeconomy_call in climate_discovery["direct_page_urls"]
-    assert "https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/" in climate_discovery["start_urls"]
-    assert "https://womentecheurope.eu/active-calls/" in climate_discovery["start_urls"]
-    assert "https://www.climate-kic.org/get-involved/open-calls/" not in climate_discovery["start_urls"]
-    assert "https://www.eitfood.eu/innovation" not in climate_discovery["start_urls"]
-    current_eit_culture_call = "https://eit-culture-creativity.eu/your-opportunities/calls-funding/financial-support-startups-and-scaleups-shape-acceleration-scale"
-    assert current_eit_culture_call not in climate_discovery["start_urls"]
-    assert current_eit_culture_call not in climate_discovery["direct_page_urls"]
-    assert climate_discovery["max_depth"] == 3 and climate_discovery["max_pages"] == 100
-    import re
-    assert any(re.search(pattern, current_eit_culture_call, re.IGNORECASE) for pattern in climate_discovery["exclude_url_patterns"])
+    current_calls = {
+        "https://www.climate-kic.org/open-call/desirmed-climate-ambassador/",
+        "https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/",
+        "https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/",
+        "https://neb.eitcommunity.eu/catalyse-neb-2027/",
+        "https://www.climate-kic.org/open-call/women-techeu-2-eic/",
+    }
+    assert climate_discovery["start_urls"] == [climate["url"], *sorted(current_calls)]
+    assert set(climate_discovery["direct_page_urls"]) == current_calls
+    assert climate_discovery["max_depth"] == 0 and climate_discovery["max_pages"] == 6
     assert climate_discovery["pagination"] is False
-    assert climate_discovery["follow_documents"] is True
-    assert climate_discovery["follow_pdfs"] is True
-    supporting_call_documents = [
-        "https://neb.eitcommunity.eu/wp-content/uploads/2026/09/Enhance_NEB_with-cover.pdf",
-        "https://womentecheurope.eu/wp-content/uploads/2026/09/WomenTech_Guidelines_FullProposal.pdf",
-    ]
-    assert all(
-        any(re.search(pattern, url, re.IGNORECASE) for pattern in climate_discovery["exclude_url_patterns"])
-        for url in supporting_call_documents
-    )
+    assert climate_discovery["follow_detail_pages"] is False
+    assert climate_discovery["follow_documents"] is False
+    assert climate_discovery["follow_pdfs"] is False
     assert climate.get("direct_page", False) is False
 
     # These mirror-only topic URLs are deliberately not separate configured
@@ -439,11 +435,12 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # Current call details are seeded explicitly; supporting call documents are still audited.
-    assert climate_kic_discovery["max_depth"] == 3
-    assert climate_kic_discovery["max_pages"] == 100
-    assert climate_kic_discovery["follow_pdfs"] is True
-    assert climate_kic_discovery["follow_documents"] is True
+    # The official directory and its five current call pages are fetched without
+    # recursively ingesting the large historical archive.
+    assert climate_kic_discovery["max_depth"] == 0
+    assert climate_kic_discovery["max_pages"] == 6
+    assert climate_kic_discovery["follow_pdfs"] is False
+    assert climate_kic_discovery["follow_documents"] is False
     # The SBIR discovery portal needs its restored bounded depth/page budget.
     sbir_discovery = by_name["Open SBIR Funding Topics"]["collection"]["discovery"]
     assert sbir_discovery["max_depth"] == 5 and sbir_discovery["max_pages"] == 120
@@ -550,17 +547,22 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
     def excluded(url):
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
-    assert discovery["max_depth"] == 3
-    assert discovery["max_pages"] == 100
+    assert discovery["max_depth"] == 0
+    assert discovery["max_pages"] == 6
     assert discovery["pagination"] is False
-    assert discovery["follow_pdfs"] is True
-    assert discovery["follow_documents"] is True
-    # The current 2027 SME Market Expansion call is seeded canonically, rather
-    # than relying on a deep link from a historical investment-news page.
-    current_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
-    assert current_eit_um_call in discovery["start_urls"]
-    assert current_eit_um_call in discovery["direct_page_urls"]
-    assert not excluded(current_eit_um_call)
+    assert discovery["follow_pdfs"] is False
+    assert discovery["follow_documents"] is False
+    current_calls = {
+        "https://www.climate-kic.org/open-call/desirmed-climate-ambassador/",
+        "https://www.climate-kic.org/open-call/bioeconomy-giants-open-call-2/",
+        "https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/",
+        "https://neb.eitcommunity.eu/catalyse-neb-2027/",
+        "https://www.climate-kic.org/open-call/women-techeu-2-eic/",
+    }
+    assert set(discovery["direct_page_urls"]) == current_calls
+    assert current_calls.issubset(set(discovery["start_urls"]))
+    old_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
+    assert old_eit_um_call not in discovery["start_urls"]
     assert excluded("https://eit-culture-creativity.eu/open-call-acceleration-and-post-acceleration-programmes/")
     assert excluded("https://www.eitfood.eu/open-calls/fast-track-to-market")
     assert excluded("https://www.eitfood.eu/open-calls/fast-track-to-market-2024")
@@ -654,36 +656,10 @@ def test_full_live_batch1_audit_validates_funding_context_handoff():
     assert "Run full configured Batch 1 scan and strict production selector" in workflow
 
 
-def test_eit_urban_mobility_companion_page_is_configured_for_eligibility_context():
-    climate = next(
-        entry for entry in _entries()
-        if entry["name"] == "Climate KIC Open Calls"
-    )
+def test_climate_kic_does_not_seed_out_of_directory_eit_urban_mobility_pages():
+    climate = next(entry for entry in _entries() if entry["name"] == "Climate KIC Open Calls")
     discovery = climate["collection"]["discovery"]
-    primary_url = (
-        "https://www.eiturbanmobility.eu/call-for-proposals/"
-        "sme-market-expansion-open-call-2027/"
-    )
-    context_url = "https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/"
-
-    assert context_url in discovery["start_urls"]
-    assert context_url in discovery["direct_page_urls"]
-    expected_supporting_documents = {
-        "https://www.foodbiocluster.dk/bionetzero-application-platform-guide",
-        "https://www.foodbiocluster.dk/Files/Files/BIONetZero/BIONetZero%20SME%20Grant%20Package%20%28Funding%20Handbook%20for%20Applicants%29.pdf",
-        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/1_RIS-Education_Call-Manual_03.09.25_cover-page.pdf",
-        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/4_Financial-Sustainability-Guidelines-1.pdf",
-        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/09/5_Guidelines-for-applicants_RIS-Ed_03.09.25.pdf",
-        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/9_Financial-Support-Agreement-1.pdf",
-        "https://www.eiturbanmobility.eu/wp-content/uploads/2025/06/10_AGA-1.pdf",
-    }
-    assert expected_supporting_documents.issubset(set(discovery["start_urls"]))
-    assert {
-        "primary_url": primary_url,
-        "context_url": context_url,
-        "fields": ["eligibility"],
-    } in climate["collection"]["related_context_pages"]
-
+    assert not any("eiturbanmobility.eu" in url for url in discovery["start_urls"])
 
 def test_eit_urban_mobility_sample_form_and_info_session_are_not_call_records():
     import re
