@@ -1207,7 +1207,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
             # but explicit rolling-application language plus a contextual CTA
             # is concrete status evidence even when the page title is generic.
             rolling_acceptance_evidence = bool(re.search(
-                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+                r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
@@ -1257,7 +1257,7 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
 
     rolling_acceptance = bool(re.search(
-        r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|"
+        r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"

@@ -1373,10 +1373,33 @@ def _collect_github(
 
 def _fetch_status_verification_context(
     source: FundingSource,
+    document: FundingDocument,
     warnings: Optional[List[str]] = None,
 ) -> str:
-    """Fetch optional publisher-owned status pages and retain only explicit closure evidence."""
-    urls = source.collection.get("status_verification_urls", [])
+    """Fetch publisher-owned closure evidence for the exact mapped document route.
+
+    Legacy status_verification_urls remain source-wide for existing sources.
+    Sources with status_verification_url_map opt into exact document-to-status
+    routing so a closure notice for one programme cannot contaminate another.
+    """
+    collection = source.collection or {}
+    route_map = collection.get("status_verification_url_map")
+    document_url = urlparse(str(document.source or ""))
+    route_specific = isinstance(route_map, dict)
+    if route_specific:
+        urls = []
+        for document_route, candidates in route_map.items():
+            parsed_route = urlparse(str(document_route or ""))
+            if (
+                (parsed_route.hostname or "").casefold() == (document_url.hostname or "").casefold()
+                and parsed_route.path.rstrip("/") == document_url.path.rstrip("/")
+            ):
+                if isinstance(candidates, list):
+                    urls.extend(candidates)
+                elif isinstance(candidates, str):
+                    urls.append(candidates)
+    else:
+        urls = collection.get("status_verification_urls", [])
     if not isinstance(urls, list) or not urls:
         return ""
 
@@ -1384,27 +1407,36 @@ def _fetch_status_verification_context(
 
     evidence: list[str] = []
     closure_pattern = re.compile(
-        r"[^.!?\n]{0,180}\b(?:paused|suspended|closed for applications|no longer accepting|"
+        r"[^.!?\\n]{0,180}\\b(?:paused|suspended|closed for applications|no longer accepting|"
         r"not accepting (?:any fresh |new )?applications|not accepting new submissions|"
-        r"submissions? will not be processed)\b[^.!?\n]{0,180}[.!?]?",
+        r"submissions? will not be processed)\\b[^.!?\\n]{0,180}[.!?]?",
         flags=re.IGNORECASE,
     )
     for url in urls:
         if not isinstance(url, str) or not url.startswith(("https://", "http://")):
             continue
+        expected = urlparse(url)
         try:
-            text, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
+            body, final_url = fetch_text(url, timeout=(8.0, 20.0), retries=1)
         except Exception as exc:
             if warnings is not None:
                 warnings.append(f"{source.name}: status verification could not be fetched from {url}: {exc}")
             LOGGER.warning("Status verification fetch failed for %s (%s): %s", source.name, url, exc)
             continue
-        if not text:
+        if route_specific:
+            final = urlparse(str(final_url or url))
+            if (
+                (final.hostname or "").casefold() != (expected.hostname or "").casefold()
+                or final.path.rstrip("/") != expected.path.rstrip("/")
+            ):
+                continue
+        if not body:
             continue
-        matches = [cleaned_text(match.group(0)) for match in closure_pattern.finditer(text)]
+        matches = [cleaned_text(match.group(0)) for match in closure_pattern.finditer(str(body))]
         for match in matches[:5]:
             evidence.append(f"Official status page ({final_url or url}): {match}")
     return "\n".join(dict.fromkeys(evidence))
+
 
 
 def _fetch_currentness_verification_context(
@@ -1443,6 +1475,8 @@ def _fetch_currentness_verification_context(
         r"apply to horizon",
         r"applying is as simple as creating a github issue",
         r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
+        r"submit your proposal anytime",
+        r"applications? are evaluated regular intervals?",
         r"applications? (?:are )?reviewed on a rolling basis",
         r"proposals are accepted on a rolling basis",
         r"open grants applications? for funding up to",
@@ -1745,7 +1779,7 @@ def _collect_web_source(
     result.opportunities = []
     result.records_discovered = len(raw_opps)
 
-    verification_context = _fetch_status_verification_context(source, warnings)
+    # Resolve status evidence per document below to prevent cross-route leakage.
     # Cache linked agency solicitations within this source run so a shared
     # solicitation (e.g. NSF 26-510) is fetched once, not once per topic.
     official_verification_cache: dict[str, str] = {}
@@ -1759,6 +1793,7 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
+        verification_context = _fetch_status_verification_context(source, doc, warnings)
         currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
         linked_official_context = _fetch_linked_official_sbir_context(
             doc, warnings, official_verification_cache
