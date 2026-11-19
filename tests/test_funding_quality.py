@@ -643,3 +643,42 @@ def test_empty_selector_opt_in_does_not_allow_incomplete_source_coverage():
     )
     assert result["status"] == "BLOCKED"
     assert any(item["code"] == "source_coverage_incomplete" for item in result["blockers"])
+
+
+
+def test_solana_rolling_grant_page_is_used_as_currentness_evidence(monkeypatch):
+    from agents.funding_agent import FundingDocument, FundingSource
+    from agents.funding_collector import _fetch_currentness_verification_context
+    import core.http_client
+
+    url = "https://solana.org/grants-funding"
+    source = FundingSource(
+        name="Solana Grants and Funding",
+        url=url,
+        tier="tier_1",
+        collection={"currentness_verification_urls": [url]},
+    )
+    document = FundingDocument(
+        organization=source.name,
+        title=source.name,
+        source=url,
+        source_type="Web Traversal",
+        content=(
+            "All funding applicants are required to fill out the application here. "
+            "All applications are reviewed on a rolling basis."
+        ),
+        year=2026,
+    )
+    monkeypatch.setattr(
+        core.http_client,
+        "fetch_text",
+        lambda requested_url, **kwargs: (
+            "All funding applicants are required to fill out the application here. "
+            "All applications are reviewed on a rolling basis.",
+            requested_url,
+        ),
+    )
+
+    context = _fetch_currentness_verification_context(source, document, warnings=[])
+    assert "CURRENT APPLICATION EVIDENCE CONFIRMED" in context
+    assert url in context
