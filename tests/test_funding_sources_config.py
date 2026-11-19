@@ -194,6 +194,15 @@ def test_near_page_budget_respects_the_global_crawl_limit():
     assert excluded(
         "https://docs.metapool.app/faq-frequently-asked-questions/faq-meta-pool/"
     )
+    # Chain staking documentation is not a NEAR funding opportunity and must
+    # not consume the fixed 40-page discovery budget.
+    assert excluded(
+        "https://docs.metapool.app/meta-pool-by-chains/internet-computer-protocol/"
+    )
+    # Preserve Meta Pool's actual grants route while filtering unrelated docs.
+    assert not excluded(
+        "https://docs.metapool.app/meta-pool-ecosystem/vote-governance/grants/"
+    )
 
 
 def test_ripple_ubri_follows_discovered_pdf_evidence():
@@ -256,9 +265,12 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
     assert "NSF CPS Foundations and Connected Communities" not in by_name
 
     solana = by_name["Solana Grants and Funding"]
-    # This URL is a generic grant directory and must be traversed, not emitted as a grant.
-    assert solana.get("direct_page", False) is False
+    # The official root documents the rolling Foundation grant programme and its
+    # application route. Keep it as programme-level source evidence; individual
+    # RFP records still require their own page-level evidence.
+    assert solana.get("direct_page", False) is True
     assert solana["url"] == "https://solana.org/grants-funding"
+    assert solana["collection"]["currentness_verification_urls"] == [solana["url"]]
     # Keep the official funding directory as the first seed, and explicitly
     # seed the public RFP table because discovery did not reliably queue it.
     solana_start_urls = solana["collection"]["discovery"]["start_urls"]
