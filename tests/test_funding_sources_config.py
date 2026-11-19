@@ -563,8 +563,11 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
         "https://neb.eitcommunity.eu/catalyse-neb-2027/",
         "https://www.climate-kic.org/open-call/women-techeu-2-eic/",
     }
-    assert set(discovery["direct_page_urls"]) == current_calls
-    assert current_calls.issubset(set(discovery["start_urls"]))
+    supporting_context_pages = {
+        "https://womentecheurope.eu/frequently-asked-questions-wteu2/",
+    }
+    assert set(discovery["direct_page_urls"]) == current_calls | supporting_context_pages
+    assert (current_calls | supporting_context_pages).issubset(set(discovery["start_urls"]))
     old_eit_um_call = "https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/"
     assert old_eit_um_call not in discovery["start_urls"]
     assert excluded("https://eit-culture-creativity.eu/open-call-acceleration-and-post-acceleration-programmes/")
