@@ -851,5 +851,6 @@ def test_climate_kic_womenteu_uses_official_eligibility_companion_page():
 
     assert relation["context_url"] == "https://womentecheurope.eu/frequently-asked-questions-wteu2/"
     assert "eligibility" in relation["fields"]
+    assert relation["context_url"] in discovery["start_urls"]
     assert relation["context_url"] in discovery["direct_page_urls"]
     assert discovery["max_pages"] == 7
