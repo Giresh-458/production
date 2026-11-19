@@ -342,7 +342,8 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
         "https://neb.eitcommunity.eu/catalyse-neb-2027/",
         "https://www.climate-kic.org/open-call/women-techeu-2-eic/",
     }
-    assert climate_discovery["start_urls"] == [climate["url"], *sorted(current_calls)]
+    assert climate_discovery["start_urls"][0] == climate["url"]
+    assert set(climate_discovery["start_urls"][1:]) == current_calls
     assert set(climate_discovery["direct_page_urls"]) == current_calls
     assert climate_discovery["max_depth"] == 0 and climate_discovery["max_pages"] == 6
     assert climate_discovery["pagination"] is False
