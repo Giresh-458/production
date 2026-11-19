@@ -355,6 +355,9 @@ sources:
       - primary_url: https://www.eiturbanmobility.eu/call-for-proposals/sme-market-expansion-open-call-2027/
         context_url: https://www.eiturbanmobility.eu/sme-market-expansion-open-call-2027/
         fields: [eligibility]
+      - primary_url: https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        context_url: https://womentecheurope.eu/frequently-asked-questions-wteu2/
+        fields: [eligibility]
       discovery:
         start_urls:
         - https://www.climate-kic.org/get-involved/open-calls/
@@ -369,8 +372,9 @@ sources:
         - https://www.climate-kic.org/open-call/eit-higher-education-initiative-eit-hei-2026/
         - https://neb.eitcommunity.eu/catalyse-neb-2027/
         - https://www.climate-kic.org/open-call/women-techeu-2-eic/
+        - https://womentecheurope.eu/frequently-asked-questions-wteu2/
         max_depth: 0
-        max_pages: 6
+        max_pages: 7
         exclude_url_patterns:
           # Generic EU applicant-account registration is not a call or eligibility document.
           - '^https?://ec[.]europa[.]eu/info/funding-tenders/opportunities/portal/sme/public/organisation-name(?:[/?#]|$)'

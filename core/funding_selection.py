@@ -277,7 +277,7 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
     applicant_scope = re.search(
         r"\b(?:eligible applicants?|applicants?|applicant types?|who can apply|"
         r"legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
-        r"research organisations?|research organizations?|research facilities?|research institutions?|"
+        r"research organisations?|research organizations?|research facilities?|research institutions?|small business concerns?|SBCs?|dApps?|founders?|"
         r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
         r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
         r"organisations|organizations|consortiums?|consortia)\b",
@@ -290,13 +290,13 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
         r"addressed to|targeted at|not eligible|cannot apply|established|registered|incorporated|"
         r"resident|reside|domiciled|based in|located in|citizens? of|"
         r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
-        r"start[- ]up only|open to|invites? (?:eligible )?(?:consortiums?|consortia))\b",
+        r"start[- ]up only|open to|invites? (?:eligible )?(?:consortiums?|consortia)|founded|co-founded|owned|led|dApps? that supports?|founders? (?:developing|building) on)\b",
         text,
         flags=re.IGNORECASE,
     )
     concrete_subject_or_condition = re.search(
         r"\b(?:legal entit(?:y|ies)|natural persons?|SMEs?|small and medium[- ]sized enterprises|"
-        r"research organisations?|research organizations?|research facilities?|research institutions?|"
+        r"research organisations?|research organizations?|research facilities?|research institutions?|small business concerns?|SBCs?|dApps?|founders?|"
         r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
         r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
         r"organisations|organizations|consortiums?|consortia|established|registered|incorporated|"

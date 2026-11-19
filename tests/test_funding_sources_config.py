@@ -838,3 +838,18 @@ def test_climate_kic_excludes_unrelated_road_safety_awards_article_from_call_cov
         re.search(pattern, generic_applicant_account, re.IGNORECASE)
         for pattern in patterns
     )
+
+
+
+def test_climate_kic_womenteu_uses_official_eligibility_companion_page():
+    entry = next(e for e in _entries() if e["name"] == "Climate KIC Open Calls")
+    discovery = entry["collection"]["discovery"]
+    relation = next(
+        item for item in entry["collection"]["related_context_pages"]
+        if item["primary_url"] == "https://www.climate-kic.org/open-call/women-techeu-2-eic/"
+    )
+
+    assert relation["context_url"] == "https://womentecheurope.eu/frequently-asked-questions-wteu2/"
+    assert "eligibility" in relation["fields"]
+    assert relation["context_url"] in discovery["direct_page_urls"]
+    assert discovery["max_pages"] == 7

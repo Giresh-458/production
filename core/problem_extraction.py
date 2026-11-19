@@ -191,6 +191,9 @@ def _is_administrative_or_financial_rule(text: str) -> bool:
         r"\b(?:limited|limit|cap|maximum|must not exceed)\b.{0,140}\b"
         r"(?:subcontracting|eligible costs?|funding rate|grant amount|budget|cost categories)\b",
         r"^limited parts\b.{0,180}\bsubcontracting\b",
+        r"^applicants? should not apply if\b",
+        r"\bapplicants? should not apply if\b",
+        r"\b(?:venture|startup|company)\b.{0,100}\bunable to sign\b.{0,40}\bSAFE\b",
         # Eligibility and geographic restrictions often contain words such as
         # "limited" or "risk", but they describe who may apply, not a research
         # or technical problem.

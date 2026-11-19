@@ -63,7 +63,7 @@ AREA_FILTER_KEYWORDS = {
     "RWA": ["rwa", "real-world asset", "real world asset", "tokenized treasury", "tokenized fund", "asset tokenization"],
     "ESG": [
         "esg", "carbon", "mrv", "climate", "sustainability", "carbon credit",
-        "bioeconomy", "bio-based products", "bio based products", "circular bio-based",
+        "bioeconomy", "new european bauhaus", "bio-based products", "bio based products", "circular bio-based",
         "circular bio based", "circularity", "resource efficiency", "biomass valorisation",
         "biomass valorization", "underutilised biomass", "underutilized biomass",
         "bio-based value chains", "bio based value chains",
@@ -116,7 +116,7 @@ GENERIC_PAGE_TITLES = {
     "program contacts", "active funding opportunity", "archived funding opportunity",
     "how we make funding decisions", "eligibility and funding information",
     "open call", "call documents", "programme theme", "program theme",
-    "grant details", "funding allocation", "funding and prizes", "details", "call information",
+    "grant details", "funding allocation", "funding and prizes", "details", "call information", "types of funding",
     "scope", "eligibility", "who can apply", "timeline", "introduction", "background",
 }
 
@@ -2222,6 +2222,9 @@ def _extract_eligibility_from_prose(text: str) -> str | None:
         r"\b(?:students?|applicants?|researchers?|startups?|companies|organizations?|organisations?)\b.{0,180}\b(?:can apply|may apply|are eligible|must be|should be|registered (?:in|with)|who have completed|holding a|completed a)\b.{0,180}",
         r"\b(?:invites?|invited)\s+(?:eligible\s+)?consortia\s+(?:of|comprising|including|consisting of)\s+.{8,260}\bto apply\b",
         r"\bconsortia\s+(?:of|comprising|including|consisting of)\s+.{8,260}\b(?:are invited|may apply|can apply|to apply)\b",
+        r"\b(?:startups?|companies|SMEs?)\b.{0,220}\b(?:founded|co-founded|owned|led|registered|incorporated)\b.{0,220}",
+        r"\bany\s+dApps?\s+that\s+(?:supports?|is building on)\s+.{8,220}",
+        r"\bfounders?\s+(?:developing|building)\s+on\s+.{8,180}",
         # Technology maturity is an eligibility criterion when the source explicitly
         # ties the solution's TRL to a requirement.
         r"\b(?:solution|technology|product)\b.{0,180}\b(?:TRL\s*[1-9]|technology readiness level\s*[1-9])\b.{0,120}",
@@ -2693,7 +2696,10 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
             r"(?:due date|proposal deadline|closing date|applications? due|submit(?:ted)? by|apply by|deadline date)[^.!?\n]{0,180}",
         ]),
         "funding_amount": _evidence_excerpt(document.content, [r"(?:funding|financial support|grant|award)[^.\n]{0,240}(?:₹|\$|€|£|USD|EUR|GBP|INR)\s*\d"]),
-        "eligibility": _evidence_excerpt(document.content, [r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\n]{0,10}[:\-]?[^.\n]{0,700}" ]),
+        "eligibility": _evidence_excerpt(document.content, [
+            r"(?:applications? from )?eligible (?:U\.?S\.?|United States) (?:small business concerns?|SBCs?)[^.\n]{0,180}",
+            r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\\n]{0,10}[:\\-]?[^.\\n]{0,700}",
+        ]),
         "geography": _evidence_excerpt(document.content, [r"(?:geographic eligibility|eligible countries|eligible regions|geography)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),
         "trl": _evidence_excerpt(document.content, [r"(?:technology readiness level|TRL|maturity level)[^.:\n]{0,10}[:\-]?[^.\n]{0,300}" ]),
         "required_partners": _evidence_excerpt(document.content, [r"(?:required partners?|partnerships required|partner requirements?)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),

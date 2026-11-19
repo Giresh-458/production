@@ -669,3 +669,82 @@ def test_bioeconomy_circularity_is_recognized_as_esg_domain_evidence():
 
     assert esg["raw_score"] >= 4.0
     assert {"bioeconomy", "bio-based products", "circularity"} & set(esg["matched_terms"])
+
+
+
+def test_sbir_united_states_sbc_eligibility_is_extracted_and_verified():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    content = (
+        "Solicitation Status: Open. This NOFO accepts SBIR Phase I and Phase II grant "
+        "applications from eligible United States SBCs. Applications from eligible "
+        "United States SBCs should propose a feasibility and R&D study."
+    )
+    document = _document(
+        content,
+        title="NIH Small Business Innovation Research Grant",
+        source="https://www.sbir.gov/topics/12563",
+    )
+    opportunity = analyze_document(document)
+
+    assert opportunity.eligibility
+    assert "eligible united states sbcs" in opportunity.eligibility.lower()
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+    assert "eligible united states sbcs" in opportunity.evidence["eligibility"].lower()
+
+
+def test_dapp_and_founder_chain_requirements_are_substantive_eligibility():
+    from agents.funding_agent import _extract_eligibility_from_prose
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    dapp_eligibility = _extract_eligibility_from_prose(
+        "Who can apply? Any dApp that supports and is building on Solana, Ethereum, "
+        "Polygon, Arbitrum, Optimism, BSC, Sei, Sui, Stellar, Ton, and Base."
+    )
+    founder_eligibility = _extract_eligibility_from_prose(
+        "The University Digital Asset Xcelerator supports founders developing on the XRP Ledger."
+    )
+
+    assert dapp_eligibility and has_substantive_eligibility_evidence(dapp_eligibility)
+    assert founder_eligibility and has_substantive_eligibility_evidence(founder_eligibility)
+
+
+def test_womentecheu_founder_and_startup_criteria_are_substantive():
+    from agents.funding_agent import _extract_eligibility_from_prose
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    text = (
+        "Women TechEU targets early-stage deep tech startups founded, or co-founded, "
+        "by women holding a top management position (CEO, CTO or equivalent). "
+        "The company must be registered and established in an eligible country."
+    )
+    eligibility = _extract_eligibility_from_prose(text)
+
+    assert eligibility
+    assert has_substantive_eligibility_evidence(eligibility)
+
+
+def test_safe_signing_applicant_condition_is_not_a_research_problem():
+    from core.problem_extraction import _is_administrative_or_financial_rule
+
+    assert _is_administrative_or_financial_rule(
+        "Applicants should not apply if their venture is unable to sign the SAFE."
+    )
+
+
+def test_types_of_funding_is_a_generic_directory_title():
+    from agents.funding_agent import _is_generic_funding_title
+
+    assert _is_generic_funding_title("Types of Funding")
+
+
+def test_new_european_bauhaus_sustainability_is_esg_domain_evidence():
+    from core.schemas import rank_research_areas
+
+    ranking = rank_research_areas(
+        "Catalyse NEB is the New European Bauhaus accelerator integrating "
+        "sustainability, aesthetics and inclusion into start-up products and services."
+    )
+    esg = next(item for item in ranking if item["domain"] == "ESG")
+    assert esg["raw_score"] >= 4.0
+    assert "new european bauhaus" in esg["matched_terms"]
