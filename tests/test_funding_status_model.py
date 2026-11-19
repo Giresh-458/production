@@ -10,7 +10,7 @@ def test_determine_status_generic_page():
     # generic page + open-looking language + no application/deadline -> UNKNOWN
     title = "Documents | Page 10"
     content = "Applications are open for this request for proposals."
-    status = determine_status(explicit_status=None, opening=None, deadline=None, content=proposal_content, title=title)
+    status = determine_status(explicit_status=None, opening=None, deadline=None, content=content, title=title)
     assert status == "UNKNOWN"
 
     title2 = "Funding Opportunities"
@@ -174,7 +174,7 @@ def test_idapt_closure_notice_is_scoped_to_the_route_it_names():
         title="I-DAPT-HUB FOUNDATION",
         source="https://www.idapthub.org/applications/call_for_proposals",
         source_type="html",
-        content=content,
+        content=proposal_content,
         year=2026,
     )
     fellowship = FundingDocument(

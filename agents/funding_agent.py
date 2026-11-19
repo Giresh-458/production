@@ -2044,6 +2044,13 @@ def _status_evidence_for_classification(text: str, status: str) -> str | None:
             r"applications? (?:are )?accepted on a rolling basis",
             r"(?:grant )?fellows are accepted on a rolling basis",
             r"proposals are accepted on a rolling basis",
+            r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
+            r"applying is as simple as creating a github issue",
+            r"apply for protocol rewards",
+            r"apply for next cohort",
+            r"apply for the program",
+            r"apply to horizon",
+            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
             r"\bopen call\b",
             r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
         ]
