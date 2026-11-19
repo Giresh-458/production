@@ -887,15 +887,54 @@ async def _fetch_url(url: str) -> dict:
     }
     run_config = CrawlerRunConfig(**run_options)
     async with AsyncWebCrawler(config=browser_config) as crawler:
+        initial_navigation_error = None
         try:
-            result = await asyncio.wait_for(crawler.arun(url=url, config=run_config), timeout=timeout + 5.0)
-        except asyncio.TimeoutError:
-            class DummyResult:
-                success = False
-                error_message = "Timeout"
-                html = ""
-                markdown_v2 = type("M", (), {"raw_markdown": ""})
-            result = DummyResult()
+            result = await asyncio.wait_for(
+                crawler.arun(url=url, config=run_config),
+                timeout=timeout + 5.0,
+            )
+        except asyncio.TimeoutError as exc:
+            initial_navigation_error = exc
+            result = None
+        except Exception as exc:
+            # Crawl4AI wraps Playwright's Page.goto timeout in RuntimeError
+            # ("Failed on navigating ACS-GOTO"), so it does not reach the
+            # asyncio.TimeoutError branch above. Retry only that specific
+            # navigation-timeout failure; do not retry HTTP, robots, or
+            # extraction errors.
+            error_text = str(exc).casefold()
+            if "failed on navigating acs-goto" not in error_text or "timeout" not in error_text:
+                raise
+            initial_navigation_error = exc
+            result = None
+
+        if result is None:
+            # A bounded second attempt waits only for the response commit rather
+            # than DOMContentLoaded. This is useful for slow publishers and
+            # client-rendered apps whose navigation event can hang despite the
+            # response being available. It does not increase the source's page
+            # budget and never bypasses robots policy.
+            retry_timeout = min(timeout, 20.0)
+            retry_options = dict(run_options)
+            retry_options.update({
+                "wait_until": "commit",
+                "page_timeout": max(5000, int(retry_timeout * 1000)),
+                "delay_before_return_html": max(
+                    1.5, float(run_options.get("delay_before_return_html", 0.1) or 0.1)
+                ),
+            })
+            retry_config = CrawlerRunConfig(**retry_options)
+            try:
+                result = await asyncio.wait_for(
+                    crawler.arun(url=url, config=retry_config),
+                    timeout=retry_timeout + 5.0,
+                )
+            except Exception as retry_error:
+                raise RuntimeError(
+                    "Browser navigation failed after bounded commit retry; "
+                    f"initial error: {initial_navigation_error}; "
+                    f"retry error: {retry_error}"
+                ) from retry_error
 
         page_url = _get_final_page_url(result, url)
         markdown_text = _raw_markdown_text(result)
