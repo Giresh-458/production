@@ -3212,7 +3212,9 @@ def _merge_related_eligibility_context(
     """Merge explicitly configured official companion-page eligibility into a call.
 
     Relationships are declared in source configuration rather than inferred from
-    title similarity. Supplemental evidence is retained with its source URL, and a
+    title similarity. Each companion URL must also be seeded in discovery.start_urls
+    so the bounded crawler actually fetches it; direct_page_urls alone only classifies
+    fetched pages. Supplemental evidence is retained with its source URL, and a
     missing companion page is marked unresolved for the audit instead of guessed.
     """
     documents_by_url = {
