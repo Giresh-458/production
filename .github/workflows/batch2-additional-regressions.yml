@@ -1,0 +1,39 @@
+name: Batch-2 Additional Regression Coverage
+
+on:
+  push:
+    branches:
+      - integration/main-only-release-20261119
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tests/test_batch2_agent_extraction.py"
+      - "tests/test_batch2_orchestration_integrity.py"
+      - "tests/test_batch2_scraping_policy.py"
+      - "tests/test_normalization_atomic_publish.py"
+      - ".github/workflows/batch2-additional-regressions.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  batch2-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+      - name: Run additional Batch-2 regressions
+        run: |
+          python -m pytest \
+            tests/test_batch2_agent_extraction.py \
+            tests/test_batch2_orchestration_integrity.py \
+            tests/test_batch2_scraping_policy.py \
+            tests/test_normalization_atomic_publish.py -q
