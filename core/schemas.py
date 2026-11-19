@@ -229,6 +229,9 @@ DOMAIN_REQUIRED_ANCHOR_GROUPS = {
             "transport decarbonization", "transport decarbonisation",
             "electrification of transport", "alternative fuels", "urban mobility",
             "sustainable mobility", "mobility data management",
+            "bioeconomy", "new european bauhaus", "bio-based products",
+            "circular bio-based", "circularity", "resource efficiency",
+            "biomass valorisation", "underutilised biomass", "bio-based value chains",
         }),
     ),
     "ZK-IoV": (

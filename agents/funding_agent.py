@@ -2027,59 +2027,53 @@ def _status_evidence_excerpt(text: str, patterns: list[str], window: int = 240) 
 
 
 def _status_evidence_for_classification(text: str, status: str) -> str | None:
-    """Return source evidence that supports the classifier's resulting status."""
-    normalized = str(status or "").upper()
-    if normalized == "OPEN_CALL":
-        patterns = [
-            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active)",
-            r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals)",
-            r"applications? (?:are|now) open",
-            r"applications? open",
-            r"open for applications",
-            r"open for proposals",
-            r"open for submissions",
-            r"applications? (?:are )?reviewed on a rolling basis",
-            r"applications? can be submitted at any time",
-            r"submit your proposal anytime",
-            r"applications? (?:are )?accepted on a rolling basis",
-            r"(?:grant )?fellows are accepted on a rolling basis",
-            r"proposals are accepted on a rolling basis",
-            r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
-            r"applying is as simple as creating a github issue",
-            r"apply for protocol rewards",
-            r"apply for next cohort",
-            r"apply for the program",
-            r"apply to horizon",
-            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
-            r"\bopen call\b",
-            r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
-        ]
-    elif normalized == "CLOSED_CALL":
-        patterns = [
-            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:closed|paused)",
-            r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
-            r"no longer accepting (?:applications|submissions)",
-            r"applications? (?:are )?(?:closed|paused|suspended)",
-            r"deadline has passed",
-            r"application period has ended",
-            r"closed for applications",
-            r"new submissions will not be processed",
-        ]
-    elif normalized == "UPCOMING_CALL":
-        patterns = [
-            r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*upcoming",
-            r"opens?[^.\n]{0,160}20\d{2}",
-            r"applications? open[^.\n]{0,160}20\d{2}",
-            r"application window[^.\n]{0,160}20\d{2}",
-        ]
-    elif normalized == "FUNDED_PROJECT":
-        patterns = [r"(?:was|has been|have been) awarded[^.\n]{0,160}"]
-    else:
-        patterns = [
-            r"request for proposals",
-            r"call for proposals",
-            r"deadline[^.\n]{0,180}20\d{2}",
-        ]
+    """Return the strongest explicit status signal observed on the source page.
+
+    Keep the publisher's evidence even when the computed status differs because
+    a deadline has passed (for example, an old page may still display "Applications
+    Open"). Explicit closure notices are preferred over generic open badges so a
+    route-specific closure is not hidden by rolling-application copy.
+    """
+    patterns = [
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:closed|paused)",
+        r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
+        r"no longer accepting (?:applications|submissions)",
+        r"applications? (?:are )?(?:closed|paused|suspended)",
+        r"deadline has passed",
+        r"application period has ended",
+        r"closed for applications",
+        r"new submissions will not be processed",
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*(?:open|active)",
+        r"(?:currently\s+)?accepting\s+(?:new\s+)?(?:applications|proposals|submissions)",
+        r"applications? (?:are|now) open",
+        r"applications? open",
+        r"open for applications",
+        r"open for proposals",
+        r"open for submissions",
+        r"applications? (?:are )?reviewed on a rolling basis",
+        r"applications? can be submitted at any time",
+        r"submit your proposal anytime",
+        r"applications? (?:are )?accepted on a rolling basis",
+        r"(?:grant )?fellows are accepted on a rolling basis",
+        r"proposals are accepted on a rolling basis",
+        r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
+        r"applying is as simple as creating a github issue",
+        r"apply for protocol rewards",
+        r"apply for next cohort",
+        r"apply for the program",
+        r"apply to horizon",
+        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"\bopen call\b",
+        r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
+        r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*upcoming",
+        r"opens?[^.\n]{0,160}20\d{2}",
+        r"applications? open[^.\n]{0,160}20\d{2}",
+        r"application window[^.\n]{0,160}20\d{2}",
+        r"(?:was|has been|have been) awarded[^.\n]{0,160}",
+        r"request for proposals",
+        r"call for proposals",
+        r"deadline[^.\n]{0,180}20\d{2}",
+    ]
     return _status_evidence_excerpt(text, patterns)
 
 
