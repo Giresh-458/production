@@ -39,12 +39,14 @@ sources:
   - name: Solana Grants and Funding
     research_domains: [RWA, DePIN, MEV, Stablecoins]
     url: https://solana.org/grants-funding
-    direct_page: false
+    direct_page: true
     focus: payments, stablecoins, DePIN, high-performance infrastructure, consumer
       apps
     collection:
       mode: web
       engine: crawl4ai
+      currentness_verification_urls:
+      - https://solana.org/grants-funding
       allowed_domains:
       - solana.org
       - solana.com
@@ -151,6 +153,9 @@ sources:
         pagination: true
         # Avoid duplicate rendered Markdown mirrors and irrelevant Meta Pool governance pages.
         exclude_url_patterns:
+          # This source uses Meta Pool's grants page only; unrelated chain-staking
+          # documentation must not consume the fixed NEAR discovery budget.
+          - '^https?://docs[.]metapool[.]app/(?!meta-pool-ecosystem/vote-governance/grants/?(?:[?#]|$))'
           # NEAR's social-media amplification form is not a funding application.
           - '^https?://near-foundation[.]notion[.]site/1d0da22d7b6480e6a423cd2681fd8a00(?:[/?#].*)?$'
           - '^https?://(?:www\.)?x\.com/'
