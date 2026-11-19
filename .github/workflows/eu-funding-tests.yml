@@ -66,6 +66,14 @@ on:
       - "tests/test_shared_collection.py"
       - "tests/test_funding_quality.py"
       - "core/funding_quality.py"
+      - "tests/test_batch2_agent_extraction.py"
+      - "tests/test_batch2_orchestration_integrity.py"
+      - "tests/test_batch2_scraping_policy.py"
+      - "tests/test_normalization_atomic_publish.py"
+      - "tests/test_live_collection_smoke_config.py"
+      - "scripts/live_collection_smoke.py"
+      - ".github/workflows/live-collection-smoke.yml"
+      - ".github/workflows/batch2-additional-regressions.yml"
       - ".github/workflows/eu-funding-tests.yml"
 
 concurrency:
