@@ -1407,9 +1407,9 @@ def _fetch_status_verification_context(
 
     evidence: list[str] = []
     closure_pattern = re.compile(
-        r"[^.!?\\n]{0,180}\\b(?:paused|suspended|closed for applications|no longer accepting|"
+        r"[^.!?\n]{0,180}\b(?:paused|suspended|closed for applications|no longer accepting|"
         r"not accepting (?:any fresh |new )?applications|not accepting new submissions|"
-        r"submissions? will not be processed)\\b[^.!?\\n]{0,180}[.!?]?",
+        r"submissions? will not be processed)\b[^.!?\n]{0,180}[.!?]?",
         flags=re.IGNORECASE,
     )
     for url in urls:
