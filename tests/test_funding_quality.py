@@ -682,3 +682,32 @@ def test_solana_rolling_grant_page_is_used_as_currentness_evidence(monkeypatch):
     context = _fetch_currentness_verification_context(source, document, warnings=[])
     assert "CURRENT APPLICATION EVIDENCE CONFIRMED" in context
     assert url in context
+
+
+
+def test_currentness_verifier_does_not_leak_source_status_to_other_routes(monkeypatch):
+    from agents.funding_agent import FundingDocument, FundingSource
+    from agents.funding_collector import _fetch_currentness_verification_context
+    import core.http_client
+
+    url = "https://solana.org/grants-funding"
+    source = FundingSource(
+        name="Solana Grants and Funding",
+        url=url,
+        tier="tier_1",
+        collection={"currentness_verification_urls": [url]},
+    )
+    document = FundingDocument(
+        organization=source.name,
+        title="Unrelated Solana article",
+        source="https://solana.org/news/unrelated",
+        source_type="Web Traversal",
+        content="Applications are reviewed on a rolling basis.",
+        year=2026,
+    )
+
+    def unexpected_fetch(*args, **kwargs):
+        raise AssertionError("A source-level currentness URL must not verify another route")
+
+    monkeypatch.setattr(core.http_client, "fetch_text", unexpected_fetch)
+    assert _fetch_currentness_verification_context(source, document, warnings=[]) == ""
