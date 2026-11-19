@@ -3,7 +3,14 @@ name: RIF bounded live collection smoke audit
 on:
   push:
     branches:
-      - audit/batch6-live-source-smoke-20261016
+      - integration/main-only-release-20261119
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/live_collection_smoke.py"
+      - "tests/test_live_collection_smoke_config.py"
+      - ".github/workflows/live-collection-smoke.yml"
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
