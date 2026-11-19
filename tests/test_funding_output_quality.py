@@ -618,3 +618,54 @@ def test_funding_problem_extraction_uses_risk_clause_not_eligibility_restriction
     assert "vulnerabilities" in intelligence["selected_problem"].lower()
     assert "participation is limited to" not in intelligence["selected_problem"].lower()
     assert all("participation is limited to" not in item.lower() for item in intelligence["problem_evidence"])
+
+
+
+def test_eit_hei_call_title_and_consortium_eligibility_are_extracted():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    source_url = (
+        "https://www.climate-kic.org/open-call/"
+        "eit-higher-education-initiative-eit-hei-2026/"
+    )
+    content = """OPEN CALL
+# EIT Higher Education Initiative (EIT HEI) 2026
+CALL FOR
+Proposals
+DEADLINE
+2027-01-13 17:00: CET
+## Call Information
+Launched under the EIT Higher Education Initiative, the call aims to help universities develop innovation and entrepreneurship skills, improve technology transfer services and build stronger links with businesses.
+With a budget of €40 million from the EIT, the 2026 Call for proposals will provide up to €1.25 million per selected project over 18 months. The EIT Higher Education Initiative invites consortia of higher education institutions, businesses, research organisations, public bodies and other innovation partners to apply.
+## How to apply
+Applications are now open for the EIT Higher Education Initiative (EIT HEI) call for proposals 2026.
+"""
+    document = _document(
+        content,
+        title="EIT Higher Education Initiative (EIT HEI) 2026 | Climate KIC",
+        source=source_url,
+    )
+
+    opportunity = analyze_document(document)
+
+    assert opportunity.program_name == "EIT Higher Education Initiative (EIT HEI) 2026"
+    assert opportunity.status == "OPEN_CALL"
+    assert opportunity.deadline == "2027-01-13"
+    assert opportunity.eligibility
+    assert "consortia of higher education institutions" in opportunity.eligibility.lower()
+    assert has_substantive_eligibility_evidence(opportunity.eligibility)
+
+
+def test_bioeconomy_circularity_is_recognized_as_esg_domain_evidence():
+    from core.schemas import rank_research_areas
+
+    text = (
+        "The Bioeconomy GIANTS call supports high-added-value bio-based products, "
+        "circular bio-based value chains, valorisation of underutilised biomass, "
+        "circularity and resource efficiency."
+    )
+    ranking = rank_research_areas(text)
+    esg = next(item for item in ranking if item["domain"] == "ESG")
+
+    assert esg["raw_score"] >= 4.0
+    assert {"bioeconomy", "bio-based products", "circularity"} & set(esg["matched_terms"])

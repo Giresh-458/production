@@ -153,3 +153,43 @@ def test_solana_rolling_review_with_contextual_application_cta_is_open():
         content,
         "Solana Grants and Funding",
     ) == "OPEN_CALL"
+
+
+
+def test_idapt_closure_notice_is_scoped_to_the_route_it_names():
+    from agents.funding_agent import FundingDocument, analyze_document
+
+    content = (
+        "Applications can be submitted at any time. "
+        "Important: I-DAPT-Hub Foundation is currently not accepting any fresh "
+        "applications for Research Projects and Post-Doctoral Chanakya Fellowships."
+    )
+    proposal = FundingDocument(
+        organization="I-DAPT Hub",
+        title="I-DAPT-HUB FOUNDATION",
+        source="https://www.idapthub.org/applications/call_for_proposals",
+        source_type="html",
+        content=content,
+        year=2026,
+    )
+    fellowship = FundingDocument(
+        organization="I-DAPT Hub",
+        title="I-DAPT-HUB FOUNDATION",
+        source="https://www.idapthub.org/applications/chanakya_fellowships",
+        source_type="html",
+        content=(
+            "# Chanakya Fellowship Programs\n"
+            + content
+            + " Applications are evaluated at regular intervals. Submit your proposal anytime!"
+        ),
+        year=2026,
+    )
+
+    proposal_result = analyze_document(proposal)
+    fellowship_result = analyze_document(fellowship)
+
+    assert proposal_result.status == "CLOSED_CALL"
+    assert "not accepting" in proposal_result.evidence["status"].lower()
+    assert fellowship_result.status == "OPEN_CALL"
+    assert "submit your proposal anytime" in fellowship_result.evidence["status"].lower()
+    assert "not accepting" not in fellowship_result.evidence["status"].lower()

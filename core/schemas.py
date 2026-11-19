@@ -113,6 +113,10 @@ AREA_KEYWORDS = {
         "mobility data management",
         "transport decarbonization",
         "transport decarbonisation",
+        "bioeconomy", "bio-based products", "bio based products",
+        "circular bio-based", "circular bio based", "circularity", "resource efficiency",
+        "biomass valorisation", "biomass valorization", "underutilised biomass",
+        "underutilized biomass", "bio-based value chains", "bio based value chains",
         "climate",
     ],
     "ZK-IoV": [
@@ -289,6 +293,12 @@ DOMAIN_TERM_WEIGHTS = {
         "electrification of transport": 2.5, "alternative fuels": 2.0,
         "low-emission transport": 2.5, "zero-emission": 2.5,
         "transport decarbonization": 3.0, "transport decarbonisation": 3.0,
+        "bioeconomy": 3.0, "bio-based products": 2.5, "bio based products": 2.5,
+        "circular bio-based": 2.5, "circular bio based": 2.5, "circularity": 1.5,
+        "resource efficiency": 1.5, "biomass valorisation": 2.5,
+        "biomass valorization": 2.5, "underutilised biomass": 2.0,
+        "underutilized biomass": 2.0, "bio-based value chains": 2.5,
+        "bio based value chains": 2.5,
     },
     "ZK-IoV": {
         "zero-knowledge": 3.0, "zkvm": 3.0, "zk proof": 3.0, "zk proofs": 3.0,

@@ -280,7 +280,7 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
         r"research organisations?|research organizations?|research facilities?|research institutions?|"
         r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
         r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
-        r"organisations|organizations|consortiums?)\b",
+        r"organisations|organizations|consortiums?|consortia)\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -290,7 +290,7 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
         r"addressed to|targeted at|not eligible|cannot apply|established|registered|incorporated|"
         r"resident|reside|domiciled|based in|located in|citizens? of|"
         r"at least\s+\d+|non[- ]profit|for[- ]profit|academic only|"
-        r"start[- ]up only|open to)\b",
+        r"start[- ]up only|open to|invites? (?:eligible )?(?:consortiums?|consortia))\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -299,7 +299,7 @@ def has_substantive_eligibility_evidence(value: Any) -> bool:
         r"research organisations?|research organizations?|research facilities?|research institutions?|"
         r"universit(?:y|ies)|public bodies|non[- ]profit organisations?|non[- ]profit organizations?|"
         r"start[- ]ups?|students?|individual developers?|research teams?|companies|businesses|"
-        r"organisations|organizations|consortiums?|established|registered|incorporated|"
+        r"organisations|organizations|consortiums?|consortia|established|registered|incorporated|"
         r"resident|reside|domiciled|based in|located in|citizens? of|at least\s+\d+)\b",
         text,
         flags=re.IGNORECASE,
