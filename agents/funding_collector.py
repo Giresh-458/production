@@ -1373,8 +1373,8 @@ def _collect_github(
 
 def _fetch_status_verification_context(
     source: FundingSource,
-    document: FundingDocument,
     warnings: Optional[List[str]] = None,
+    document: Optional[FundingDocument] = None,
 ) -> str:
     """Fetch publisher-owned closure evidence for the exact mapped document route.
 
@@ -1384,9 +1384,11 @@ def _fetch_status_verification_context(
     """
     collection = source.collection or {}
     route_map = collection.get("status_verification_url_map")
-    document_url = urlparse(str(document.source or ""))
+    document_url = urlparse(str(getattr(document, "source", "") or ""))
     route_specific = isinstance(route_map, dict)
     if route_specific:
+        if document is None:
+            return ""
         urls = []
         for document_route, candidates in route_map.items():
             parsed_route = urlparse(str(document_route or ""))
@@ -1793,7 +1795,7 @@ def _collect_web_source(
         seen_urls.add(raw_url)
 
         doc = _normalize_raw_to_doc(source, raw)
-        verification_context = _fetch_status_verification_context(source, doc, warnings)
+        verification_context = _fetch_status_verification_context(source, warnings, document=doc)
         currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
         linked_official_context = _fetch_linked_official_sbir_context(
             doc, warnings, official_verification_cache

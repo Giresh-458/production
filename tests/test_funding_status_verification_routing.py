@@ -33,7 +33,7 @@ def test_proposal_closure_notice_does_not_leak_to_chanakya_fellowships(monkeypat
 
     monkeypatch.setattr("core.http_client.fetch_text", fetch_text)
     context = collector._fetch_status_verification_context(
-        _source(), SimpleNamespace(source=FELLOWSHIP_URL), warnings=[]
+        _source(), warnings=[], document=SimpleNamespace(source=FELLOWSHIP_URL)
     )
     assert context == ""
     assert calls == []
@@ -49,7 +49,7 @@ def test_proposal_closure_notice_is_attached_to_its_own_route(monkeypatch):
 
     monkeypatch.setattr("core.http_client.fetch_text", fetch_text)
     context = collector._fetch_status_verification_context(
-        _source(), SimpleNamespace(source=PROPOSAL_URL), warnings=[]
+        _source(), warnings=[], document=SimpleNamespace(source=PROPOSAL_URL)
     )
     assert "not accepting any fresh applications" in context
 
