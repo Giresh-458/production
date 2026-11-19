@@ -135,3 +135,21 @@ Up to $300,000.
     assert value
     assert "U.S. small business" in value
     assert "Unknown" not in value
+
+
+
+def test_solana_rolling_review_with_contextual_application_cta_is_open():
+    from agents.funding_agent import determine_status
+
+    content = (
+        "All funding applicants are required to fill out the application here. "
+        "All applications are reviewed on a rolling basis. "
+        "[here](https://share.hsforms.com/1GE1hYdApQGaDiCgaiWMXHA5lohw)"
+    )
+    assert determine_status(
+        "GENERAL_FUNDING_PROGRAM",
+        None,
+        None,
+        content,
+        "Solana Grants and Funding",
+    ) == "OPEN_CALL"
