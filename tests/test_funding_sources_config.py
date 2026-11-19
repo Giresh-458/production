@@ -253,7 +253,7 @@ def test_web_sources_have_bounded_discovery_depth_and_page_count():
         if entry.get("name") == "Superteam Development Grants":
             page_cap = 70
         elif entry.get("name") == "Climate KIC Open Calls":
-            page_cap = 6
+            page_cap = 7
         elif entry.get("name") == "Open SBIR Funding Topics":
             page_cap = 120
         elif entry.get("name") == "NEAR Ecosystem Funding":
@@ -342,10 +342,13 @@ def test_live_source_adjustments_use_direct_program_pages_and_bounded_frontiers(
         "https://neb.eitcommunity.eu/catalyse-neb-2027/",
         "https://www.climate-kic.org/open-call/women-techeu-2-eic/",
     }
+    supporting_context_pages = {
+        "https://womentecheurope.eu/frequently-asked-questions-wteu2/",
+    }
     assert climate_discovery["start_urls"][0] == climate["url"]
-    assert set(climate_discovery["start_urls"][1:]) == current_calls
-    assert set(climate_discovery["direct_page_urls"]) == current_calls
-    assert climate_discovery["max_depth"] == 0 and climate_discovery["max_pages"] == 6
+    assert set(climate_discovery["start_urls"][1:]) == current_calls | supporting_context_pages
+    assert set(climate_discovery["direct_page_urls"]) == current_calls | supporting_context_pages
+    assert climate_discovery["max_depth"] == 0 and climate_discovery["max_pages"] == 7
     assert climate_discovery["pagination"] is False
     assert climate_discovery["follow_detail_pages"] is False
     assert climate_discovery["follow_documents"] is False
@@ -436,10 +439,10 @@ def test_live_truncated_source_caps_are_assigned_to_the_intended_sources():
     # Keep the Solana directory crawl bounded independently of Superteam.
     assert solana_discovery["max_pages"] == 30
     assert superteam_discovery["max_pages"] == 70
-    # The official directory and its five current call pages are fetched without
-    # recursively ingesting the large historical archive.
+    # The official directory, five current call pages, and one linked eligibility
+    # companion page are fetched without recursively ingesting the historical archive.
     assert climate_kic_discovery["max_depth"] == 0
-    assert climate_kic_discovery["max_pages"] == 6
+    assert climate_kic_discovery["max_pages"] == 7
     assert climate_kic_discovery["follow_pdfs"] is False
     assert climate_kic_discovery["follow_documents"] is False
     # The SBIR discovery portal needs its restored bounded depth/page budget.
@@ -549,7 +552,7 @@ def test_climate_kic_batch1_coverage_routes_and_non_call_filters():
         return any(re.search(pattern, url, flags=re.IGNORECASE) for pattern in patterns)
 
     assert discovery["max_depth"] == 0
-    assert discovery["max_pages"] == 6
+    assert discovery["max_pages"] == 7
     assert discovery["pagination"] is False
     assert discovery["follow_pdfs"] is False
     assert discovery["follow_documents"] is False

@@ -715,8 +715,7 @@ def test_womentecheu_founder_and_startup_criteria_are_substantive():
 
     text = (
         "Women TechEU targets early-stage deep tech startups founded, or co-founded, "
-        "by women holding a top management position (CEO, CTO or equivalent). "
-        "The company must be registered and established in an eligible country."
+        "by women holding a top management position (CEO, CTO or equivalent)."
     )
     eligibility = _extract_eligibility_from_prose(text)
 
