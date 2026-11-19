@@ -754,6 +754,10 @@ def test_singular_company_and_unhyphenated_startup_eligibility_are_recognized():
     from core.funding_selection import has_substantive_eligibility_evidence
 
     assert has_substantive_eligibility_evidence("Eligible startups founded by women.")
+    # Singular and plural company forms both occur in official eligibility rules.
     assert has_substantive_eligibility_evidence(
         "An eligible company must be registered in an EU Member State."
+    )
+    assert has_substantive_eligibility_evidence(
+        "Eligible companies must be registered in an EU Member State."
     )
