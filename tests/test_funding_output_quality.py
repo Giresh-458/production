@@ -747,3 +747,13 @@ def test_new_european_bauhaus_sustainability_is_esg_domain_evidence():
     esg = next(item for item in ranking if item["domain"] == "ESG")
     assert esg["raw_score"] >= 4.0
     assert "new european bauhaus" in esg["matched_terms"]
+
+
+
+def test_singular_company_and_unhyphenated_startup_eligibility_are_recognized():
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    assert has_substantive_eligibility_evidence("Eligible startups founded by women.")
+    assert has_substantive_eligibility_evidence(
+        "An eligible company must be registered in an EU Member State."
+    )
