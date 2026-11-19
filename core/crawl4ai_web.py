@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 from urllib.robotparser import RobotFileParser
 from collections import deque
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from typing import Any, List, Optional
 from urllib.parse import urljoin, urlparse, urldefrag, parse_qsl, urlencode
@@ -867,6 +868,28 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
     return links
 
 
+def _retry_after_seconds(headers: Any) -> float | None:
+    """Parse Retry-After as delay-seconds or an HTTP-date."""
+    if not isinstance(headers, dict):
+        return None
+    value = next(
+        (str(item).strip() for key, item in headers.items() if str(key).casefold() == "retry-after"),
+        "",
+    )
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
 async def _fetch_url(url: str) -> dict:
     """Fetch a single URL using Crawl4AI and extract links with context."""
     from core.crawl_context import current_crawl_context
@@ -935,6 +958,46 @@ async def _fetch_url(url: str) -> dict:
                     f"initial error: {initial_navigation_error}; "
                     f"retry error: {retry_error}"
                 ) from retry_error
+
+        # HTTP 429 is a publisher rate-limit signal. Retry only after a
+        # bounded wait, honoring Retry-After when the server provides it.
+        rate_limit_retries = 0
+        while (
+            result is not None
+            and int(getattr(result, "status_code", 0) or 0) == 429
+            and rate_limit_retries < 2
+        ):
+            headers = getattr(result, "response_headers", None) or {}
+            retry_delay = _retry_after_seconds(headers)
+            if retry_delay is None:
+                retry_delay = 5.0 * (2 ** rate_limit_retries)
+            if retry_delay > 60.0:
+                LOGGER.warning(
+                    "HTTP 429 for %s requested Retry-After %.1fs; exceeds bounded 60s retry budget",
+                    url, retry_delay,
+                )
+                break
+            await asyncio.sleep(max(1.0, retry_delay))
+            retry_timeout = min(timeout, 20.0)
+            retry_options = dict(run_options)
+            retry_options.update({
+                "wait_until": "commit",
+                "page_timeout": max(5000, int(retry_timeout * 1000)),
+            })
+            retry_config = CrawlerRunConfig(**retry_options)
+            try:
+                retried = await asyncio.wait_for(
+                    crawler.arun(url=url, config=retry_config),
+                    timeout=retry_timeout + 5.0,
+                )
+            except Exception as retry_error:
+                LOGGER.warning(
+                    "HTTP 429 retry %s failed for %s: %s",
+                    rate_limit_retries + 1, url, retry_error,
+                )
+                break
+            result = retried
+            rate_limit_retries += 1
 
         page_url = _get_final_page_url(result, url)
         markdown_text = _raw_markdown_text(result)
@@ -1024,6 +1087,7 @@ async def _fetch_url(url: str) -> dict:
             # Crawl4AI exposes first-response and final redirect statuses separately.
             "status_code": getattr(result, "status_code", None),
             "redirected_status_code": getattr(result, "redirected_status_code", None),
+            "response_headers": getattr(result, "response_headers", None),
             "url": page_url,
             "requested_url": url,
             "redirected_url": getattr(result, "redirected_url", None),

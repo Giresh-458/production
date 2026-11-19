@@ -333,3 +333,59 @@ def test_crawl4ai_pdf_with_no_extractable_text_is_failure_and_closes_response(mo
     assert result["content"] == ""
     assert response.closed is True
 
+
+
+
+def test_retry_after_parser_accepts_delay_seconds():
+    assert crawl4ai_web._retry_after_seconds({"Retry-After": "7"}) == 7.0
+
+
+def test_fetch_url_retries_429_after_retry_after(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    url = "https://rate-limited.example.test/chanakya"
+    attempts = []
+    sleeps = []
+
+    class FakeResult:
+        def __init__(self, status_code, headers=None):
+            self.status_code = status_code
+            self.response_headers = headers or {}
+            self.success = status_code == 200
+            self.error_message = None if self.success else "HTTP 429"
+            self.redirected_status_code = None
+            self.redirected_url = None
+            self.url = url
+            self.html = "<html><head><title>Chanakya Fellowship</title></head><body>Submit your proposal anytime</body></html>"
+            self.markdown = "# Chanakya Fellowship\\nSubmit your proposal anytime"
+
+    class FakeCrawler:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def arun(self, url, config):
+            attempts.append(url)
+            if len(attempts) == 1:
+                return FakeResult(429, {"Retry-After": "3"})
+            return FakeResult(200)
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(crawl4ai_web, "HAS_CRAWL4AI", True)
+    monkeypatch.setattr(crawl4ai_web, "AsyncWebCrawler", lambda **kwargs: FakeCrawler())
+    monkeypatch.setattr(crawl4ai_web, "BrowserConfig", lambda **kwargs: object())
+    monkeypatch.setattr(crawl4ai_web, "CrawlerRunConfig", lambda **kwargs: kwargs)
+    monkeypatch.setattr(crawl4ai_web, "CacheMode", SimpleNamespace(BYPASS="bypass"))
+    monkeypatch.setattr(crawl4ai_web.asyncio, "sleep", fake_sleep)
+
+    result = asyncio.run(crawl4ai_web._fetch_url(url))
+
+    assert result["success"] is True
+    assert result["status_code"] == 200
+    assert len(attempts) == 2
+    assert sleeps == [3.0]
