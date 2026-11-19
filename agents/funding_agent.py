@@ -2692,7 +2692,7 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         "funding_amount": _evidence_excerpt(document.content, [r"(?:funding|financial support|grant|award)[^.\n]{0,240}(?:₹|\$|€|£|USD|EUR|GBP|INR)\s*\d"]),
         "eligibility": _evidence_excerpt(document.content, [
             r"(?:applications? from )?eligible (?:U\.?S\.?|United States) (?:small business concerns?|SBCs?)[^.\n]{0,180}",
-            r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\\n]{0,10}[:\\-]?[^.\\n]{0,700}",
+            r"(?:eligibility|who can apply|eligible applicants?|eligible organizations?)[^.:\n]{0,10}[:\-]?[^.\n]{0,700}",
         ]),
         "geography": _evidence_excerpt(document.content, [r"(?:geographic eligibility|eligible countries|eligible regions|geography)[^.:\n]{0,10}[:\-]?[^.\n]{0,500}" ]),
         "trl": _evidence_excerpt(document.content, [r"(?:technology readiness level|TRL|maturity level)[^.:\n]{0,10}[:\-]?[^.\n]{0,300}" ]),
