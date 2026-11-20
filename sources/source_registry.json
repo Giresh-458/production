@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-26T16:27:39.296166+00:00",
+  "generated_at": "2026-11-20T16:44:49.484307+00:00",
   "entries": [
     {
       "source_id": "company:abb-ability:98e9b7aa54",
@@ -7520,13 +7520,13 @@
   ],
   "stats": {
     "total_entries": 282,
-    "active_entries": 273,
-    "deprecated_entries": 9,
+    "active_entries": 274,
+    "deprecated_entries": 8,
     "status_counts": {
-      "active": 273,
+      "active": 274,
       "approved": 0,
       "candidate": 0,
-      "deprecated": 9,
+      "deprecated": 8,
       "paused": 0,
       "stale": 0
     }

@@ -1355,5 +1355,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("RIF_SEMANTIC_GATE", "true")
     raise SystemExit(main())

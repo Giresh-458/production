@@ -60,3 +60,13 @@ def _tracked_registry_unchanged_guard():
     if before is not None and after != before:
         SOURCE_REGISTRY_PATH.write_bytes(before)  # restore, then fail loudly
         pytest.fail("A test modified the tracked sources/source_registry.json (restored).", pytrace=False)
+
+
+@pytest.fixture(autouse=True)
+def _lexical_mission_gate_in_unit_tests(monkeypatch):
+    """Unit tests run the mission gate lexical-only (deterministic, no model load).
+
+    Production defaults the semantic pass on (core.mission_gate); tests that cover
+    the semantic tier set RIF_SEMANTIC_GATE explicitly.
+    """
+    monkeypatch.setenv("RIF_SEMANTIC_GATE", "false")

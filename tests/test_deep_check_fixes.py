@@ -144,3 +144,13 @@ def test_idea_title_comes_from_grounded_problem(problem, expected):
 
     resolved = "" if _is_unresolved_problem(problem) else problem
     assert grounded_idea_title(resolved, "ESG", "ignored") == expected
+
+
+def test_semantic_gate_is_on_by_default_for_every_entry_point(monkeypatch):
+    """Live: Batch-3 re-applied the gate without the flag and dropped 3 of 8 records."""
+    from core.mission_gate import _semantic_gate_enabled
+
+    monkeypatch.delenv("RIF_SEMANTIC_GATE", raising=False)
+    assert _semantic_gate_enabled() is True
+    monkeypatch.setenv("RIF_SEMANTIC_GATE", "false")
+    assert _semantic_gate_enabled() is False

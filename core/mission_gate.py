@@ -355,9 +355,17 @@ _CALL_QUERY_CACHE: dict[str, str] = {}
 
 
 def _semantic_gate_enabled() -> bool:
+    """On by default for every entry point; set RIF_SEMANTIC_GATE=false to disable.
+
+    The relevance decision must not depend on which script runs the gate
+    (observed live: Batch-2 accepted 3 semantic matches, then Batch-3 re-applied
+    the gate without the flag, rejected them and rewrote the handoff 8 -> 5).
+    Without the embedding model the semantic pass returns None everywhere, so
+    the gate stays lexical-only consistently on that machine.
+    """
     import os
 
-    return os.environ.get("RIF_SEMANTIC_GATE", "false").strip().casefold() in {"1", "true", "yes", "on"}
+    return os.environ.get("RIF_SEMANTIC_GATE", "true").strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def _call_semantic_similarity(record: dict[str, Any], ctx: FundingCallContext) -> float | None:

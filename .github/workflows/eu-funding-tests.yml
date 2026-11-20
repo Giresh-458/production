@@ -502,7 +502,7 @@ jobs:
                       "documents_fetched", "documents_failed", "api_pages_fetched",
                       "api_expected_records", "api_records_received", "records_discovered",
                       "records_valid", "records_failed", "records_filtered",
-                      "records_filtered_by_reason", "duplicates_removed", "truncated",
+                      "records_filtered_by_reason", "records_filtered_details", "duplicates_removed", "truncated",
                       "pagination_detected", "pagination_complete", "discovery_exhausted",
                       "max_depth", "max_depth_reached", "urls_skipped",
                       "relevant_urls_skipped", "coverage_gaps", "failed_urls", "truncation_details",
