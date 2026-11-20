@@ -26,7 +26,10 @@ def test_provenance_trace(
         "lab",
         "manual_text",
         area="RWA",
-        input_data={"text": "This is a traceable evidence document demonstrating provenance for FUNDING-A. " * 50, "source_url": "https://example.com/test-source", "output_dir": str(root / "intermediate" / "lab")},
+        input_data={"text": ("This is a traceable evidence document demonstrating provenance for FUNDING-A. "
+                                  # A genuine problem sentence: proposals now require a source-grounded problem.
+                                  + "Asset registries lack verifiable provenance, so tokenized records cannot be traced to their source documents. "
+                                  + "This is a traceable evidence document demonstrating provenance for FUNDING-A. " * 49), "source_url": "https://example.com/test-source", "output_dir": str(root / "intermediate" / "lab")},
         funding_contexts=[ctx]
     )
     assert col_out["status"] in ("success", "partial_success")

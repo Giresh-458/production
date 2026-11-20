@@ -13,7 +13,7 @@ PROBLEM = (
 )
 
 
-def _context(*, confidence="Medium", evidence_refs=("https://ec.europa.eu/topic",), challenges=(PROBLEM,)):
+def _context(*, confidence="Medium", evidence_refs=("https://ec.europa.eu/topic",), challenges=(PROBLEM,), title=TITLE):
     base = build_context(
         themes=("ESG", "Carbon and MRV"),
         confidence=confidence,
@@ -25,15 +25,23 @@ def _context(*, confidence="Medium", evidence_refs=("https://ec.europa.eu/topic"
         domain="ESG",
     )
     rc = replace(base.research_context, evidence_refs=tuple(evidence_refs))
-    return replace(base, call_title=TITLE, program_name=TITLE, research_area="ESG", research_context=rc)
+    return replace(base, call_title=title, program_name=title, research_area="ESG", research_context=rc)
 
 
 def test_medium_confidence_queries_lead_with_call_title_and_grounded_problem():
     queries = generate_funding_queries(_context(), max_queries=6)
     assert queries[0] == TITLE
     assert queries[1] == PROBLEM
-    # Existing domain-level queries are kept after the call-specific ones.
-    assert any("ESG" in query for query in queries[2:])
+    # Domain-template questions and bare themes are identical for every call in
+    # a domain; with call-specific queries available they are not used (observed
+    # live: they retrieved ESG-rating/greenwashing papers for a restoration call).
+    assert all("What challenges" not in query for query in queries)
+    assert queries == [TITLE, PROBLEM]
+
+
+def test_domain_questions_remain_a_fallback_without_call_identity():
+    queries = generate_funding_queries(_context(title="", evidence_refs=()), max_queries=6)
+    assert queries and any("ESG" in query for query in queries)
 
 
 def test_ungrounded_challenge_is_not_used_as_a_query():

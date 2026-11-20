@@ -41,28 +41,9 @@ ALLOWED_SIGNAL_TAGS = {
     "Literature": "#signal-literature",
     "Lab": "#signal-lab",
 }
-TOPIC_KEYWORDS = {
-    "oracle": ("oracle", "data feed", "proof of reserve"),
-    "compliance": ("compliance", "reporting", "disclosure", "assurance"),
-    "identity": ("identity", "credential", "did", "authentication"),
-    "privacy": ("privacy", "zero-knowledge", "zk", "verifier"),
-    "settlement": ("settlement", "payment rails", "payments"),
-    "stablecoin": ("stablecoin", "reserve", "depeg"),
-    "liquidity": ("liquidity", "amm", "pool"),
-    "carbon": ("carbon", "mrv", "emissions", "registry"),
-    "depin": ("depin", "wireless", "sensor", "storage"),
-    "mev": ("mev", "block builder", "transaction ordering", "relay"),
-    "prototype": ("prototype", "builder", "hackathon", "demo"),
-    "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    # Context-specific: bare "vulnerability"/"audit" matched "wildfire vulnerability"
-    # and "auditability" of sustainability reports (observed live).
-    "security": ("exploit", "security vulnerability", "software vulnerability", "smart contract vulnerability",
-                 "vulnerability disclosure", "security incident", "postmortem", "security audit",
-                 "smart contract audit", "code audit"),
-    "governance": ("governance", "tokenomics", "incentive", "proposal"),
-    "interoperability": ("interoperability", "cross-chain", "integration"),
-    "scalability": ("scalability", "throughput", "latency", "high volume", "bottleneck", "transaction volume"),
-}
+# Shared vocabulary (one source of truth for tagging/trends/synthesis/ideas).
+from core.topic_keywords import TOPIC_KEYWORDS, prepare_topic_text, topic_keyword_hits  # noqa: E402
+
 SIGNAL_TYPE_KEYWORDS = {
     "problem-statement": ("problem statement", "challenge", "gap"),
     "requirement": ("requirement", "required", "must", "shall"),
@@ -421,8 +402,9 @@ def build_tags_for_record(record: dict[str, Any]) -> dict[str, Any]:
             else:
                 signal_type_tags.append(tag)
 
+    topic_text = prepare_topic_text(text)
     for topic, keywords in TOPIC_KEYWORDS.items():
-        hits = _keyword_hits(text, keywords)
+        hits = topic_keyword_hits(topic_text, keywords)
         semantic_score = semantic_topics.get(topic, 0.0)
         if hits or semantic_score >= 0.58:
             evaluate_tag(f"#topic-{topic}", hits, category="topic", semantic_score=semantic_score)

@@ -200,3 +200,27 @@ Tests
 Not code defects
 - Stale "UPCOMING" status on some EU topics is publisher lag; it resolves on re-run.
 - On this machine the local DNS resolver intermittently failed to resolve `www.sbir.gov` (8.8.8.8 resolves it), so two live Batch-1 runs were correctly BLOCKED on SBIR coverage. In the first run the domain resolved, but crawl4ai timed out on `page=5`.
+
+## Batch-1 per-URL audit cycle (2026-11-20)
+
+All 13 Batch-1 source URLs and every EU record were re-checked against the live publisher data before and after the fixes. Regression tests: `tests/test_batch1_url_audit_fixes.py` (23 of 25 fail on the old code).
+
+Fixed
+- **Problem sentences (funding only):** about half of the extracted EU "problems" were instructions, encouragements, expected outcomes, definitions, list items or fragments, mostly picked because of "risk" inside "risk assessment/management". All of these are now rejected, the EU "Expected Outcome" section is skipped, and real problem wording is recognised ("gaps and uncertainties remain", "backfire"). On replayed official text: D1-07's encouragement was dropped, D1-10 gets its real problem, and D1-12 (previously a false negative) is now selected. In the live run, all 22 remaining EU problem sentences are genuine.
+  - One existing test expected the EU participation-restriction rationale ("vulnerabilities and high-risk dependencies…") to be extracted as a problem. It is boilerplate repeated across topics, so the test now asserts the opposite.
+- **Themes:** "Carbon and MRV" (and the other secondary themes) only when the call text names them.
+- **Domain anchors and vocabulary:** title anchors match "zero emission" as well as "zero-emission". ESG now includes decarbonisation word forms, climate neutrality and greenhouse gas; this adds 11 genuine decarbonisation topics plus one borderline transport-dissemination CSA (D6-12), none of them selected.
+- **Labels:** the missing-anchor reason names the actual domain. Priority keywords are whole words.
+- **EU collector:** cancelled topics are filtered (identifier `-CANCELLED` or an explicit notice; a proposed cancellation becomes a warning). Filtered records are itemised (title, URL, reason) in the summary.
+- **Hard-coding removed:** the NEAR and Superteam hostname checks and the site-specific CTA phrases are replaced by generic rules.
+- **Status evidence:** cites the sentence that closed a programme (Flashbots README: "grant giving through FRP is currently paused").
+- **Dates and titles:** the deadline prefers "last day to submit" over a review cut-off; the opening date no longer crosses a deadline label (filpgf.io: now 16 Jun 2026); announcement verbs are stripped from titles ("General Track").
+- **Resilience:** robots.txt gets one late retry for DNS/connection errors; the page-retry timeout cap went from 20 s to 40 s (sbir.gov page 5).
+- **Semantic gate consistency (Batch-2/3):** the semantic pass is on by default inside the gate. Batch-3 had re-applied the gate without the flag and dropped 3 of 8 records ("Batch-3 modified the Batch-2 normalized handoff").
+
+Verified live: Batch-1 `ci-batch1-20261120T161128738797Z` is **ACCEPTED, 0 blockers**, with all 13 sources clean. SBIR is VERIFIED; its 3 NIH parent announcements match Grants.gov (PA-27-100/101/102) and sbir.gov (open 5 Aug 2026; next due date 5 Jan 2027). All 112 EU records match the official topicDetails on title, opening date, deadline, budget, action type and research intent, and every problem sentence appears verbatim.
+
+Not changed (documented)
+- Non-Horizon EU programmes (Erasmus, CERV, Creative Europe, DIGITAL…) publish eligibility in separate call-document PDFs, so they are filtered as missing eligibility. None is in scope.
+- NEAR records keep slogan titles ("User-Owned"). No generic rule can rename them without risking verified titles.
+- UDAX and the Superteam Startup Accelerator Grant are rejected for lacking independent proof that applications are open. This can't be verified from their pages.

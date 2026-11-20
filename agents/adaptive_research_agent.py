@@ -4,7 +4,7 @@ import argparse
 import logging
 import re
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,10 @@ class AdaptiveDocument:
     source_type: str = "adaptive_web_research"
     query: str = ""
     retrieved_at: str = ""
+    # Scholarly metadata from the publisher record (OpenAlex), never inferred.
+    authors: list[str] = field(default_factory=list)
+    venue: str = ""
+    evidence_type: str = ""
 
 
 def _safe_slug(value: str) -> str:
@@ -81,7 +85,21 @@ def _openalex(query: str, limit: int = 6) -> list[AdaptiveDocument]:
         summary = cleaned_text(abstract_text)
         source = str(item.get("doi") or item.get("id") or "https://openalex.org/")
         if title and summary:
-            docs.append(AdaptiveDocument(title=title, source=source, content=f"{title}. {summary[:5000]}", query=query, retrieved_at=datetime.now(UTC).isoformat()))
+            # Actor/evidence type come from the work's own record (observed live:
+            # without them the DOI URL became the "actor" and the type "Unknown").
+            authors = [
+                cleaned_text(str(((a or {}).get("author") or {}).get("display_name") or ""))
+                for a in (item.get("authorships") or [])[:3]
+            ]
+            venue = cleaned_text(str((((item.get("primary_location") or {}).get("source")) or {}).get("display_name") or ""))
+            docs.append(AdaptiveDocument(
+                title=title, source=source, content=f"{title}. {summary[:5000]}", query=query,
+                retrieved_at=datetime.now(UTC).isoformat(),
+                source_type="Research publication",
+                authors=[a for a in authors if a],
+                venue=venue,
+                evidence_type="Scholarly publication record",
+            ))
     return docs
 
 

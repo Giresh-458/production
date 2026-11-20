@@ -213,7 +213,7 @@ def validate_proposal_payload(record: dict[str, Any], proposal: dict[str, Any], 
         "evaluation": bool(cleaned_text(proposal.get("evaluation_plan"))),
         "funding_alignment": bool(cleaned_text(proposal.get("funding_alignment"))),
         "idea_validation_present": bool(idea_validation) or bool(record.get("based_on")),
-        "external_novelty_validation": idea_validation.get("novelty_status") == "externally_validated",
+        "external_novelty_validation": idea_validation.get("novelty_status") in {"external_search_completed", "externally_validated"},
         "human_submission_review": bool(record.get("submission_review_passed", False)),
     }
     compliance: dict[str, Any] = {}
@@ -601,14 +601,46 @@ def save_outputs(proposal_payloads: list[dict[str, Any]], output_dir: Path, area
 def _proposal_gate(record: dict[str, Any], funding_context: Any) -> tuple[bool, dict[str, Any]]:
     validation = record.get("validation") if isinstance(record.get("validation"), dict) else {}
     novelty = str(validation.get("novelty_status", "")).lower()
-    if novelty not in {"externally_validated", "no_overlap_in_search"}:
+    if novelty not in {"external_search_completed", "externally_validated", "no_overlap_in_search"}:
         return False, {"reason": "external novelty validation is not complete", "novelty_status": novelty}
     search = validation.get("novelty_search") if isinstance(validation.get("novelty_search"), dict) else {}
     if str(search.get("novelty_status", "")).upper() == "OVERLAP_FOUND":
         return False, {"reason": "external search found overlap", "novelty_status": "OVERLAP_FOUND"}
-    combined = " ".join(str(record.get(k, "")) for k in ("problem","gap","idea","why_important","existing_solutions","source_inputs"))
-    gate = mission_relevance({"title": record.get("title", ""), "problem_statement": combined, "context_summary": combined, "source_type": "proposal", "evidence_type": "proposal", "keywords": []}, funding_context)
-    if not gate.get("passed") or float(gate.get("score", 0.0)) < 0.12:
+    # Judge alignment on the idea's source-grounded problem only. The generated
+    # gap/idea/why-important text is boilerplate shared by every idea, and
+    # "source_inputs" are file paths (observed live: off-topic ideas passed on
+    # generic ESG words while the on-topic restoration idea scored 0.44).
+    problem_text = str(record.get("problem", "") or "")
+    if not problem_text.strip() or problem_text.strip().casefold().rstrip(" .") in {
+        "no explicit problem statement found", "insufficient problem signal", "unknown",
+    }:
+        return False, {"reason": "idea has no source-grounded problem statement"}
+    # Full idea text for the downstream LLM alignment check (unchanged behaviour).
+    combined = " ".join(str(record.get(k, "")) for k in ("problem", "gap", "idea", "why_important", "existing_solutions"))
+    # The cited evidence's own titles are source text too and name the topic the
+    # problem sentence refers to ("restoration efforts ..." comes from a paper on
+    # living labs for restoring ecosystems).
+    evidence_titles: list[str] = []
+    for line in str(record.get("source_inputs", "") or "").splitlines():
+        path = line.strip().lstrip("-").strip()
+        if not path:
+            continue
+        try:
+            from pathlib import Path as _Path
+            from core.normalization import normalize_intermediate_artifact
+
+            title_text = str(normalize_intermediate_artifact(_Path(path)).get("title") or "").strip()
+        except Exception:
+            title_text = ""
+        if title_text and title_text not in evidence_titles:
+            evidence_titles.append(title_text)
+    if evidence_titles and problem_text:
+        problem_text = ". ".join(evidence_titles[:3]) + ". " + problem_text
+    gate = mission_relevance({"title": problem_text, "problem_statement": problem_text, "context_summary": problem_text, "source_type": "proposal", "evidence_type": "proposal", "keywords": []}, funding_context)
+    aligned = gate.get("passed") and (
+        float(gate.get("score", 0.0)) >= 0.12 or gate.get("relevance_tier") == "semantic_call_match"
+    )
+    if not aligned:
         return False, {"reason": "proposal content is not sufficiently aligned to the selected funding mission", "mission_relevance": gate}
     
     # Strict Semantic Alignment Check

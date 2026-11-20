@@ -159,9 +159,15 @@ def generate_funding_queries(funding_context: FundingCallContext, max_queries: i
                     if len(text.split()) >= 6:
                         candidates.append(text[:240].rsplit(" ", 1)[0] if len(text) > 240 else text)
                         break
+            # Template questions, bare domain themes and priorities are only a
+            # fallback when the call has no title or grounded problem: they are the
+            # same for every call in a domain (observed live: 6 of 13 accepted
+            # records for a restoration living-labs call came from "What challenges
+            # ... for ESG, Carbon and MRV?" and were ESG-rating/greenwashing papers).
+            call_identity_queries = bool(candidates)
             prefix_domains = tuple(rc.selected_domains) if rc.selected_domains else ((funding_context.research_area,) if funding_context.research_area else ())
             domain_prefix = " / ".join(str(d) for d in prefix_domains if d)
-            for question in rc.investigation_questions:
+            for question in (() if call_identity_queries else rc.investigation_questions):
                 question_text = question.strip() if question else ""
                 if not question_text:
                     continue
@@ -170,8 +176,9 @@ def generate_funding_queries(funding_context: FundingCallContext, max_queries: i
                     if domain_prefix and domain_prefix.casefold() not in question_text.casefold()
                     else question_text
                 )
-            candidates.extend(str(term).strip() for term in rc.technology_themes if term and str(term).strip())
-            for priority in rc.funding_priorities:
+            if not call_identity_queries:
+                candidates.extend(str(term).strip() for term in rc.technology_themes if term and str(term).strip())
+            for priority in (() if call_identity_queries else rc.funding_priorities):
                 priority_text = str(priority).strip()
                 if not priority_text:
                     continue

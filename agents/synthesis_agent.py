@@ -30,23 +30,8 @@ DEFAULT_MANIFEST_DIR = Path("outputs/synthesis/manifest")
 AGENT_NAME = "synthesis"
 LAYER_NAME = "Intelligence"
 
-TOPIC_LABELS = {
-    "oracle": ("oracle", "data feed", "proof of reserve"),
-    "compliance": ("compliance", "reporting", "disclosure", "assurance"),
-    "identity": ("identity", "credential", "did", "authentication"),
-    "privacy": ("privacy", "zero-knowledge", "zk", "verifier"),
-    "settlement": ("settlement", "payment rails", "payments"),
-    "stablecoin": ("stablecoin", "reserve", "depeg"),
-    "liquidity": ("liquidity", "amm", "pool"),
-    "carbon": ("carbon", "mrv", "emissions", "registry"),
-    "depin": ("depin", "wireless", "sensor", "storage"),
-    "mev": ("mev", "block builder", "transaction ordering", "relay"),
-    "prototype": ("prototype", "builder", "hackathon", "demo"),
-    "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    "security": ("exploit", "vulnerability", "incident", "postmortem", "audit"),
-    "governance": ("governance", "tokenomics", "incentive", "proposal"),
-    "interoperability": ("interoperability", "cross-chain", "integration"),
-}
+from core.topic_keywords import TOPIC_KEYWORDS as TOPIC_LABELS, match_topics  # noqa: E402
+
 
 
 def configure_logging(level_name: str) -> None:
@@ -219,12 +204,7 @@ def build_cluster_signature(cluster: dict[str, Any]) -> str:
 
 
 def infer_topic_tags(text: str) -> list[str]:
-    lowered = text.lower()
-    tags: list[str] = []
-    for topic, keywords in TOPIC_LABELS.items():
-        if any(keyword in lowered for keyword in keywords):
-            tags.append(f"#{topic}")
-    return tags
+    return [f"#{topic}" for topic in match_topics(text)]
 
 
 def _bundle_records_text(bundle: dict[str, Any]) -> str:
@@ -251,12 +231,19 @@ def build_evidence_assessment(cluster: dict[str, Any], evidence_inputs: list[dic
     negative = [t for t in texts if any(k in t.lower() for k in ("unresolved", "limitation", "fails", "bottleneck", "gap", "constraint", "remains"))]
     contradiction_status = "potential_tension" if positive and negative else "no_explicit_tension_detected"
 
+    # Count only members that state a source-grounded problem; evidence units
+    # without one cannot support a recurrence claim (observed live: a cluster whose
+    # problem was "No explicit problem statement found." claimed support=3, High).
+    stated = [
+        t for t in texts
+        if t.casefold().rstrip(" .") not in {"no explicit problem statement found", "insufficient problem signal", "unknown"}
+    ]
     claims = [
         {
-            "claim": "The problem recurs across collected evidence.",
-            "support": independent_evidence_units,
-            "confidence": "High" if independent_evidence_units >= 3 else "Medium" if independent_evidence_units >= 2 else "Low",
-            "evidence_basis": "independent evidence units after duplicate/derivative provenance handling",
+            "claim": "Members state a source-grounded problem (not necessarily the same problem).",
+            "support": len(stated),
+            "confidence": "Medium" if len(stated) >= 3 else "Low" if stated else "None",
+            "evidence_basis": "members whose normalized problem statement is a verbatim source sentence",
         },
         {
             "claim": "The evidence has cross-layer support.",
@@ -560,18 +547,28 @@ def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, n
     joined_text = _bundle_records_text(bundle)
     topic_tags = infer_topic_tags(f"{representative_problem} {joined_text}")
 
-    title_bits = [area]
-    top_terms = [cleaned_text(str(term)) for term in cluster.get("top_terms", []) if cleaned_text(str(term))]
-    if top_terms:
-        title_bits.append(" ".join(word.title() for word in top_terms[:3]))
+    # Title from the representative problem's own words (observed live: keyword
+    # titles such as "ESG Climate Developing 5194" and "ESG Statement Problem
+    # Explicit", the latter built from the "no problem found" placeholder).
+    problem_resolved = bool(representative_problem) and representative_problem.casefold().rstrip(" .") not in {
+        "no explicit problem statement found", "insufficient problem signal", "unknown",
+    }
+    if problem_resolved:
+        words = representative_problem.split()
+        title = f"{area} Research Synthesis: {' '.join(words[:10]).rstrip(' .,;:')}{'...' if len(words) > 10 else ''}"
     else:
-        title_bits.append(cleaned_text(str(cluster.get("cluster_id", "Synthesis"))))
-    title_bits.append("Research Synthesis")
-    title = " ".join(part for part in title_bits if part).strip()
+        title = f"{area} Research Synthesis (problem unresolved) {cleaned_text(str(cluster.get('cluster_id', '')))}".strip()
 
+    independent_sources = int(evidence_assessment.get("independent_sources") or 0)
     why_important = (
-        f"This synthesis is backed by {member_count} clustered signal(s) across {len(layers)} layer(s). "
-        f"It reflects repeated ecosystem evidence rather than a single isolated artifact, which makes it a stronger candidate for research prioritization."
+        f"This synthesis draws on {member_count} clustered signal(s) from {independent_sources} independent source(s) "
+        f"across {len(layers)} layer(s). "
+        + (
+            "Several independent sources are involved, which is stronger than a single artifact; "
+            "it is not by itself evidence that they describe the same problem."
+            if independent_sources >= 2
+            else "It rests on a single source and is not repeated evidence."
+        )
     )
     existing_solutions = (
         f"Observed solution/activity signals include {signal_text}, with activity associated with {actor_text}. "
@@ -603,13 +600,27 @@ def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, n
             "No defensible unresolved research gap can be established from the current evidence alone. "
             "Further corroboration and existing-solution review are required before promoting this cluster as a research gap."
         )
-    idea = (
-        f"Use this cluster as a research starting point: turn the repeated {signal_text} into a scoped prototype or evaluation plan, "
-        f"then validate it against the evidence already preserved in the supporting layer artifacts."
-    )
+    gap_supported = synthesis_decision["decision"] == "provisional_gap_supported"
+    if gap_supported and problem_resolved:
+        idea = (
+            f"Scope a study of the source-stated problem \"{representative_problem[:240]}\" and validate it against "
+            "the cited evidence before any prototype."
+        )
+    else:
+        idea = (
+            "No research idea is proposed from this cluster yet: the evidence does not establish a research gap. "
+            "Review the cited sources first."
+        )
+    # "Confidence" is confidence that this cluster is a research gap/direction.
+    # The gate's confidence in a "no gap" decision must not read as High
+    # (observed live: all 7 syntheses said "Confidence: High" next to "No defensible gap").
     synthesis_conf = float(synthesis_decision.get("confidence", 0.0))
-    confidence = "High" if synthesis_conf >= 0.80 else "Medium" if synthesis_conf >= 0.60 else "Low"
-    feasibility = "High" if evidence_count >= 4 else "Moderate to High" if evidence_count >= 2 else "Moderate"
+    confidence = (
+        ("High" if synthesis_conf >= 0.80 else "Medium" if synthesis_conf >= 0.60 else "Low")
+        if gap_supported else "Low"
+    )
+    # Feasibility is not assessed by this agent; an evidence count is not feasibility.
+    feasibility = "Unassessed"
     provenance = build_provenance(
         input_files=evidence_links,
         synthesis_method="heuristic_agent",

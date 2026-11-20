@@ -275,10 +275,12 @@ def _select_problem_statement(
     """
     from core.problem_extraction import (
         _is_boilerplate,
-        _is_genuine_limitation,
+        _is_funding_limitation as _is_contextual_limitation,
         _is_objective_or_task_statement,
         _is_structured_problem_signal,
     )
+
+    title_key = re.sub(r"\W+", " ", str(title or "")).strip().casefold()
 
     first = _clean(candidates[0]) if candidates else ""
     if first.casefold() in _EXPLICIT_UNRESOLVED_MARKERS:
@@ -306,10 +308,18 @@ def _select_problem_statement(
                          r"(?:opportunity|opportunities|solution)\b|\b(?:will|can|could) help\b",
                          sentence, re.IGNORECASE):
                 continue
+            # A record's own title is not its problem statement (observed live:
+            # "How risk management can prevent future wildfire disasters ...").
+            if title_key and re.sub(r"\W+", " ", sentence).strip().casefold() == title_key:
+                continue
             structured, _ = _is_structured_problem_signal(
                 sentence, title=title, research_area=research_area, agent_name=agent_name
             )
-            if structured or _is_genuine_limitation(sentence):
+            # Limitation test with technical "risk" compounds neutralised and
+            # risk-only sentences required to state the risk is posed/faced/rising
+            # (observed live: "... are pushing to make ESG indicators (... governance
+            # risks) a key set of information ..." was selected as a problem).
+            if structured or _is_contextual_limitation(sentence):
                 return sentence
     return _NO_PROBLEM_STATEMENT
 
@@ -369,6 +379,9 @@ def _normalized_actor_and_focus(
         _safe_metadata_text(machine_metadata.get("issuing_body")),
         _safe_metadata_text(source_hints.get("source")),
     )
+    if re.match(r"(?i)^(?:https?://|www\.|doi\.org/)", actor or ""):
+        # A URL identifies the source, not who produced it.
+        actor = ""
     focus = _coalesce(
         _body_field(body, "Focus"),
         _safe_metadata_text(source_hints.get("focus")),

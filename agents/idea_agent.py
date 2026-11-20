@@ -26,27 +26,8 @@ DEFAULT_MANIFEST_DIR = Path("outputs/synthesis/manifest")
 AGENT_NAME = "idea"
 LAYER_NAME = "Intelligence"
 
-TOPIC_HINTS = {
-    "oracle": ("oracle", "data feed", "proof of reserve"),
-    "compliance": ("compliance", "reporting", "disclosure", "assurance"),
-    "identity": ("identity", "credential", "did", "authentication"),
-    "privacy": ("privacy", "zero-knowledge", "zk", "verifier"),
-    "settlement": ("settlement", "payment rails", "payments"),
-    "stablecoin": ("stablecoin", "reserve", "depeg", "vault"),
-    "liquidity": ("liquidity", "amm", "pool"),
-    "carbon": ("carbon", "mrv", "emissions", "registry"),
-    "depin": ("depin", "wireless", "sensor", "storage"),
-    "mev": ("mev", "block builder", "transaction ordering", "relay"),
-    "prototype": ("prototype", "builder", "hackathon", "demo"),
-    "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    # Context-specific: bare "vulnerability"/"audit" matched "wildfire vulnerability"
-    # and "auditability" of sustainability reports (observed live).
-    "security": ("exploit", "security vulnerability", "software vulnerability", "smart contract vulnerability",
-                 "vulnerability disclosure", "security incident", "postmortem", "security audit",
-                 "smart contract audit", "code audit"),
-    "governance": ("governance", "tokenomics", "incentive", "proposal"),
-    "interoperability": ("interoperability", "cross-chain", "integration"),
-}
+from core.topic_keywords import TOPIC_KEYWORDS as TOPIC_HINTS, match_topics  # noqa: E402
+
 
 AREA_DATASET_HINTS = {
     "RWA": "Asset registries, reserve attestations, oracle feeds, settlement logs, and tokenized asset telemetry.",
@@ -182,12 +163,7 @@ def derive_title(base_title: str, area: str) -> str:
 
 
 def extract_topics(text: str) -> list[str]:
-    lowered = text.lower()
-    topics: list[str] = []
-    for topic, keywords in TOPIC_HINTS.items():
-        if any(keyword in lowered for keyword in keywords):
-            topics.append(topic)
-    return topics
+    return match_topics(text)
 
 
 def infer_hypothesis(problem: str, gap: str, area: str, evidence_text: str | None = None) -> str:
@@ -211,22 +187,34 @@ def infer_experiment_direction(area: str, sections: dict[str, str], evidence_tex
         if evidence_text is not None
         else AREA_DATASET_HINTS.get(area, "Relevant structured evidence, benchmark data, and system traces.")
     )
-    idea = cleaned_text(sections.get("Idea", ""))
     gap = cleaned_text(sections.get("Gap", ""))
+    if _gap_not_supported(gap):
+        # No experiment is designed against a gap the evidence does not support
+        # (observed live: a run-on sentence quoting "No defensible ... gap" as the baseline).
+        return "Not designed: the synthesis does not establish a research gap to evaluate."
+    data = dataset_hint.rstrip(". ")
     return (
-        f"Build a narrow evaluation around the proposed direction: define 2-3 measurable assurance or performance metrics, "
-        f"test them against {dataset_hint.lower()} "
-        f"and compare the baseline described by the current gap ({gap[:180] or 'unresolved ecosystem fragmentation'}) "
-        f"with a prototype implementation ({idea[:180] or 'the proposed intervention'})."
+        "Define 2-3 measurable metrics for the source-stated problem and compare the current baseline with "
+        f"the proposed intervention. Data: {data[0].lower() + data[1:] if data else 'to be identified from the sources'}."
     )
+
+
+def _gap_not_supported(gap: str) -> bool:
+    """True when the synthesis states that no research gap is established."""
+    return bool(re.match(
+        r"^(?:no defensible unresolved research gap|uncertain research gap|contested research gap)",
+        cleaned_text(gap), flags=re.IGNORECASE,
+    )) or not cleaned_text(gap)
 
 
 def infer_prototype_scope(area: str, sections: dict[str, str], evidence_text: str | None = None) -> str:
     idea = cleaned_text(sections.get("Idea", ""))
+    if _gap_not_supported(sections.get("Gap", "")):
+        # Observed live: the scope repeated synthesis boilerplate for a cluster
+        # whose evidence established no gap.
+        return "Not scoped: the synthesis does not establish a research gap to prototype against."
     if evidence_text is not None and not _area_template_supported(area, evidence_text):
-        if idea:
-            return f"Prototype the narrowest demonstrable slice of this direction first: {idea[:260]}"
-        return "Prototype one end-to-end, testable workflow that turns the synthesized gap into a measurable intervention."
+        return "Not scoped yet: the cited evidence does not describe a prototype; derive it from the source-stated problem."
     if area == "Stablecoins":
         return (
             "Prototype a compact assurance dashboard and scoring service that joins reserve or vault telemetry, explorer traces, "
@@ -246,25 +234,23 @@ def infer_prototype_scope(area: str, sections: dict[str, str], evidence_text: st
 
 
 def infer_collaborators(area: str, entry: dict[str, Any], sections: dict[str, str]) -> str:
-    layers = ", ".join(entry.get("layers_covered", [])) or "ecosystem stakeholders"
-    source_urls = [cleaned_text(str(item)) for item in entry.get("source_urls", []) if cleaned_text(str(item))]
-    domain_hint = ""
-    if source_urls:
-        parts = source_urls[0].split("/")
-        if len(parts) > 2:
-            domain_hint = parts[2]
-        else:
-            domain_hint = source_urls[0]
-    existing = cleaned_text(sections.get("Existing Solutions", ""))
-    actor_bits = []
-    if domain_hint:
-        actor_bits.append(domain_hint)
-    if existing:
-        actor_bits.append(existing[:220])
-    joined = "; ".join(actor_bits) if actor_bits else "current ecosystem operators and maintainers"
+    # Contacts are the authors/organisations recorded on the cited evidence itself
+    # (observed live: the URL host "doi.org" and a boilerplate sentence were listed).
+    from core.normalization import normalize_intermediate_artifact
+
+    actors: list[str] = []
+    for input_file in entry.get("input_files", []) or []:
+        try:
+            actor = cleaned_text(str(normalize_intermediate_artifact(Path(str(input_file))).get("actor") or ""))
+        except Exception:
+            continue
+        if actor and actor.casefold() not in {"unknown", "not stated in source"} and actor not in actors:
+            actors.append(actor)
+    if not actors:
+        return "Not identified: the cited evidence does not name authors or organisations."
     return (
-        f"Candidate contacts drawn from the cited evidence ({layers} layers), not confirmed collaborators: "
-        f"{joined}."
+        "Authors/organisations of the cited evidence (candidate contacts, not confirmed collaborators): "
+        + "; ".join(actors[:5]) + "."
     )
 
 
@@ -274,7 +260,9 @@ def validate_idea_payload(problem: str, gap: str, hypothesis: str, experiment: s
     
     checks = {
         "problem_present": not is_sentinel,
-        "gap_present": bool(gap),
+        # "No defensible ... gap" is text, not a gap (observed live: gap_present=True
+        # and ready_for_proposal=True for ideas whose synthesis found no gap).
+        "gap_present": not _gap_not_supported(gap),
         "testable_hypothesis": hypothesis.lower().startswith("if ") and " then " in hypothesis.lower(),
         "measurable_experiment": any(term in experiment.lower() for term in ("metric", "benchmark", "compare", "baseline", "measure")),
         "feasibility_stated": bool(feasibility),
@@ -330,7 +318,10 @@ def build_idea_payload_from_synthesis(entry: dict[str, Any]) -> dict[str, Any]:
         f"{seed_idea} "
         f"The near-term research idea is to formalize this into a bounded hypothesis, measurable prototype, and evaluation plan rather than leaving it as a broad ecosystem recommendation."
     ).strip()
-    topic_tags = [f"#{topic}" for topic in extract_topics(" ".join([problem, gap, seed_idea, enriched_idea]))]
+    # Topics come from the grounded problem only; the generated idea/gap text is
+    # boilerplate and produced tags no source supported (observed live: every idea
+    # tagged #stablecoin/#prototype/#benchmark from "preserved"/"prototype"/"evaluation").
+    topic_tags = [f"#{topic}" for topic in extract_topics(evidence_text)]
     
     # Check if the problem is a sentinel
     low_prob = problem.lower().strip()
@@ -393,7 +384,9 @@ def attach_external_novelty_validation(idea_payload: dict[str, Any]) -> dict[str
     }
     validation["novelty_search"] = novelty
     if novelty.get("search_mode") == "external" and novelty.get("query_executed"):
-        validation["novelty_status"] = "externally_validated"
+        # An external search ran; that does not validate novelty (observed live:
+        # "externally_validated" next to "novelty is not proven").
+        validation["novelty_status"] = "external_search_completed"
         validation["novelty_claim"] = "External search completed; novelty is not proven and any overlap must be reviewed."
         validation["ready_for_proposal"] = validation.get("ready_for_external_review", False) and novelty.get("novelty_status") != "OVERLAP_FOUND"
     else:

@@ -351,6 +351,10 @@ def _domain_anchor_terms(ctx: FundingCallContext) -> set[str]:
 # papers scored 0.450-0.552, off-topic living-lab papers <= 0.436, crypto/finance
 # pages <= 0.23 (all-MiniLM-L6-v2). Recalibrate as more calls are observed.
 SEMANTIC_CALL_MATCH_THRESHOLD = 0.45
+# Floor for records that pass only on a domain anchor term. Calibrated on the
+# same call: on-topic records 0.456-0.621, off-topic domain-anchor records
+# 0.237-0.329 (all-MiniLM-L6-v2). Recalibrate as more calls are observed.
+DOMAIN_ANCHOR_SEMANTIC_FLOOR = 0.40
 _CALL_QUERY_CACHE: dict[str, str] = {}
 
 
@@ -538,6 +542,19 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     if passed and tier is None:
         passed = False
         reason = "only generic vocabulary overlap; no call-specific phrase or domain anchor term"
+    if passed and tier == "domain_anchor" and _semantic_gate_enabled():
+        # A domain word ("carbon", "esg") alone admits evidence about a different
+        # topic in the same domain (observed live for a restoration living-labs
+        # call: ESG-rating, greenwashing and carbon-pricing papers, cosine
+        # 0.237-0.329, while every on-topic record scored >= 0.456). Require the
+        # evidence to be semantically related to the call as well.
+        semantic_similarity = _call_semantic_similarity(record, ctx)
+        if semantic_similarity is not None and semantic_similarity < DOMAIN_ANCHOR_SEMANTIC_FLOOR:
+            passed = False
+            reason = (
+                f"domain term only; semantically unrelated to the call (cosine {semantic_similarity:.3f} "
+                f"< {DOMAIN_ANCHOR_SEMANTIC_FLOOR})"
+            )
     return {
         "passed": passed,
         "score": round(score, 3),

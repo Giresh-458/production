@@ -28,23 +28,8 @@ DEFAULT_OUTPUTS_ROOT = Path("outputs")
 LAYER_NAME = "Processing"
 AGENT_NAME = "trend"
 
-TOPIC_KEYWORDS = {
-    "oracle": ("oracle", "data feed", "proof of reserve"),
-    "compliance": ("compliance", "reporting", "disclosure", "assurance"),
-    "identity": ("identity", "credential", "did", "authentication"),
-    "privacy": ("privacy", "zero-knowledge", "zk", "verifier"),
-    "settlement": ("settlement", "payment rails", "payments"),
-    "stablecoin": ("stablecoin", "reserve", "depeg"),
-    "liquidity": ("liquidity", "amm", "pool"),
-    "carbon": ("carbon", "mrv", "emissions", "registry"),
-    "depin": ("depin", "wireless", "sensor", "storage"),
-    "mev": ("mev", "block builder", "transaction ordering", "relay"),
-    "prototype": ("prototype", "builder", "hackathon", "demo"),
-    "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    "security": ("exploit", "vulnerability", "incident", "postmortem", "audit"),
-    "governance": ("governance", "tokenomics", "incentive", "proposal"),
-    "interoperability": ("interoperability", "cross-chain", "integration"),
-}
+from core.topic_keywords import TOPIC_KEYWORDS, prepare_topic_text  # noqa: E402
+
 
 
 def configure_logging(level_name: str) -> None:
@@ -147,8 +132,7 @@ def detect_topics(record: dict[str, Any]) -> list[str]:
         )
     ).lower()
     topics: list[str] = []
-    normalized_text = re.sub(r"[-_/]+", " ", text)
-    normalized_text = re.sub(r"\s+", " ", normalized_text).strip()
+    normalized_text = prepare_topic_text(text)
     for topic, keywords in TOPIC_KEYWORDS.items():
         matched = False
         for keyword in keywords:
