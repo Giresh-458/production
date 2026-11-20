@@ -152,3 +152,25 @@ Results on the fresh clone:
 - CI chain: Batch-1 `ci-batch1-20261120T074311855366Z` **ACCEPTED, 0 blockers**, all sources clean, 1/1 context ready → Batch-2 **ready_for_batch3** (4 accepted) → Batch-3 **ready_for_batch4**, 0 issues; run IDs match at every hand-off.
 - `run_pipeline.py`: exit 0; Batch-3 `ready_for_batch4` without modifying the handoff; synthesis and ideas succeeded; proposals 0 because every idea failed the external-novelty gate → `completed_no_proposal`.
 - Grounding: status, deadline, RIA type, research-problem quote, submission link, multi-actor condition and both Annex B passages match the official sources verbatim.
+
+## Remaining-defects cycle (2026-11-20, commit 3a926d7, fresh clone)
+
+Each fix was chosen by testing candidate designs against real run data first; rejected designs are noted.
+
+Batch-1
+- Opportunity-specific code removed. UDAX literals (7 sites, incl. status cues) → one general dated "Apply to <Programme> <year>" CTA rule (`_named_application_cta`). Live: title "UBRI Digital Asset Xcelerator (UDAX) 2027", OPEN, real application form link.
+- `PA-27-102` hard-coded title removed: it was not the official title. Mirror pages with a generic title now get title/status/close date from an exact-number Grants.gov lookup (`grantsgov_title_for_number`); no match → nothing invented. NIH/Grants.gov guide pages are Cloudflare-blocked (HTTP 403); the Grants.gov API is not.
+- Dead Solana heading pattern and two named SBIR topics removed; NSF umbrella IDs and the I-DAPT Chanakya scoped notice moved to `sources/funding_sources.yaml`. CI script: EIT companion check generalized; Climate KIC `download/72240` special case removed.
+- Measured, no change: of 4 open in-domain research topics rejected only for a missing problem, 3 have no problem statement in the official text; 1 is borderline.
+
+Batch-2
+- Mission gate: a pass now needs a call-specific phrase, a matched mission phrase, or a domain anchor term (required-anchor group, else strong terms; brand-only terms excluded). Rejected design: call-title word overlap (kept Protocol Labs, dropped ESG papers). Records carry `relevance_tier`.
+- Problem statement: one bounded source sentence passing the problem-signal test, excluding listings, dates, instructions, code, URLs and page dumps. Rejected designs: joining snippets (up to 12 KB), reusing the extractor as-is (selected page dumps), "first clean sentence" (selected non-problems). Collector previews were measured as the main junk source (16 long "Selected Problem" values), so they are filtered too. Evidence identity uses source text to avoid placeholder collisions.
+
+Batch-3
+- Tagging/clustering text excludes serialized page dumps (Protocol Labs: 7 noise tags → 0; other records unchanged).
+- Cache manifest is content-addressed (relative paths, no mtimes; schema_version 8); copied/moved runs reuse their cache.
+
+Verification (fresh clone of 3a926d7): suite **1247 passed, 0 failed**; CI steps 2–7 all real work; Batch-1 **ACCEPTED** (`ci-batch1-20261120T090818848578Z`, 0 blockers, all sources clean); Batch-2 **ready_for_batch3** (3 records, tiers recorded, max problem 131 chars, 0 dumps); Batch-3 **ready_for_batch4**; `run_pipeline.py` exit 0, `completed_no_proposal` (novelty gate).
+
+Residual, documented: the keyword problem-signal test still accepts sentences that merely mention "risk" (e.g. CAD Trust "guarding against double-counting risk"); changing it would alter verified Batch-1 extraction. Batch-1 #2 (ESG scope vs blockchain focus) awaits an owner decision.
