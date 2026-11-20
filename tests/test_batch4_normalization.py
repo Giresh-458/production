@@ -323,5 +323,81 @@ def test_snippet_is_cut_where_another_crawled_page_begins(temp_outputs):
     paths = save_normalized_collection_records(temp_outputs, temp_outputs)
     import json
     records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
-    assert records[0]["problem_statement"] == first
+    problem = records[0]["problem_statement"]
+    # No content from the second crawled page or its URL may reach the problem.
+    assert "[Depth" not in problem and "https://" not in problem and "adopted today" not in problem
     assert snippet in records[0]["evidence_snippets"]  # full evidence is preserved
+
+
+@pytest.mark.parametrize("snippet", [
+    # Verbatim non-problems observed live that pass a keyword "risk/fails" test.
+    "Current Rates 625 th Meeting of Central Board of the Reserve Bank of India Economic Resilience, Thinner Buffers, Emerging Risks Globally: Where Does India Stand",
+    "Prediction Markets Note SEP 14, 2026 Amodei, Musk and Altman called for slowing AI down, and chip stocks fell on risk.",
+    "Please file issues directly on GitHub , or send them to the list if that is not possible because of risk.",
+    "error FailedToWithdrawEth ( address owner , address target , uint256 value ) ; // Used when the withdrawal of Ether fails.",
+])
+def test_listing_navigation_instruction_and_code_are_not_problems(temp_outputs, snippet):
+    create_artifact(temp_outputs, "n.md", make_artifact_md(problem="", evidence_snippets=[snippet]))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == "No explicit problem statement found."
+
+
+def test_one_bounded_problem_sentence_is_selected_not_joined_snippets(temp_outputs):
+    snippets = [
+        "Delegated Regulation Related links Timeline of the initiative and stakeholder feedback.",
+        "The effectiveness of carbon pricing relies on the quality of emission data, and the information "
+        "constraint function of the ESG system is degraded by the greenwashing phenomenon. More text follows here.",
+    ]
+    create_artifact(temp_outputs, "p.md", make_artifact_md(problem="", evidence_snippets=snippets))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == (
+        "The effectiveness of carbon pricing relies on the quality of emission data, and the information "
+        "constraint function of the ESG system is degraded by the greenwashing phenomenon."
+    )
+
+
+def test_copied_run_folder_reuses_normalized_cache(tmp_path):
+    """Moving/copying a run folder must not force re-normalization (content is unchanged).
+
+    Live regression: absolute paths and mtimes in the cache manifest made a copied
+    run rebuild its Batch-2 handoff, which the Batch-3 contract then blocked."""
+    import shutil
+    import time
+    from core.normalization import ensure_normalized_collection_records
+
+    original = tmp_path / "a" / "outputs"
+    (original / "intermediate").mkdir(parents=True)
+    create_artifact(original, "x.md", make_artifact_md(
+        problem="Current verifiers cannot maintain target latency at high transaction volume today."))
+    save_normalized_collection_records(original, original)
+
+    copied = tmp_path / "b" / "outputs"
+    time.sleep(0.05)
+    shutil.copytree(original, copied)  # new absolute paths and new modification times
+    before = {p.name: p.read_bytes() for p in (copied / "normalized").iterdir() if p.is_file()}
+    ensure_normalized_collection_records(copied)
+    after = {p.name: p.read_bytes() for p in (copied / "normalized").iterdir() if p.is_file()}
+    assert after == before
+
+
+def test_content_change_after_copy_still_refreshes(tmp_path):
+    import shutil
+    from core.normalization import ensure_normalized_collection_records
+
+    original = tmp_path / "a" / "outputs"
+    (original / "intermediate").mkdir(parents=True)
+    create_artifact(original, "x.md", make_artifact_md(title="Version One",
+        problem="Current verifiers cannot maintain target latency at high transaction volume today."))
+    save_normalized_collection_records(original, original)
+    copied = tmp_path / "b" / "outputs"
+    shutil.copytree(original, copied)
+    create_artifact(copied, "x.md", make_artifact_md(title="Version Two",
+        problem="Current verifiers cannot maintain target latency at high transaction volume today."))
+    ensure_normalized_collection_records(copied)
+    import json
+    titles = [r["title"] for r in json.loads((copied / "normalized" / "records.json").read_text(encoding="utf-8"))]
+    assert titles == ["Version Two"]

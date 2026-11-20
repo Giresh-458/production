@@ -586,6 +586,9 @@ sources:
     collection:
       mode: web
       engine: crawl4ai
+      # Umbrella solicitations covering many topic areas: matching one of these
+      # numbers alone cannot verify an individual SBIR.gov topic.
+      umbrella_solicitation_ids: [NSF26-510, NSF26-511]
       # Crawl SBIR.gov topic listings only. Official agency solicitations
       # are verified separately from each topic's explicit official link.
       allowed_domains:
@@ -717,6 +720,12 @@ sources:
       allowed_domains:
       - idapthub.org
       - www.idapthub.org
+      # The site-wide notice closes only two Chanakya categories; the fellowships
+      # page also lists UG/PG/doctoral categories it does not close. If the notice
+      # wording changes, nothing is removed and the page-level notice applies.
+      status_scope_exclusions:
+      - url: https://www.idapthub.org/applications/chanakya_fellowships
+        notice_pattern: '\bI-DAPT[-\s]Hub Foundation is currently not accepting (?:any )?(?:new |fresh )?applications for Research Projects and Post-Doctoral Chanakya Fellowships\b[.!]?'
       status_verification_urls:
       - https://www.idapthub.org/applications/call_for_proposals
       status_verification_url_map:

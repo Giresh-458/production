@@ -1258,11 +1258,9 @@ def test_sbir_pa_27_102_generic_topic_title_uses_explicit_sttr_identity():
 
     opportunity = analyze_document(document)
     assert opportunity.call_id == "PA-27-102"
-    assert opportunity.status == "OPEN_CALL"
-    assert opportunity.program_name == (
-        "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) "
-        "Clinical Trial Optional"
-    )
+    # The page text contains no title; analysis must not invent one (the previous
+    # hard-coded name was not even the official Grants.gov title).
+    assert "Parent Grant (R41/R42)" not in opportunity.program_name
     assert opportunity.eligibility is not None
     assert "United States" in opportunity.eligibility
     assert opportunity.geography is not None
@@ -1417,7 +1415,19 @@ def test_sbir_mirror_is_not_verified_by_generic_official_solicitation_alone(monk
         content=source_text,
         year=2026,
     )
-    context = _fetch_linked_official_sbir_context(document, warnings=[], cache={})
+    import yaml
+    from pathlib import Path
+
+    config = yaml.safe_load(Path("sources/funding_sources.yaml").read_text(encoding="utf-8"))
+    sbir = next(
+        source for group in config["sources"].values() for source in group
+        if source["name"] == "Open SBIR Funding Topics"
+    )
+    umbrella_ids = set(sbir["collection"]["umbrella_solicitation_ids"])
+    assert "NSF26-510" in umbrella_ids  # declared in source config, not code
+    context = _fetch_linked_official_sbir_context(
+        document, warnings=[], cache={}, umbrella_ids=umbrella_ids
+    )
     assert context == ""
 
     opportunity = analyze_document(document)
@@ -1626,3 +1636,35 @@ def test_sbir_nih_recurring_due_dates_use_next_future_window(monkeypatch):
     assert opportunity.status == "OPEN_CALL"
     assert opportunity.deadline == "2027-01-05"
     assert opportunity.application_url == official_url
+
+
+def test_official_solicitation_title_comes_from_exact_grantsgov_match(monkeypatch):
+    from agents import funding_collector
+    from agents.funding_agent import FundingOpportunity
+
+    def make(call_id):
+        return FundingOpportunity(
+            funding_body="Open SBIR Funding Topics", program_name="Topic | SBIR", call_id=call_id,
+            status="OPEN_CALL", opening_date=None, deadline=None, funding_amount=None, currency=None,
+            duration=None, eligibility=None, geography=None, trl=None, research_priorities=[],
+            required_partners=None, deliverables=None, evaluation_criteria=None, eligible_costs=None,
+            application_url=None, opportunity_type="FUNDING_CALL", focus_area="General", keywords=[],
+            research_context={}, source_method="deterministic_extraction", source_url="https://www.sbir.gov/topics/1",
+            source_title="Topic | SBIR", retrieved_at="", published_at=None, last_verified_at="", evidence={},
+        )
+
+    official = "NIH Small Business Technology Transfer Grant (Parent STTR [R41/R42] Clinical Trial Optional)"
+    monkeypatch.setattr(funding_collector, "grantsgov_title_for_number",
+                        lambda n: {"number": n, "title": official, "oppStatus": "posted", "closeDate": "04/05/2099"}
+                        if n == "PA-27-102" else None)
+    found = make("PA-27-102")
+    found.status = "UNKNOWN"
+    funding_collector._apply_official_solicitation_title(found, [])
+    assert found.program_name == official
+    assert found.status == "OPEN_CALL" and found.deadline == "2099-04-05"
+    assert found.evidence["source_status"] == "posted"
+    assert "exact opportunity number match" in found.evidence["program_name_provenance"]
+
+    missing = make("PA-99-999")
+    funding_collector._apply_official_solicitation_title(missing, [])
+    assert missing.program_name == "Topic | SBIR"  # nothing invented without an exact match

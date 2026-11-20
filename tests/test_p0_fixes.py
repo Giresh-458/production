@@ -99,7 +99,7 @@ def test_normalization_behavior(tmp_path):
 ### Evidence Snippets
 - Stable excerpt identifying this same source evidence item across revisions.
 ## Problem Intelligence
-**Selected Problem**: Problem V1
+**Selected Problem**: Current verifiers cannot maintain target latency at high transaction volume in release one.
 **Mode**: deterministic
 ## Evidence Bundle
 ### Page Title
@@ -110,7 +110,7 @@ Doc A
     records = json.loads((outputs / "normalized" / "records.json").read_text())
     assert len(records) == 1
     assert records[0]["observation_count"] == 1
-    assert records[0]["problem_statement"] == "Problem V1"
+    assert records[0]["problem_statement"] == "Current verifiers cannot maintain target latency at high transaction volume in release one."
     
     # Case A: Identical observation
     doc_a_dup = intermediate / "doc_a_dup.md"
@@ -124,14 +124,14 @@ Doc A
     
     # Case B: Updated document (content changes)
     doc_a_v2 = intermediate / "doc_a_v2.md"
-    doc_a_v2.write_text(doc_a_v1.read_text().replace("Problem V1", "Problem V2").replace("2023-01-01", "2023-01-03"))
+    doc_a_v2.write_text(doc_a_v1.read_text().replace("release one", "release two").replace("2023-01-01", "2023-01-03"))
     
     save_normalized_collection_records(outputs, outputs)
     records = json.loads((outputs / "normalized" / "records.json").read_text())
     assert len(records) == 1
     assert records[0]["observation_count"] == 3
     assert len(records[0]["content_versions"]) == 2
-    assert records[0]["problem_statement"] == "Problem V2"
+    assert records[0]["problem_statement"] == "Current verifiers cannot maintain target latency at high transaction volume in release two."
     
     # Case C: Genuinely different document
     doc_b = intermediate / "doc_b.md"

@@ -1217,11 +1217,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
-                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon)\b",
                 lowered,
                 flags=re.IGNORECASE,
-            ))
+            )) or bool(_named_application_cta(content))
             rolling_review_with_cta = bool(re.search(
                 r"\bapplications? (?:are )?reviewed on a rolling basis\b",
                 lowered,
@@ -1267,11 +1266,10 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
                 r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon|"
-                r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027)\b",
+                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon)\b",
         lowered,
         flags=re.IGNORECASE,
-    ))
+    )) or bool(_named_application_cta(content))
     rolling_review_phrase = bool(re.search(
         r"\bapplications? (?:are )?reviewed on a rolling basis\b",
         lowered,
@@ -1312,8 +1310,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "udax", "protocol rewards", "horizon", "incubation program")
-    )
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "protocol rewards", "horizon", "incubation program")
+    ) or bool(_named_application_cta(content))
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
 
@@ -1567,15 +1565,37 @@ def _extract_funding_body(text: str, fallback: str) -> str:
     return fallback
 
 
+_CTA_NAME_TOKEN = r"(?:[A-Z][A-Za-z0-9&.'\-]*|\([A-Z][A-Za-z0-9&.\-]*\))"
+_NAMED_APPLICATION_CTA = re.compile(
+    r"\b[Aa]pply (?:[Nn]ow )?(?:to|for) (?:the )?"
+    rf"({_CTA_NAME_TOKEN}(?:\s+(?:{_CTA_NAME_TOKEN}|of|for|and|in|on|the)){{0,12}}\s+20\d{{2}})\b"
+)
+
+
+def _named_application_cta(text: str) -> str | None:
+    """Return the programme named by a dated application CTA, verbatim, or None.
+
+    Matches source text such as "Apply to UBRI Digital Asset Xcelerator (UDAX) 2027".
+    Requires a capitalised name of at least two words before the year and rejects
+    generic labels, so text like "apply for funding in 2027" does not qualify.
+    """
+    for match in _NAMED_APPLICATION_CTA.finditer(str(text or "")):
+        name = cleaned_text(match.group(1))
+        if len(name.split()) < 3:  # at least two name words plus the year
+            continue
+        if _is_generic_funding_title(re.sub(r"\s+20\d{2}$", "", name)):
+            continue
+        return name
+    return None
+
+
 def _extract_program_name(text: str, fallback: str) -> str:
-    # Ripple's UBRI landing page is a programme overview, but its explicit current
-    # UDAX 2027 application CTA identifies the actionable call within that page.
-    if re.search(
-        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
-        str(text or ""),
-        flags=re.IGNORECASE,
-    ):
-        return "Digital Asset Xcelerator (UDAX) 2027"
+    # A dated, named application call-to-action ("Apply to <Programme> 2027")
+    # identifies the actionable call even on a programme overview page. The
+    # name is taken verbatim from the source.
+    named_cta = _named_application_cta(text)
+    if named_cta:
+        return named_cta
 
     # Search H1-H6 headings in document order. Browser/page titles such as
     # "Topic" may be generic while the actual solicitation appears in an H2.
@@ -1630,8 +1650,7 @@ def _extract_program_name(text: str, fallback: str) -> str:
     # body line rather than a heading or labelled "Topic Title" field.
     formal_sbir_title = re.search(
         r"(?im)^\s*(.{10,180}\b(?:Small Business Innovation Research|Small Business Technology Transfer|"
-        r"Strategic Breakthrough Award|Trusted Identity and Identity Management|"
-        r"Climate Change Adaptation, Mitigation and Reversal)\b.{0,80})\s*$",
+        r"Strategic Breakthrough Award)\b.{0,80})\s*$",
         text,
     )
     if formal_sbir_title:
@@ -1641,7 +1660,6 @@ def _extract_program_name(text: str, fallback: str) -> str:
 
     # Prefer explicit call names in source text before falling back to page title.
     patterns = [
-        r"(?im)^\s*#{1,4}\s*(Solana Foundation Funding)\s*$",
         r"(?im)^\s*#{1,3}\s*(Open Grants?)\s*$",
         r"participate in\s+(.{3,140}?)(?:,\s*an initiative|,\s*a program)",
         r"About\s+([A-Z][A-Za-z0-9 .&()\-]{2,120})(?:\n|$)",
@@ -1970,19 +1988,9 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     if extracted:
         return extracted
 
-    # Ripple's official UBRI page currently exposes the UDAX 2027 application CTA,
-    # but the rendered button may not expose its destination to the crawler. Keep
-    # the official call-detail page as the route rather than inventing a form URL.
-    is_ripple_udax_cta = (
-        (parsed_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
-        and parsed_source.path.rstrip("/") == "/impact/ubri"
-        and re.search(
-            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
-            content or "",
-            flags=re.IGNORECASE,
-        )
-    )
-    if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_ripple_udax_cta:
+    # A named application CTA whose destination is not exposed to the crawler:
+    # route to the official page carrying the CTA rather than inventing a form URL.
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and _named_application_cta(content or ""):
         return source_url
 
     # Some official NEAR programme pages render the apply CTA without a stable
@@ -2072,7 +2080,7 @@ def _status_evidence_for_classification(text: str, status: str) -> str | None:
         r"apply for next cohort",
         r"apply for the program",
         r"apply to horizon",
-        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"\bapply (?:now )?(?:to|for) (?:the )?[A-Z][^.\n]{3,140}?\b20\d{2}\b",
         r"\bopen call\b",
         r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
         r"(?:call|application|solicitation|funding|grant|opportunity)?\s*status\s*[:：-]\s*upcoming",
@@ -2433,29 +2441,44 @@ def _extract_general_themes(content: str) -> list[str]:
 def _status_content_for_document(document: FundingDocument) -> str:
     """Apply publisher route scope before classifying a page-level application status.
 
-    I-DAPT's Chanakya page lists several distinct fellowship categories. Its
-    site-wide notice closes Research Projects and Post-Doctoral Chanakya
-    Fellowships, not the UG/PG/doctoral fellowship categories on this route.
-    Keep the notice in the original source content and remove only that scoped
-    clause from this route's aggregate status decision.
+    A site-wide notice can close only some categories that a page lists (e.g. a
+    notice closing two fellowship categories on a page that lists several). Such
+    scopes are declared per page URL in the source configuration
+    (``collection.status_scope_exclusions``), not in code. The notice stays in the
+    original source content; only the declared clause is removed from this
+    route's aggregate status decision. If the notice wording changes, nothing is
+    removed and the page-level notice applies (conservative).
     """
     content = str(document.content or "")
-    parsed = urlparse(str(document.source or ""))
-    host = (parsed.hostname or "").casefold()
-    path = parsed.path.rstrip("/")
-    if (
-        host in {"idapthub.org", "www.idapthub.org"}
-        and path == "/applications/chanakya_fellowships"
-    ):
-        content = re.sub(
-            r"\bI-DAPT[-\s]Hub Foundation is currently not accepting "
-            r"(?:any )?(?:new |fresh )?applications for Research Projects "
-            r"and Post-Doctoral Chanakya Fellowships\b[.!]?",
-            "",
-            content,
-            flags=re.IGNORECASE,
-        )
+    key = _funding_url_key(document.source)
+    for entry in _configured_status_scope_exclusions():
+        if _funding_url_key(entry.get("url")) == key and entry.get("notice_pattern"):
+            content = re.sub(str(entry["notice_pattern"]), "", content, flags=re.IGNORECASE)
     return content
+
+
+_STATUS_SCOPE_EXCLUSIONS_CACHE: list[dict] | None = None
+
+
+def _configured_status_scope_exclusions() -> list[dict]:
+    """Load ``status_scope_exclusions`` declared for any configured funding source."""
+    global _STATUS_SCOPE_EXCLUSIONS_CACHE
+    if _STATUS_SCOPE_EXCLUSIONS_CACHE is None:
+        entries: list[dict] = []
+        path = Path(__file__).resolve().parents[1] / "sources" / "funding_sources.yaml"
+        try:
+            import yaml
+            config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            for group in (config.get("sources") or {}).values():
+                for source in group if isinstance(group, list) else []:
+                    collection = (source or {}).get("collection") or {}
+                    for entry in collection.get("status_scope_exclusions") or []:
+                        if isinstance(entry, dict):
+                            entries.append(entry)
+        except Exception as exc:  # unreadable config: no exclusions (conservative)
+            LOGGER.warning("Could not load status_scope_exclusions: %s", exc)
+        _STATUS_SCOPE_EXCLUSIONS_CACHE = entries
+    return _STATUS_SCOPE_EXCLUSIONS_CACHE
 
 
 def analyze_document(document: FundingDocument) -> FundingOpportunity:
@@ -2533,20 +2556,11 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # HTML/Markdown extraction can leave heading markers in the title. Keep the
     # structured title human-readable without changing its source wording.
     program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
-    # Ripple's current UBRI page promotes the distinct UDAX 2027 application.
-    # Do not mislabel that application as the parent university research programme.
-    ripple_source = urlparse(document.source or "")
-    ripple_udax_cta = (
-        (ripple_source.hostname or "").casefold() in {"ripple.com", "www.ripple.com"}
-        and ripple_source.path.rstrip("/") == "/impact/ubri"
-        and re.search(
-            r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
-            document.content or "",
-            flags=re.IGNORECASE,
-        )
-    )
-    if ripple_udax_cta:
-        program_name = "UBRI Digital Asset Xcelerator (UDAX) 2027"
+    # A dated, named application CTA is the actionable call on a programme
+    # overview page; give it its own identity rather than the parent programme's.
+    named_cta = _named_application_cta(document.content or "")
+    if named_cta and program_name != named_cta:
+        program_name = named_cta
         identity_material = "|".join([
             document.organization.strip().lower(),
             program_name.strip().lower(),
@@ -2567,19 +2581,6 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         source_title = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", source_title))
         if source_title and not _is_generic_funding_title(source_title):
             program_name = source_title
-    # PA-27-102 can render a generic SBIR browser title. Its solicitation ID and
-    # explicit STTR body text establish the distinct official opportunity.
-    solicitation_match = re.search(
-        r"(?i)\b(?:solicitation|NOFO|funding opportunity|topic)\s*(?:number|no\.?|identifier)\s*[:#]?\s*([A-Z]{1,8}-\d{2}-\d{2,6})\b",
-        document.content,
-    )
-    if (
-        solicitation_match
-        and solicitation_match.group(1).upper() == "PA-27-102"
-        and "small business technology transfer" in lowered
-        and _is_generic_funding_title(program_name)
-    ):
-        program_name = "NIH Small Business Technology Transfer (STTR) Parent Grant (R41/R42) Clinical Trial Optional"
     # SBIR.gov's topic pages sometimes render "Our Programs" as both the browser
     # title and page chrome. For our two explicitly configured NSF topics, use the
     # curated source label only when the topic URL is specific and extraction still

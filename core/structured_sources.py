@@ -255,6 +255,32 @@ def grantsgov_paginated_search(
         "errors": errors,
     }
 
+_FEDERAL_SOLICITATION_NUMBER = re.compile(r"^[A-Z]{1,8}-\d{2}-\d{2,6}$")
+
+
+def grantsgov_title_for_number(number: str) -> dict | None:
+    """Return the official Grants.gov listing whose opportunity number matches exactly.
+
+    Used when a mirror page (e.g. an SBIR.gov topic) shows only a generic title
+    but states the official solicitation number. Only an exact, case-insensitive
+    number match is accepted; otherwise None (nothing is inferred).
+    """
+    value = str(number or "").strip().upper()
+    if not _FEDERAL_SOLICITATION_NUMBER.fullmatch(value):
+        return None
+    data, _ = post_json(
+        "https://api.grants.gov/v1/api/search2",
+        json_body={"keyword": value, "rows": 25},
+        timeout=(8, 20),
+        retries=1,
+    )
+    hits = ((data or {}).get("data") or {}).get("oppHits") or []
+    exact = [h for h in hits if isinstance(h, dict) and str(h.get("number") or "").strip().upper() == value]
+    if len(exact) != 1 or not str(exact[0].get("title") or "").strip():
+        return None
+    return exact[0]
+
+
 def grantsgov_fetch_opportunity(opp_id: str) -> dict | None:
     """Fetch detail for a single Grants.gov opportunity."""
     try:

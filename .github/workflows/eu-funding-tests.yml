@@ -344,11 +344,11 @@ jobs:
               manual_review = []
               if not record.get("application_url"):
                   manual_review.append("direct_application_url_missing_manual_review")
-              source_url = str(record.get("source_url") or "").casefold()
-              if "sme-market-expansion-open-call-2027" in source_url:
-                  evidence = record.get("evidence") or {}
-                  if evidence.get("eligibility_supplemental_context_status") != "verified":
-                      manual_review.append("eligibility_completeness_unverified")
+              # Any call whose configured official eligibility companion page
+              # (sources/*.yaml related_context_pages) was not verified is flagged.
+              supplemental_status = (record.get("evidence") or {}).get("eligibility_supplemental_context_status")
+              if supplemental_status and supplemental_status != "verified":
+                  manual_review.append("eligibility_completeness_unverified")
               research_context = record.get("research_context")
               if not isinstance(research_context, dict):
                   manual_review.append("research_context_missing")
@@ -704,14 +704,13 @@ jobs:
                   if is_relevant_failed_url(url)
                   and not is_intentionally_excluded_gap(item.get("source_id"), {"url": url})
               ]
-              # Climate KIC links a large historical document archive from its live
-              # discovery pages. Keep failed attachments visible, but do not let a
-              # 404 for dated 2021–2025 archive attachments or the known retired
-              # download/72240 asset masquerade as a missed current call page.
-              # Current-year attachments and call/detail HTML pages remain blocking.
-              def is_stale_climate_kic_attachment(source_item, failed_url):
-                  if source_item.get("source_id") != "Climate KIC Open Calls":
-                      return False
+              # Sources can link historical document archives from live discovery
+              # pages. Keep failed attachments visible, but do not let a 404 for a
+              # dated upload older than 180 days masquerade as a missed current call
+              # page. Recent attachments and call/detail HTML pages remain blocking.
+              def is_stale_archive_attachment(source_item, failed_url):
+                  # A 404 for a dated WordPress upload older than 180 days is a stale
+                  # archive reference on any source, not a missed current call page.
                   key = normalized_url_path(failed_url)
                   matching_errors = [
                       error for error in (source_item.get("errors") or [])
@@ -725,8 +724,6 @@ jobs:
                   if not is_not_found:
                       return False
                   parsed = urlsplit(str(failed_url or ""))
-                  if parsed.netloc.casefold() not in {"climate-kic.org", "www.climate-kic.org"}:
-                      return False
                   dated_upload = re.match(
                       r"^/wp-content/uploads/(20[0-9]{2})/(0[1-9]|1[0-2])/",
                       parsed.path,
@@ -744,11 +741,11 @@ jobs:
                       # page itself was missed. The failed URL remains in the audit.
                       if (datetime.now(timezone.utc).date() - uploaded).days > 180:
                           return True
-                  return re.match(r"^/download/72240/?$", parsed.path, re.IGNORECASE) is not None
+                  return False
 
               stale_attachment_404s = [
                   url for url in relevant_failed_urls
-                  if is_stale_climate_kic_attachment(item, url)
+                  if is_stale_archive_attachment(item, url)
               ]
               documented_limited = [
                   url for url in relevant_failed_urls

@@ -27,6 +27,7 @@ from core.structured_sources import (
     github_paginated_issues,
     eu_funding_tenders_paginated_search,
     eu_funding_tenders_fetch_document,
+    grantsgov_title_for_number,
     eu_funding_tenders_fetch_topic_details,
     eu_funding_tenders_fetch_reference_pdf_text,
     EU_TOPIC_DETAILS_URL_TEMPLATE,
@@ -34,6 +35,7 @@ from core.structured_sources import (
 )
 from core.crawl4ai_web import crawl_funding_source, _reports_no_active_funding
 from agents.funding_agent import (
+    _is_generic_funding_title,
     FundingSource,
     FundingDocument,
     FundingOpportunity,
@@ -43,6 +45,53 @@ from agents.funding_agent import (
 )
 
 LOGGER = logging.getLogger("rif.funding_collector")
+
+
+def _apply_official_solicitation_title(analysis: Any, warnings: Optional[List[str]] = None) -> None:
+    """Replace a generic page title with the official Grants.gov title for its number.
+
+    Mirror pages (e.g. SBIR.gov topics) can show only a generic title while stating
+    the official solicitation number. The title comes from the exact-number
+    Grants.gov listing; without an exact match nothing is changed or invented.
+    """
+    if not _is_generic_funding_title(getattr(analysis, "program_name", None)):
+        return
+    number = str(getattr(analysis, "call_id", "") or "")
+    try:
+        hit = grantsgov_title_for_number(number)
+    except Exception as exc:
+        if warnings is not None:
+            warnings.append(f"Grants.gov title lookup failed for {number}: {exc}")
+        return
+    if not hit:
+        return
+    title = cleaned_text(str(hit.get("title") or ""))
+    provenance = "https://api.grants.gov/v1/api/search2 (exact opportunity number match)"
+    analysis.program_name = title
+    analysis.evidence["program_name"] = f"Grants.gov official listing {number}: {title}"
+    analysis.evidence["program_name_provenance"] = provenance
+    # A title-less mirror page cannot establish status on its own; the official
+    # listing's status (and close date) is independent, authoritative evidence.
+    official_status = {
+        "posted": "OPEN_CALL", "forecasted": "UPCOMING_CALL",
+        "closed": "CLOSED_CALL", "archived": "CLOSED_CALL",
+    }.get(str(hit.get("oppStatus") or "").strip().casefold())
+    close_date = None
+    raw_close = str(hit.get("closeDate") or "").strip()
+    if raw_close:
+        try:
+            close_date = datetime.strptime(raw_close, "%m/%d/%Y").date()
+        except ValueError:
+            close_date = None
+    if official_status == "OPEN_CALL" and close_date and close_date < datetime.now(UTC).date():
+        official_status = "CLOSED_CALL"
+    if official_status and analysis.status in {None, "", "UNKNOWN"}:
+        analysis.status = official_status
+        analysis.evidence["source_status"] = str(hit.get("oppStatus"))
+        analysis.evidence["source_status_provenance"] = provenance
+    if close_date and not analysis.deadline:
+        analysis.deadline = close_date.isoformat()
+        analysis.evidence["deadline"] = f"Grants.gov official close date: {raw_close}"
 
 
 def _first_grantsgov_value(
@@ -1784,6 +1833,7 @@ def _collect_github(
 
         try:
             analysis = analyze_document(doc)
+            _apply_official_solicitation_title(analysis, warnings)
             result.opportunities.append((doc, analysis))
             result.records_valid += 1
         except Exception as e:
@@ -1912,7 +1962,7 @@ def _fetch_currentness_verification_context(
     from core.http_client import fetch_text
 
     patterns = (
-        r"apply to (?:ubri )?(?:digital asset xcelerator|udax)(?:\s+\(udax\))?\s+2027",
+        r"\bapply (?:now )?(?:to|for) (?:the )?[A-Z][^.<\n]{3,140}?\b20\d{2}\b",
         r"apply for protocol rewards",
         r"apply to horizon",
         r"applying is as simple as creating a github issue",
@@ -2005,6 +2055,7 @@ def _fetch_linked_official_sbir_context(
     document: FundingDocument,
     warnings: Optional[List[str]] = None,
     cache: Optional[dict[str, str]] = None,
+    umbrella_ids: Optional[set[str]] = None,
 ) -> str:
     """Verify an SBIR mirror record against the official solicitation it links to.
 
@@ -2117,11 +2168,10 @@ def _fetch_linked_official_sbir_context(
         and not _is_generic_sbir_topic_title(topic_title)
         and normalized_topic in normalized_official_identity
     )
-    # NSF 26-510/26-511 are umbrella solicitations covering many topic areas;
-    # matching that number alone cannot verify an individual SBIR.gov topic.
-    # A unique opportunity identifier such as PA-27-100 can verify the record
-    # when the official opportunity page repeats that identifier and open status.
-    generic_umbrella_ids = {"NSF26-510", "NSF26-511"}
+    # Umbrella solicitations cover many topic areas; matching that number alone
+    # cannot verify an individual SBIR.gov topic. They are declared per source in
+    # configuration (collection.umbrella_solicitation_ids), not in code.
+    generic_umbrella_ids = {str(value).upper() for value in (umbrella_ids or set())}
     requires_topic_identity = any(identifier in generic_umbrella_ids for identifier in matched_ids)
     if not matched_ids or not official_current or (requires_topic_identity and not topic_confirmed):
         if warnings is not None and matched_ids and official_current and requires_topic_identity and not topic_confirmed:
@@ -2238,7 +2288,8 @@ def _collect_web_source(
         verification_context = _fetch_status_verification_context(source, warnings, document=doc)
         currentness_context = _fetch_currentness_verification_context(source, doc, warnings)
         linked_official_context = _fetch_linked_official_sbir_context(
-            doc, warnings, official_verification_cache
+            doc, warnings, official_verification_cache,
+            umbrella_ids=set((source.collection or {}).get("umbrella_solicitation_ids") or []),
         )
         if linked_official_context:
             doc.content = (doc.content.rstrip() + linked_official_context)[:200000]
@@ -2295,6 +2346,7 @@ def _collect_web_source(
 
         try:
             analysis = analyze_document(doc)
+            _apply_official_solicitation_title(analysis, warnings)
             result.opportunities.append((doc, analysis))
             result.records_valid += 1
         except Exception as e:

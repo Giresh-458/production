@@ -223,6 +223,89 @@ def _problem_text_before_page_dump(value: Any) -> str:
     return before if len(before.split()) >= 6 else ""
 
 
+_NO_PROBLEM_STATEMENT = "No explicit problem statement found."
+# Explicit unresolved-problem markers written by agents (agents/funding_agent.py,
+# core/agent_interface.py); they are statuses, not text to be re-judged.
+_EXPLICIT_UNRESOLVED_MARKERS = {"insufficient problem signal", "no explicit problem statement found."}
+_DATE_TOKEN = re.compile(
+    r"\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}|"
+    r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|"
+    r"\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4})\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_listing_or_navigation(sentence: str) -> bool:
+    """Headline lists, menus and dated feeds are not problem statements.
+
+    Observed live: "Current Rates 625 th Meeting of Central Board ... Emerging
+    Risks Globally" and "Prediction Markets Note SEP 14, 2026 ..." passed the
+    keyword problem test only because they contain "risk".
+    """
+    if _DATE_TOKEN.search(sentence):
+        return True
+    # Reader instructions and source code are not problem statements (observed
+    # live: "Please file issues directly on GitHub ...", "error FailedToWithdrawEth(...); // ...").
+    if re.match(r"^(?:please|ask|click|read|see|learn|visit|join|subscribe|sign up)\b", sentence, re.IGNORECASE):
+        return True
+    if "//" in sentence or (";" in sentence and re.search(r"[(){}]", sentence)):
+        return True
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z'-]*", sentence) if len(w) > 3]
+    if not words:
+        return True
+    title_case = sum(1 for w in words if w[0].isupper())
+    return title_case / len(words) >= 0.5
+
+
+def _select_problem_statement(
+    candidates: list[Any],
+    *,
+    title: str = "",
+    research_area: str | None = None,
+    agent_name: str | None = None,
+) -> str:
+    """Pick one source sentence that states a problem, or the explicit placeholder.
+
+    Candidates are the collector's preview followed by its evidence snippets.
+    Serialized page dumps are cut first; each remaining sentence must be bounded
+    (40-320 chars, >= 8 words), free of URLs, not boilerplate, not an objective or
+    task statement, and must pass the project's problem-signal test. Joining whole
+    snippets previously produced 1-4 KB "problem statements" with navigation text,
+    dates and other pages' content (observed live).
+    """
+    from core.problem_extraction import (
+        _is_boilerplate,
+        _is_genuine_limitation,
+        _is_objective_or_task_statement,
+        _is_structured_problem_signal,
+    )
+
+    first = _clean(candidates[0]) if candidates else ""
+    if first.casefold() in _EXPLICIT_UNRESOLVED_MARKERS:
+        # Collectors' explicit "no problem found" status is kept verbatim.
+        return first
+    for candidate in candidates:
+        text = _clean(_problem_text_before_page_dump(candidate))
+        if not text:
+            continue
+        for sentence in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])", text):
+            sentence = sentence.strip()
+            if not (40 <= len(sentence) <= 320 and len(sentence.split()) >= 8):
+                continue
+            if re.search(r"https?://|www\.|\[Depth \d+\]|Page title:", sentence, re.IGNORECASE):
+                continue
+            if _is_boilerplate(sentence) or _is_objective_or_task_statement(sentence):
+                continue
+            if _looks_like_listing_or_navigation(sentence):
+                continue
+            structured, _ = _is_structured_problem_signal(
+                sentence, title=title, research_area=research_area, agent_name=agent_name
+            )
+            if structured or _is_genuine_limitation(sentence):
+                return sentence
+    return _NO_PROBLEM_STATEMENT
+
+
 def _coalesce(*values: str) -> str:
     for value in values:
         cleaned = _clean(value)
@@ -635,16 +718,12 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     # snippet was the full "Page title: ... Source URL: ..." / "[Depth 0] ..."
     # page dump). Such text stays in the evidence bundle and context, but is
     # not promoted to the problem statement.
-    preview = _problem_text_before_page_dump(artifact["problem_preview"])
-    snippet_text = "\n".join(
-        cleaned_snippet
-        for snippet in evidence.get("evidence_snippets", [])
-        if (cleaned_snippet := _problem_text_before_page_dump(snippet))
+    normalized_problem = _select_problem_statement(
+        [artifact["problem_preview"], *evidence.get("evidence_snippets", [])],
+        title=title,
+        research_area=research_area,
+        agent_name=agent_name,
     )
-    normalized_problem = _coalesce(
-        preview,
-        snippet_text,
-    ) or "No explicit problem statement found."
     context_summary = _coalesce(
         "\n".join(evidence.get("key_paragraphs", [])),
         "\n".join(evidence.get("excerpt_windows", [])),
@@ -765,7 +844,9 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         layer,
         evidence.get("evidence_snippets", []),
         evidence.get("excerpt_windows", []),
-        normalized_problem,
+        # Identity must come from the source text itself: the selected problem can
+        # be the shared placeholder, which would make distinct evidence collide.
+        _clean(_problem_text_before_page_dump(artifact["problem_preview"])) or normalized_problem,
         context_summary,
         title,
     )
@@ -1009,6 +1090,14 @@ def _build_indexes(records: list[dict[str, Any]]) -> tuple[dict[str, list[dict[s
     return by_area, by_layer
 
 
+def _manifest_relative_path(path: Path, output_dir: Path) -> str:
+    """Location-independent manifest path (POSIX, relative to the output folder)."""
+    try:
+        return Path(os.path.relpath(path.resolve(), Path(output_dir).resolve())).as_posix()
+    except ValueError:  # different drive on Windows: fall back to the absolute path
+        return path.resolve().as_posix()
+
+
 def _normalization_input_manifest(
     intermediate_root: Path | list[Path],
     output_dir: Path,
@@ -1036,17 +1125,19 @@ def _normalization_input_manifest(
             if resolved in seen_paths:
                 continue
             seen_paths.add(resolved)
+            # Paths are relative to the output folder and timestamps are not
+            # recorded: the content hash detects every change, and a run folder
+            # that is moved or copied keeps a valid cache (it was rebuilt before).
+            manifest_path = _manifest_relative_path(path, output_dir)
             try:
-                stat = path.stat()
                 raw = path.read_bytes()
                 artifacts.append({
-                    "path": resolved,
-                    "size": stat.st_size,
-                    "mtime_ns": stat.st_mtime_ns,
+                    "path": manifest_path,
+                    "size": len(raw),
                     "sha256": hashlib.sha256(raw).hexdigest(),
                 })
             except OSError as exc:
-                artifacts.append({"path": resolved, "unreadable": type(exc).__name__})
+                artifacts.append({"path": manifest_path, "unreadable": type(exc).__name__})
 
     selected_call_hash = ""
     if target_funding_call_id:
@@ -1058,7 +1149,7 @@ def _normalization_input_manifest(
 
     artifacts.sort(key=lambda item: item["path"])
     return {
-        "schema_version": 7,
+        "schema_version": 8,
         "target_funding_call_id": target_funding_call_id or "",
         "target_run_id": target_run_id or "",
         "selected_call_sha256": selected_call_hash,
@@ -1557,25 +1648,10 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     intermediate_roots, target_funding_call_id, filter_func = resolve_refresh_context(outputs_root)
     target_run_id = resolve_refresh_run_id(outputs_root)
 
-    newest_intermediate = 0.0
-    for ir in intermediate_roots:
-        if ir.exists():
-            for path in ir.rglob("*.md"):
-                if target_funding_call_id and _is_batch1_funding_artifact(path, ir):
-                    continue
-                if path.name.lower() == "insights.md":
-                    continue
-                try:
-                    newest_intermediate = max(newest_intermediate, path.stat().st_mtime)
-                except OSError:
-                    continue
-    try:
-        records_mtime = records_path.stat().st_mtime
-    except OSError:
-        records_mtime = 0.0
-    force_refresh = False
-    if not records_path.exists() or newest_intermediate > records_mtime:
-        force_refresh = True
+    # Freshness is decided by the content manifest below (SHA-256 per artifact).
+    # File modification times are not compared: copying or moving a run folder
+    # changes them without changing any evidence.
+    force_refresh = not records_path.exists()
 
     # The mtime-only cache check misses deleted inputs, edits with restored
     # timestamps, and call-context changes. Require an exact input manifest match.

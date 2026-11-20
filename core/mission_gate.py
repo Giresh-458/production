@@ -298,6 +298,55 @@ def _is_data_availability_metadata_echo(record: dict[str, Any]) -> bool:
             return True
     return False
 
+_PHRASE_STOP = STOP | {
+    "need", "needs", "highlights", "communication", "integrated", "integrating",
+    "addressing", "towards", "toward", "across", "between", "within", "through",
+}
+
+
+def _call_specific_phrases(ctx: FundingCallContext) -> set[str]:
+    """Two-word phrases from the call title and its source-grounded problem text."""
+    rc = ctx.research_context
+    parts = [str(getattr(ctx, "call_title", "") or getattr(ctx, "program_name", "") or "")]
+    if rc is not None and getattr(rc, "evidence_refs", None):
+        parts.extend(str(item) for item in (getattr(rc, "inferred_challenges", None) or ()))
+    words = re.findall(r"[a-z][a-z-]+", " ".join(parts).casefold())
+    return {
+        f"{left} {right}".replace("-", " ")
+        for left, right in zip(words, words[1:])
+        if len(left) > 3 and len(right) > 3 and left not in _PHRASE_STOP and right not in _PHRASE_STOP
+    }
+
+
+def _domain_anchor_terms(ctx: FundingCallContext) -> set[str]:
+    """Domain-specific anchor terms for the call's supported domains.
+
+    Uses a domain's required anchor group where one is defined (ESG, ZK-IoV) and
+    otherwise its strong terms (weight >= 2.0). Generic words that are strong for
+    ESG ("sustainability") are therefore excluded, as are brand terms that only
+    count with corroboration (e.g. "new european bauhaus").
+    """
+    from core.schemas import DOMAIN_CORROBORATION_REQUIRED_ANCHORS, DOMAIN_REQUIRED_ANCHOR_GROUPS
+
+    rc = ctx.research_context
+    evidence = _supported_domain_evidence(rc) if rc else None
+    declared = [ctx.research_area]
+    if rc is not None:
+        declared += [getattr(rc, "domain", None), *(getattr(rc, "selected_domains", None) or ())]
+    domains = set(evidence or ()) or {
+        normalize_area(value) for value in declared if normalize_area(value) in DOMAIN_TERM_WEIGHTS
+    }
+    terms: set[str] = set()
+    for domain in domains:
+        groups = DOMAIN_REQUIRED_ANCHOR_GROUPS.get(domain)
+        if groups:
+            domain_terms = {term for group in groups for term in group}
+        else:
+            domain_terms = {term for term, weight in DOMAIN_TERM_WEIGHTS.get(domain, {}).items() if weight >= 2.0}
+        terms |= {term.casefold() for term in domain_terms} - set(DOMAIN_CORROBORATION_REQUIRED_ANCHORS.get(domain, ()))
+    return {term.replace("-", " ") for term in terms}
+
+
 def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]:
     """Conservative post-retrieval relevance gate.
 
@@ -324,9 +373,15 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     anchor_values = _mission_anchor_values(ctx)
     anchor_text = " ".join(anchor_values)
     document_text = " ".join(
-        str(record.get(key, ""))
-        for key in ("title", "problem_statement", "context_summary")
-        if record.get(key)
+        [
+            str(record.get(key, ""))
+            for key in ("title", "problem_statement", "context_summary")
+            if record.get(key)
+        ]
+        # Retrieved evidence snippets are source text too. Normalization now keeps
+        # only a genuine problem sentence (or a placeholder) in problem_statement,
+        # so the gate must still see the snippets it previously saw via that field.
+        + [str(snippet) for snippet in (record.get("evidence_snippets") or []) if str(snippet).strip()]
     )
 
     mission_tokens = _tokens(anchor_text)
@@ -404,11 +459,42 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     overlap_score = min(1.0, len(matches) / max(3, min(len(mission_tokens), 12))) if mission_tokens else 0.0
     title_score = len(matched_title_anchors) / len(title_anchors) if title_anchors else 0.0
     score = max(overlap_score, title_score)
+
+    # Generic vocabulary alone ("climate", "sustainability") is not evidence of
+    # relevance (observed live: a lab's blog listing passed a living-labs call on
+    # those two words). Require a call-specific phrase or a domain anchor term,
+    # unless a technical title anchor or energy-system evidence already applies.
+    normalized_document = " ".join(re.findall(r"[a-z0-9]+", raw_document.replace("-", " ")))
+    call_phrase_hits = sorted(
+        phrase for phrase in _call_specific_phrases(ctx)
+        if re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", normalized_document)
+    )
+    domain_anchor_hits = sorted(
+        term for term in _domain_anchor_terms(ctx)
+        if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", normalized_document)
+    )
+    if call_phrase_hits or phrases:
+        # Call title/problem phrases, or exact multi-word mission phrases from
+        # the call's technology themes and priorities ("compute network").
+        tier = "call_specific"
+    elif domain_anchor_hits:
+        tier = "domain_anchor"
+    elif title_anchor_match or (energy_call and energy_evidence):
+        tier = "title_anchor"
+    else:
+        tier = None
+    reason = "substantive mission overlap" if passed else "insufficient substantive mission overlap"
+    if passed and tier is None:
+        passed = False
+        reason = "only generic vocabulary overlap; no call-specific phrase or domain anchor term"
     return {
         "passed": passed,
         "score": round(score, 3),
         "matched_terms": matches[:20],
         "matched_phrases": phrases[:5],
         "matched_title_anchors": matched_title_anchors,
-        "reason": "substantive mission overlap" if passed else "insufficient substantive mission overlap",
+        "relevance_tier": tier if passed else None,
+        "call_specific_phrases": call_phrase_hits[:5],
+        "domain_anchor_terms": domain_anchor_hits[:5],
+        "reason": reason,
     }

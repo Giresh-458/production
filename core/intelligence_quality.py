@@ -46,13 +46,18 @@ def actor_key(record: dict[str, Any]) -> str:
 
 
 def evidence_text(record: dict[str, Any]) -> str:
+    # Serialized page dumps ("Page title: ... Source URL: ...", "[Depth N] ... | url")
+    # are crawl artifacts, not evidence; tagging and clustering must not read them
+    # (observed live: a lab's blog listing yielded 7 unrelated topic tags).
+    from core.normalization import _problem_text_before_page_dump as without_dump
+
     parts = [
         clean(record.get('title')),
         clean(record.get('problem_statement') or record.get('problem')),
-        clean(record.get('context_summary')),
+        clean(without_dump(record.get('context_summary'))),
         clean(record.get('focus')),
-        ' '.join(clean(x) for x in record.get('evidence_snippets', []) if clean(x)),
-        ' '.join(clean(x) for x in record.get('excerpt_windows', []) if clean(x)),
+        ' '.join(clean(without_dump(x)) for x in record.get('evidence_snippets', []) if clean(without_dump(x))),
+        ' '.join(clean(without_dump(x)) for x in record.get('excerpt_windows', []) if clean(without_dump(x))),
         ' '.join(clean(x) for x in record.get('keywords', []) if clean(x)),
     ]
     return ' '.join(x for x in parts if x)
