@@ -54,7 +54,11 @@ TOPIC_KEYWORDS = {
     "mev": ("mev", "block builder", "transaction ordering", "relay"),
     "prototype": ("prototype", "builder", "hackathon", "demo"),
     "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    "security": ("exploit", "vulnerability", "incident", "postmortem", "audit"),
+    # Context-specific: bare "vulnerability"/"audit" matched "wildfire vulnerability"
+    # and "auditability" of sustainability reports (observed live).
+    "security": ("exploit", "security vulnerability", "software vulnerability", "smart contract vulnerability",
+                 "vulnerability disclosure", "security incident", "postmortem", "security audit",
+                 "smart contract audit", "code audit"),
     "governance": ("governance", "tokenomics", "incentive", "proposal"),
     "interoperability": ("interoperability", "cross-chain", "integration"),
     "scalability": ("scalability", "throughput", "latency", "high volume", "bottleneck", "transaction volume"),

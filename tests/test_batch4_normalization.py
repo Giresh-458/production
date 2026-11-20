@@ -301,7 +301,7 @@ def test_serialized_page_block_snippet_is_not_the_problem_statement(temp_outputs
 
 
 def test_genuine_snippet_remains_the_problem_statement(temp_outputs):
-    real = "The CAD Trust connection will help transparently track these transfers, guarding against double-counting risk."
+    real = "Carbon registries lack interoperable records, so the same credit can be counted twice across markets."
     create_artifact(temp_outputs, "g.md", make_artifact_md(problem="", evidence_snippets=[real]))
     paths = save_normalized_collection_records(temp_outputs, temp_outputs)
     import json
@@ -401,3 +401,17 @@ def test_content_change_after_copy_still_refreshes(tmp_path):
     import json
     titles = [r["title"] for r in json.loads((copied / "normalized" / "records.json").read_text(encoding="utf-8"))]
     assert titles == ["Version Two"]
+
+
+
+@pytest.mark.parametrize("snippet", [
+    # Verbatim live examples: benefit/opportunity framing that merely mentions "risk".
+    "The CAD Trust connection will help transparently track these transfers, increasing trust and guarding against double-counting risk.",
+    "Nature-based Solutions offer a unique opportunity to simultaneously address heightened climate risks and habitat loss.",
+])
+def test_benefit_or_opportunity_framing_is_not_a_problem(temp_outputs, snippet):
+    create_artifact(temp_outputs, "f.md", make_artifact_md(problem="", evidence_snippets=[snippet]))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == "No explicit problem statement found."

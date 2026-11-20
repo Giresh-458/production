@@ -347,6 +347,38 @@ def _domain_anchor_terms(ctx: FundingCallContext) -> set[str]:
     return {term.replace("-", " ") for term in terms}
 
 
+# Calibrated on one live call (HORIZON-NATURE-2027-02-02, 53 candidates): on-topic
+# papers scored 0.450-0.552, off-topic living-lab papers <= 0.436, crypto/finance
+# pages <= 0.23 (all-MiniLM-L6-v2). Recalibrate as more calls are observed.
+SEMANTIC_CALL_MATCH_THRESHOLD = 0.45
+_CALL_QUERY_CACHE: dict[str, str] = {}
+
+
+def _semantic_gate_enabled() -> bool:
+    import os
+
+    return os.environ.get("RIF_SEMANTIC_GATE", "false").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _call_semantic_similarity(record: dict[str, Any], ctx: FundingCallContext) -> float | None:
+    from core.semantic_retrieval import transformer_similarities
+
+    rc = ctx.research_context
+    query = str(getattr(ctx, "call_title", "") or getattr(ctx, "program_name", "") or "")
+    if rc is not None and getattr(rc, "evidence_refs", None):
+        query += ". " + " ".join(str(item) for item in (getattr(rc, "inferred_challenges", None) or ()))
+    if not query.strip():
+        return None
+    document = ". ".join(
+        [str(record.get("title") or "")]
+        + [str(snippet) for snippet in (record.get("evidence_snippets") or [])[:3]]
+    )[:2000]
+    if not document.strip():
+        return None
+    scores = transformer_similarities(query, [document])
+    return scores[0] if scores else None
+
+
 def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]:
     """Conservative post-retrieval relevance gate.
 
@@ -484,6 +516,17 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     else:
         tier = None
     reason = "substantive mission overlap" if passed else "insufficient substantive mission overlap"
+    semantic_similarity = None
+    if not passed and _semantic_gate_enabled():
+        # Lexical anchors are domain-level and miss on-topic evidence that uses
+        # different wording (observed live: "Citarum Living Lab ...", "Ecosystem
+        # Restoration ..." rejected for a living-labs restoration call). Rescue it
+        # only with real sentence embeddings, never with TF-IDF/hash proxies.
+        semantic_similarity = _call_semantic_similarity(record, ctx)
+        if semantic_similarity is not None and semantic_similarity >= SEMANTIC_CALL_MATCH_THRESHOLD:
+            passed = True
+            tier = "semantic_call_match"
+            reason = f"semantic match to the call title/problem (cosine {semantic_similarity:.3f})"
     if passed and tier is None:
         passed = False
         reason = "only generic vocabulary overlap; no call-specific phrase or domain anchor term"
@@ -494,6 +537,7 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
         "matched_phrases": phrases[:5],
         "matched_title_anchors": matched_title_anchors,
         "relevance_tier": tier if passed else None,
+        "semantic_similarity": None if semantic_similarity is None else round(semantic_similarity, 3),
         "call_specific_phrases": call_phrase_hits[:5],
         "domain_anchor_terms": domain_anchor_hits[:5],
         "reason": reason,

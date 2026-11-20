@@ -116,6 +116,35 @@ def _get_embedding(text: str, content_hash: Optional[str] = None) -> tuple[np.nd
             _EMBEDDING_CACHE[content_hash] = (emb, method)
         return emb, method
 
+_TRANSFORMER_FOR_GATE = None
+
+
+def transformer_similarities(query: str, documents: Sequence[str]) -> list[float] | None:
+    """Cosine similarities from the real sentence-transformer model, or None.
+
+    Unlike ``semantic_scores`` this never falls back to TF-IDF or hashing: callers
+    that make relevance decisions must not act on non-semantic proxies.
+    """
+    global _TRANSFORMER_FOR_GATE
+    if not documents:
+        return []
+    with _EMBEDDING_LOCK:
+        if _TRANSFORMER_FOR_GATE is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                _TRANSFORMER_FOR_GATE = SentenceTransformer(
+                    os.environ.get("RIF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+                )
+            except Exception:
+                _TRANSFORMER_FOR_GATE = "UNAVAILABLE"
+    model = _TRANSFORMER_FOR_GATE
+    if model == "UNAVAILABLE":
+        return None
+    vectors = model.encode([query, *documents], normalize_embeddings=True, show_progress_bar=False)
+    query_vector = vectors[0]
+    return [max(0.0, min(1.0, float(np.dot(query_vector, vector)))) for vector in vectors[1:]]
+
+
 def semantic_scores(query: str, documents: Sequence[str]) -> list[float]:
     if not documents:
         return []

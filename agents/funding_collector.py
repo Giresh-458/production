@@ -1388,6 +1388,17 @@ def _collect_eu_funding_tenders(
             and _EU_TOPIC_IDENTIFIER_RE.fullmatch(str(topic_identifier))
             and _eu_is_portal_topic(item, metadata, url)
         )
+        # Search API lookups use the publisher identifier; the record identity may differ.
+        lookup_identifier = identifier
+        # A cascade call ("competitive-calls-cs/<id>") is a separate open call run by a
+        # funded project; its metadata identifier is the PARENT topic's code (which can
+        # be long closed). Give the cascade call its own identity (observed live:
+        # competitive-calls-cs/45656490 was labelled HORIZON-CL6-2024-CLIMATE-01-5).
+        parent_topic_identifier = None
+        cascade_match = re.search(r"/competitive-calls-cs/(\d+)", url)
+        if cascade_match and not is_portal_topic:
+            parent_topic_identifier = topic_identifier
+            identifier = f"EU-CS-{cascade_match.group(1)}"
         # Horizon-style topics: the Search API hit carries only index metadata.
         # Read the official topicDetails document (description, conditions,
         # per-action status, deadlines, budget, submission link) instead of
@@ -1396,7 +1407,6 @@ def _collect_eu_funding_tenders(
             api_config.get("detail_fetch_missing_metadata", True)
             and topic_identifier
             and is_portal_topic
-            and not (metadata_eligibility_present and has_description_metadata)
         ):
             result.detail_pages_discovered += 1
             try:
@@ -1426,7 +1436,7 @@ def _collect_eu_funding_tenders(
         ):
             result.detail_pages_discovered += 1
             try:
-                detail = eu_funding_tenders_fetch_document(str(identifier))
+                detail = eu_funding_tenders_fetch_document(str(lookup_identifier))
                 detail_metadata = detail.get("metadata", {}) if isinstance(detail, dict) else {}
                 if isinstance(detail_metadata, dict):
                     for key, value in detail_metadata.items():
@@ -1645,6 +1655,8 @@ def _collect_eu_funding_tenders(
                     analysis.research_context = research_context
             if call_identifier and call_identifier != identifier:
                 analysis.evidence["parent_call_identifier"] = call_identifier
+            if parent_topic_identifier:
+                analysis.evidence["parent_topic_identifier"] = parent_topic_identifier
             source_label = (
                 "official EU topicDetails" if topic_facts is not None else "EU Search API"
             )

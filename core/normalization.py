@@ -298,6 +298,14 @@ def _select_problem_statement(
                 continue
             if _looks_like_listing_or_navigation(sentence):
                 continue
+            # Opportunity/benefit framing mentions risk without stating a problem
+            # (observed live: "Nature-based Solutions offer a unique opportunity to
+            # ... address heightened climate risks", "... will help ... guarding
+            # against double-counting risk").
+            if re.search(r"\b(?:offers?|provides?|presents?) (?:a |an )?(?:unique |new |key )?"
+                         r"(?:opportunity|opportunities|solution)\b|\b(?:will|can|could) help\b",
+                         sentence, re.IGNORECASE):
+                continue
             structured, _ = _is_structured_problem_signal(
                 sentence, title=title, research_area=research_area, agent_name=agent_name
             )

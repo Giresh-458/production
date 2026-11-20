@@ -3216,6 +3216,34 @@ def _funding_url_key(value: str | None) -> str:
     return f"{parsed.scheme.casefold()}://{parsed.netloc.casefold()}{parsed.path.rstrip('/')}"
 
 
+_PROCEDURAL_SENTENCE = re.compile(
+    r"\b(?:submi(?:t|ssion)|deadline|appeal|error|perks?|slack|helpdesk|"
+    r"please (?:enter|note|contact)|plan their|cut-?off)\b",
+    re.IGNORECASE,
+)
+
+
+def _eligibility_sentences_only(text: str | None) -> str | None:
+    """Keep only sentences that state an applicant criterion.
+
+    Companion FAQ pages mix eligibility with process guidance (observed live on
+    the Women TechEU FAQ: appeal steps, submission timing, "perks via a Slack
+    community"). Each kept sentence must pass the substantive-eligibility test and
+    must not be procedural; sentences are kept verbatim and de-duplicated.
+    """
+    from core.funding_selection import has_substantive_eligibility_evidence
+
+    if not text:
+        return text
+    kept = [
+        sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", str(text))
+        if sentence.strip()
+        and has_substantive_eligibility_evidence(sentence)
+        and not _PROCEDURAL_SENTENCE.search(sentence)
+    ]
+    return " ".join(dict.fromkeys(kept)) or None
+
+
 def _merge_related_eligibility_context(
     documents: list[tuple[FundingDocument, FundingOpportunity]],
     sources: list[Any],
@@ -3262,7 +3290,9 @@ def _merge_related_eligibility_context(
 
             context_document, _context_analysis = context_entry
             supplemental_context_urls.add(context_key)
-            supplemental_eligibility = _extract_eligibility_from_prose(context_document.content)
+            supplemental_eligibility = _eligibility_sentences_only(
+                _extract_eligibility_from_prose(context_document.content)
+            )
             if not supplemental_eligibility:
                 primary_analysis.evidence["eligibility_supplemental_context_status"] = "unresolved"
                 primary_analysis.evidence["eligibility_supplemental_source_url"] = context_document.source

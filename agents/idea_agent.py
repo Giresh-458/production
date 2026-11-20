@@ -39,7 +39,11 @@ TOPIC_HINTS = {
     "mev": ("mev", "block builder", "transaction ordering", "relay"),
     "prototype": ("prototype", "builder", "hackathon", "demo"),
     "benchmark": ("benchmark", "simulator", "dataset", "test suite", "evaluation"),
-    "security": ("exploit", "vulnerability", "incident", "postmortem", "audit"),
+    # Context-specific: bare "vulnerability"/"audit" matched "wildfire vulnerability"
+    # and "auditability" of sustainability reports (observed live).
+    "security": ("exploit", "security vulnerability", "software vulnerability", "smart contract vulnerability",
+                 "vulnerability disclosure", "security incident", "postmortem", "security audit",
+                 "smart contract audit", "code audit"),
     "governance": ("governance", "tokenomics", "incentive", "proposal"),
     "interoperability": ("interoperability", "cross-chain", "integration"),
 }
@@ -53,6 +57,32 @@ AREA_DATASET_HINTS = {
     "MEV": "Block/transaction ordering traces, relay data, bundle outcomes, builder telemetry, and execution simulations.",
     "Stablecoins": "Reserve attestations, vault telemetry, payment-rail events, explorer traces, and depeg/liquidity histories.",
 }
+
+
+# Area templates are suggestions only; they are used when the cited evidence
+# itself mentions the template's subject (observed live: an ecosystem-restoration
+# idea received "carbon-tokenization ... registry and MRV" text that no source said).
+AREA_TEMPLATE_EVIDENCE_TERMS = {
+    "RWA": ("tokeniz", "real-world asset", "real world asset", "reserve", "oracle", "settlement"),
+    "ESG": ("mrv", "carbon credit", "carbon-credit", "registry", "registries", "emission"),
+    "ZK-IoV": ("zero-knowledge", "zk", "vehicle", "v2x", "mobility"),
+    "DID": ("credential", "identity", "wallet", "did "),
+    "DePIN": ("node", "device", "telemetry", "storage", "depin"),
+    "MEV": ("mev", "ordering", "builder", "relay", "searcher", "bundle"),
+    "Stablecoins": ("stablecoin", "reserve", "vault", "depeg", "payment"),
+}
+
+
+def _area_template_supported(area: str, evidence_text: str) -> bool:
+    lowered = str(evidence_text or "").casefold()
+    return any(term in lowered for term in AREA_TEMPLATE_EVIDENCE_TERMS.get(area, ()))
+
+
+def evidence_gated_dataset_need(area: str, evidence_text: str) -> str:
+    if area in AREA_DATASET_HINTS and _area_template_supported(area, evidence_text):
+        return AREA_DATASET_HINTS[area]
+    return ("Not yet determined: the cited evidence does not name the datasets this direction "
+            "would need; identify them from the sources before experimentation.")
 
 
 def configure_logging(level_name: str) -> None:
@@ -137,8 +167,12 @@ def extract_topics(text: str) -> list[str]:
     return topics
 
 
-def infer_hypothesis(problem: str, gap: str, area: str) -> str:
+def infer_hypothesis(problem: str, gap: str, area: str, evidence_text: str | None = None) -> str:
     focus = cleaned_text(problem) or cleaned_text(gap)
+    if evidence_text is not None and not _area_template_supported(area, evidence_text):
+        # No area-specific framing beyond what the evidence states.
+        return (f'If a scoped intervention addresses the source-stated problem "{focus}", '
+                "then a measurable improvement over the current baseline should be observable.")
     if area == "Stablecoins":
         return f"If we add verifiable assurance and monitoring around {focus.lower()}, then stable-value infrastructure can become safer for routine economic coordination."
     if area == "ESG":
@@ -148,8 +182,12 @@ def infer_hypothesis(problem: str, gap: str, area: str) -> str:
     return f"If we design a focused intervention around {focus.lower()}, then the observed gap can be turned into a testable prototype and benchmarked research program."
 
 
-def infer_experiment_direction(area: str, sections: dict[str, str]) -> str:
-    dataset_hint = AREA_DATASET_HINTS.get(area, "Relevant structured evidence, benchmark data, and system traces.")
+def infer_experiment_direction(area: str, sections: dict[str, str], evidence_text: str | None = None) -> str:
+    dataset_hint = (
+        evidence_gated_dataset_need(area, evidence_text)
+        if evidence_text is not None
+        else AREA_DATASET_HINTS.get(area, "Relevant structured evidence, benchmark data, and system traces.")
+    )
     idea = cleaned_text(sections.get("Idea", ""))
     gap = cleaned_text(sections.get("Gap", ""))
     return (
@@ -160,8 +198,12 @@ def infer_experiment_direction(area: str, sections: dict[str, str]) -> str:
     )
 
 
-def infer_prototype_scope(area: str, sections: dict[str, str]) -> str:
+def infer_prototype_scope(area: str, sections: dict[str, str], evidence_text: str | None = None) -> str:
     idea = cleaned_text(sections.get("Idea", ""))
+    if evidence_text is not None and not _area_template_supported(area, evidence_text):
+        if idea:
+            return f"Prototype the narrowest demonstrable slice of this direction first: {idea[:260]}"
+        return "Prototype one end-to-end, testable workflow that turns the synthesized gap into a measurable intervention."
     if area == "Stablecoins":
         return (
             "Prototype a compact assurance dashboard and scoring service that joins reserve or vault telemetry, explorer traces, "
@@ -197,7 +239,10 @@ def infer_collaborators(area: str, entry: dict[str, Any], sections: dict[str, st
     if existing:
         actor_bits.append(existing[:220])
     joined = "; ".join(actor_bits) if actor_bits else "current ecosystem operators and maintainers"
-    return f"Likely collaborators or sponsors include the {layers} layers already represented here, especially {joined}."
+    return (
+        f"Candidate contacts drawn from the cited evidence ({layers} layers), not confirmed collaborators: "
+        f"{joined}."
+    )
 
 
 def validate_idea_payload(problem: str, gap: str, hypothesis: str, experiment: str, feasibility: str, entry: dict[str, Any], existing_solutions: str = "") -> dict[str, Any]:
@@ -247,10 +292,11 @@ def build_idea_payload_from_synthesis(entry: dict[str, Any]) -> dict[str, Any]:
     source_urls = [cleaned_text(str(item)) for item in entry.get("source_urls", []) if cleaned_text(str(item))]
     confidence_label = str(entry.get("ranking", {}).get("label") or entry.get("confidence", {}).get("label") or "Unassessed").strip() or "Unassessed"
 
-    hypothesis = infer_hypothesis(problem, gap, area)
-    experiment_direction = infer_experiment_direction(area, sections)
-    prototype_scope = infer_prototype_scope(area, sections)
-    dataset_need = AREA_DATASET_HINTS.get(area, "Area-specific evaluation datasets, telemetry, and benchmark fixtures.")
+    evidence_text = " ".join([problem, gap, seed_idea, existing_solutions, why_important, str(source_inputs or "")])
+    hypothesis = infer_hypothesis(problem, gap, area, evidence_text)
+    experiment_direction = infer_experiment_direction(area, sections, evidence_text)
+    prototype_scope = infer_prototype_scope(area, sections, evidence_text)
+    dataset_need = evidence_gated_dataset_need(area, evidence_text)
     collaborators = infer_collaborators(area, entry, sections)
     enriched_idea = (
         f"{seed_idea} "
@@ -332,7 +378,7 @@ def attach_external_novelty_validation(idea_payload: dict[str, Any]) -> dict[str
 def build_manual_payload(*, text: str, title: str, source: str, area: str | None) -> dict[str, Any]:
     normalized_area = normalize_area(area) or "Unscoped"
     clean = cleaned_text(text)
-    hypothesis = infer_hypothesis(clean, clean, normalized_area)
+    hypothesis = infer_hypothesis(clean, clean, normalized_area, clean)
     experiment_direction = (
         f"Start with a constrained benchmark or prototype that tests whether the stated problem can be turned into measurable improvement signals in {normalized_area}."
     )
@@ -351,7 +397,7 @@ def build_manual_payload(*, text: str, title: str, source: str, area: str | None
         "hypothesis": hypothesis,
         "experiment_direction": experiment_direction,
         "prototype_scope": prototype_scope,
-        "expected_dataset_need": AREA_DATASET_HINTS.get(normalized_area, "Area-specific evaluation datasets and telemetry."),
+        "expected_dataset_need": evidence_gated_dataset_need(normalized_area, clean),
         "likely_collaborators": "Likely collaborators depend on the surrounding ecosystem and should be resolved from follow-on synthesis.",
         "based_on": source or "Manual",
         "source_inputs": source or "Manual",

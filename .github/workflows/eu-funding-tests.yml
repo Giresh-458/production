@@ -95,6 +95,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest PyYAML APScheduler requests beautifulsoup4 numpy trafilatura==1.12.2 pypdf python-dotenv "crawl4ai>=0.9.4,<1.0" playwright
+          # Real sentence embeddings for the Batch-2 semantic call-match gate (CPU wheel).
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install "sentence-transformers>=2.2.0,<3.0.0"
           python -m playwright install --with-deps chromium
 
       - name: Run complete deterministic test suite

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -1353,4 +1354,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    os.environ.setdefault("RIF_SEMANTIC_GATE", "true")
     raise SystemExit(main())

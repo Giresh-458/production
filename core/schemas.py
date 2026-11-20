@@ -227,6 +227,7 @@ DOMAIN_REQUIRED_ANCHOR_GROUPS = {
             "climate change adaptation", "climate change mitigation",
             "climate adaptation", "climate mitigation", "climate resilience",
             "transport decarbonization", "transport decarbonisation",
+            "zero-emission", "low-emission transport",
             "electrification of transport", "alternative fuels", "urban mobility",
             "sustainable mobility", "mobility data management",
             "bioeconomy", "new european bauhaus", "bio-based products",
