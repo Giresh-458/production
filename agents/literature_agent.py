@@ -310,6 +310,13 @@ def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE
             text = text[:80].rsplit(" ", 1)[0]
         if text.lower() not in {x.lower() for x in compact_terms}:
             compact_terms.append(text)
+    # Prefer the call's own multi-word queries (title, grounded problem) over the
+    # single tokens split out of them (observed live: OpenAlex was searched for
+    # "living", "labs", "co-creating", "solutions" on their own).
+    compact_terms = (
+        [t for t in compact_terms if len(t.split()) >= 3]
+        + [t for t in compact_terms if len(t.split()) < 3]
+    )
     queries = compact_terms[:4] or [research_area]
     papers_by_id: dict[str, Paper] = {}
     for query in queries:

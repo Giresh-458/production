@@ -308,6 +308,16 @@ def _select_problem_statement(
                          r"(?:opportunity|opportunities|solution)\b|\b(?:will|can|could) help\b",
                          sentence, re.IGNORECASE):
                 continue
+            # A paper's description of its own method or results is not a problem
+            # (observed live: "Additionally, we evaluated the role of restoration in
+            # mitigating drought risk, a major climate change component, ...").
+            if re.match(
+                r"^(?:(?:additionally|in addition|here|first|finally|moreover|in this (?:study|paper|work)),?\s+)?"
+                r"we\s+(?:evaluated|assessed|analy[sz]ed|examined|investigated|mapped|studied|present|propose|"
+                r"describe|developed|used|compared|explored|quantified|reviewed|show|find|found)\b",
+                sentence, flags=re.IGNORECASE,
+            ):
+                continue
             # A record's own title is not its problem statement (observed live:
             # "How risk management can prevent future wildfire disasters ...").
             if title_key and re.sub(r"\W+", " ", sentence).strip().casefold() == title_key:

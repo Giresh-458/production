@@ -224,3 +224,28 @@ Not changed (documented)
 - Non-Horizon EU programmes (Erasmus, CERV, Creative Europe, DIGITAL…) publish eligibility in separate call-document PDFs, so they are filtered as missing eligibility. None is in scope.
 - NEAR records keep slogan titles ("User-Owned"). No generic rule can rename them without risking verified titles.
 - UDAX and the Superteam Startup Accelerator Grant are rejected for lacking independent proof that applications are open. This can't be verified from their pages.
+
+## Batch-2/3 audit cycle (2026-11-20/21)
+
+Regression tests: `tests/test_batch23_audit_fixes.py`.
+
+Batch-2
+- **Relevance:** a record that passes only on a domain word ("carbon", "esg") must also be semantically related to the call (cosine ≥ 0.40). Live: the 8 off-topic ESG-rating/greenwashing/carbon-pricing records scored 0.237–0.329, while every on-topic record scored ≥ 0.456. The floor is calibrated on one call.
+- **Retrieval queries:** template questions and bare domain themes are now only a fallback; they produced 6 of the 13 off-topic records. OpenAlex literature search uses the call's full title/problem queries instead of single words ("living", "labs").
+- **Problem statements:** never the record's own title, never a context sentence that merely mentions "risks", and never a first-person method statement ("we evaluated…").
+- **Metadata:** OpenAlex records carry authors, venue and evidence type; a URL is never the actor.
+- **Kept by design:** evidence snippets stay verbatim. An attempt to strip crawl markers from them broke verbatim evidence and dropped short real snippets, so it was reverted; markers stay excluded from problem and tagging text.
+
+Batch-3
+- **One topic vocabulary:** `core/topic_keywords.py` is shared by tagging, trends, synthesis and ideas, with whole-word matching. This removed the stale security-keyword copies and the wrong-sense matches: the ESG-expansion "governance", the legislative "proposal", "bottleneck", "did" inside "candidate", and "reserve" inside "preserved". Trends now equal the tag counts.
+- **Batch-3 runner:** resolves calls inside the given run directory. Previously a copied run silently re-processed the original location.
+
+Synthesis / ideas / proposals
+- **Synthesis:** the recurrence claim counts only members with a grounded problem; confidence is "Low" unless a gap is supported; feasibility is "Unassessed"; titles use the problem's own words; a single source is not described as repeated evidence.
+- **Ideas:** topics come from the grounded problem only. Contacts are the authors/organisations of the cited evidence. There is no experiment, prototype or `gap_present` without a supported gap. The novelty label is now "external_search_completed".
+- **Proposal gate:** judges the grounded problem plus the cited evidence titles, and rejects ideas without a problem. Live replay: the off-topic ideas are now rejected by relevance (0.20–0.35); on-topic ideas reach the local LLM alignment check (Ollama), which rejected them. That check was left as is.
+
+Verification
+- **Clean-clone chain (Batch-1 → 2 → 3) and pipeline:** all exit 0, with Batch-1 **ACCEPTED** and Batch-3 `ready_for_batch4`.
+- **Re-processed live evidence set:** 6/6 records on-topic, with real authors. Problem sentences were verified word-for-word in the Crossref abstracts (10.3897/aca.8.e149488, 10.1371/journal.pwat.0000200).
+- **Environment limit:** OpenAlex and Semantic Scholar rate-limited this machine (OpenAlex Retry-After ≈ 5.4 h), so the final live Batch-2 collected little. Re-run once the limit clears.

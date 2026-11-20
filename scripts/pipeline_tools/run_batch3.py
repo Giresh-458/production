@@ -70,7 +70,14 @@ def main(argv: list[str] | None = None) -> int:
         if context is None:
             report["funding_calls"].append({"funding_call_id": call_id, "status": "blocked_missing_context"})
             continue
-        report["funding_calls"].append(run_batch3_for_call(Path(call["output_root"]), context, run_stage))
+        # Resolve the call inside the run directory that was passed in. The
+        # recorded absolute output_root points at wherever Batch-2 originally ran;
+        # for a copied/moved run it would process (or fail on) the old location
+        # (observed while re-processing a copied run).
+        call_root = run_dir / "calls" / str(call_id)
+        if not call_root.is_dir():
+            call_root = Path(call["output_root"])
+        report["funding_calls"].append(run_batch3_for_call(call_root, context, run_stage))
 
     processed = [c for c in report["funding_calls"] if c.get("status") != "skipped_not_ready"]
     if processed and all(c.get("status") == "ready_for_batch4" for c in processed):

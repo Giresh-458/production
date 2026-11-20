@@ -156,3 +156,44 @@ def test_proposal_gate_rejects_ideas_without_a_problem():
               "validation": {"novelty_status": "external_search_completed", "novelty_search": {}}}
     ok, info = _proposal_gate(record, _ctx())
     assert ok is False and "no source-grounded problem" in info["reason"]
+
+
+def test_unresolved_gap_is_not_a_gap():
+    from agents.idea_agent import _gap_not_supported
+
+    assert _gap_not_supported("Unresolved") is True
+    assert _gap_not_supported("Provisional research gap: the collected evidence contains 2 signals.") is False
+
+
+def test_openalex_literature_prefers_full_call_queries(monkeypatch):
+    import core.http_client as http
+    import agents.literature_agent as lit
+
+    sent = []
+    monkeypatch.setattr(lit, "_search_terms", lambda area: [
+        "living", "labs", "co-creating", "solutions",
+        "Living labs co-creating solutions for the restoration of ecosystems",
+    ])
+    monkeypatch.setattr(lit, "enforce_api_spacing", lambda: None)
+    monkeypatch.setattr(http, "fetch_json", lambda url, params=None, **k: (sent.append(params["search"]) or ({"results": []}, None)))
+    lit.fetch_openalex_entries("Unscoped")
+    assert sent[0] == "Living labs co-creating solutions for the restoration of ecosystems"
+
+
+def test_method_statement_is_not_a_problem():
+    """Live (doi 10.3897/aca.8.e149488): a method sentence was selected as the problem."""
+    from core.normalization import _select_problem_statement
+
+    method = ("Additionally, we evaluated the role of restoration in mitigating drought risk, a major climate change "
+              "component, mapping the results from the project.")
+    real = ("These challenges are acute in watersheds like the Citarum River in West Java, Indonesia, which suffers "
+            "from severe pollution due to inadequate waste management.")
+    assert _select_problem_statement([method], title="Mediterranean restoration") == "No explicit problem statement found."
+    assert _select_problem_statement([real], title="Citarum Living Lab") == real
+
+
+def test_batch3_resolves_calls_inside_the_given_run_dir():
+    from pathlib import Path
+
+    source = Path("scripts/pipeline_tools/run_batch3.py").read_text(encoding="utf-8")
+    assert 'run_dir / "calls" / str(call_id)' in source

@@ -202,7 +202,7 @@ def infer_experiment_direction(area: str, sections: dict[str, str], evidence_tex
 def _gap_not_supported(gap: str) -> bool:
     """True when the synthesis states that no research gap is established."""
     return bool(re.match(
-        r"^(?:no defensible unresolved research gap|uncertain research gap|contested research gap)",
+        r"^(?:no defensible unresolved research gap|uncertain research gap|contested research gap|unresolved\.?$)",
         cleaned_text(gap), flags=re.IGNORECASE,
     )) or not cleaned_text(gap)
 
