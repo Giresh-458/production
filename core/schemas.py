@@ -39,6 +39,9 @@ class CollectionResult:
     records_failed: int = 0
     records_filtered: int = 0
     records_filtered_by_reason: dict[str, int] = field(default_factory=dict)
+    # Itemised filter decisions (title, url, reason) so filtered records can be
+    # audited for false negatives without parsing logs.
+    records_filtered_details: list[dict[str, str]] = field(default_factory=list)
     records_deduplicated: int = 0
     duplicates_removed: int = 0
     urls_skipped: int = 0
@@ -228,6 +231,8 @@ DOMAIN_REQUIRED_ANCHOR_GROUPS = {
             "climate adaptation", "climate mitigation", "climate resilience",
             "transport decarbonization", "transport decarbonisation",
             "zero-emission", "low-emission transport",
+            "decarbonisation", "decarbonization", "decarbonising", "decarbonizing",
+            "climate neutrality", "climate-neutral", "greenhouse gas",
             "electrification of transport", "alternative fuels", "urban mobility",
             "sustainable mobility", "mobility data management",
             "bioeconomy", "new european bauhaus", "bio-based products",
@@ -318,6 +323,11 @@ DOMAIN_TERM_WEIGHTS = {
         "electrification of transport": 2.5, "alternative fuels": 2.0,
         "low-emission transport": 2.5, "zero-emission": 2.5,
         "transport decarbonization": 3.0, "transport decarbonisation": 3.0,
+        # Word forms observed live in official EU titles that scored 0 for ESG:
+        # "decarbonising industrial processes", "climate neutral aviation".
+        "decarbonisation": 2.5, "decarbonization": 2.5, "decarbonising": 2.5,
+        "decarbonizing": 2.5, "climate neutrality": 2.5, "climate-neutral": 2.5,
+        "greenhouse gas": 2.5,
         "bioeconomy": 3.0, "new european bauhaus": 3.0, "bio-based products": 2.5, "bio based products": 2.5,
         "circular bio-based": 2.5, "circular bio based": 2.5, "circularity": 1.5,
         "resource efficiency": 1.5, "biomass valorisation": 2.5,
@@ -358,6 +368,20 @@ DOMAIN_TERM_WEIGHTS = {
     },
 }
 
+def required_anchor_message(area: str) -> str:
+    """Why a domain was not credited although some of its terms matched."""
+    if area == "ZK-IoV":
+        return (
+            "ZK-IoV requires direct evidence for both zero-knowledge cryptography "
+            "and Internet-of-Vehicles/connected-vehicle technology"
+        )
+    corroboration = sorted(DOMAIN_CORROBORATION_REQUIRED_ANCHORS.get(area, ()))
+    message = f"{area} requires a direct {area}-specific anchor term"
+    if corroboration:
+        message += f"; {', '.join(repr(t) for t in corroboration)} alone needs a corroborating {area} term"
+    return message
+
+
 def rank_research_areas(text: str) -> list[Dict[str, Any]]:
     """Rank canonical domains from observed text, enforcing compound-domain anchors."""
     lowered = text or ""
@@ -387,10 +411,7 @@ def rank_research_areas(text: str) -> list[Dict[str, Any]]:
     for area in ALLOWED_RESEARCH_AREAS:
         score = (weighted[area] / normalization_floor) if normalization_floor else 0.0
         if area in missing_required_anchors:
-            evidence = (
-                "ZK-IoV requires direct evidence for both zero-knowledge cryptography "
-                "and Internet-of-Vehicles/connected-vehicle technology"
-            )
+            evidence = required_anchor_message(area)
         else:
             evidence = (
                 f"{len(matches[area])} domain-specific term(s) matched"

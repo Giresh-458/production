@@ -75,17 +75,32 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
         return False, _DEFAULT_HOST_DELAY, "host delay would exceed the crawl deadline before robots.txt could be checked"
 
     try:
-        response = get_response(
-            robots_url,
-            headers={"User-Agent": _ROBOTS_USER_AGENT},
-            timeout=(5.0, 10.0),
-            # A 4xx response (except 429) means robots.txt is unavailable under
-            # RFC 9309; this crawler explicitly permits the resource in that case.
-            # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
-            retries=2,
-            expected_status=(200, *range(400, 500)),
-            check_redirect_robots=False,
-        )
+        def _fetch_robots():
+            return get_response(
+                robots_url,
+                headers={"User-Agent": _ROBOTS_USER_AGENT},
+                timeout=(5.0, 10.0),
+                # A 4xx response (except 429) means robots.txt is unavailable under
+                # RFC 9309; this crawler explicitly permits the resource in that case.
+                # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
+                retries=2,
+                expected_status=(200, *range(400, 500)),
+                check_redirect_robots=False,
+            )
+
+        try:
+            response = _fetch_robots()
+        except Exception as first_exc:
+            # DNS/connection outages outlast the short in-call retries (observed
+            # live: www.sbir.gov failed name resolution for one run, then
+            # recovered). Allow one late attempt for those errors only; the policy
+            # still fails closed if it is still unreachable.
+            import requests as _requests
+
+            if not isinstance(first_exc, (_requests.exceptions.ConnectionError, _requests.exceptions.Timeout)):
+                raise
+            time.sleep(15.0)
+            response = _fetch_robots()
         try:
             status_code = int(response.status_code)
             if status_code == 429:
@@ -995,7 +1010,9 @@ async def _fetch_url(url: str) -> dict:
             # client-rendered apps whose navigation event can hang despite the
             # response being available. It does not increase the source's page
             # budget and never bypasses robots policy.
-            retry_timeout = min(timeout, 20.0)
+            # Observed live: sbir.gov page=5 timed out at the former 20 s cap on
+            # the retry. Give retries more headroom (still bounded).
+            retry_timeout = min(max(float(timeout), 20.0) * 1.5, 40.0)
             retry_options = dict(run_options)
             retry_options.update({
                 "wait_until": "commit",
@@ -1036,7 +1053,9 @@ async def _fetch_url(url: str) -> dict:
                 )
                 break
             await asyncio.sleep(max(1.0, retry_delay))
-            retry_timeout = min(timeout, 20.0)
+            # Observed live: sbir.gov page=5 timed out at the former 20 s cap on
+            # the retry. Give retries more headroom (still bounded).
+            retry_timeout = min(max(float(timeout), 20.0) * 1.5, 40.0)
             retry_options = dict(run_options)
             retry_options.update({
                 "wait_until": "commit",

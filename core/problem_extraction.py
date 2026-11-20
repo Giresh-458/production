@@ -233,6 +233,117 @@ def _is_genuine_limitation(text: str) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Funding (Batch-1) problem-sentence quality.
+# Observed live on official EU topic text (2026-11-20 audit): about half of the
+# selected "problems" were instructions ("Projects should consider ..."),
+# encouragements ("Cooperation ... is encouraged"), expected outcomes ("Project
+# results are expected to ..."), definitions ("maladaptation refers to ..."),
+# list items ("b) To address ...") or mid-sentence fragments, mostly selected
+# because they contained "risk" inside a technical compound ("risk assessment").
+# ---------------------------------------------------------------------------
+_FUNDING_RISK_COMPOUND = re.compile(
+    r"\b(?:disaster\s+)?risks?[\s-]+(?:assessments?|management|mitigation|reduction|analys[ie]s|analytics|"
+    r"governance|monitoring|modelling|modeling|evaluation|informed)\b",
+    re.IGNORECASE,
+)
+_FUNDING_EXTRA_LIMITATION = re.compile(
+    r"\b(?:gaps?|uncertaint(?:y|ies))\b[^.;]{0,80}\bremains?\b|"
+    r"\bremains?\s+(?:poorly|largely|still)?\s*(?:understood|unknown|unclear|uncertain|limited|unaddressed)\b|"
+    r"\bknowledge gaps?\b|\bbackfire\b|\bunintended (?:consequences|effects|outcomes)\b|"
+    r"\bneed for (?:more|further|additional|new) (?:research|evidence|knowledge)\b|"
+    r"\b(?:further|more|additional) research is (?:needed|required)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_funding_non_problem_sentence(text: str) -> bool:
+    """True for funding-call text that is not a problem statement by its form."""
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    low = value.casefold()
+    if not value:
+        return True
+    # Fragments and list items: a source sentence starts with a capital, digit or quote.
+    if re.match(r"^[a-z]", value):
+        return True
+    if re.match(r"^(?:[a-h]|[ivx]{1,4})\)\s", low) or re.match(r"^(?:etc\.?\)|\))", low):
+        return True
+    # Encouragement and applicant instructions.
+    if re.search(r"\b(?:is|are)\s+(?:also\s+|strongly\s+|particularly\s+)?encouraged\b", low):
+        return True
+    if re.match(r"^(?:[\w'-]+\s+){0,3}(?:should|must|shall|are expected to|is expected to|will be expected to)\b", low):
+        return True
+    if re.match(r"^(?:solutions sought|project results are expected|expected outcomes?\b|proposals are expected)", low):
+        return True
+    if re.search(r"\b(?:is|are)\s+(?:also\s+)?expected to\b", low) or re.search(
+        r"\b(?:proposals?|projects?|applicants?|consortia|consortium|actions?)\b[^.;]{0,60}\b(?:should|must|shall)\b", low
+    ):
+        return True
+    # Definitions, meta-descriptions of the topic, and expected-outcome phrasing.
+    if re.search(r"\b(?:refers? to|is defined as|are defined as)\b", low):
+        return True
+    if re.match(r"^(?:this|the)\s+(?:topic|call|action)\s+(?:is|will|covers|includes|addresses|aims)\b", low):
+        return True
+    if re.match(r"^the focus (?:is|should be|will be) on\b", low):
+        return True
+    if re.match(r"^(?:reduced|increased|improved|enhanced|strengthened|better|greater)\s", low):
+        return True
+    # Application conditions.
+    if re.search(r"\bat the time of (?:application|submission)\b", low):
+        return True
+    # What proposals may do, opportunity/benefit framing, and listed policy targets.
+    if re.search(r"\b(?:proposals?|applicants?|projects?)\s+(?:can|may|could)\b", low):
+        return True
+    if re.search(r"\b(?:can|could|will|may)\s+(?:provide|help|offer|enable|support)\b|"
+                 r"\b(?:offers?|provides?|presents?)\s+(?:a\s+|an\s+)?(?:unique\s+|new\s+|key\s+)?opportunit", low):
+        return True
+    if re.search(r"\b(?:commitments?|targets?)\s*:", low):
+        return True
+    return False
+
+
+_EU_EXPECTED_OUTCOME_SECTION = re.compile(
+    r"(?is)\bexpected outcomes?\s*:.*?(?=\bscope\s*:)"
+)
+
+
+def _strip_expected_outcome_section(text: str) -> str:
+    """Drop an EU topic's "Expected Outcome:" section (ends at "Scope:").
+
+    Expected outcomes describe the intended results of funded projects, never an
+    existing problem. Only removed when the publisher's "Scope:" heading follows,
+    so unstructured pages are left untouched.
+    """
+    return _EU_EXPECTED_OUTCOME_SECTION.sub(" ", str(text or ""))
+
+
+_RISK_ONLY_TERMS = re.compile(r"\b(?:risks?|threats?)\b", re.IGNORECASE)
+_RISK_PROBLEM_CONTEXT = re.compile(
+    r"\b(?:pose[sd]?|posing|faces?|facing|exposed|increas\w*|growing|heightened|serious|severe|"
+    r"significant|major|at risk|threaten\w*|vulnerab\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_funding_limitation(text: str) -> bool:
+    """Limitation test for funding text with technical "risk" compounds neutralized.
+
+    A sentence whose only problem word is "risk"/"threat" must also say the risk
+    is posed, faced, increasing or serious; naming a risk topic ("... related to
+    the health risks of climate change") is not a problem statement.
+    """
+    neutral = _FUNDING_RISK_COMPOUND.sub(" ", str(text or ""))
+    if (
+        _is_genuine_limitation(neutral)
+        and not _is_genuine_limitation(_RISK_ONLY_TERMS.sub(" ", neutral))
+        and not _RISK_PROBLEM_CONTEXT.search(neutral)
+    ):
+        neutral = ""
+    return _is_genuine_limitation(neutral) or (
+        len(str(text or "").split()) >= 6 and bool(_FUNDING_EXTRA_LIMITATION.search(str(text or "")))
+    )
+
+
 def _clean_funding_candidate_text(text: str) -> str:
     """Strip page chrome/Markdown from a candidate while preserving source wording."""
     from html import unescape
@@ -245,6 +356,7 @@ def _clean_funding_candidate_text(text: str) -> str:
     value = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", value)
     value = re.sub(r"[*_~]{1,3}", "", value)
     value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    value = re.sub(r"^\s*(?:\[\d{1,3}\]\s*)+", "", value)
     value = re.sub(r"\s+", " ", value).strip(" \t\r\n-•:")
     value = re.sub(
         r"^(?:expected outcomes?|scope|description|background|rationale|overview|problem preview)\s*:\s*",
@@ -385,7 +497,7 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
             r"problem preview|research mission|focus area|source details|funding details|requirements|"
             r"deadlines|timeline|call documents|programme theme)\s*$"
         )
-        cleaned_content = heading_only.sub("", evidence_content or "")
+        cleaned_content = _strip_expected_outcome_section(heading_only.sub("", evidence_content or ""))
         paragraphs = []
         for raw_paragraph in _paragraphs(cleaned_content):
             paragraphs.extend(_funding_candidate_segments(raw_paragraph))
@@ -401,6 +513,11 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
             para = _clean_funding_candidate_text(para)
             if _is_funding_eligibility_fragment(para, funding_eligibility_text, evidence_content):
                 continue
+            if _is_funding_non_problem_sentence(para):
+                continue
+            # The call's own title restates the topic; it is not a problem statement.
+            if title and re.sub(r"\W+", " ", para).strip().casefold() == re.sub(r"\W+", " ", str(title)).strip().casefold():
+                continue
         if _is_boilerplate(para):
             continue
         if (
@@ -412,7 +529,11 @@ def extract_problem_intelligence(content: str, title: str, evidence_bundle: dict
         if scores["boilerplate_score"] >= 0.6:
             continue
 
-        limitation = _is_genuine_limitation(para)
+        limitation = (
+            _is_funding_limitation(para)
+            if (agent_name or "").strip().lower() == "funding"
+            else _is_genuine_limitation(para)
+        )
         structured, structured_type = _is_structured_problem_signal(
             para, title=title, research_area=research_area, agent_name=agent_name
         )

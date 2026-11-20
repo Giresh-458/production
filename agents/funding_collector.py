@@ -891,6 +891,45 @@ def _eu_topic_details_facts(
         "submission_links": list(dict.fromkeys(submission_links)),
         "budget": " | ".join(dict.fromkeys(budget_parts)) or None,
         "document_url": str(details.get("_document_url") or ""),
+        **_eu_cancellation_facts(details, identifier),
+    }
+
+
+def _eu_cancellation_facts(details: dict, identifier: str) -> dict[str, Any]:
+    """Detect a cancelled (or proposed-for-cancellation) topic from official data.
+
+    Observed live: HORIZON-NEB-2027-01-REGEN-03-CANCELLED kept action status
+    "Forthcoming" while its identifier and latest-information notice record the
+    cancellation. The publisher's identifier suffix or an explicit "cancelled"
+    notice is a cancellation; a notice that cancellation is only *proposed* is kept
+    as a warning, not treated as final.
+    """
+    official_id = str(details.get("identifier") or identifier or "").strip()
+    base_id = re.sub(r"(?i)-cancell?ed$", "", official_id)
+    notices = [
+        _eu_html_to_text(info.get("content"))
+        for info in (details.get("latestInfos") or [])
+        if isinstance(info, dict) and info.get("content")
+    ]
+    names_topic = re.escape(base_id) if base_id else r"(?!x)x"
+    cancelled_notice = next((
+        n for n in notices
+        if re.search(rf"\btopic\s+{names_topic}\b[^.]{{0,200}}\b(?:has been|is|was)\s+cancell?ed\b"
+                     rf"|\bcancell?ed\b[^.]{{0,80}}\btopic\s+{names_topic}\b", n, flags=re.IGNORECASE)
+        and not re.search(r"\bpropos\w*\s+to\s+cancel\b", n, flags=re.IGNORECASE)
+    ), None)
+    proposed_notice = next((
+        n for n in notices
+        if re.search(rf"\bpropos\w*\s+to\s+cancel\b[^.]{{0,60}}\btopic\s+{names_topic}\b", n, flags=re.IGNORECASE)
+    ), None)
+    is_cancelled = bool(re.search(r"(?i)-cancell?ed$", official_id)) or bool(cancelled_notice)
+    return {
+        "cancelled": is_cancelled,
+        "cancellation_evidence": (
+            f"Official identifier {official_id}" if re.search(r"(?i)-cancell?ed$", official_id)
+            else cancelled_notice
+        ) if is_cancelled else None,
+        "cancellation_proposed_notice": proposed_notice if not is_cancelled else None,
     }
 
 
@@ -1022,6 +1061,7 @@ def _record_eu_filter(result: CollectionResult, reason: str, title: str, url: st
     result.records_filtered_by_reason[reason] = (
         result.records_filtered_by_reason.get(reason, 0) + 1
     )
+    result.records_filtered_details.append({"title": str(title or ""), "url": str(url or ""), "reason": reason})
     LOGGER.info("Filtered EU funding record %r (%s): %s", title, reason, url)
 
 
@@ -1488,6 +1528,14 @@ def _collect_eu_funding_tenders(
             if internal_status not in {"OPEN_CALL", "UPCOMING_CALL"}:
                 _record_eu_filter(result, "topic_details_status_not_current", title, url)
                 continue
+            if topic_facts.get("cancelled"):
+                _record_eu_filter(result, "topic_cancelled", title, url)
+                continue
+            if topic_facts.get("cancellation_proposed_notice"):
+                status_consistency_warning = (
+                    "Official notice: cancellation of this topic is proposed — "
+                    + str(topic_facts["cancellation_proposed_notice"])[:300]
+                )
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
@@ -1975,9 +2023,8 @@ def _fetch_currentness_verification_context(
 
     patterns = (
         r"\bapply (?:now )?(?:to|for) (?:the )?[A-Z][^.<\n]{3,140}?\b20\d{2}\b",
-        r"apply for protocol rewards",
-        r"apply to horizon",
-        r"applying is as simple as creating a github issue",
+        r"apply (?:for|to) (?:the |our |this )?(?:next )?(?:cohort|program(?:me)?|accelerator|incubator)",
+        r"(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue",
         r"applications? (?:can be submitted at any time|are accepted on a rolling basis)",
         r"submit your proposal anytime",
         r"applications? are evaluated regular intervals?",
@@ -2328,6 +2375,7 @@ def _collect_web_source(
             result.records_filtered_by_reason[reason] = (
                 result.records_filtered_by_reason.get(reason, 0) + 1
             )
+            result.records_filtered_details.append({"title": str(doc.title or ""), "url": str(doc.source or ""), "reason": reason})
             if warnings is not None:
                 warnings.append(
                     f"Skipped unverified SBIR mirror topic as a funding-call record: {doc.title!r} "
@@ -2340,6 +2388,7 @@ def _collect_web_source(
             result.records_filtered += 1
             reason = "explicit_no_active_rfp_placeholder"
             result.records_filtered_by_reason[reason] = result.records_filtered_by_reason.get(reason, 0) + 1
+            result.records_filtered_details.append({"title": str(doc.title or ""), "url": str(doc.source or ""), "reason": reason})
             continue
 
         if verification_context:

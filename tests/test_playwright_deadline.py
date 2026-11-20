@@ -78,7 +78,9 @@ def test_playwright_navigation_timeout_retries_once_with_commit_wait():
     assert crawler_instance.arun.await_count == 2
     assert mock_config.call_count == 2
     assert mock_config.call_args_list[1].kwargs["wait_until"] == "commit"
-    assert mock_config.call_args_list[1].kwargs["page_timeout"] == 20000
+    # The single retry gets 1.5x the default timeout, capped at 40 s (raised from
+    # a 20 s cap after sbir.gov page=5 timed out on the retry in a live run).
+    assert mock_config.call_args_list[1].kwargs["page_timeout"] == 40000
 
 
 def test_playwright_non_navigation_errors_are_not_retried():

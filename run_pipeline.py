@@ -178,7 +178,7 @@ def _supported_rif_funding_domains(
     matched_domains: list[str] = []
     best_score = 0.0
     source_domain_mismatch = False
-    missing_composite_domain_anchors = False
+    missing_composite_domain_anchors: list[str] = []
 
     for item in ranking:
         if not isinstance(item, dict):
@@ -214,7 +214,7 @@ def _supported_rif_funding_domains(
             continue
 
         if not has_required_domain_anchor_groups(domain, supported_terms):
-            missing_composite_domain_anchors = True
+            missing_composite_domain_anchors.append(domain)
             continue
 
         if source_domains_field_present:
@@ -235,10 +235,11 @@ def _supported_rif_funding_domains(
             "source's research-domain mapping"
         )
     if missing_composite_domain_anchors:
-        return [], 0.0, (
-            "ZK-IoV requires direct evidence for both zero-knowledge cryptography "
-            "and Internet-of-Vehicles/connected-vehicle technology"
-        )
+        # Name the domain that actually lacked its anchors (observed live: ESG
+        # calls were reported with the ZK-IoV message).
+        from core.schemas import required_anchor_message
+
+        return [], 0.0, "; ".join(required_anchor_message(d) for d in missing_composite_domain_anchors)
     return [], 0.0, (
         "no sufficiently strong, domain-specific evidence for any canonical research area"
     )

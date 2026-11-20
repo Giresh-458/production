@@ -1216,8 +1216,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
                 r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
                 r"(?:grant )?fellows are accepted on a rolling basis|"
                 r"proposals are accepted on a rolling basis|"
-                r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon)\b",
+                r"(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue|"
+                r"apply (?:for|to) (?:the |our |this )?(?:next )?(?:cohort|program(?:me)?|accelerator|incubator))\b",
                 lowered,
                 flags=re.IGNORECASE,
             )) or bool(_named_application_cta(content))
@@ -1265,8 +1265,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
         r"\b(?:applications? (?:can be submitted at any time|are accepted on a rolling basis)|submit your proposal anytime|"
         r"(?:grant )?fellows are accepted on a rolling basis|"
         r"proposals are accepted on a rolling basis|"
-                r"applying is as simple as creating a github issue|"
-                r"apply for protocol rewards|apply for next cohort|apply for the program|apply to horizon)\b",
+                r"(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue|"
+                r"apply (?:for|to) (?:the |our |this )?(?:next )?(?:cohort|program(?:me)?|accelerator|incubator))\b",
         lowered,
         flags=re.IGNORECASE,
     )) or bool(_named_application_cta(content))
@@ -1310,7 +1310,8 @@ def determine_status(explicit_status: str | None, opening: str | None, deadline:
     ))
     grant_or_call_signal = any(
         phrase in lowered or phrase in str(title or "").lower()
-        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "protocol rewards", "horizon", "incubation program")
+        for phrase in ("grant", "fellowship", "funding", "call for proposals", "research proposal", "rewards program",
+                       "accelerator", "cohort", "incubation program")
     ) or bool(_named_application_cta(content))
     if (rolling_acceptance or open_grants_applications_welcome or rolling_review_with_application) and grant_or_call_signal:
         return "OPEN_CALL"
@@ -1384,7 +1385,9 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
         # Do not treat the word "Open" in a title like "Open Grant Proposal"
         # as a date cue. "Opens:", "opening date", "open date", and
         # "applications open" remain valid date cues.
-        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bcall\s+launch(?:es|ing)?\b)[^.!?]{{0,140}}?[*_`]*({date_token})",
+        # The span may not cross a deadline/closing label: "Applications Open 2026
+        # Deadline 9 Jun 2026" must not make 9 Jun the opening date (observed live).
+        "opening": rf"(?:\bopens\b|\bopening\b|\bapplications?\s+(?:open|opens)\b|\bopen(?:ing)?\s+date\b|\bcall\s+launch(?:es|ing)?\b)(?:(?!\bdeadline\b|\bclos(?:e|es|ing)\b|\bdue\b|\bcut-?off\b)[^.!?]){{0,140}}?[*_`]*({date_token})",
         "deadline": rf"(?:\bcloses?\b|\bclosing\b|\bdeadline\b|\bdue\s+date\b|\bapplications?\s+(?:close|closes)\b|\blast\s+date(?:\s+to\s+apply)?\b|\bsubmission\s+deadline\b|\bapplications?\s+due\b|\bapply\s+by\b|\bsubmit\s+by\b|\bfinal\s+date\b)[^.!?]{{0,160}}?[*_]*({date_token})",
     }
 
@@ -1399,13 +1402,28 @@ def extract_call_dates(content: str) -> tuple[str | None, str | None]:
     # top and then list later selection/notification dates in a project timeline.
     # Prefer that explicit deadline over downstream milestones. Repeated SBIR-style
     # rounds are handled separately by the "Due Date(s)" schedule below.
-    primary_deadline = re.search(
+    primary_matches = list(re.finditer(
         rf"\bdeadline\b\s*(?:[:\-|]\s*)?[*_`]*({date_token})",
         text,
         flags=re.IGNORECASE,
-    )
-    if primary_deadline:
-        values["deadline"] = _normalize_date(primary_deadline.group(1))
+    ))
+    if primary_matches:
+        # When a page labels several dates "Deadline", the label that follows the
+        # date says which one closes submissions (observed live on filpgf.io:
+        # "Deadline 9 Jun 2026 Cut-off for the June review window" and
+        # "Deadline 16 Jun 2026 Last day to submit ... applications").
+        def _label_after(match: re.Match) -> str:
+            # Only this date's own label: stop at the next "Deadline" entry.
+            return re.split(r"\bdeadline\b", text[match.end():match.end() + 90], maxsplit=1, flags=re.IGNORECASE)[0]
+
+        final = [m for m in primary_matches if re.search(
+            r"\b(?:last day to (?:submit|apply)|final (?:submission )?deadline|submissions? close)\b",
+            _label_after(m), flags=re.IGNORECASE)]
+        not_review_cutoff = [m for m in primary_matches if not re.search(
+            r"\bcut-?off for (?:the )?[\w ]{0,30}review\b|\breview window\b",
+            _label_after(m), flags=re.IGNORECASE)]
+        chosen = (final or not_review_cutoff or primary_matches)[0]
+        values["deadline"] = _normalize_date(chosen.group(1))
         return values["opening"], values["deadline"]
 
     deadline_candidates: list[str] = []
@@ -1858,7 +1876,7 @@ def _extract_application_url(text: str) -> str | None:
                     flags=re.IGNORECASE,
                 )
                 or re.search(
-                    r"\bapplying is as simple as creating a github issue\b",
+                    r"\b(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue\b",
                     before[-150:],
                     flags=re.IGNORECASE,
                 )
@@ -1885,7 +1903,7 @@ def _extract_application_url(text: str) -> str | None:
     url_pattern = r"https?://[^\s)\]]+"
     contextual = re.compile(
         r"(?:application|apply|submit|submission|proposal|"
-        r"applying is as simple as creating a github issue)\s*"
+        r"(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue)\s*"
         r"(?:link|url|portal|here)?\s*[:\-]?\s*("
         + url_pattern + r")",
         re.IGNORECASE,
@@ -1993,34 +2011,17 @@ def _resolve_application_url(content: str, source_url: str, status: str) -> str 
     if status in {"OPEN_CALL", "UPCOMING_CALL"} and _named_application_cta(content or ""):
         return source_url
 
-    # Some official NEAR programme pages render the apply CTA without a stable
-    # destination href. Route to the official programme detail page rather than
-    # inventing an application form URL.
-    is_near_protocol_rewards_cta = (
-        (parsed_source.hostname or "").casefold() in {"nearprotocolrewards.com", "www.nearprotocolrewards.com"}
-        and bool(re.search(r"apply for (?:protocol rewards|next cohort)", content or "", flags=re.IGNORECASE))
-    )
-    is_near_horizon_cta = (
-        (parsed_source.hostname or "").casefold() in {"hzn.xyz", "www.hzn.xyz"}
-        and bool(re.search(r"apply to horizon", content or "", flags=re.IGNORECASE))
-    )
-    if status in {"OPEN_CALL", "UPCOMING_CALL"} and (is_near_protocol_rewards_cta or is_near_horizon_cta):
-        return source_url
-
-    # Superteam processes applications on the individual Earn listing. Crawl4AI may
-    # render the visible "Apply Now" CTA as text without its client-side href, so
-    # the listing URL itself is the correct destination when the call is open.
-    parsed = urlparse(source_url or "")
-    is_superteam_detail = (
-        parsed.netloc.lower() in {"superteam.fun", "www.superteam.fun"}
-        and bool(re.fullmatch(r"/earn/grants/[^/]+", parsed.path.rstrip("/")))
-    )
+    # Generic rule (replaces former NEAR/Superteam hostname checks): client-side
+    # pages often render the apply CTA as text without an href. When the call is
+    # open or upcoming and the official page itself carries an apply CTA, that
+    # page is the application entry point; no form URL is invented.
     has_on_page_cta = bool(re.search(
-        r"\b(?:apply now|apply on superteam earn|apply on this listing)\b",
+        r"\b(?:apply now|apply on this listing|"
+        r"apply (?:for|to) (?:the |our |this )?(?:next )?(?:cohort|program(?:me)?|accelerator|incubator))\b",
         content or "",
         flags=re.IGNORECASE,
     ))
-    if status in {"OPEN_CALL", "UPCOMING_CALL"} and is_superteam_detail and has_on_page_cta:
+    if status in {"OPEN_CALL", "UPCOMING_CALL"} and has_on_page_cta:
         return source_url
 
     return None
@@ -2057,6 +2058,10 @@ def _status_evidence_for_classification(text: str, status: str) -> str | None:
         r"(?:currently\s+)?not accepting (?:any fresh |new )?(?:applications|submissions)",
         r"no longer accepting (?:applications|submissions)",
         r"applications? (?:are )?(?:closed|paused|suspended)",
+        # The sentence that actually closes a programme, e.g. a cross-checked
+        # README stating "grant giving through FRP is currently paused" (observed
+        # live: the stored evidence otherwise showed the opposite, "rolling basis").
+        r"[^.\n]{0,80}\b(?:is|are|remains?)\s+(?:currently\s+|temporarily\s+)?(?:paused|suspended|on hold)\b",
         r"deadline has passed",
         r"application period has ended",
         r"closed for applications",
@@ -2075,11 +2080,8 @@ def _status_evidence_for_classification(text: str, status: str) -> str | None:
         r"(?:grant )?fellows are accepted on a rolling basis",
         r"proposals are accepted on a rolling basis",
         r"open grants? applications?[^.\n]{0,160}\b(?:are\s+)?welcome\b",
-        r"applying is as simple as creating a github issue",
-        r"apply for protocol rewards",
-        r"apply for next cohort",
-        r"apply for the program",
-        r"apply to horizon",
+        r"(?:apply|applying)\b[^.\n]{0,40}\b(?:creat\w*|open\w*|submit\w*) a github issue",
+        r"apply (?:for|to) (?:the |our |this )?(?:next )?(?:cohort|program(?:me)?|accelerator|incubator)",
         r"\bapply (?:now )?(?:to|for) (?:the )?[A-Z][^.\n]{3,140}?\b20\d{2}\b",
         r"\bopen call\b",
         r"\b(?:grant|fellowship|bounty)\s*\|\s*open\s*\|",
@@ -2493,8 +2495,14 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     top_score = float(top_item.get("score", 0.0) or 0.0)
     top_raw = float(top_item.get("raw_score", 0.0) or 0.0)
     top_matches = list(top_item.get("matched_terms", []) or [])
+    # Hyphenation varies in official titles ("zero emission" vs "zero-emission");
+    # compare with hyphens and spaces treated alike (observed live:
+    # HORIZON-CL5-2027-03-D5-04 was routed to General for this reason alone).
+    def _dehyphen(value: str) -> str:
+        return re.sub(r"[\s\-‐-―]+", " ", str(value or "")).strip()
+
     title_has_domain_anchor = any(
-        re.search(rf"\b{re.escape(str(term))}\b", document.title, flags=re.IGNORECASE)
+        re.search(rf"\b{re.escape(_dehyphen(term))}\b", _dehyphen(document.title), flags=re.IGNORECASE)
         for term in top_matches
         if str(term).strip()
     )
@@ -2514,19 +2522,43 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
         "MEV": ["MEV", "Transaction Ordering"],
         "Stablecoins": ["Stablecoins", "Payment and Settlement"],
     }
-    themes = list(domain_themes.get(focus_area, []))
+    # A domain's secondary theme is a claim about the call; keep it only when the
+    # call text itself names that theme (observed live: every ESG call was given
+    # "Carbon and MRV", including climate-modelling calls that never mention
+    # carbon or MRV, which then seeded off-topic Batch-2 queries).
+    theme_evidence = {
+        "Asset Tokenization": r"\btokeni[sz]",
+        "Carbon and MRV": r"\b(?:carbon|mrv|emissions?|greenhouse gas|ghg)\b",
+        "Internet of Vehicles": r"\b(?:vehicles?|v2x|connected cars?|internet of vehicles)\b",
+        "Verifiable Credentials": r"\b(?:verifiable )?credentials?\b",
+        "IoT": r"\b(?:iot|internet of things|sensors?|devices?)\b",
+        "Transaction Ordering": r"\b(?:transaction ordering|order ?flow|sequenc\w*|block builders?)\b",
+        "Payment and Settlement": r"\b(?:payments?|settlement)\b",
+    }
+    themes = [
+        theme for index, theme in enumerate(domain_themes.get(focus_area, []))
+        if index == 0
+        or not theme_evidence.get(theme)
+        or re.search(theme_evidence[theme], f"{document.title}\n{document.content}", flags=re.IGNORECASE)
+    ]
     if focus_area == "General" or not themes:
         extracted = _extract_general_themes(document.content)
         if extracted:
             themes = extracted
 
+    # Whole-word matches only; a priority is a stage of work, not a substring of
+    # another word ("revalidation") or a modifier ("deployment frameworks").
     priorities = []
-    if "prototype refinement" in lowered: priorities.append("Prototype refinement")
-    if "validation" in lowered: priorities.append("Testing and validation")
-    if "deployment" in lowered: priorities.append("Deployment")
-    if "technology maturation" in lowered: priorities.append("Technology maturation")
-    if "commercialisation" in lowered: priorities.append("Commercialisation")
-    if "market adoption" in lowered: priorities.append("Market adoption")
+    for pattern, label in (
+        (r"\bprototype refinement\b", "Prototype refinement"),
+        (r"\bvalidation\b(?!\s+(?:frameworks?|rules?|checks?))", "Testing and validation"),
+        (r"\bdeployment\b(?!\s+(?:frameworks?|models?|guidelines?))", "Deployment"),
+        (r"\btechnology maturation\b", "Technology maturation"),
+        (r"\bcommerciali[sz]ation\b", "Commercialisation"),
+        (r"\bmarket adoption\b", "Market adoption"),
+    ):
+        if re.search(pattern, lowered):
+            priorities.append(label)
         
     opening_date, deadline = extract_call_dates(document.content)
     research_intent, research_intent_evidence = detect_research_intent(document.content, focus_area=focus_area, themes=themes)
@@ -2556,6 +2588,13 @@ def analyze_document(document: FundingDocument) -> FundingOpportunity:
     # HTML/Markdown extraction can leave heading markers in the title. Keep the
     # structured title human-readable without changing its source wording.
     program_name = cleaned_text(re.sub(r"^\s{0,3}#{1,6}\s*", "", str(program_name or "")))
+    # Announcement headlines are not programme names ("Announcing the General
+    # Track" observed live); keep the publisher's wording minus the news verb.
+    headline_stripped = re.sub(
+        r"^(?:announcing|introducing|launching|unveiling)\s+(?:the\s+|our\s+)?", "", program_name, flags=re.IGNORECASE
+    ).strip()
+    if headline_stripped and headline_stripped != program_name and len(headline_stripped.split()) >= 2:
+        program_name = headline_stripped[0].upper() + headline_stripped[1:]
     # A dated, named application CTA is the actionable call on a programme
     # overview page; give it its own identity rather than the parent programme's.
     named_cta = _named_application_cta(document.content or "")
@@ -3661,6 +3700,7 @@ def run_agent(mode: str, area: str | None = None, input_data: dict | None = None
                     "records_failed": res.records_failed,
                     "records_filtered": res.records_filtered,
                     "records_filtered_by_reason": res.records_filtered_by_reason,
+                    "records_filtered_details": list(getattr(res, "records_filtered_details", []) or []),
                     "duplicates_removed": res.duplicates_removed,
                     "urls_skipped": res.urls_skipped,
                     "relevant_urls_skipped": res.relevant_urls_skipped,

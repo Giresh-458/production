@@ -614,9 +614,15 @@ def test_funding_problem_extraction_uses_risk_clause_not_eligibility_restriction
     )
     document = _document(content, title="Large-Scale AI Energy Pilot")
     intelligence = extract_funding_problem_intelligence(document, _analysis(document))
-    assert intelligence["selected_problem"] is not None
-    assert "vulnerabilities" in intelligence["selected_problem"].lower()
-    assert "participation is limited to" not in intelligence["selected_problem"].lower()
+    # This passage is the standard EU rationale for restricting participation
+    # (strategic autonomy), repeated across many topics; it is not the call's
+    # research problem. It was previously extracted as the mid-sentence fragment
+    # "vulnerabilities and high-risk dependencies which put at risk ..." (observed
+    # live for HORIZON-BRIDGING-2027-01-12). Neither it nor the eligibility
+    # restriction may be promoted to a problem statement.
+    selected = (intelligence["selected_problem"] or "").lower()
+    assert not selected.startswith("vulnerabilities")
+    assert "participation is limited to" not in selected
     assert all("participation is limited to" not in item.lower() for item in intelligence["problem_evidence"])
 
 
