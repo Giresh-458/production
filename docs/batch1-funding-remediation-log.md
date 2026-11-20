@@ -135,3 +135,20 @@ Open items outside Batch-1's acceptance scope:
 - Deterministic suite: **1229 passed, 0 failed**, 7 skipped.
 
 **Batch-1, Batch-2 and Batch-3: GOOD TO GO** on this verified chain. Not run here: GitHub Actions (Linux) and the post-Batch-3 LLM stages (synthesis/idea/proposal).
+
+## Deep check (2026-11-20, commit 5efe992, fresh clones)
+
+Method: fresh clone of the committed code; full deterministic suite; the committed CI workflow steps 2–7 executed live in order; the production entry point `run_pipeline.py --max-open-calls 1` executed end to end (Ollama `qwen3.5:4b`); every Batch-1 claim for the selected call re-checked against the official EU topic JSON and Annex B PDF.
+
+Defects found by the deep check and fixed (each with a regression test that fails on the old code):
+
+18. `run_pipeline.py` crashed (`ValueError: Research-context funding_call_id differs from the selected call`) building contexts for non-research EU topics: the collector set the topic code on `call_id` but not on `research_context.funding_call_id`. The CI script never hit this because it builds contexts only after the strict selector.
+19. In `run_pipeline.py`, the first Batch-3 agent re-normalized the Batch-2 handoff: the refresh manifest included Batch-1 `<run>/intermediate/funding` artifacts that the pipeline and Batch-2 never normalize. Call-scoped normalization now skips that folder (refresh roots and the existing contract are unchanged). Detected by the new Batch-3 contract.
+20. A regulation problem statement ran on into a second crawled page (`[Depth 1] … | https://…`, 2,085 chars); problem text is now cut at any serialized page header.
+21. Adaptive research used the Python repr of OpenAlex "concepts" as evidence text when a work had no abstract; such works are no longer evidence.
+
+Results on the fresh clone:
+- Suite: **1234 passed, 0 failed**, 7 skipped.
+- CI chain: Batch-1 `ci-batch1-20261120T074311855366Z` **ACCEPTED, 0 blockers**, all sources clean, 1/1 context ready → Batch-2 **ready_for_batch3** (4 accepted) → Batch-3 **ready_for_batch4**, 0 issues; run IDs match at every hand-off.
+- `run_pipeline.py`: exit 0; Batch-3 `ready_for_batch4` without modifying the handoff; synthesis and ideas succeeded; proposals 0 because every idea failed the external-novelty gate → `completed_no_proposal`.
+- Grounding: status, deadline, RIA type, research-problem quote, submission link, multi-actor condition and both Annex B passages match the official sources verbatim.
