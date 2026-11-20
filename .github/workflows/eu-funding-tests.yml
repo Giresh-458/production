@@ -895,6 +895,16 @@ jobs:
             --max-workers 6 \
             --output-root outputs/ci_batch2_smoke/runs
 
+      - name: Run Batch-3 on the validated Batch-2 smoke output
+        if: always()
+        run: |
+          run_dir=$(ls -d outputs/ci_batch2_smoke/runs/*/ 2>/dev/null | tail -1)
+          if [ -z "$run_dir" ] || ! python -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['status']=='ready_for_batch3' else 1)" "${run_dir}workflow/batch2_report.json"; then
+            echo "::notice::Batch-3 skipped: no Batch-2 run reached ready_for_batch3."
+            exit 0
+          fi
+          python scripts/pipeline_tools/run_batch3.py --batch2-run-dir "$run_dir"
+
       - name: Upload full Batch 1 audit artifacts
         if: always()
         uses: actions/upload-artifact@v4

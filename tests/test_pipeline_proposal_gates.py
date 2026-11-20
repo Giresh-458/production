@@ -6,6 +6,9 @@ from unittest.mock import patch, MagicMock
 import run_pipeline
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
+# These tests mock tagging/clustering/trend without writing outputs.
+pytestmark = pytest.mark.usefixtures("mocked_batch3_outputs")
+
 def create_base_mock_stage(proposal_mock):
     def fake_run_stage(agent, mode, area, payload, context=None):
         if agent == "funding":

@@ -19,6 +19,9 @@ from core.source_registry import (
 import run_pipeline
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 
+# These tests mock tagging/clustering/trend without writing outputs.
+pytestmark = pytest.mark.usefixtures("mocked_batch3_outputs")
+
 
 def test_nested_registry_lifecycle_operations_are_reentrant(tmp_path):
     registry_path = tmp_path / "source_registry.json"

@@ -43,3 +43,95 @@ The first CI run after raising the configured budget stopped in the deterministi
 ## Acceptance decision
 
 **`BLOCKED` pending a new full configured scan and resolution of the remaining blockers.** This log does not claim that the budget change fixed the live audit. The next run must be inspected at its exact commit, including `summary.json`, `records.json`, `selected.json`, source summaries, and failure logs. Do not merge or start Batch 2 based on deterministic tests alone.
+
+## Remediation cycle 2026-11-19 (local live verification)
+
+### Baseline on `main` @ `02275ce` (after PR #72)
+
+- Deterministic suite: 1 failure (`tests/test_batch4_normalization.py::test_case_10_and_11_missing_provenance`, a Windows-only file lock in Batch-2 normalization, unrelated to Batch-1).
+- Full configured scan (the CI script, run locally): every source `VERIFIED`/`NO_ACTIVE_OPPORTUNITIES` and acceptance `ACCEPTED` — but only because `allow_empty_actionable_result=True`. **0 actionable calls were selected; nothing reached Batch-2.** The EU source discovered 896 records and kept 14; 882 were filtered, mostly `missing_eligibility_evidence`.
+
+### Root causes (traced to code, confirmed against live responses)
+
+1. **EU Horizon topics were never read from their official record.** For type-1 topics the Search API hit contains only index metadata (no description, conditions or submission link). The "detail fetch" re-ran the same Search API query and added zero fields. The portal itself renders each topic from `/opportunities/data/topicDetails/<identifier lowercased>.json` (the hit's own `esST_URL`), which carries per-action status, deadlines, budget, description, conditions and the submission-service link. Eligibility in those conditions is delegated to *Annex B of the Work Programme General Annexes*, linked from the topic.
+2. **Topic identity collapsed to the call.** The collector preferred `callIdentifier` (`HORIZON-CL5-2026-11`) over the topic `identifier` (`HORIZON-CL5-2026-11-D3-06`), so sibling topics shared one `call_id` and the selector's call-id dedup could drop them as duplicates.
+3. **Truncated JSON bodies were not retried.** `post_multipart_json`/`fetch_json` raised immediately on an undecodable HTTP 200 body (observed live: EU Search API page cut off at ~380 KB), aborting a whole EU query and marking the source `PARTIAL`.
+4. **Crawl4AI navigation-timeout retry was dead code.** Crawl4AI 0.9.5 returns `CrawlResult(success=False, error_message="…Page.goto: Timeout…")` instead of raising; the bounded commit-wait retry only handled the raised form (observed live: sbir.gov listing pages 19–20).
+5. **EU research intent ignored the official Type of Action.** Keyword matching labelled a Pre-Commercial Procurement topic (`HORIZON-HLTH-2027-01-ENVHLTH-MISSCLIMA-03`) and a Coordination and Support Action (`HORIZON-NATURE-2027-02-03`) as research.
+6. **Negated sentences counted as research evidence.** "This topic does not provide direct funding to … research organisations to perform R&D" passed because the negation filter did not allow an intervening word.
+7. **Task statements and list fragments became problem signals.** "The network should integrate coordinators…" and a semicolon list item starting "or lack of resources…" were selected as research problems.
+
+### Fixes
+
+- `core/structured_sources.py`: `eu_funding_tenders_fetch_topic_details` (official topicDetails document, identifier-checked) and `eu_funding_tenders_fetch_reference_pdf_text` (only Commission-hosted `/opportunities/docs/*.pdf`, cached per run).
+- `agents/funding_collector.py`: for portal topics with missing metadata, read topicDetails instead of re-querying search; independent per-topic status cross-check (topicDetails wins on disagreement and both are recorded); next unexpired deadline; topic-specific budget; official submission link; verbatim Annex B eligibility (country rule and consortium composition) only when the topic conditions cite Annex B, with provenance to both documents; topic code as identity with `parent_call_identifier` evidence; research intent from the official type of action (RIA, ERC frontier research and MSCA count as research; CSA, IA, PCP, PPI, COFUND and ERC-PoC do not); EuropeAid references keep the original path; one error per unreachable annex.
+- `core/http_client.py`: undecodable 200 bodies use the existing bounded retry budget; persistent failures still raise `Invalid JSON`.
+- `core/crawl4ai_web.py`: returned navigation-timeout results trigger the same single bounded retry; other returned failures are not retried.
+- `agents/funding_agent.py`: sentences that negate funding/R&D are never research-intent evidence.
+- `core/problem_extraction.py`: requirements placed on networks/consortia/selected projects are task statements; conjunction-led list fragments are not problem candidates.
+
+No gate threshold, domain weight, source inventory or acceptance rule was relaxed.
+
+### Technical basis
+
+- Official topic document format and Annex B wording: observed directly from `topicDetails/horizon-cl5-2026-11-d3-06.json` and `wp-15-general-annexes_horizon-2026-2027_en.pdf` ("To be eligible for funding, applicants must be established in one of the following countries…"; "…the consortium includes, as beneficiaries, three legal entities independent from each other…").
+- Type-of-action semantics: Horizon Europe Programme Guide (`programme-guide_horizon_en.pdf`: CSAs "support coordination and networking activities"; PCP/PPI co-finance procurers buying R&D) and Regulation (EU) 2021/695 Art. 2 definitions. EUR-Lex returned an anti-bot challenge (HTTP 202) to automated requests, so the Regulation text was not re-fetched in this cycle.
+- SBIR.gov official solicitations API (`api.www.sbir.gov/public/api/solicitations`) returns HTTP 403 and the publisher states it is under maintenance; SBIR therefore remains web-crawled.
+
+### Transient-network root cause (found in runs 3–4)
+
+8. **One transient network fault could fail a whole source.** robots.txt was fetched with `retries=0`, and a single DNS failure (`getaddrinfo failed` for `www.sbir.gov`) was cached as a fail-closed policy for the entire source (SBIR `FAIL`, 0 pages). Browser navigation retried only timeouts, not Chromium network-stack faults (`ERR_NAME_NOT_RESOLVED`, `ERR_ADDRESS_UNREACHABLE`, `ERR_NETWORK_CHANGED`, `ERR_CONNECTION_ABORTED`). Fix: `core/robots_policy.py` retries a robots.txt *connection* failure once after 2 s (HTTP statuses are never retried; a second failure still fails closed per RFC 9309 §2.3.1.4); `core/crawl4ai_web.py` gives those network errors the same single bounded retry after a 2 s pause (certificate, HTTP and robots errors are not retried).
+
+### Verification results (local, Windows 11, Python 3.11)
+
+- Deterministic suite: `1193 passed, 7 skipped, 1 failed`. The single failure is the pre-existing Windows-only Batch-2 test noted in the baseline. 69 new Batch-1 regression tests (58 in three new files, 11 added to existing files): `tests/test_eu_topic_details_enrichment.py`, `tests/test_research_intent_negation.py`, `tests/test_robots_network_retry.py`, plus additions to `tests/test_http_policy_extra.py` and `tests/test_playwright_deadline.py`.
+- Live full configured scan (the CI script, run locally), final run `ci-batch1-20261119T163714201142Z`:
+  - `run_status=success`; **acceptance `ACCEPTED`, 0 blockers**; all 13 configured sources `VERIFIED` or `NO_ACTIVE_OPPORTUNITIES` with 0 errors, evidence and currentness verified, discovery exhausted; record accounting reconciled; 0 priority-source, coverage-invariant, quality, problem-quality or problem-semantic violations.
+  - 142 records, 115 current-status candidates; **2 actionable calls selected; 2/2 contexts pass `validate_batch1_context`**. EU source: 102 valid records (previously 14).
+  - `HORIZON-NEB-2026-01-BUSINESS-02`: Research and Innovation Action, Open, deadline 2026-12-01, EUR 3.5 M per project.
+  - `HORIZON-NATURE-2027-02-02`: Research and Innovation Action, Open, deadline 2027-01-14, EUR 10 M per project.
+  - Both re-verified independently against their official topicDetails documents after the scan (status Open, RIA, same deadlines, conditions cite Annex B for eligibility). The same two calls were selected in three consecutive independent scans.
+- Batch-2 handoff: `run_batch2.py --profile smoke` (CI arguments) accepted the real `funding_contexts.json` from the final run (matching Batch-1 run ID, envelope validated, contexts independently revalidated), ran collection (10/11 collectors healthy, threshold 6) and normalized 29 records. Its own mission-relevance gate accepted 0 of 29 for the New European Bauhaus call (collected evidence was blockchain-oriented), so Batch-2 ended `incomplete_no_handoff`. That is a downstream Batch-2 evidence outcome; the Batch-1 to Batch-2 contract was satisfied.
+
+## Acceptance decision (2026-11-19)
+
+**Batch-1: GOOD TO GO.** A full live configured scan is `ACCEPTED` with zero blockers, every source verified, and two independently re-verified, currently open, research-eligible calls handed to Batch-2 with valid `FundingCallContext`s that Batch-2 accepted.
+
+Open items outside Batch-1's acceptance scope:
+- Domain fit: both selected calls qualify as ESG through existing strong terms in `core/schemas.py` (`new european bauhaus`, `bioeconomy`, `carbon`, `climate adaptation`). Whether those belong in RIF's ESG scope is a product decision; Batch-2 found no relevant evidence for the NEB call.
+- `tests/test_batch4_normalization.py::test_case_10_and_11_missing_provenance` fails on Windows only (Batch-2 normalization file lock).
+- External sources stay volatile: the acceptance holds for this run; CI should keep re-checking on every change.
+
+## Double-check and Batch-2 cycle (2026-11-20)
+
+### Additional defects found by the double-check (all fixed, with regression tests)
+
+9. **Topic-specific eligibility was dropped (Batch-1).** `HORIZON-NATURE-2027-02-02` conditions add "The proposals must apply the multi-actor approach."; the handoff only carried generic Annex B text. `_eu_topic_specific_eligibility` now carries non-boilerplate text of the topic's own "Eligible countries"/"Other eligibility conditions" verbatim (never as a stand-in for missing applicant eligibility).
+10. **Two-stage deadline (Batch-1).** For `deadlineModel: two-stage` topics the applicant deadline is now always the stage-1 date, so a passed stage 1 cannot look open via the stage-2 date.
+11. **Brand-only ESG match (Batch-1, owner decision 2026-11-20).** "new european bauhaus" still scores toward ESG but satisfies the ESG anchor group only together with another ESG term (`DOMAIN_CORROBORATION_REQUIRED_ANCHORS`). `HORIZON-NEB-2026-01-BUSINESS-02` matched only the brand and produced 0 relevant records in Batch-2 under both the smoke and the full refresh profile; the owner's NEB-plus-sustainability test still passes.
+12. **Batch-2 retrieval ignored the call (Batch-2).** For Medium/High-confidence contexts `generate_funding_queries` emitted only domain-template queries ("What challenges ... for ESG, Carbon and MRV?"). Queries now lead with the call title and the source-grounded research problem (only when evidence refs exist). Result: `HORIZON-NATURE-2027-02-02` went from 0 to 3–4 accepted records.
+13. **Page dumps promoted to problem statements (Batch-2).** Normalization fell back to the first 280 raw characters, and accepted collector "snippets"/previews that were whole serialized pages (`Page title: … Source URL: …`, `[Depth N] … | url`). These now yield the collectors' existing placeholder "No explicit problem statement found."; the text stays in evidence/context.
+14. **Windows-only test failure.** `test_case_10_and_11_missing_provenance` left its own SQLite handle open before re-normalizing; Windows cannot replace an open file. The test now closes it; production code already closed every connection.
+
+### Final verification (local, Windows 11, Python 3.11)
+
+- Deterministic suite: **1207 passed, 0 failed**, 7 skipped.
+- Batch-1 live full configured scan `ci-batch1-20261120T025459190262Z`: **ACCEPTED, 0 blockers**; all 13 sources `VERIFIED`/`NO_ACTIVE_OPPORTUNITIES` with 0 errors; record accounting reconciled; 0 quality/problem/semantic/priority/invariant/review violations; 1 call selected, 1/1 context ready: `HORIZON-NATURE-2027-02-02` (RIA, Open, deadline 2027-01-14, EUR 10 M per project; eligibility includes Annex B and the multi-actor condition). NEB filtered at the collector as `off_domain_or_weak_domain_evidence`.
+- Batch-2 (`run_batch2.py --profile smoke`, CI arguments) on that run's own `funding_contexts.json`: **`ready_for_batch3`, exit 0**; Batch-1 run ID matched; 10/11 collectors healthy (threshold 6); 44 records normalized, 4 accepted by the mission gate, no page-dump problem statements.
+- External access limits recorded, not hidden: the hackathon collector persisted nothing because every source was blocked (Devpost robots.txt, DoraHacks HTTP 405, Devfolio/Chainlink anti-bot, Solana robots HTTP 429, two deadline overruns); other collectors are `partial_success` for 403/404/429/anti-bot/robots/page-cap reasons. SBIR.gov's official API remains HTTP 403.
+
+## Acceptance decision (2026-11-20)
+
+**Batch-1: GOOD TO GO. Batch-2: GOOD TO GO** for the verified handoff: a fresh full Batch-1 scan is `ACCEPTED` with a ready context, and Batch-2 consumed that exact handoff and reached `ready_for_batch3`. Live sources change daily, so the CI quality workflow must keep re-checking both on every push.
+
+## Final chain verification and Batch-3 (2026-11-20)
+
+- Batch-1 + Batch-2 re-verified on the final code (run `ci-batch1-20261120T042459997869Z` → Batch-2 `20261120T044310013067Z`): Batch-1 `ACCEPTED`, 0 blockers, all sources clean, 1/1 context ready; Batch-2 `ready_for_batch3` (run IDs matched, 10/11 collectors healthy, 4 records accepted).
+- Batch-3 defects found on that real output and fixed:
+  15. Cluster signal types were assigned by source layer alone, so a literature record with "No explicit problem statement found." became `research_problem`. Problem-asserting labels now require an extracted problem (`core/intelligence.py`).
+  16. Batch-3 artifacts dropped `run_id`; tags, cluster members, clusters (`run_ids`) and trends (`run_ids`) now carry it.
+  17. No Batch-3 output contract: stages returning `partial_success` with zero processed records passed. `core/batch3.py` validates coverage, identity, trend counts and handoff immutability; `run_pipeline.py` uses it; `scripts/pipeline_tools/run_batch3.py` runs it standalone; CI runs it after the Batch-2 smoke. See `docs/BATCH3_PROCESSING.md`.
+- Batch-3 on the real Batch-2 output: **`ready_for_batch4`, exit 0** — tagging 4/4 records, 4 clusters covering all records once, trends counts match, Batch-2 handoff byte-identical, run IDs preserved.
+- Deterministic suite: **1229 passed, 0 failed**, 7 skipped.
+
+**Batch-1, Batch-2 and Batch-3: GOOD TO GO** on this verified chain. Not run here: GitHub Actions (Linux) and the post-Batch-3 LLM stages (synthesis/idea/proposal).

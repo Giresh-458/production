@@ -197,6 +197,21 @@ def _parse_list_block(text: str) -> list[str]:
     return items
 
 
+# Serialization headers written by RIF's own collectors when they persist a
+# whole fetched page (core/agent_interface.py "Page title:/Source URL:" blocks
+# and core/recursive_collection.py "[Depth N] title | url" blocks). Text that
+# starts this way is a page dump, not an extracted problem statement.
+_SERIALIZED_PAGE_BLOCK = re.compile(
+    r"^\s*(?:Page title:[^\n]{0,300}?\s+Source URL:\s*https?://"
+    r"|[^\n]{0,200}?\[Depth \d+\][^|\n]{0,300}\|\s*https?://)",
+    re.IGNORECASE,
+)
+
+
+def _is_serialized_page_block(value: Any) -> bool:
+    return bool(_SERIALIZED_PAGE_BLOCK.match(str(value or "")))
+
+
 def _coalesce(*values: str) -> str:
     for value in values:
         cleaned = _clean(value)
@@ -599,11 +614,27 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
         )
     )[:20]
 
-    normalized_problem = _coalesce(
-        artifact["problem_preview"],
-        "\n".join(evidence.get("evidence_snippets", [])),
-        raw_content[:280],
+    # Never present the first characters of a raw page (navigation chrome,
+    # "Page title: ... Source URL: ..." headers) as a problem statement: that is
+    # not source evidence of a problem. Use the collectors' explicit placeholder
+    # instead (core/agent_interface.py). Observed live in a Batch-2 handoff:
+    # "Page title: Our Vision: PL Update 2026 Source URL: ... Network About Join Blog".
+    # The same applies to a collector "snippet" or preview that is a whole
+    # serialized page block (live: lab/regulation artifacts whose single
+    # snippet was the full "Page title: ... Source URL: ..." / "[Depth 0] ..."
+    # page dump). Such text stays in the evidence bundle and context, but is
+    # not promoted to the problem statement.
+    preview = artifact["problem_preview"]
+    if _is_serialized_page_block(preview):
+        preview = ""
+    snippet_text = "\n".join(
+        snippet for snippet in evidence.get("evidence_snippets", [])
+        if not _is_serialized_page_block(snippet)
     )
+    normalized_problem = _coalesce(
+        preview,
+        snippet_text,
+    ) or "No explicit problem statement found."
     context_summary = _coalesce(
         "\n".join(evidence.get("key_paragraphs", [])),
         "\n".join(evidence.get("excerpt_windows", [])),

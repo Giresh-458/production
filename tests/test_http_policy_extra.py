@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -596,3 +597,80 @@ def test_redirect_helper_loopback_opt_in_does_not_allow_private_networks():
             allow_loopback=True,
         )
 
+
+
+class _JsonBodyResponse(_RedirectResponse):
+    """200 response whose JSON decode outcome is controlled by the test."""
+
+    def __init__(self, body: bytes):
+        super().__init__(200, headers={"Content-Type": "application/json"}, body=body,
+                         url="https://api.example.test/search")
+
+    def json(self):
+        return json.loads(self._body.decode("utf-8"))
+
+
+def test_post_multipart_json_retries_body_truncated_in_transit(monkeypatch):
+    """Observed live: EU Search API page body cut off mid-string. Retry, then succeed."""
+    import core.http_client as http_client
+
+    responses = [
+        _JsonBodyResponse(b'{"results": [{"title": "unterminated'),
+        _JsonBodyResponse(b'{"results": []}'),
+    ]
+    sent = []
+
+    class Session:
+        def post(self, url, **options):
+            sent.append(url)
+            return responses[len(sent) - 1]
+
+    monkeypatch.setattr(http_client, "_get_session", lambda: Session())
+    monkeypatch.setattr(http_client, "_sleep_or_abort", lambda delay: None)
+
+    data, _ = http_client.post_multipart_json(
+        "https://api.example.test/search",
+        fields={"query": (None, "q", "text/plain")},
+        retries=2,
+    )
+    assert data == {"results": []}
+    assert len(sent) == 2
+    assert responses[0].closed is True
+
+
+def test_post_multipart_json_still_fails_when_every_body_is_invalid(monkeypatch):
+    import core.http_client as http_client
+
+    sent = []
+
+    class Session:
+        def post(self, url, **options):
+            sent.append(url)
+            return _JsonBodyResponse(b'{"truncated')
+
+    monkeypatch.setattr(http_client, "_get_session", lambda: Session())
+    monkeypatch.setattr(http_client, "_sleep_or_abort", lambda delay: None)
+
+    with pytest.raises(ValueError, match="Invalid JSON"):
+        http_client.post_multipart_json(
+            "https://api.example.test/search",
+            fields={"query": (None, "q", "text/plain")},
+            retries=1,
+        )
+    assert len(sent) == 2  # bounded: one initial attempt plus one retry
+
+
+def test_fetch_json_retries_truncated_body_within_budget(monkeypatch):
+    import core.http_client as http_client
+
+    responses = [_JsonBodyResponse(b'{"TopicDetails": {"id'), _JsonBodyResponse(b'{"TopicDetails": {}}')]
+    calls = []
+
+    def fake_get_response(*args, **kwargs):
+        calls.append(args[0])
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(http_client, "get_response", fake_get_response)
+    data, _ = http_client.fetch_json("https://example.test/topic.json", retries=1)
+    assert data == {"TopicDetails": {}}
+    assert len(calls) == 2 and all(r.closed for r in responses)

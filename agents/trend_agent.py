@@ -426,6 +426,7 @@ def build_trend_report(records: list[dict[str, Any]], clusters: list[dict[str, A
         "generated_at": datetime.now(UTC).isoformat(),
         "funding_call_id": primary_call_id,
         "funding_call_ids": sorted(list(funding_call_ids_set)),
+        "run_ids": sorted({str(r.get("run_id")) for r in records if r.get("run_id")}),
         "counts": {"records": len(records), "clusters": len(clusters)},
         "area_counts": dict(area_counts),
         "layer_counts": dict(layer_counts),

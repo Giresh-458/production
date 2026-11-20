@@ -133,6 +133,9 @@ def test_case_10_and_11_missing_provenance(temp_outputs):
     
     save_normalized_collection_records(temp_outputs, temp_outputs)
     conn = get_db(temp_outputs)
+    # Release the published ledger before re-normalizing: Windows cannot
+    # atomically replace a file that still has an open SQLite handle.
+    conn.close()
     create_artifact(temp_outputs, "c.md", make_artifact_md(title="Manual Source Placeholder", source="Manual"))
     save_normalized_collection_records(temp_outputs, temp_outputs)
     conn = get_db(temp_outputs)
@@ -260,3 +263,47 @@ def test_idempotency(temp_outputs):
     conn2.close()
     
     assert count1 == count2 == 1
+
+
+def test_raw_page_prefix_is_never_promoted_to_problem_statement(temp_outputs):
+    """Live regression: a lab artifact with no extracted problem had the first 280
+    characters of its raw page ("Page title: ... Source URL: ... Network About Join
+    Blog") normalized as its problem_statement and handed to Batch-3."""
+    md = make_artifact_md(title="Protocol Labs", source="https://protocol.ai/work", problem="", evidence_snippets=None)
+    md = md.replace("- This is an evidence snippet about testing.\n", "")
+    md += (
+        "\n## Raw Content\nPage title: Our Vision: PL Update 2026\nSource URL: https://protocol.ai/blog\n"
+        "Network About Join Blog The latest from Protocol Labs Available as RSS\n"
+    )
+    create_artifact(temp_outputs, "pl.md", md)
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert records[0]["problem_statement"] == "No explicit problem statement found."
+    # The raw page is still preserved as context, not discarded.
+    assert "Protocol Labs" in records[0]["context_summary"]
+
+
+@pytest.mark.parametrize("snippet", [
+    # Verbatim shapes from live Batch-2 lab/regulation artifacts.
+    "Page title: Our Vision: PL Update 2026 Source URL: https://protocol.ai/blog Network About Join Blog",
+    "Corporate sustainability reporting [Depth 0] Corporate sustainability reporting | "
+    "https://finance.ec.europa.eu/capital-markets-union-and-financial-markets/company-reporting",
+])
+def test_serialized_page_block_snippet_is_not_the_problem_statement(temp_outputs, snippet):
+    create_artifact(temp_outputs, "s.md", make_artifact_md(problem="", evidence_snippets=[snippet]))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == "No explicit problem statement found."
+    assert snippet in records[0]["evidence_snippets"]  # evidence itself is preserved
+
+
+def test_genuine_snippet_remains_the_problem_statement(temp_outputs):
+    real = "The CAD Trust connection will help transparently track these transfers, guarding against double-counting risk."
+    create_artifact(temp_outputs, "g.md", make_artifact_md(problem="", evidence_snippets=[real]))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == real

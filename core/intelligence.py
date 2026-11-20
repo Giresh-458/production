@@ -448,7 +448,28 @@ def _exact_record_fingerprint(record: Dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_NO_PROBLEM_PLACEHOLDERS = {"", "no explicit problem statement found."}
+# Labels that assert a concrete problem/gap exists. They require an extracted
+# problem statement; layer membership alone is not evidence of a problem
+# (observed live: a literature record with "No explicit problem statement
+# found." was labelled research_problem in Batch-3 clustering).
+_PROBLEM_ASSERTING_SIGNALS = {
+    "research_problem", "practitioner_pain_point", "failure_mode",
+    "engineering_gap", "market_need", "prototype_challenge",
+}
+
+
 def _cluster_signal_type(member: Dict[str, Any]) -> str:
+    signal = _layer_signal_type(member)
+    problem = re.sub(
+        r"\s+", " ", str(member.get("problem_statement") or member.get("problem") or "")
+    ).strip().casefold()
+    if signal in _PROBLEM_ASSERTING_SIGNALS and problem in _NO_PROBLEM_PLACEHOLDERS:
+        return "general_signal"
+    return signal
+
+
+def _layer_signal_type(member: Dict[str, Any]) -> str:
     layer = str(member.get("layer", "")).strip().lower()
     if layer == "funding":
         return "funding_signal"
@@ -607,6 +628,7 @@ def build_problem_clusters(
             "cluster_id": f"{normalize_area(members[0].get('research_area')) or 'unscoped'}-{idx + 1}",
             "funding_call_id": members[0].get("funding_call_id"),
             "funding_call_ids": sorted(list(cluster_funding_calls)),
+            "run_ids": sorted({str(member.get("run_id")) for member in members if member.get("run_id")}),
             "area": normalize_area(members[0].get("research_area")) or "Unscoped",
             "representative_problem": representative_problem,
             "problem_signature": problem_signature(representative),
@@ -624,6 +646,7 @@ def build_problem_clusters(
                     "record_id": member.get("record_id"),
                     "funding_call_id": member.get("funding_call_id"),
                     "funding_call_ids": member.get("funding_call_ids", []),
+                    "run_id": member.get("run_id"),
                     "title": member.get("title"),
                     "file_path": member.get("file_path"),
                     "layer": member.get("layer"),

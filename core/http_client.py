@@ -461,19 +461,25 @@ def fetch_text(url: str, *, session: Any | None = None, headers: dict[str, str] 
 
 def fetch_json(url: str, *, session: Any | None = None, headers: dict[str, str] | None = None,
                params: dict[str, Any] | None = None, timeout: tuple[float, float] = (8.0, 20.0), retries: int = 1) -> tuple[dict[str, Any], str]:
-    response = get_response(url, session=session, headers=headers, params=params, timeout=timeout, retries=retries)
-    try:
+    for attempt in range(max(0, int(retries)) + 1):
+        response = get_response(url, session=session, headers=headers, params=params, timeout=timeout, retries=retries)
         try:
-            data = response.json()
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
-        if not isinstance(data, dict):
-            raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
-        return data, str(response.url)
-    finally:
-        close_response = getattr(response, "close", None)
-        if callable(close_response):
-            close_response()
+            try:
+                data = response.json()
+            except (ValueError, json.JSONDecodeError) as exc:
+                # Undecodable 200 bodies are usually truncated in transit; retry
+                # within the same bounded budget before reporting the failure.
+                if attempt < retries:
+                    continue
+                raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
+            return data, str(response.url)
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
+    raise RuntimeError(f"Unable to fetch JSON from {url}")
 
 
 def post_multipart_json(
@@ -549,6 +555,14 @@ def post_multipart_json(
             try:
                 data = response.json()
             except (ValueError, json.JSONDecodeError) as exc:
+                # A 200 whose body cannot be decoded is almost always a body
+                # truncated in transit (observed live: "Unterminated string" at
+                # ~380 KB from the EU Search API). Treat it like other transport
+                # failures and use the bounded retry budget before failing.
+                if attempt < retries:
+                    response.close()
+                    _sleep_or_abort(min(2.0 ** attempt, 4.0) + random.uniform(0.0, 0.25))
+                    continue
                 raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
             if not isinstance(data, dict):
                 raise ValueError(

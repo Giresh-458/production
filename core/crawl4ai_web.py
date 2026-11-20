@@ -868,6 +868,48 @@ def _extract_markdown_links(markdown: str, page_url: str) -> list[dict]:
     return links
 
 
+def _is_navigation_timeout_error(text: str) -> bool:
+    """True only for a browser navigation (Page.goto) timeout, never HTTP/robots errors."""
+    lowered = str(text or "").casefold()
+    return "timeout" in lowered and (
+        "failed on navigating acs-goto" in lowered or "page.goto: timeout" in lowered
+    )
+
+
+# Chromium network-stack errors that indicate a transient client/network fault
+# rather than a publisher decision (observed live in Batch-1 scans:
+# ERR_NAME_NOT_RESOLVED and ERR_ADDRESS_UNREACHABLE for www.sbir.gov,
+# ERR_NETWORK_CHANGED and ERR_CONNECTION_ABORTED for superteam.fun). HTTP status
+# errors, robots denials and certificate errors are deliberately excluded.
+_TRANSIENT_NAVIGATION_NET_ERRORS = (
+    "net::err_name_not_resolved",
+    "net::err_network_changed",
+    "net::err_connection_aborted",
+    "net::err_connection_reset",
+    "net::err_connection_closed",
+    "net::err_address_unreachable",
+    "net::err_internet_disconnected",
+    "net::err_timed_out",
+)
+
+
+def _is_transient_navigation_network_error(text: str) -> bool:
+    lowered = str(text or "").casefold()
+    return "page.goto" in lowered and any(code in lowered for code in _TRANSIENT_NAVIGATION_NET_ERRORS)
+
+
+def _is_retryable_navigation_error(text: str) -> bool:
+    return _is_navigation_timeout_error(text) or _is_transient_navigation_network_error(text)
+
+
+def _navigation_timeout_summary(text: str) -> str:
+    for line in str(text or "").splitlines():
+        lowered = line.casefold()
+        if "timeout" in lowered or "net::err_" in lowered:
+            return line.strip()[:300]
+    return (str(text or "").strip()[:300]) or "browser navigation timeout"
+
+
 def _retry_after_seconds(headers: Any) -> float | None:
     """Parse Retry-After as delay-seconds or an HTTP-date."""
     if not isinstance(headers, dict):
@@ -925,13 +967,29 @@ async def _fetch_url(url: str) -> dict:
             # asyncio.TimeoutError branch above. Retry only that specific
             # navigation-timeout failure; do not retry HTTP, robots, or
             # extraction errors.
-            error_text = str(exc).casefold()
-            if "failed on navigating acs-goto" not in error_text or "timeout" not in error_text:
+            if not _is_retryable_navigation_error(str(exc)):
                 raise
             initial_navigation_error = exc
             result = None
+        else:
+            # Crawl4AI >= 0.9 catches the same Playwright navigation timeout inside
+            # arun() and *returns* CrawlResult(success=False, error_message=...)
+            # instead of raising, which previously bypassed this bounded retry.
+            if (
+                result is not None
+                and not getattr(result, "success", True)
+                and _is_retryable_navigation_error(str(getattr(result, "error_message", "") or ""))
+            ):
+                initial_navigation_error = RuntimeError(
+                    _navigation_timeout_summary(str(getattr(result, "error_message", "") or ""))
+                )
+                result = None
 
         if result is None:
+            # Transient network faults (DNS, network change, aborted connection)
+            # get a short pause so the resolver/connection can recover first.
+            if _is_transient_navigation_network_error(str(initial_navigation_error or "")):
+                await asyncio.sleep(2.0)
             # A bounded second attempt waits only for the response commit rather
             # than DOMContentLoaded. This is useful for slow publishers and
             # client-rendered apps whose navigation event can hang despite the

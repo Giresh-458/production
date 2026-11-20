@@ -11,6 +11,9 @@ import run_pipeline
 from run_pipeline import main
 from core.intelligence import refresh_intelligence_views
 
+# These tests mock tagging/clustering/trend without writing outputs.
+pytestmark = pytest.mark.usefixtures("mocked_batch3_outputs")
+
 @patch('run_pipeline.build__selected_call_context')
 @patch('run_pipeline.run_stage')
 @patch('run_pipeline.get_all_open_funding_calls')

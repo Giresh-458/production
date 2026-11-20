@@ -1468,10 +1468,20 @@ def detect_research_intent(text: str, *, focus_area: str = "General", themes: li
         # This is scoped evidence, unlike a footer that merely links to a report.
         r"\bapplied research results\b",
     )
-    negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't)\s+(?:offer|request|provide|require)\s+(?:funding|research|grant|deliverables?)\b"
+    negation_pattern = r"\b(?:not|isn't)\s+(?:a\s+|an\s+)?(?:grant|funding|research|rfp|proposal|application)\b(?:(?:\s+(?:for|of|to|supporting)\s+(?:a\s+|an\s+)?)?[a-zA-Z\s\-]{0,30}\b(?:research|r&d|project|study|program)\b)?|\b(?:offers|requests|provides|requires)\s+no\s+(?:\w+\s+){0,2}?(?:funding|research|grant|deliverables?)\b|\b(?:does not|doesn't|do not|don't|will not|won't)\s+(?:offer|request|provide|require|fund|support|finance)\s+(?:\w+\s+){0,3}?(?:funding|research|r&d|grants?|deliverables?)\b"
+    # A sentence that explicitly negates funding/research (e.g. "This topic does
+    # not provide direct funding to ... research organisations to perform R&D")
+    # can still contain the words "funding" and "research"; it must never be
+    # counted as positive research-intent evidence.
+    sentence_negation_pattern = (
+        r"\b(?:does not|doesn't|do not|don't|will not|won't)\s+(?:offer|provide|fund|support|finance)\s+"
+        r"(?:\w+\s+){0,3}?(?:funding|financing|grants?)\b[^.!?]{0,160}\b(?:research|r&d)\b"
+    )
     evidence: list[str] = []
     for chunk in chunks:
         if len(chunk.split()) < 5:
+            continue
+        if re.search(sentence_negation_pattern, chunk, flags=re.IGNORECASE):
             continue
         scrubbed = re.sub(negation_pattern, " ", chunk, flags=re.IGNORECASE)
         if any(re.search(pattern, scrubbed, flags=re.IGNORECASE) for pattern in patterns):

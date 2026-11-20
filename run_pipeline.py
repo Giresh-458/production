@@ -1189,23 +1189,17 @@ def main() -> int:
             process_area = list(accepted_areas)[0]
         else:
             process_area = "Unscoped"
-        processing_failed = False
-        for agent, payload in [
-            ("tagging", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "tags")}),
-            ("clustering", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "clusters"), "threshold": 0.20, "llm_ambiguity_resolution": False}),
-            ("trend", {"outputs_root": str(call_root), "output_dir": str(call_root / "processed" / "trends")}),
-        ]:
-            try:
-                res = run_stage(agent, "configured_scan", process_area if process_area != "Unscoped" else None, payload, context)
-                stage_results[agent] = res
-                if str(res.get("status", "")).lower() not in ("success", "partial_success"):
-                    print(f"❌ Processing stage '{agent}' failed with status: {res.get('status')}")
-                    processing_failed = True
-                    break
-            except Exception as exc:
-                print(f"❌ Processing stage '{agent}' failed with exception: {exc}")
-                processing_failed = True
-                break
+        # Batch-3: same stage calls as before, plus a validated output contract
+        # (every handed-off record tagged and clustered exactly once, call/run
+        # identity preserved, Batch-2 handoff unchanged).
+        from core.batch3 import run_batch3_for_call
+        batch3_report = run_batch3_for_call(call_root, context, run_stage)
+        atomic_write_json(call_root / "workflow" / "batch3_report.json", batch3_report)
+        stage_results.update(batch3_report.get("stages") or {})
+        stage_results["batch3"] = batch3_report
+        processing_failed = batch3_report.get("status") != "ready_for_batch4"
+        if processing_failed:
+            print(f"❌ Batch-3 processing blocked ({batch3_report.get('status')}): {batch3_report.get('issues')}")
 
         if processing_failed:
             global_exit_code = max(global_exit_code, 4)

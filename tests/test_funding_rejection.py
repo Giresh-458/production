@@ -8,6 +8,9 @@ import run_pipeline
 from core.agent_registry import DOWNSTREAM_FUNDING_CONTEXT_AGENTS
 import argparse
 
+# These tests mock tagging/clustering/trend without writing outputs.
+pytestmark = pytest.mark.usefixtures("mocked_batch3_outputs")
+
 @pytest.fixture
 def run_pipeline_mocks():
     with patch("run_pipeline.run_stage") as mock_run_stage, \

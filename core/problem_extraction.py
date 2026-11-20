@@ -149,6 +149,12 @@ def _is_objective_or_task_statement(text: str) -> bool:
         r"should\s+(?:address|track|develop|deliver|implement|provide|support|assess|evaluate|"
         r"analyse|analyze|identify|establish|investigate|improve|reduce)\b",
         r"^(?:the\s+)?(?:action|project|proposal)\s+is expected to\b",
+        # Requirements placed on the funded consortium/network/pilot describe
+        # what applicants must do, not an existing problem (observed live:
+        # "The network should integrate coordinators of living labs projects...").
+        r"^(?:the\s+)?(?:network|consortium|consortia|partnership|living labs?|pilots?|"
+        r"selected projects?|successful (?:applicants?|proposals?)|beneficiar(?:y|ies))\s+"
+        r"(?:should|must|shall|will|are expected to|is expected to|are required to|is required to)\s+\w+",
         r"^(?:expected outcomes?|objectives?|scope of work|tasks?|deliverables?)\s*:",
         r"^(?:potential\s+)?(?:application|use|target)\s+(?:fields?|areas?|domains?|sectors?)\s+include\b",
         r"^(?:potential\s+)?(?:application fields|application areas|use cases)\s+include\b",
@@ -268,6 +274,12 @@ def _funding_candidate_segments(paragraph: str) -> list[str]:
         for part in parts:
             candidate = _clean_funding_candidate_text(part)
             if len(candidate.split()) < 6:
+                continue
+            # A semicolon list item such as "or lack of resources, funds, or
+            # incentives ..." is a fragment of an enumeration, not a
+            # self-contained problem statement (observed live on
+            # HORIZON-NEB-2026-01-BUSINESS-03).
+            if re.match(r"(?:or|and|nor|but)\b", candidate, flags=re.IGNORECASE):
                 continue
             # Do not truncate a source statement arbitrarily. Some official calls
             # place a genuine risk/challenge and an eligibility restriction in one

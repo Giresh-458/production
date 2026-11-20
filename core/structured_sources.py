@@ -714,6 +714,93 @@ def eu_funding_tenders_fetch_document(identifier: str) -> dict[str, Any]:
 
 
 
+EU_TOPIC_DETAILS_URL_TEMPLATE = (
+    "https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/{identifier}.json"
+)
+_EU_TOPIC_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,120}$")
+# Official Work Programme annexes are shared by hundreds of topics. Cache the
+# extracted text per process so one live scan downloads each annex at most once.
+_EU_ANNEX_TEXT_CACHE: dict[str, str] = {}
+
+
+def eu_funding_tenders_fetch_topic_details(identifier: str) -> dict[str, Any]:
+    """Fetch the official per-topic record published by the Funding & Tenders Portal.
+
+    The Search API returns only index metadata for Horizon-style topics (type 1):
+    no description, conditions or submission link. The portal itself renders each
+    topic page from ``/opportunities/data/topicDetails/<identifier lowercased>.json``
+    (the Search API's own ``esST_URL`` field points at this document). It carries the
+    authoritative per-action status, deadlines, budget, description, conditions and
+    the official submission-service link.
+    """
+    value = str(identifier or "").strip()
+    if not _EU_TOPIC_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f"EU topic identifier is not a valid topic code: {value!r}")
+    url = EU_TOPIC_DETAILS_URL_TEMPLATE.format(identifier=quote(value.casefold(), safe="._-"))
+    payload, final_url = fetch_json(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "RIF/3.1 (+research-intelligence-pipeline)",
+        },
+        timeout=(8, 30),
+        retries=1,
+    )
+    details = payload.get("TopicDetails") if isinstance(payload, dict) else None
+    if not isinstance(details, dict):
+        raise ValueError(f"EU topicDetails document for {value!r} has no TopicDetails object")
+    published_identifier = str(details.get("identifier") or "").strip()
+    if published_identifier.casefold() != value.casefold():
+        raise ValueError(
+            f"EU topicDetails identifier mismatch: requested {value!r}, "
+            f"document describes {published_identifier!r}"
+        )
+    details = dict(details)
+    details["_document_url"] = final_url or url
+    return details
+
+
+def _is_official_eu_reference_pdf(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    return (
+        parsed.scheme == "https"
+        and (parsed.hostname or "").casefold() == "ec.europa.eu"
+        and parsed.path.startswith("/info/funding-tenders/opportunities/docs/")
+        and parsed.path.casefold().endswith(".pdf")
+    )
+
+
+def eu_funding_tenders_fetch_reference_pdf_text(url: str) -> str:
+    """Return extracted text of an official Funding & Tenders reference PDF.
+
+    Only Commission-hosted documents under the portal's ``/docs/`` tree are
+    accepted (for example the Work Programme General Annexes that topic
+    conditions cite for eligibility). Failures raise; callers must record them
+    rather than treating the topic's eligibility as known.
+    """
+    target = str(url or "").strip()
+    if not _is_official_eu_reference_pdf(target):
+        raise ValueError(f"Not an official Funding & Tenders reference PDF: {target!r}")
+    if target in _EU_ANNEX_TEXT_CACHE:
+        return _EU_ANNEX_TEXT_CACHE[target]
+    from io import BytesIO
+    from pypdf import PdfReader
+
+    response = get_response(target, timeout=(8, 60), retries=1)
+    try:
+        pdf_bytes = response.content
+    finally:
+        close_response = getattr(response, "close", None)
+        if callable(close_response):
+            close_response()
+    reader = PdfReader(BytesIO(pdf_bytes))
+    text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+    if not text:
+        raise ValueError(f"Official reference PDF has no extractable text: {target}")
+    _EU_ANNEX_TEXT_CACHE[target] = text
+    return text
+
+
 def collect_structured_source(url: str, source_type: str = '', area: str | None = None) -> StructuredResult | None:
     """Return a structured/API acquisition when the configured source has an official endpoint.
     Returns None when no safe API is available or credentials are absent, preserving scraper fallback.

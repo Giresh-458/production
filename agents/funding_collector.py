@@ -27,6 +27,10 @@ from core.structured_sources import (
     github_paginated_issues,
     eu_funding_tenders_paginated_search,
     eu_funding_tenders_fetch_document,
+    eu_funding_tenders_fetch_topic_details,
+    eu_funding_tenders_fetch_reference_pdf_text,
+    EU_TOPIC_DETAILS_URL_TEMPLATE,
+    _EU_TOPIC_IDENTIFIER_RE,
 )
 from core.crawl4ai_web import crawl_funding_source, _reports_no_active_funding
 from agents.funding_agent import (
@@ -705,6 +709,264 @@ def _extract_eu_eligibility_from_html(value: Any) -> str | None:
     return " ".join(dict.fromkeys(selected))[:4000]
 
 
+def _eu_html_to_text(value: Any) -> str:
+    raw = unescape(str(value or ""))
+    raw = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", raw)
+    raw = re.sub(r"(?i)</(?:p|li|div|h[1-6]|tr|section|article)\s*>|<br\s*/?>", "\n", raw)
+    raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+    lines = [re.sub(r"[ \t\r\f\v ]+", " ", line).strip() for line in raw.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def _eu_epoch_ms_to_date(value: Any) -> date | None:
+    try:
+        millis = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    try:
+        return datetime.fromtimestamp(millis / 1000, tz=UTC).date()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _eu_is_portal_topic(item: dict, metadata: dict, url: str) -> bool:
+    """True for Horizon-style topics that have an official topicDetails document."""
+    record_type = _eu_metadata_value(metadata, "type") or _eu_metadata_value(item, "type")
+    lowered = str(url or "").casefold()
+    return record_type == "1" or "/topic-details/" in lowered or "/topicdetails/" in lowered
+
+
+def _eu_topic_details_facts(
+    details: dict, identifier: str, *, today: date | None = None
+) -> dict[str, Any]:
+    """Interpret the official topicDetails document without inventing missing values."""
+    reference_day = today or datetime.now(UTC).date()
+    actions = [a for a in (details.get("actions") or []) if isinstance(a, dict)]
+    status_labels: list[str] = []
+    action_types: list[str] = []
+    opening_dates: list[date] = []
+    deadline_dates: list[date] = []
+    for action in actions:
+        status = action.get("status") if isinstance(action.get("status"), dict) else {}
+        label = str(status.get("abbreviation") or status.get("description") or "").strip()
+        if label:
+            status_labels.append(label)
+        for action_type in action.get("types") or []:
+            if isinstance(action_type, dict) and action_type.get("typeOfAction"):
+                action_types.append(str(action_type["typeOfAction"]).strip())
+        opening = _eu_epoch_ms_to_date(action.get("plannedOpeningDate"))
+        if opening:
+            opening_dates.append(opening)
+        for raw_deadline in action.get("deadlineDates") or []:
+            parsed = _eu_epoch_ms_to_date(raw_deadline)
+            if parsed:
+                deadline_dates.append(parsed)
+
+    folded = [label.casefold() for label in status_labels]
+    if any(label.startswith("open") for label in folded):
+        status_label = "Open"
+    elif any("forthcoming" in label for label in folded):
+        status_label = "Forthcoming"
+    elif any("closed" in label for label in folded):
+        status_label = "Closed"
+    else:
+        status_label = None
+    deadline_models = set()
+    budget_entries = ((details.get("budgetOverviewJSONItem") or {}).get("budgetTopicActionMap") or {})
+    if isinstance(budget_entries, dict):
+        for entries in budget_entries.values():
+            for entry in entries if isinstance(entries, list) else []:
+                if isinstance(entry, dict) and str(entry.get("action") or "").casefold().startswith(
+                    f"{identifier.casefold()} "
+                ):
+                    if entry.get("deadlineModel"):
+                        deadline_models.add(str(entry["deadlineModel"]).strip().casefold())
+    if "two-stage" in deadline_models or identifier.casefold().endswith("-two-stage"):
+        # Only the first-stage deadline is open to new applicants; the second
+        # stage is by invitation. A passed stage-1 deadline means the call is
+        # closed to new proposals even though a later date exists.
+        next_deadline = min(deadline_dates) if deadline_dates else None
+    else:
+        # Single-stage topics with several cut-offs: the actionable deadline is
+        # the next unexpired cut-off; if all have passed, report the latest.
+        future_deadlines = sorted(d for d in deadline_dates if d >= reference_day)
+        next_deadline = future_deadlines[0] if future_deadlines else (max(deadline_dates) if deadline_dates else None)
+
+    submission_links = []
+    for link in details.get("links") or []:
+        if not isinstance(link, dict):
+            continue
+        link_url = str(link.get("url") or "").strip()
+        parsed = urlparse(link_url)
+        if parsed.scheme == "https" and (parsed.hostname or "").casefold().endswith("ec.europa.eu"):
+            submission_links.append(link_url)
+
+    budget_parts: list[str] = []
+    budget_map = ((details.get("budgetOverviewJSONItem") or {}).get("budgetTopicActionMap") or {})
+    prefix = f"{identifier.casefold()} "
+    if isinstance(budget_map, dict):
+        for entries in budget_map.values():
+            for entry in entries if isinstance(entries, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                if not str(entry.get("action") or "").casefold().startswith(prefix):
+                    continue
+                year_budget = sum(
+                    float(v) for v in (entry.get("budgetYearMap") or {}).values()
+                    if re.fullmatch(r"\d+(?:\.\d+)?", str(v))
+                )
+                min_c, max_c = entry.get("minContribution"), entry.get("maxContribution")
+                part = []
+                if year_budget:
+                    part.append(f"topic budget EUR {year_budget:,.0f}")
+                if min_c and max_c and str(min_c) == str(max_c):
+                    part.append(f"EU contribution per project EUR {float(min_c):,.0f}")
+                elif min_c or max_c:
+                    part.append(
+                        f"EU contribution per project EUR {float(min_c or 0):,.0f}-{float(max_c or 0):,.0f}"
+                    )
+                if entry.get("expectedGrants"):
+                    part.append(f"expected grants {entry['expectedGrants']}")
+                if part:
+                    budget_parts.append("; ".join(part))
+
+    return {
+        "status_label": status_label,
+        "status_labels": status_labels,
+        "action_types": list(dict.fromkeys(action_types)),
+        "opening_date": min(opening_dates).isoformat() if opening_dates else None,
+        "deadline": next_deadline.isoformat() if next_deadline else None,
+        "deadline_model": ", ".join(sorted(deadline_models)) or None,
+        "description": _eu_html_to_text(details.get("description")),
+        "conditions_html": str(details.get("conditions") or ""),
+        "submission_links": list(dict.fromkeys(submission_links)),
+        "budget": " | ".join(dict.fromkeys(budget_parts)) or None,
+        "document_url": str(details.get("_document_url") or ""),
+    }
+
+
+def _eu_action_type_research_intent(action_types: list[str]) -> tuple[str | None, str | None]:
+    """Classify research intent from the publisher's official Type of Action.
+
+    Horizon Europe assigns every topic an action type. Research and Innovation
+    Actions (RIA), ERC frontier-research grants and MSCA research/training actions
+    fund research; Coordination and Support Actions (networking/coordination),
+    Innovation Actions (close-to-market), Pre-Commercial Procurement / PPI (public
+    buyers procuring R&D) and co-fund actions do not fund applicants to carry out
+    research. The official classification outranks keyword matches in the
+    description, which previously labelled a PCP topic that states it "does not
+    provide direct funding ... to perform R&D" as research. Returns (None, None)
+    when no action type is published.
+    """
+    cleaned = [re.sub(r"\s+", " ", str(value)).strip() for value in action_types if str(value).strip()]
+    if not cleaned:
+        return None, None
+    research = [
+        value for value in cleaned
+        if re.search(r"(?:^|[-\s])RIA\b|research and innovation actions?", value, flags=re.IGNORECASE)
+        or (re.search(r"(?:^|-)ERC\b", value) and not re.search(r"\bPOC\b|proof of concept", value, re.IGNORECASE))
+        or re.search(r"(?:^|-)(?:TMA-)?MSCA\b", value)
+    ]
+    if research:
+        return "research", f"Official EU type of action: {research[0]}"
+    return "non_research", (
+        f"Official EU type of action: {'; '.join(cleaned)} (not a research action type)"
+    )
+
+
+_EU_ANNEX_ELIGIBILITY_PATTERNS = (
+    # Countries whose legal entities are eligible for funding: Member States,
+    # OCTs and Associated Countries (the list ends before the note on countries
+    # negotiating association). Fallback: the Member State sentence alone.
+    r"To be eligible for funding,\s*applicants must be established in[^:]{0,200}:"
+    r".{0,2500}?(?=\s*Other third countries may become associated)",
+    r"To be eligible for funding,\s*applicants must be established in[^:]{0,200}:"
+    r".{0,900}?Member States of the European Union[^.]{0,400}\.",
+    # Minimum consortium composition for collaborative actions. PDF text
+    # extraction can split words ("i n"), so match whitespace loosely.
+    r"Unless otherwise provided for in the specific call(?:/topic)? conditions,\s*only legal entities "
+    r"forming a consortium are eligible to participate.{0,40}?provided that the consortium includes"
+    r".{0,500}?(?:Member States or Associated Countries|Associated Countries)\.",
+)
+
+
+_EU_CONDITION_BOILERPLATE = (
+    r"described in Annex [A-G]\b[^.]*\.?",
+    r"A number of non-EU/non-Associated Countries that are not automatically eligible for funding "
+    r"have made specific provisions[^.]*\.",
+    r"See the information in the Horizon Europe Programme Guide\s*\.?",
+)
+
+
+def _eu_topic_specific_eligibility(conditions_html: str) -> str | None:
+    """Return topic-specific eligibility text from the official conditions, verbatim.
+
+    Horizon topic conditions list "2. Eligible countries" and "3. Other
+    eligibility conditions". Most of that text only points to Annex B, but some
+    topics add binding criteria (observed live on HORIZON-NATURE-2027-02-02:
+    "The following additional eligibility criteria apply: The proposals must
+    apply the multi-actor approach."). Those criteria must travel with the call;
+    standard cross-references and guidance sentences are dropped.
+    """
+    flat = re.sub(r"\s+", " ", _eu_html_to_text(conditions_html or "")).strip()
+    sections = []
+    for match in re.finditer(
+        r"\b[23]\.\s*(?:Eligible countries|Other Eligib\w* Conditions?)\s*:?\s*(.*?)(?=\s\d[a-z]?\.\s+[A-Z]|$)",
+        flat,
+        flags=re.IGNORECASE,
+    ):
+        body = match.group(1)
+        for pattern in _EU_CONDITION_BOILERPLATE:
+            body = re.sub(pattern, " ", body, flags=re.IGNORECASE)
+        body = re.sub(r"\s+", " ", body).strip(" .;:-")
+        if len(body.split()) >= 4:
+            sections.append(body.rstrip(".") + ".")
+    if not sections:
+        return None
+    return "Topic-specific eligibility conditions: " + " ".join(dict.fromkeys(sections))
+
+
+def _eu_resolve_annex_eligibility(conditions_html: str) -> tuple[str | None, str | None, str | None]:
+    """Resolve eligibility that a topic's official conditions delegate to Annex B.
+
+    Horizon Europe topic pages state "Eligible Countries: described in Annex B of
+    the Work Programme General Annexes" and link the official annex PDF. The
+    applicant criteria therefore exist in a publisher-referenced document. This
+    resolves that exact link and returns the verbatim Annex B passages, or
+    ``(None, url, error)`` when the reference cannot be verified. Nothing is
+    inferred when the topic does not cite Annex B for eligibility.
+    """
+    conditions_text = _eu_html_to_text(conditions_html)
+    if not re.search(r"(?is)eligib.{0,240}?Annex\s+B", conditions_text):
+        return None, None, None
+    annex_url = None
+    for match in re.finditer(r'(?is)<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>', conditions_html or ""):
+        anchor = re.sub(r"<[^>]+>", " ", match.group(2))
+        if re.search(r"\bAnnex\s+B\b", unescape(anchor)):
+            annex_url = unescape(match.group(1)).strip()
+            break
+    if not annex_url:
+        return None, None, "topic conditions cite Annex B for eligibility without an annex link"
+    try:
+        annex_text = eu_funding_tenders_fetch_reference_pdf_text(annex_url)
+    except Exception as exc:  # recorded by the caller; eligibility stays unknown
+        return None, annex_url, str(exc)
+    flat = re.sub(r"\s+", " ", annex_text.replace("�", "•"))
+    passages = []
+    country_rule_found = False
+    for index, pattern in enumerate(_EU_ANNEX_ELIGIBILITY_PATTERNS):
+        if index == 1 and country_rule_found:
+            continue  # fallback country pattern only when the full list was not found
+        match = re.search(pattern, flat, flags=re.IGNORECASE)
+        if match:
+            passages.append(match.group(0).strip())
+            if index in {0, 1}:
+                country_rule_found = True
+    if not passages:
+        return None, annex_url, "Annex B eligibility passages were not found in the cited annex"
+    return " ".join(passages)[:2400], annex_url, None
+
+
 def _record_eu_filter(result: CollectionResult, reason: str, title: str, url: str) -> None:
     """Record a deliberate data-quality filter separately from an acquisition failure."""
     result.records_filtered += 1
@@ -971,6 +1233,8 @@ def _collect_eu_funding_tenders(
         result.truncated = True
 
     seen_detail_urls: set[str] = set()
+    # Report an unreachable shared eligibility annex once, not once per topic.
+    reported_annex_failures: set[str] = set()
     for item in records:
         if not isinstance(item, dict):
             result.records_failed += 1
@@ -1052,15 +1316,64 @@ def _collect_eu_funding_tenders(
             _record_eu_filter(result, "unrecognized_or_noncurrent_status", title, url)
             continue
 
-        identifier = _eu_metadata_value(
-            metadata, "callIdentifier", "topicAbbreviation", "identifier", "topicIdentifier"
+        # A call (e.g. HORIZON-CL5-2026-11) groups many separately evaluated
+        # topics (HORIZON-CL5-2026-11-D3-06). The topic code is the individual
+        # opportunity's identity; using the shared call code would merge sibling
+        # topics into one record downstream. Fall back to the call code only when
+        # the publisher supplies no topic code.
+        topic_identifier = _eu_metadata_value(
+            metadata, "identifier", "topicIdentifier", "topicAbbreviation"
         )
+        call_identifier = _eu_metadata_value(metadata, "callIdentifier")
+        identifier = topic_identifier or call_identifier
+        has_description_metadata = bool(_eu_metadata_value(
+            metadata, "description", "descriptionEn", "descriptionByte",
+            "topicDescription", "scope", "summary",
+        ))
+        topic_facts: dict[str, Any] | None = None
+        # EuropeAid references (e.g. "EuropeAid/167264/DD/ACT/Multi") are listed
+        # with topic-style URLs but have no topicDetails document; keep them on
+        # the original Search API path rather than recording a spurious failure.
+        is_portal_topic = bool(
+            topic_identifier
+            and _EU_TOPIC_IDENTIFIER_RE.fullmatch(str(topic_identifier))
+            and _eu_is_portal_topic(item, metadata, url)
+        )
+        # Horizon-style topics: the Search API hit carries only index metadata.
+        # Read the official topicDetails document (description, conditions,
+        # per-action status, deadlines, budget, submission link) instead of
+        # re-querying the same Search API, which returns no additional fields.
+        if (
+            api_config.get("detail_fetch_missing_metadata", True)
+            and topic_identifier
+            and is_portal_topic
+            and not (metadata_eligibility_present and has_description_metadata)
+        ):
+            result.detail_pages_discovered += 1
+            try:
+                topic_details = eu_funding_tenders_fetch_topic_details(str(topic_identifier))
+                topic_facts = _eu_topic_details_facts(topic_details, str(topic_identifier))
+                result.detail_pages_fetched += 1
+            except Exception as exc:
+                result.detail_pages_failed += 1
+                result.errors.append({
+                    "url": EU_TOPIC_DETAILS_URL_TEMPLATE.format(
+                        identifier=str(topic_identifier).casefold()
+                    ),
+                    "operation": "fetch_detail_metadata",
+                    "error": f"EU topicDetails fetch failed: {exc}",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                LOGGER.warning(
+                    "EU topicDetails fetch failed for %s: %s", topic_identifier, exc,
+                )
         # SEDIA Topic Details lookup is keyed by the publisher's call/topic
         # identifier, not the opaque internal search-result reference.
-        if (
+        elif (
             api_config.get("detail_fetch_missing_metadata", True)
             and identifier
             and not metadata_eligibility_present
+            and not is_portal_topic
         ):
             result.detail_pages_discovered += 1
             try:
@@ -1086,6 +1399,36 @@ def _collect_eu_funding_tenders(
                     "EU topic detail fetch failed for identifier %s: %s",
                     identifier, exc,
                 )
+        status_cross_check = None
+        if topic_facts is not None:
+            topic_status_label = topic_facts.get("status_label")
+            if topic_facts.get("deadline"):
+                deadline = topic_facts["deadline"]
+                deadline_raw = f"{deadline} (official topicDetails next deadline)"
+            if topic_facts.get("opening_date") and not opening_date:
+                opening_date = topic_facts["opening_date"]
+                opening_raw = f"{opening_date} (official topicDetails planned opening)"
+            if not topic_status_label:
+                _record_eu_filter(result, "topic_details_status_missing", title, url)
+                continue
+            topic_status, topic_warning = _eu_effective_status(topic_status_label, deadline)
+            status_cross_check = (
+                f"Search API status {raw_status!r}; official topicDetails action status "
+                f"{', '.join(topic_facts.get('status_labels') or [])!r}"
+            )
+            if topic_status != internal_status:
+                status_cross_check += (
+                    f" — disagreement resolved in favour of the per-topic record ({topic_status})."
+                )
+            internal_status = topic_status
+            raw_status = topic_status_label
+            if topic_warning:
+                status_consistency_warning = topic_warning
+                _record_eu_filter(result, "expired_deadline", title, url)
+                continue
+            if internal_status not in {"OPEN_CALL", "UPCOMING_CALL"}:
+                _record_eu_filter(result, "topic_details_status_not_current", title, url)
+                continue
         programme = _eu_metadata_value(
             metadata, "programme", "programmeName", "fundingProgramme", "frameworkProgramme"
         )
@@ -1108,18 +1451,69 @@ def _collect_eu_funding_tenders(
                     eligibility = extracted
                     eligibility_source_field = key
                     break
+        eligibility_provenance = "European Commission Funding & Tenders public Search API metadata"
+        if not eligibility and topic_facts is not None:
+            topic_document_url = topic_facts.get("document_url") or EU_TOPIC_DETAILS_URL_TEMPLATE.format(
+                identifier=str(topic_identifier).casefold()
+            )
+            topic_specific = _extract_eu_eligibility_from_html(topic_facts.get("conditions_html"))
+            annex_text, annex_url, annex_error = _eu_resolve_annex_eligibility(
+                topic_facts.get("conditions_html") or ""
+            )
+            if annex_error and annex_url and annex_url not in reported_annex_failures:
+                reported_annex_failures.add(annex_url)
+                result.documents_failed += 1
+                result.errors.append({
+                    "url": annex_url,
+                    "operation": "pdf_fetch",
+                    "error": f"Eligibility annex cited by EU topic conditions could not be verified: {annex_error}",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+            parts = []
+            if topic_specific:
+                parts.append(topic_specific)
+            topic_conditions = _eu_topic_specific_eligibility(topic_facts.get("conditions_html") or "")
+            if topic_conditions and (annex_text or topic_specific):
+                # Binding topic-specific criteria travel with the generic rules;
+                # they never stand in for missing applicant eligibility alone.
+                parts.append(topic_conditions)
+            if annex_text:
+                parts.append(
+                    "Annex B of the Work Programme General Annexes (cited for eligibility by the "
+                    f"topic conditions): {annex_text}"
+                )
+            if parts:
+                eligibility = " ".join(parts)
+                eligibility_source_field = (
+                    "topicDetails.conditions" + (" + cited Annex B" if annex_text else "")
+                )
+                eligibility_provenance = (
+                    f"Official EU topicDetails document {topic_document_url}"
+                    + (f"; eligibility annex {annex_url}" if annex_text else "")
+                )
         description = _eu_metadata_value(
             metadata, "description", "descriptionEn", "descriptionByte", "objective",
             "topicDescription", "scope", "summary", "content", "beneficiaryAdministration"
         )
+        if not description and topic_facts is not None and topic_facts.get("description"):
+            description = topic_facts["description"]
+        if topic_facts is not None and not amount and topic_facts.get("budget"):
+            amount = topic_facts["budget"]
 
         fields = [
             f"Title: {title}",
             f"Official detail URL: {url}",
             f"Status: {raw_status or 'Not supplied in result metadata'}",
         ]
-        if identifier:
-            fields.append(f"Call identifier: {identifier}")
+        if topic_identifier:
+            fields.append(f"Topic identifier: {topic_identifier}")
+        if call_identifier:
+            fields.append(f"Call identifier: {call_identifier}")
+        if topic_facts is not None and topic_facts.get("action_types"):
+            action_types = "; ".join(
+                re.sub(r"\s+", " ", value) for value in topic_facts["action_types"]
+            )
+            fields.append(f"Type of action: {action_types}")
         if programme:
             fields.append(f"Programme: {programme}")
         if opening_raw:
@@ -1157,9 +1551,34 @@ def _collect_eu_funding_tenders(
                 continue
             analysis.program_name = title
             analysis.source_title = title
+            if topic_facts is not None:
+                official_intent, official_evidence = _eu_action_type_research_intent(
+                    topic_facts.get("action_types") or []
+                )
+                if official_intent:
+                    research_context = dict(analysis.research_context or {})
+                    keyword_evidence = [
+                        str(item) for item in research_context.get("research_intent_evidence") or []
+                        if str(item) != official_evidence
+                    ]
+                    research_context["research_intent"] = official_intent
+                    research_context["research_intent_evidence"] = (
+                        [official_evidence] + keyword_evidence[:3]
+                        if official_intent == "research"
+                        else [official_evidence]
+                    )
+                    analysis.research_context = research_context
+                    analysis.evidence["research_intent_provenance"] = (
+                        f"Official EU topicDetails type of action: {official_evidence}"
+                    )
             application_url, application_url_provenance = _eu_application_url(
                 metadata, canonical_detail_url
             )
+            if topic_facts is not None and topic_facts.get("submission_links"):
+                application_url = topic_facts["submission_links"][0]
+                application_url_provenance = (
+                    "Official EU topicDetails submission-service link"
+                )
             if application_url:
                 analysis.application_url = application_url
                 analysis.evidence["application_url"] = (
@@ -1167,12 +1586,22 @@ def _collect_eu_funding_tenders(
                 )
             if identifier:
                 analysis.call_id = identifier
+            if call_identifier and call_identifier != identifier:
+                analysis.evidence["parent_call_identifier"] = call_identifier
+            source_label = (
+                "official EU topicDetails" if topic_facts is not None else "EU Search API"
+            )
             if internal_status:
                 analysis.status = internal_status
                 analysis.evidence["source_status"] = raw_status or internal_status
                 analysis.evidence["source_status_provenance"] = (
-                    "European Commission Funding & Tenders public Search API metadata"
+                    "Official EU Funding & Tenders topicDetails document (per-action status), "
+                    "cross-checked against the public Search API"
+                    if topic_facts is not None
+                    else "European Commission Funding & Tenders public Search API metadata"
                 )
+                if status_cross_check:
+                    analysis.evidence["status_cross_check"] = status_cross_check
                 if status_consistency_warning:
                     analysis.evidence["status_consistency_warning"] = status_consistency_warning
                     analysis.evidence["effective_status_provenance"] = (
@@ -1181,21 +1610,24 @@ def _collect_eu_funding_tenders(
                     )
             if opening_date:
                 analysis.opening_date = opening_date
-                analysis.evidence["opening_date"] = f"EU Search API opening date: {opening_raw}"
+                analysis.evidence["opening_date"] = f"{source_label} opening date: {opening_raw}"
             if deadline:
                 analysis.deadline = deadline
-                analysis.evidence["deadline"] = f"EU Search API deadline: {deadline_raw}"
+                analysis.evidence["deadline"] = f"{source_label} deadline: {deadline_raw}"
             if eligibility:
                 analysis.eligibility = eligibility
+                eligibility_origin = (
+                    "EU Search API metadata field"
+                    if eligibility_source_field in detail_keys or eligibility_source_field == "eligibility"
+                    else "Official EU field"
+                )
                 analysis.evidence["eligibility"] = (
-                    f"EU Search API metadata field {eligibility_source_field}: {eligibility}"
+                    f"{eligibility_origin} {eligibility_source_field}: {eligibility}"
                 )
-                analysis.evidence["eligibility_provenance"] = (
-                    "European Commission Funding & Tenders public Search API metadata"
-                )
+                analysis.evidence["eligibility_provenance"] = eligibility_provenance
             if amount:
                 analysis.funding_amount = amount
-                analysis.evidence["funding_amount"] = f"EU Search API metadata: {amount}"
+                analysis.evidence["funding_amount"] = f"{source_label} metadata: {amount}"
             result.opportunities.append((doc, analysis))
             result.records_valid += 1
         except Exception as exc:

@@ -320,6 +320,45 @@ def _store_policy(origin: str, entry, cache=None) -> None:
         cache[origin] = entry
 
 
+_ROBOTS_NETWORK_RETRY_DELAY_SECONDS = 2.0
+
+
+def _fetch_robots_with_network_retry(
+    robots_url: str,
+    *,
+    user_agent: str,
+    timeout: float,
+    deadline: float | None,
+):
+    """Fetch robots.txt, retrying once after a connection-level failure.
+
+    Observed live: a single transient DNS failure for www.sbir.gov made the
+    robots check fail closed, and that failure was cached for the whole source,
+    so the source was reported FAIL with no pages crawled. One bounded retry after
+    a short pause separates a transient resolver/connection fault from an
+    unreachable host. HTTP responses (any status) are never retried here, and a
+    second network failure still fails closed per RFC 9309 §2.3.1.4.
+    """
+    import requests
+
+    def attempt():
+        return get_response(
+            robots_url,
+            headers={"User-Agent": user_agent},
+            timeout=(max(0.1, timeout), max(0.1, timeout)),
+            retries=0,
+            check_redirect_robots=False,
+        )
+
+    try:
+        return attempt()
+    except (requests.ConnectionError, requests.Timeout):
+        if deadline is not None and time.time() + _ROBOTS_NETWORK_RETRY_DELAY_SECONDS >= deadline:
+            raise
+        time.sleep(_ROBOTS_NETWORK_RETRY_DELAY_SECONDS)
+        return attempt()
+
+
 def check_robots(
     url: str,
     *,
@@ -357,12 +396,11 @@ def check_robots(
                     else "rate_limit_cooldown_exceeds_safe_wait"
                 )
                 raise TimeoutError(reason)
-            response = get_response(
+            response = _fetch_robots_with_network_retry(
                 robots_url,
-                headers={"User-Agent": user_agent},
-                timeout=(max(0.1, timeout), max(0.1, timeout)),
-                retries=0,
-                check_redirect_robots=False,
+                user_agent=user_agent,
+                timeout=timeout,
+                deadline=crawl_deadline,
             )
             status = int(response.status_code)
             if 200 <= status < 300:

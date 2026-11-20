@@ -143,6 +143,22 @@ def generate_funding_queries(funding_context: FundingCallContext, max_queries: i
             for topic in topics:
                 candidates.append(f"{title} {topic}".strip() if title else topic)
         else:
+            # Lead with what identifies this specific call: its official title and
+            # its source-grounded research problem (verbatim source text with
+            # evidence references). Template questions built from domain labels
+            # ("What challenges ... for ESG, Carbon and MRV?") are identical for
+            # every call in a domain and, alone, retrieve generic material that
+            # the mission gate then correctly rejects (observed live for
+            # HORIZON-NEB-2026-01-BUSINESS-02: 0/29 records accepted).
+            title = str(funding_context.call_title or funding_context.program_name or "").strip()
+            if title:
+                candidates.append(title)
+            if getattr(rc, "evidence_refs", None):
+                for challenge in rc.inferred_challenges or ():
+                    text = " ".join(str(challenge or "").split())
+                    if len(text.split()) >= 6:
+                        candidates.append(text[:240].rsplit(" ", 1)[0] if len(text) > 240 else text)
+                        break
             prefix_domains = tuple(rc.selected_domains) if rc.selected_domains else ((funding_context.research_area,) if funding_context.research_area else ())
             domain_prefix = " / ".join(str(d) for d in prefix_domains if d)
             for question in rc.investigation_questions:

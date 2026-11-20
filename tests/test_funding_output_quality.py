@@ -761,3 +761,19 @@ def test_singular_company_and_unhyphenated_startup_eligibility_are_recognized():
     assert has_substantive_eligibility_evidence(
         "Eligible companies must be registered in an EU Member State."
     )
+
+
+def test_new_european_bauhaus_brand_alone_is_not_esg_domain_evidence():
+    """Live regression: HORIZON-NEB-2026-01-BUSINESS-02 matched only the NEB brand
+    and produced zero relevant ESG evidence in Batch-2 (smoke and full refresh)."""
+    from core.schemas import has_required_domain_anchor_groups, rank_research_areas
+
+    assert not has_required_domain_anchor_groups("ESG", ["new european bauhaus"])
+    assert has_required_domain_anchor_groups("ESG", ["new european bauhaus", "sustainability"])
+    assert has_required_domain_anchor_groups("ESG", ["carbon"])
+    ranking = rank_research_areas(
+        "Understanding capital market dynamics for increased investment in New European "
+        "Bauhaus projects in neighbourhoods. New European Bauhaus projects need capital."
+    )
+    esg = next(item for item in ranking if item["domain"] == "ESG")
+    assert esg["raw_score"] == 0.0 and esg["matched_terms"] == []

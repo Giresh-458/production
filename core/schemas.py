@@ -251,6 +251,17 @@ def _normalize_research_term(value: Any) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[-_/]+", " ", str(value or "").casefold())).strip()
 
 
+# Programme/initiative brand names that count toward a domain only when the
+# text also contains another term of that domain. "New European Bauhaus" names
+# an EU initiative, not ESG subject matter: a call matching only the brand
+# (observed live: HORIZON-NEB-2026-01-BUSINESS-02, capital-market dynamics for
+# neighbourhood projects) produced zero relevant ESG evidence in Batch-2, while
+# NEB text that also discusses sustainability remains ESG evidence.
+DOMAIN_CORROBORATION_REQUIRED_ANCHORS = {
+    "ESG": frozenset({"new european bauhaus"}),
+}
+
+
 def has_required_domain_anchor_groups(domain: str, matched_terms: Iterable[str]) -> bool:
     """Return whether evidence contains every required anchor group for a domain."""
     normalized_domain = normalize_area(domain)
@@ -258,10 +269,20 @@ def has_required_domain_anchor_groups(domain: str, matched_terms: Iterable[str])
     if not groups:
         return True
     matches = {_normalize_research_term(term) for term in (matched_terms or ())}
-    return all(
-        any(_normalize_research_term(anchor) in matches for anchor in group)
-        for group in groups
-    )
+    needs_corroboration = {
+        _normalize_research_term(term)
+        for term in DOMAIN_CORROBORATION_REQUIRED_ANCHORS.get(str(normalized_domain or ""), ())
+    }
+
+    def satisfies(anchor: str) -> bool:
+        anchor_key = _normalize_research_term(anchor)
+        if anchor_key not in matches:
+            return False
+        if anchor_key in needs_corroboration:
+            return bool(matches - {anchor_key})
+        return True
+
+    return all(any(satisfies(anchor) for anchor in group) for group in groups)
 
 
 def score_research_areas(text: str) -> Dict[str, int]:
