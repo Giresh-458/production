@@ -174,3 +174,29 @@ Batch-3
 Verification (fresh clone of 3a926d7): suite **1247 passed, 0 failed**; CI steps 2–7 all real work; Batch-1 **ACCEPTED** (`ci-batch1-20261120T090818848578Z`, 0 blockers, all sources clean); Batch-2 **ready_for_batch3** (3 records, tiers recorded, max problem 131 chars, 0 dumps); Batch-3 **ready_for_batch4**; `run_pipeline.py` exit 0, `completed_no_proposal` (novelty gate).
 
 Residual, documented: the keyword problem-signal test still accepts sentences that merely mention "risk" (e.g. CAD Trust "guarding against double-counting risk"); changing it would alter verified Batch-1 extraction. Batch-1 #2 (ESG scope vs blockchain focus) awaits an owner decision.
+
+## Deep-check defects cycle (2026-11-20)
+
+The deep groundedness audit found these defects; each fix has a regression test in `tests/test_deep_check_fixes.py` (11 of its 13 original cases failed on the old code).
+
+Batch-1
+- Cascade calls (`competitive-calls-cs/<id>`) were labelled with the parent topic's code (live: 45656490 shown as `HORIZON-CL6-2024-CLIMATE-01-5`, closed 2024). They now get `EU-CS-<id>`; the parent topic is kept as `parent_topic_identifier` evidence.
+- Two of six portal topics skipped the official topicDetails status check because their search metadata looked complete. Every current portal topic is now checked (live: 102/102 portal topics cross-checked).
+- `zero-emission` and `low-emission transport` are ESG strong terms but were missing from the ESG anchor group; they have been added.
+- Merges from companion FAQ pages (live: Women TechEU) added appeal steps, submission timing and "perks via a Slack community" to eligibility. Only sentences that pass the substantive-eligibility test and are not procedural are now kept.
+
+Batch-2
+- The lexical gate rejected on-topic evidence that used different wording (e.g. living-lab restoration papers). It now has an additive `semantic_call_match` tier, which uses real sentence-transformer cosine ≥ 0.45 against the call title and problem. It never uses TF-IDF or hash fallbacks; if the model is unavailable, the gate stays lexical. The tier is enabled by `run_pipeline.py` and `run_batch2.py` via `RIF_SEMANTIC_GATE`, and CI installs CPU torch and sentence-transformers. The threshold was calibrated on one live call (on-topic 0.450–0.552; off-topic ≤ 0.436) and should be recalibrated as more calls are observed.
+
+Batch-3 / ideas
+- `#topic-security` matched "wildfire vulnerability" and "auditability". The security keywords now require security context.
+- Opportunity and benefit framing ("offer a unique opportunity", "will help … guarding against double-counting risk") is no longer selected as a problem statement. This resolves the residual noted in the previous cycle.
+- Idea templates (ESG carbon tokenization/MRV, etc.) were applied to ideas whose evidence never mentioned them. Templates are now unlocked only by the resolved problem statement; otherwise the hypothesis quotes the problem and the dataset need says "Not yet determined".
+- Idea titles are built from the problem's own words, or say "(problem unresolved)". Authors are labelled as candidate contacts from the evidence, not as confirmed collaborators.
+
+Tests
+- The suite was rewriting the tracked `sources/source_registry.json` (Batch-2 registry preparation used the default path). Test runs now use a per-test copy, plus a session guard that fails if the tracked file changes.
+
+Not code defects
+- Stale "UPCOMING" status on some EU topics is publisher lag; it resolves on re-run.
+- On this machine the local DNS resolver intermittently failed to resolve `www.sbir.gov` (8.8.8.8 resolves it), so two live Batch-1 runs were correctly BLOCKED on SBIR coverage. In the first run the domain resolved, but crawl4ai timed out on `page=5`.
