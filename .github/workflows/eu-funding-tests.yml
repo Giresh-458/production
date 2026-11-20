@@ -3,7 +3,9 @@ name: RIF funding and collection quality gates
 on:
   push:
     branches:
+      - main
       - fix/batch1-eu-live-quality-20261016
+  workflow_dispatch:
   pull_request:
     branches:
       - main

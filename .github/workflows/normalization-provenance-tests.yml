@@ -3,7 +3,9 @@ name: RIF normalization and provenance regression tests
 on:
   push:
     branches:
+      - main
       - fix/batch3-normalization-provenance-20261016
+  workflow_dispatch:
   pull_request:
     branches:
       - main

@@ -3,7 +3,9 @@ name: RIF 11-collector contract checks
 on:
   push:
     branches:
+      - main
       - fix/batch4-11-collector-contracts-20261016
+  workflow_dispatch:
   pull_request:
     branches:
       - main
