@@ -130,3 +130,17 @@ def test_idea_templates_require_supporting_evidence():
     carbon = "Carbon credit registries lack interoperable MRV records."
     assert "carbon-tokenization" in infer_hypothesis(carbon, carbon, "ESG", carbon)
     assert "MRV datasets" in evidence_gated_dataset_need("ESG", carbon)
+
+
+@pytest.mark.parametrize("problem,expected", [
+    ("No explicit problem statement found.", "ESG research idea (problem unresolved)"),
+    ("Insufficient problem signal", "ESG research idea (problem unresolved)"),
+    ("Unresolved interoperability gaps block registry reconciliation.",
+     "ESG research idea: Unresolved interoperability gaps block registry reconciliation"),
+])
+def test_idea_title_comes_from_grounded_problem(problem, expected):
+    """Live: keyword-soup titles such as 'ESG Unscoped Found Https Research Idea'."""
+    from agents.idea_agent import _is_unresolved_problem, grounded_idea_title
+
+    resolved = "" if _is_unresolved_problem(problem) else problem
+    assert grounded_idea_title(resolved, "ESG", "ignored") == expected

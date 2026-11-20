@@ -149,6 +149,29 @@ def filter_manifest_entries(entries: list[dict[str, Any]], *, area: str | None =
     return filtered
 
 
+_UNRESOLVED_PROBLEM_SENTINELS = ("no explicit problem statement found", "insufficient problem signal", "unknown")
+
+
+def _is_unresolved_problem(problem: str) -> bool:
+    lowered = cleaned_text(problem).casefold()
+    lowered = lowered.rstrip(" .")
+    return (not lowered or lowered in _UNRESOLVED_PROBLEM_SENTINELS
+            or (lowered.startswith("title:") and "agency:" in lowered))
+
+
+def grounded_idea_title(problem: str, area: str, fallback_title: str) -> str:
+    """Title from the grounded problem's own words, not keyword soup.
+
+    Observed live: synthesis keyword titles such as "ESG Unscoped Found Https".
+    With no resolved problem the title says so instead of implying a topic.
+    """
+    if problem:
+        words = cleaned_text(problem).split()
+        head = " ".join(words[:12]).rstrip(" .,;:")
+        return f"{area} research idea: {head}{'...' if len(words) > 12 else ''}"
+    return f"{area} research idea (problem unresolved)"
+
+
 def derive_title(base_title: str, area: str) -> str:
     clean = cleaned_text(base_title)
     if clean.lower().startswith("synthesis:"):
@@ -292,7 +315,12 @@ def build_idea_payload_from_synthesis(entry: dict[str, Any]) -> dict[str, Any]:
     source_urls = [cleaned_text(str(item)) for item in entry.get("source_urls", []) if cleaned_text(str(item))]
     confidence_label = str(entry.get("ranking", {}).get("label") or entry.get("confidence", {}).get("label") or "Unassessed").strip() or "Unassessed"
 
-    evidence_text = " ".join([problem, gap, seed_idea, existing_solutions, why_important, str(source_inputs or "")])
+    # Gate area templates on the grounded problem statement only: source-title
+    # listings and generated summaries must not unlock domain framing (observed
+    # live: an idea with an unresolved problem still received MRV dataset text).
+    problem_resolved = bool(problem) and not _is_unresolved_problem(problem)
+    evidence_text = problem if problem_resolved else ""
+    title = grounded_idea_title(problem if problem_resolved else "", area, title)
     hypothesis = infer_hypothesis(problem, gap, area, evidence_text)
     experiment_direction = infer_experiment_direction(area, sections, evidence_text)
     prototype_scope = infer_prototype_scope(area, sections, evidence_text)
