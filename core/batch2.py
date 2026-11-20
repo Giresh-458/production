@@ -29,6 +29,24 @@ from core.normalization import (
 from core.source_registry import build_source_refresh_plan, sync_source_registry
 
 
+_RATE_LIMIT_MESSAGE = re.compile(
+    r"\b429\b|rate.?limit|too many requests|budget exhausted|retry-after", re.IGNORECASE
+)
+
+
+def _external_api_limit_messages(collection_tasks: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Per collector, the warnings/errors that report an external rate limit."""
+    limited: dict[str, list[str]] = {}
+    for task in collection_tasks or []:
+        if not isinstance(task, dict):
+            continue
+        messages = [str(m) for m in (task.get("warnings") or []) + (task.get("errors") or [])]
+        hits = [m[:200] for m in messages if _RATE_LIMIT_MESSAGE.search(m)]
+        if hits:
+            limited[str(task.get("agent_name") or "unknown")] = hits[:5]
+    return limited
+
+
 def evaluate_collection_health(
     collection_tasks: list[dict[str, Any]],
     min_required_agents: int,
@@ -1312,6 +1330,10 @@ def execute_batch2(
         "healthy_agents": healthy_count,
         "total_agents": len(expected_agents),
         "required_healthy_agents": min_required,
+        # Informational: collectors whose sources were rate-limited, so reduced
+        # coverage is visible instead of silent (observed live: OpenAlex 429
+        # "budget exhausted", Semantic Scholar 429, GitHub 403 rate limit).
+        "external_api_limits": _external_api_limit_messages(tasks),
     }
 
     report: dict[str, Any] = {

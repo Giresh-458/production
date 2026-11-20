@@ -284,11 +284,11 @@ def fetch_arxiv_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -
         _record_collection_warning("arXiv", exc)
     return papers
 
-def _fetch_provider_json(url: str, source_name: str) -> dict:
+def _fetch_provider_json(url: str, source_name: str, extra_headers: dict[str, str] | None = None) -> dict:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "RIF-Literature-Agent/3.0"})
         from core.http_client import fetch_json
-        data, _ = fetch_json(url, headers={"User-Agent": "RIF-Literature-Agent/3.1"}, timeout=(8.0, 20.0), retries=0)
+        headers = {"User-Agent": "RIF-Literature-Agent/3.1", **(extra_headers or {})}
+        data, _ = fetch_json(url, headers=headers, timeout=(8.0, 20.0), retries=0)
         return data
     except Exception as exc:
         LOGGER.warning("%s fetch failed: %s", source_name, exc)
@@ -390,9 +390,19 @@ def fetch_openalex_entries(research_area: str, max_results: int = MAX_PER_SOURCE
 
 def fetch_semanticscholar_entries(research_area: str, max_results: int = MAX_PER_SOURCE) -> list[Paper]:
     enforce_api_spacing()
-    query = urllib.parse.quote(" ".join(_search_terms(research_area)))
+    # One focused query: the call's first multi-word query (title/problem), not
+    # every term concatenated (observed live: single words and the full title
+    # joined into one long string).
+    terms = [cleaned_text(str(t)) for t in _search_terms(research_area) if cleaned_text(str(t))]
+    focused = next((t for t in terms if len(t.split()) >= 3), " ".join(terms[:6]) or str(research_area or "research"))
+    query = urllib.parse.quote(focused[:200])
     url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query}&limit={max_results}&fields=title,abstract,authors,year,url,venue,externalIds"
-    data = _fetch_provider_json(url, "Semantic Scholar")
+    # Optional API key, sent in the documented "x-api-key" header (Semantic
+    # Scholar API tutorial); keyless requests share one public rate-limit pool.
+    import os
+
+    key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "").strip()
+    data = _fetch_provider_json(url, "Semantic Scholar", {"x-api-key": key} if key else None)
     
     papers = []
     for item in data.get("data", []):

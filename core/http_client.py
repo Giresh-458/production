@@ -178,6 +178,111 @@ def _url_origin(url: str) -> tuple[str, str, int]:
     return scheme, host, port
 
 
+# ---------------------------------------------------------------------------
+# OpenAlex budget handling (https://help.openalex.org/how-to-use-the-api/
+# rate-limits-and-authentication): keyless use has a small daily USD budget
+# (observed live: X-RateLimit-Limit-USD 0.1, search cost $0.001 -> ~100 searches
+# per day, then 429 with Retry-After of several hours). A free API key raises the
+# budget 10x and is sent as the ``api_key`` parameter. Single-record lookups
+# (/works/<id>, /works/doi:...) cost $0 and keep working.
+# ---------------------------------------------------------------------------
+_OPENALEX_HOST = "api.openalex.org"
+_OPENALEX_EXHAUSTED_UNTIL = 0.0
+_OPENALEX_LOCK = threading.Lock()
+
+
+def _is_openalex(url: str) -> bool:
+    return (urlsplit(str(url or "")).hostname or "").casefold() == _OPENALEX_HOST
+
+
+def _is_openalex_singleton(url: str, params: dict[str, Any] | None) -> bool:
+    parts = urlsplit(str(url or ""))
+    path_segments = [seg for seg in parts.path.split("/") if seg]
+    query_keys = {k for k, _ in parse_qsl(parts.query)} | set((params or {}).keys())
+    return len(path_segments) >= 2 and not (query_keys - {"api_key", "select", "mailto"})
+
+
+def _openalex_params(url: str, params: dict[str, Any] | None) -> dict[str, Any] | None:
+    import os
+
+    key = os.environ.get("OPENALEX_API_KEY", "").strip()
+    if not key or not _is_openalex(url):
+        return params
+    merged = dict(params or {})
+    if "api_key=" not in str(url):
+        merged.setdefault("api_key", key)
+    return merged
+
+
+def _openalex_budget_check(url: str, params: dict[str, Any] | None) -> None:
+    if not _is_openalex(url) or _is_openalex_singleton(url, params):
+        return
+    with _OPENALEX_LOCK:
+        remaining = _OPENALEX_EXHAUSTED_UNTIL - time.time()
+    if remaining > 0:
+        raise RuntimeError(
+            f"OpenAlex daily budget exhausted for this client; resets in {remaining / 3600:.1f} h "
+            "(set OPENALEX_API_KEY for a 10x budget)"
+        )
+
+
+def _openalex_note_rate_limit(url: str, response: Any) -> bool:
+    """Record an exhausted daily budget; True when the request must not be retried."""
+    global _OPENALEX_EXHAUSTED_UNTIL
+    if not _is_openalex(url) or int(getattr(response, "status_code", 0) or 0) != 429:
+        return False
+    headers = getattr(response, "headers", {}) or {}
+    if str(headers.get("X-RateLimit-Remaining", "")).strip() != "0":
+        return False
+    try:
+        wait = float(headers.get("Retry-After") or headers.get("X-RateLimit-Reset") or 3600)
+    except (TypeError, ValueError):
+        wait = 3600.0
+    with _OPENALEX_LOCK:
+        _OPENALEX_EXHAUSTED_UNTIL = max(_OPENALEX_EXHAUSTED_UNTIL, time.time() + wait)
+    return True
+
+
+def _openalex_cache_path(url: str, params: dict[str, Any] | None):
+    import hashlib
+    import os
+    from pathlib import Path
+
+    root = os.environ.get("RIF_OPENALEX_CACHE_DIR", "outputs/cache/openalex").strip()
+    if not root or not _is_openalex(url) or _is_openalex_singleton(url, params):
+        return None
+    items = sorted((k, str(v)) for k, v in (params or {}).items() if k != "api_key")
+    key = hashlib.sha256(json.dumps([canonicalize_url(url), items]).encode("utf-8")).hexdigest()
+    return Path(root) / f"{key}.json"
+
+
+def _openalex_cache_read(path) -> dict[str, Any] | None:
+    import os
+
+    if path is None or not path.is_file():
+        return None
+    ttl = float(os.environ.get("RIF_OPENALEX_CACHE_TTL_SECONDS", str(3 * 24 * 3600)))
+    if time.time() - path.stat().st_mtime > ttl:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _openalex_cache_write(path, data: dict[str, Any]) -> None:
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        LOGGER.debug("OpenAlex cache write failed for %s: %s", path, exc)
+
+
 def get_response(
     url: str,
     *,
@@ -191,6 +296,8 @@ def get_response(
     check_redirect_robots: bool = True,
 ) -> Any:
     """Fetch a live URL with bounded retries and policy-checked redirects."""
+    params = _openalex_params(url, params)
+    _openalex_budget_check(url, params)
     client = session or _get_session()
     merged_headers = dict(DEFAULT_HEADERS)
     if headers:
@@ -333,6 +440,12 @@ def get_response(
                 response._content = body
                 response._content_consumed = True
 
+            if _openalex_note_rate_limit(request_url, response):
+                response.close()
+                raise RuntimeError(
+                    "OpenAlex daily budget exhausted (HTTP 429, X-RateLimit-Remaining 0); "
+                    "set OPENALEX_API_KEY for a 10x budget"
+                )
             if response.status_code in RETRYABLE_STATUS and attempt < retries:
                 if response.status_code == 429:
                     try:
@@ -461,6 +574,10 @@ def fetch_text(url: str, *, session: Any | None = None, headers: dict[str, str] 
 
 def fetch_json(url: str, *, session: Any | None = None, headers: dict[str, str] | None = None,
                params: dict[str, Any] | None = None, timeout: tuple[float, float] = (8.0, 20.0), retries: int = 1) -> tuple[dict[str, Any], str]:
+    cache_path = _openalex_cache_path(url, params)
+    cached = _openalex_cache_read(cache_path)
+    if cached is not None:
+        return cached, canonicalize_url(url)
     for attempt in range(max(0, int(retries)) + 1):
         response = get_response(url, session=session, headers=headers, params=params, timeout=timeout, retries=retries)
         try:
@@ -474,6 +591,7 @@ def fetch_json(url: str, *, session: Any | None = None, headers: dict[str, str] 
                 raise ValueError(f"Invalid JSON returned by {url}: {exc}") from exc
             if not isinstance(data, dict):
                 raise ValueError(f"Expected JSON object from {url}, got {type(data).__name__}")
+            _openalex_cache_write(cache_path, data)
             return data, str(response.url)
         finally:
             close_response = getattr(response, "close", None)

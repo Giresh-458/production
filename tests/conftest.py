@@ -70,3 +70,13 @@ def _lexical_mission_gate_in_unit_tests(monkeypatch):
     the semantic tier set RIF_SEMANTIC_GATE explicitly.
     """
     monkeypatch.setenv("RIF_SEMANTIC_GATE", "false")
+
+
+@pytest.fixture(autouse=True)
+def _no_openalex_disk_cache_in_unit_tests(monkeypatch):
+    """Unit tests never read or write the OpenAlex response cache."""
+    import core.http_client as http_client
+
+    monkeypatch.setenv("RIF_OPENALEX_CACHE_DIR", "")
+    monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
+    monkeypatch.setattr(http_client, "_OPENALEX_EXHAUSTED_UNTIL", 0.0)

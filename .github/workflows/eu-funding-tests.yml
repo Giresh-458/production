@@ -80,6 +80,15 @@ permissions:
 jobs:
   eu-funding-quality:
     runs-on: ubuntu-latest
+    env:
+      # Optional: a free OpenAlex API key (repository secret) gives a 10x daily
+      # budget; keyless use is limited to ~100 searches/day per client.
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      # Built-in Actions token: GitHub REST reads at 1,000 req/h instead of 60
+      # (unauthenticated collector calls returned 403 "rate limit exceeded").
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Optional Semantic Scholar key, sent as the documented x-api-key header.
+      SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
     timeout-minutes: 60
     steps:
       - name: Check out repository

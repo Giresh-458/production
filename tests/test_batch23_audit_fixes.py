@@ -197,3 +197,74 @@ def test_batch3_resolves_calls_inside_the_given_run_dir():
 
     source = Path("scripts/pipeline_tools/run_batch3.py").read_text(encoding="utf-8")
     assert 'run_dir / "calls" / str(call_id)' in source
+
+
+# ---------------- external API limits (live: OpenAlex/S2 429, GitHub 403) ----------------
+
+def test_openalex_budget_exhaustion_stops_search_but_not_free_lookups(monkeypatch):
+    import core.http_client as http
+
+    class Resp:
+        status_code = 429
+        headers = {"X-RateLimit-Remaining": "0", "Retry-After": "14773"}
+
+        def close(self):
+            pass
+
+    assert http._openalex_note_rate_limit("https://api.openalex.org/works?search=x", Resp()) is True
+    with pytest.raises(RuntimeError, match="budget exhausted"):
+        http._openalex_budget_check("https://api.openalex.org/works", {"search": "x"})
+    http._openalex_budget_check("https://api.openalex.org/works/doi:10.1002/bse.3929", None)  # free singleton
+
+
+def test_openalex_api_key_is_sent_when_configured(monkeypatch):
+    import core.http_client as http
+
+    monkeypatch.setenv("OPENALEX_API_KEY", "k123")
+    assert http._openalex_params("https://api.openalex.org/works", {"search": "x"})["api_key"] == "k123"
+    assert http._openalex_params("https://example.org/x", {"q": 1}) == {"q": 1}
+
+
+def test_openalex_search_responses_are_cached(monkeypatch, tmp_path):
+    import core.http_client as http
+
+    monkeypatch.setenv("RIF_OPENALEX_CACHE_DIR", str(tmp_path))
+    calls = []
+
+    class Resp:
+        status_code = 200
+        url = "https://api.openalex.org/works"
+
+        def json(self):
+            return {"results": [{"id": "W1"}]}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(http, "get_response", lambda *a, **k: (calls.append(1), Resp())[1])
+    first, _ = http.fetch_json("https://api.openalex.org/works", params={"search": "living labs"})
+    second, _ = http.fetch_json("https://api.openalex.org/works", params={"search": "living labs"})
+    assert first == second == {"results": [{"id": "W1"}]} and len(calls) == 1
+
+
+def test_batch2_reports_rate_limited_collectors():
+    from core.batch2 import _external_api_limit_messages
+
+    tasks = [
+        {"agent_name": "literature", "warnings": ["OpenAlex query 'x' collection failed: 429 Client Error: Too Many Requests"]},
+        {"agent_name": "lab", "warnings": ["Generated 3 records"]},
+    ]
+    assert list(_external_api_limit_messages(tasks)) == ["literature"]
+
+
+def test_semantic_scholar_uses_one_focused_query_and_documented_key_header(monkeypatch):
+    import agents.literature_agent as lit
+
+    seen = {}
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s2key")
+    monkeypatch.setattr(lit, "enforce_api_spacing", lambda: None)
+    monkeypatch.setattr(lit, "_search_terms", lambda area: ["living", "labs", "Living labs for ecosystem restoration"])
+    monkeypatch.setattr(lit, "_fetch_provider_json", lambda url, name, extra=None: (seen.update(url=url, headers=extra) or {}))
+    lit.fetch_semanticscholar_entries("Unscoped")
+    assert "query=Living%20labs%20for%20ecosystem%20restoration&" in seen["url"]
+    assert seen["headers"] == {"x-api-key": "s2key"}
