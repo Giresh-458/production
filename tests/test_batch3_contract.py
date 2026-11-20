@@ -142,3 +142,27 @@ def test_real_stages_produce_a_valid_batch3_on_a_normalized_handoff(tmp_path):
     save_normalized_collection_records(outputs, outputs)
     report = run_batch3_for_call(outputs, SimpleNamespace(funding_call_id=CALL), run_stage)
     assert report["status"] == "ready_for_batch4", report
+
+
+def test_call_scoped_normalization_ignores_batch1_funding_artifacts(tmp_path):
+    """Live regression: in run_pipeline.py the refresh check scanned
+    <run>/intermediate/funding (Batch-1 output), which the pipeline never
+    normalizes, so the manifests differed and Batch-3 re-normalized the handoff."""
+    from core.normalization import _normalization_input_manifest
+    from tests.test_batch4_normalization import make_artifact_md
+
+    inter = tmp_path / "run" / "intermediate"
+    for sub, name in (("funding", "call.md"), ("literature", "paper.md")):
+        (inter / sub).mkdir(parents=True)
+        (inter / sub / name).write_text(make_artifact_md(funding_call_id=CALL, run_id=RUN), encoding="utf-8")
+    (inter / "shared.md").write_text(make_artifact_md(funding_call_id=CALL, run_id=RUN), encoding="utf-8")
+
+    def names(manifest):
+        return sorted(Path(a["path"]).name for a in manifest["artifacts"])
+
+    out = tmp_path / "run" / "calls" / CALL
+    # Call-scoped: Batch-1 funding artifacts excluded, everything else kept.
+    assert names(_normalization_input_manifest([inter], out, CALL, RUN)) == ["paper.md", "shared.md"]
+    # Same manifest as the producers' per-collector roots plus shared files.
+    # Unscoped normalization is unchanged and still sees the funding folder.
+    assert "call.md" in names(_normalization_input_manifest([inter], tmp_path / "x", None, RUN))

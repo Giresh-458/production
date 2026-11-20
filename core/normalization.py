@@ -199,17 +199,28 @@ def _parse_list_block(text: str) -> list[str]:
 
 # Serialization headers written by RIF's own collectors when they persist a
 # whole fetched page (core/agent_interface.py "Page title:/Source URL:" blocks
-# and core/recursive_collection.py "[Depth N] title | url" blocks). Text that
-# starts this way is a page dump, not an extracted problem statement.
-_SERIALIZED_PAGE_BLOCK = re.compile(
-    r"^\s*(?:Page title:[^\n]{0,300}?\s+Source URL:\s*https?://"
-    r"|[^\n]{0,200}?\[Depth \d+\][^|\n]{0,300}\|\s*https?://)",
+# and core/recursive_collection.py "[Depth N] title | url" blocks). Everything
+# from such a header on is page-dump text from a crawled page, not an extracted
+# problem statement (observed live: lab/regulation snippets that were whole
+# page dumps, and a CSRD snippet that ran on into "[Depth 1] ... | https://...").
+_SERIALIZED_PAGE_HEADER = re.compile(
+    r"(?:\[Depth \d+\][^|\n]{0,300}\|\s*https?://|Page title:[^\n]{0,300}?\s+Source URL:\s*https?://)",
     re.IGNORECASE,
 )
 
 
-def _is_serialized_page_block(value: Any) -> bool:
-    return bool(_SERIALIZED_PAGE_BLOCK.match(str(value or "")))
+def _problem_text_before_page_dump(value: Any) -> str:
+    """Return the statement preceding any serialized page header, or "".
+
+    Text left before a header must be a statement (>= 6 words); a bare page
+    title such as "Corporate sustainability reporting" is not a problem.
+    """
+    text = str(value or "")
+    match = _SERIALIZED_PAGE_HEADER.search(text)
+    if not match:
+        return text
+    before = text[: match.start()].strip()
+    return before if len(before.split()) >= 6 else ""
 
 
 def _coalesce(*values: str) -> str:
@@ -624,12 +635,11 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     # snippet was the full "Page title: ... Source URL: ..." / "[Depth 0] ..."
     # page dump). Such text stays in the evidence bundle and context, but is
     # not promoted to the problem statement.
-    preview = artifact["problem_preview"]
-    if _is_serialized_page_block(preview):
-        preview = ""
+    preview = _problem_text_before_page_dump(artifact["problem_preview"])
     snippet_text = "\n".join(
-        snippet for snippet in evidence.get("evidence_snippets", [])
-        if not _is_serialized_page_block(snippet)
+        cleaned_snippet
+        for snippet in evidence.get("evidence_snippets", [])
+        if (cleaned_snippet := _problem_text_before_page_dump(snippet))
     )
     normalized_problem = _coalesce(
         preview,
@@ -837,6 +847,24 @@ def normalize_intermediate_artifact(path: Path) -> dict[str, Any]:
     normalized_record["tokens"] = _tokenize(normalized_record["search_text"])
     return normalized_record
 
+def _is_batch1_funding_artifact(path: Path, root: Path) -> bool:
+    """True for Batch-1 funding-call artifacts under <intermediate>/funding/.
+
+    Call-scoped normalization consumes Batch-2 downstream evidence only. Both
+    producers (run_pipeline.py and the Batch-2 runner) normalize the downstream
+    collector folders; the Batch-3 refresh check scans the whole <run>/intermediate
+    tree, so it must skip Batch-1's folder too or its manifest never matches and the
+    pipeline's handoff is re-normalized (observed live in run_pipeline.py).
+    """
+    if root.name != "intermediate":
+        return False
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    return len(relative.parts) > 1 and relative.parts[0] == "funding"
+
+
 def build_normalized_collection_records(
     intermediate_root: Path | list[Path],
     target_funding_call_id: str | None = None,
@@ -854,6 +882,8 @@ def build_normalized_collection_records(
         if not root.exists():
             continue
         for path in sorted(root.rglob("*.md")):
+            if target_funding_call_id and _is_batch1_funding_artifact(path, root):
+                continue
             if path.name.lower() == "insights.md":
                 skipped.append({"path": str(path.resolve()), "reason": "downstream_insights_file"})
                 continue
@@ -998,6 +1028,8 @@ def _normalization_input_manifest(
         if not root.exists():
             continue
         for path in sorted(root.rglob("*.md")):
+            if target_funding_call_id and _is_batch1_funding_artifact(path, root):
+                continue
             if path.name.lower() == "insights.md":
                 continue
             resolved = str(path.resolve())
@@ -1529,6 +1561,8 @@ def ensure_normalized_collection_records(outputs_root: Path) -> dict[str, Path]:
     for ir in intermediate_roots:
         if ir.exists():
             for path in ir.rglob("*.md"):
+                if target_funding_call_id and _is_batch1_funding_artifact(path, ir):
+                    continue
                 if path.name.lower() == "insights.md":
                     continue
                 try:

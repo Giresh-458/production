@@ -552,3 +552,27 @@ def test_two_stage_topic_past_first_stage_is_filtered_as_expired(monkeypatch):
     result, _, _ = _run(monkeypatch, [hit], {topic_id: details})
     assert result.records_valid == 0
     assert result.records_filtered_by_reason == {"expired_deadline": 1}
+
+
+@pytest.mark.parametrize("action_type", [
+    "HORIZON-RIA HORIZON  Research and Innovation Actions",
+    "HORIZON-CSA HORIZON Coordination and Support Actions",
+])
+def test_research_context_identity_matches_topic_and_context_builds(monkeypatch, action_type):
+    """Live regression: run_pipeline.main crashed building a context for a non-research
+    EU topic whose research_context.funding_call_id was still the analyzer's hash ID."""
+    from run_pipeline import build__selected_call_context
+
+    topic_id = "HORIZON-NATURE-2027-02-03"
+    details = _topic_details(topic_id, action_type=action_type)
+    result, _, _ = _run(monkeypatch, [_search_hit(topic_id)], {topic_id: details})
+    doc, opp = result.opportunities[0]
+    assert opp.research_context["funding_call_id"] == opp.call_id == topic_id
+    record = {
+        "call_id": opp.call_id, "title": opp.program_name, "program_name": opp.program_name,
+        "status": opp.status, "deadline": opp.deadline, "eligibility": opp.eligibility,
+        "application_url": opp.application_url, "source_url": doc.source,
+        "focus_area": opp.focus_area, "research_context": opp.research_context,
+    }
+    context = build__selected_call_context(record)  # must not raise
+    assert context.funding_call_id == topic_id

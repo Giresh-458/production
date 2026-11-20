@@ -74,7 +74,11 @@ def _openalex(query: str, limit: int = 6) -> list[AdaptiveDocument]:
             for pos in positions or []:
                 words.append((pos, word))
         abstract_text = " ".join(word for _, word in sorted(words))
-        summary = cleaned_text(abstract_text) or cleaned_text(str(item.get("concepts", "")))
+        # Only the work's own abstract is source text. OpenAlex "concepts" are
+        # machine-assigned classifications; their Python repr was previously used
+        # as evidence when no abstract existed (observed live as a problem
+        # statement "[{'id': 'https://openalex.org/C27...', 'display_name': ...}]").
+        summary = cleaned_text(abstract_text)
         source = str(item.get("doi") or item.get("id") or "https://openalex.org/")
         if title and summary:
             docs.append(AdaptiveDocument(title=title, source=source, content=f"{title}. {summary[:5000]}", query=query, retrieved_at=datetime.now(UTC).isoformat()))

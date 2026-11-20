@@ -1586,6 +1586,14 @@ def _collect_eu_funding_tenders(
                 )
             if identifier:
                 analysis.call_id = identifier
+                # Keep one identity per record: the research context must carry
+                # the same official topic/call code. Otherwise the context builder
+                # refuses to rebind contexts that have no evidence refs (e.g.
+                # non-research CSA/IA/PCP topics) and run_pipeline.main crashed.
+                if isinstance(analysis.research_context, dict):
+                    research_context = dict(analysis.research_context)
+                    research_context["funding_call_id"] = identifier
+                    analysis.research_context = research_context
             if call_identifier and call_identifier != identifier:
                 analysis.evidence["parent_call_identifier"] = call_identifier
             source_label = (

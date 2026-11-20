@@ -307,3 +307,21 @@ def test_genuine_snippet_remains_the_problem_statement(temp_outputs):
     import json
     records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
     assert records[0]["problem_statement"] == real
+
+
+def test_snippet_is_cut_where_another_crawled_page_begins(temp_outputs):
+    """Live regression: a CSRD regulation snippet ran on into a second crawled page."""
+    first = (
+        "The proposal extends the scope to all large companies and requires the audit (assurance) "
+        "of reported information."
+    )
+    snippet = (
+        first + " [Depth 1] The Commission adopts the European Sustainability Reporting Standards | "
+        "https://finance.ec.europa.eu/news/commission-adopts-esrs The Commission adopted today the ESRS."
+    )
+    create_artifact(temp_outputs, "c.md", make_artifact_md(problem="", evidence_snippets=[snippet]))
+    paths = save_normalized_collection_records(temp_outputs, temp_outputs)
+    import json
+    records = json.loads(Path(paths["records"]).read_text(encoding="utf-8"))
+    assert records[0]["problem_statement"] == first
+    assert snippet in records[0]["evidence_snippets"]  # full evidence is preserved
