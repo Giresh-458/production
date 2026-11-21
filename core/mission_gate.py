@@ -351,9 +351,11 @@ def _domain_anchor_terms(ctx: FundingCallContext) -> set[str]:
 # papers scored 0.450-0.552, off-topic living-lab papers <= 0.436, crypto/finance
 # pages <= 0.23 (all-MiniLM-L6-v2). Recalibrate as more calls are observed.
 SEMANTIC_CALL_MATCH_THRESHOLD = 0.45
-# Floor for records that pass only on a domain anchor term. Calibrated on the
-# same call: on-topic records 0.456-0.621, off-topic domain-anchor records
-# 0.237-0.329 (all-MiniLM-L6-v2). Recalibrate as more calls are observed.
+# Floor for lexical passes (domain anchor term or generic call phrase).
+# Calibration (all-MiniLM-L6-v2), 4 live calls on 2026-11-21:
+#   HORIZON-NATURE-2027-02-02 on-topic 0.456-0.621, off-topic ESG 0.237-0.329;
+#   HORIZON-CL5-2027-01-D1-09/-10/-12 on-topic 0.451-0.780, off-topic 0.200.
+# Recalibrate as more calls are observed.
 DOMAIN_ANCHOR_SEMANTIC_FLOOR = 0.40
 _CALL_QUERY_CACHE: dict[str, str] = {}
 
@@ -542,7 +544,7 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
     if passed and tier is None:
         passed = False
         reason = "only generic vocabulary overlap; no call-specific phrase or domain anchor term"
-    if passed and tier == "domain_anchor" and _semantic_gate_enabled():
+    if passed and tier in {"domain_anchor", "call_specific"} and _semantic_gate_enabled():
         # A domain word ("carbon", "esg") alone admits evidence about a different
         # topic in the same domain (observed live for a restoration living-labs
         # call: ESG-rating, greenwashing and carbon-pricing papers, cosine
@@ -551,9 +553,12 @@ def relevance(record: dict[str, Any], ctx: FundingCallContext) -> dict[str, Any]
         semantic_similarity = _call_semantic_similarity(record, ctx)
         if semantic_similarity is not None and semantic_similarity < DOMAIN_ANCHOR_SEMANTIC_FLOOR:
             passed = False
+            # Generic call phrases ("climate change") also admit off-topic evidence
+            # (observed live on HORIZON-CL5-2027-01-D1-09: a living-labs paper at
+            # cosine 0.200 passed as call_specific; on-topic records were >= 0.451).
             reason = (
-                f"domain term only; semantically unrelated to the call (cosine {semantic_similarity:.3f} "
-                f"< {DOMAIN_ANCHOR_SEMANTIC_FLOOR})"
+                f"{'call phrase' if tier == 'call_specific' else 'domain term'} only; semantically unrelated "
+                f"to the call (cosine {semantic_similarity:.3f} < {DOMAIN_ANCHOR_SEMANTIC_FLOOR})"
             )
     return {
         "passed": passed,

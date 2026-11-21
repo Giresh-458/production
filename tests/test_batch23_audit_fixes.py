@@ -333,3 +333,34 @@ def test_no_accidental_tuple_assignments_in_collector_analysis():
                             and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)):
                         found.append(f"{path}:{node.lineno}")
     assert found == []
+
+
+def test_generic_call_phrase_needs_semantic_relation(monkeypatch):
+    """Live (D1-09): a living-labs paper passed as call_specific via 'climate neutrality' at cosine 0.200."""
+    import core.mission_gate as mg
+    import core.semantic_retrieval as sr
+
+    monkeypatch.setenv("RIF_SEMANTIC_GATE", "true")
+    record = {"title": "Co-Creating Sustainability Interventions in Practice",
+              "problem_statement": "No explicit problem statement found.",
+              "context_summary": "Living lab research toward climate neutrality.",
+              "evidence_snippets": ["Living labs pursue climate neutrality through co-creation."]}
+    monkeypatch.setenv("RIF_SEMANTIC_GATE", "false")
+    assert mg.relevance(record, _ctx())["relevance_tier"] == "call_specific"  # lexical pass alone
+    monkeypatch.setenv("RIF_SEMANTIC_GATE", "true")
+    monkeypatch.setattr(sr, "transformer_similarities", lambda q, d: [0.200])
+    result = mg.relevance(record, _ctx())
+    assert result["passed"] is False and "semantically unrelated" in result["reason"]
+
+
+def test_adaptive_research_dedupes_scholarly_versions():
+    """Live: NBER (10.3386/w17705) and journal (10.1086/683305) versions accepted twice."""
+    from agents.adaptive_research_agent import AdaptiveDocument, _dedupe_key
+
+    title = "The Competitiveness Impacts of Climate Change Mitigation Policies"
+    nber = AdaptiveDocument(title=title, source="https://doi.org/10.3386/w17705", content="x", source_type="Research publication")
+    journal = AdaptiveDocument(title=title + ".", source="https://doi.org/10.1086/683305", content="x", source_type="Research publication")
+    assert _dedupe_key(nber) == _dedupe_key(journal)
+    page_a = AdaptiveDocument(title="Home", source="https://a.org", content="x")
+    page_b = AdaptiveDocument(title="Home", source="https://b.org", content="x")
+    assert _dedupe_key(page_a) != _dedupe_key(page_b)

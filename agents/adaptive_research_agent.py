@@ -59,6 +59,14 @@ def _extract_html_text(html: str) -> tuple[str, str]:
     return title, cleaned_text(" ".join(blocks))[:7000]
 
 
+def _dedupe_key(doc: "AdaptiveDocument") -> tuple[str, str]:
+    """Scholarly works: normalized title (one paper can have several DOIs). Web pages: title+source."""
+    normalized_title = " ".join(re.findall(r"[a-z0-9]+", doc.title.casefold()))
+    if doc.source_type == "Research publication" and len(normalized_title.split()) >= 4:
+        return (normalized_title, "")
+    return (doc.title.casefold(), doc.source.casefold())
+
+
 def _openalex(query: str, limit: int = 6) -> list[AdaptiveDocument]:
     from core.http_client import fetch_json
     compact = re.sub(r"[^A-Za-z0-9\- ]+", " ", query)
@@ -183,10 +191,13 @@ def run_agent(mode: str, area: str | None = None, input_data: dict[str, Any] | N
         # An empty gated set is an honest result, not a reason to manufacture a
         # mission-shaped artifact and pass it downstream as external research evidence.
         # Deduplicate by title/source and cap the artifact set.
+        # Scholarly works are keyed by normalized title: one paper can have several
+        # DOIs (observed live: NBER working paper 10.3386/w17705 and journal version
+        # 10.1086/683305 were accepted as two records). Web pages keep title+source.
         seen: set[tuple[str, str]] = set()
         unique: list[AdaptiveDocument] = []
         for doc in documents:
-            key = (doc.title.casefold(), doc.source.casefold())
+            key = _dedupe_key(doc)
             if key in seen or not doc.content.strip():
                 continue
             seen.add(key)
