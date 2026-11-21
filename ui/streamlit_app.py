@@ -1324,6 +1324,88 @@ def collect_open_calls(run_root: Path) -> tuple[list[dict[str, Any]], list[dict[
     return qualified, rest
 
 
+_ELIGIBILITY_HEADINGS = (
+    (r"Topic-specific eligibility conditions:\s*", "Topic-specific conditions"),
+    (r"Annex B of the Work Programme General Annexes \(cited for eligibility by the topic conditions\):\s*",
+     "General eligibility (Annex B)"),
+)
+
+
+_ABBREVIATIONS = {"st", "no", "nr", "art", "e.g", "i.e", "etc", "vs", "mr", "dr", "co", "ltd", "inc"}
+
+
+def _sentence_breaks(text: str):
+    """Positions where a sentence ends (". X" / "; X"), ignoring abbreviations like "St."."""
+    import re
+
+    for match in re.finditer(r"[.;](\s+)(?=[A-Z])", text):
+        word = re.search(r"([A-Za-z.]+)$", text[:match.start()])
+        if match.group(0)[0] == "." and word and (word.group(1).casefold() in _ABBREVIATIONS or len(word.group(1)) == 1):
+            continue
+        yield match
+
+
+def _split_sentences(text: str) -> list[str]:
+    text = text.strip()
+    parts, start = [], 0
+    for match in _sentence_breaks(text):
+        parts.append(text[start:match.start() + 1])
+        start = match.end()
+    parts.append(text[start:])
+    return [part.strip() for part in parts if part.strip()]
+
+
+def eligibility_bullets(text: str) -> list[tuple[str | None, list[tuple[str, list[str]]]]]:
+    """Structure official eligibility text into (heading, [(bullet, [sub-bullets])]).
+
+    Wording is kept verbatim; only layout changes: known section labels become
+    headings, sentences become bullets and "–"-introduced list items sub-bullets.
+    """
+    import re
+
+    pattern = "|".join(f"(?:{p})" for p, _ in _ELIGIBILITY_HEADINGS)
+    sections: list[tuple[str | None, str]] = []
+    position, heading = 0, None
+    for match in re.finditer(pattern, text or ""):
+        if text[position:match.start()].strip():
+            sections.append((heading, text[position:match.start()]))
+        heading = next(label for p, label in _ELIGIBILITY_HEADINGS if re.fullmatch(p, match.group(0)))
+        position = match.end()
+    if (text or "")[position:].strip():
+        sections.append((heading, text[position:]))
+
+    structured = []
+    for heading, body in sections:
+        pieces = re.split(r"\s+[–—]\s+", body.strip())
+        bullets: list[tuple[str, list[str]]] = [(s, []) for s in _split_sentences(pieces[0])]
+        for item in pieces[1:]:
+            end = next((m for m in _sentence_breaks(item) if m.group(0)[0] == "."), None)
+            sub, rest = (item[:end.start() + 1], item[end.end():]) if end else (item, "")
+            if not bullets:
+                bullets.append(("", []))
+            bullets[-1][1].append(sub.strip())
+            bullets.extend((s, []) for s in _split_sentences(rest))
+        structured.append((heading, bullets))
+    return structured
+
+
+def eligibility_markdown(text: str) -> str:
+    def esc(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_").replace("`", "\\`")
+
+    lines: list[str] = []
+    for heading, bullets in eligibility_bullets(text):
+        if heading:
+            lines.append(f"**{heading}**")
+        for bullet, subs in bullets:
+            if bullet:
+                lines.append(f"- {esc(bullet)}")
+            for sub in subs:
+                lines.append(f"    - {esc(sub)}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 def render_call_card(call: dict[str, Any]) -> None:
     import html
 
@@ -1347,7 +1429,7 @@ def render_call_card(call: dict[str, Any]) -> None:
         st.markdown(body, unsafe_allow_html=True)
         if call.get("eligibility"):
             with st.expander("Eligibility"):
-                st.write(str(call["eligibility"]))
+                st.markdown(eligibility_markdown(str(call["eligibility"])))
         links = st.columns(2)
         if call.get("application_url"):
             links[0].link_button("Apply", str(call["application_url"]), width="stretch")

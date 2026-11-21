@@ -456,3 +456,30 @@ def test_ui_open_calls_merges_all_rejection_groups(tmp_path):
         "No problem": "No research problem stated in the official text",
         "Out of domain": "Outside the 7 research domains",
     }
+
+
+def test_ui_eligibility_bullets_keep_wording_and_structure():
+    import importlib.util
+    import re
+
+    pytest.importorskip("streamlit")
+    spec = importlib.util.spec_from_file_location("rif_ui_elig", "ui/streamlit_app.py")
+    ui = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ui)
+    text = ("Topic-specific eligibility conditions: The proposals must apply the multi-actor approach. "
+            "Annex B of the Work Programme General Annexes (cited for eligibility by the topic conditions): "
+            "To be eligible for funding, applicants must be established in one of the following countries: "
+            "– the Member States: Austria, Belgium. – OCTs: Saba (NL), St. Pierre and Miquelon (FR). "
+            "Unless otherwise provided, the consortium includes: – at least one entity in a Member State; and "
+            "– at least two other entities.")
+    sections = ui.eligibility_bullets(text)
+    assert [h for h, _ in sections] == ["Topic-specific conditions", "General eligibility (Annex B)"]
+    annex = sections[1][1]
+    assert annex[0][1][1] == "OCTs: Saba (NL), St. Pierre and Miquelon (FR)."  # abbreviation not split
+    assert annex[1][1] == ["at least one entity in a Member State; and", "at least two other entities."]
+    flat = lambda t: re.sub(r"[^a-z0-9]+", " ", t.casefold()).strip()
+    md = ui.eligibility_markdown(text)
+    body = md.replace("Topic-specific conditions", "").replace("General eligibility (Annex B)", "")
+    original = text.replace("Topic-specific eligibility conditions:", "").replace(
+        "Annex B of the Work Programme General Annexes (cited for eligibility by the topic conditions):", "")
+    assert flat(body) == flat(original)
