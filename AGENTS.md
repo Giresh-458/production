@@ -118,6 +118,7 @@ Supported modes:
 - the UI page **Add source** takes a name or URL, looks up the official website (Wikidata "official website") and asks the user to confirm it
 - after a page check (HTTP, robots.txt, duplicates, domain words) and a second confirmation, `core/user_sources.py` writes the entry into that agent's own `sources/*.yaml` file with `user_added: true`, in the same shape as curated entries, and syncs the registry
 - curated-catalogue tests ignore `user_added` entries; user-added sources can be removed from the same page
+- `core/agent_fit.py` scores which agent a page suits (transparent phrase/URL evidence, no LLM); the page warns when a URL does not fit the chosen agent, can trace same-site links to a page that fits better, and offers "Let the app decide" (suggestion with evidence; the user confirms)
 
 ---
 

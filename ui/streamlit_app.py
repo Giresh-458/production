@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import json
+import re
 import platform
 import sys
 import subprocess
@@ -1586,27 +1587,43 @@ def render_advanced() -> None:
 
 
 def _reset_add_source() -> None:
-    for key in ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done"):
+    for key in ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done", "as_trace", "as_agent_override"):
         st.session_state.pop(key, None)
+
+
+_AUTO_AGENT = "auto"
+
+
+def _evidence_text(fit: Any, limit: int = 5) -> str:
+    return ", ".join(fit.evidence[:limit]) or "no evidence"
+
+
+def _inspect_into_state(url: str, agent: str | None, domains: list[str]) -> None:
+    from core import user_sources as us
+
+    st.session_state["as_inspection"] = us.inspect_url(url, agent, domains=domains)
+    st.session_state.pop("as_trace", None)
 
 
 def render_add_source() -> None:
     from core import user_sources as us
+    from core.agent_fit import best_agents, fits_agent, trace_pages
 
     st.title("Add a source")
-    st.caption("Give a name or a link. You confirm the website before anything is added; "
-               "the agent then collects it on the next run, exactly like its built-in sources.")
+    st.caption("Give a name or a link and pick an agent, or let the app decide. The page is checked for fit "
+               "with the agent; if it does not fit, the app looks for a better page on the same site. "
+               "Nothing is added until you confirm.")
     state = st.session_state
-
     if state.get("as_done"):
         st.success(state["as_done"])
 
     # ---- step 1: what and where
+    agent_options = [_AUTO_AGENT] + list(us.AGENT_FILES)
     with st.container(border=True):
         query = st.text_input("Name or URL", placeholder="e.g. Gitcoin   or   https://gitcoin.co/grants")
         c1, c2 = st.columns(2)
-        agent = c1.selectbox("Add to agent", list(us.AGENT_FILES), format_func=lambda a: us.AGENT_LABELS[a],
-                             index=list(us.AGENT_FILES).index("funding"))
+        agent = c1.selectbox("Add to agent", agent_options,
+                             format_func=lambda a: "Let the app decide" if a == _AUTO_AGENT else us.AGENT_LABELS[a])
         domains = c2.multiselect("Research domains", list(us.DOMAINS), placeholder="Pick one or more")
         focus = st.text_input("Note (optional)", placeholder="What should the agent look for on this site?")
         if st.button("Find website", type="primary", disabled=not query.strip()):
@@ -1635,51 +1652,119 @@ def render_add_source() -> None:
                             + (f"  ({candidates[i]['description']})" if candidates[i].get("description") else ""))
             if candidates[0].get("wikidata"):
                 st.caption("Found via Wikidata's \"official website\" field. That is usually the homepage; "
-                           "for a specific programme page, paste its link instead.")
+                           "the next step checks whether it suits the agent and can look for a better page.")
             b1, b2 = st.columns(2)
             if b1.button("Yes, this one", type="primary", width="stretch"):
                 if not domains:
                     st.error("Pick at least one research domain first.")
                 else:
-                    with st.spinner("Checking the page..."):
-                        state["as_inspection"] = us.inspect_url(candidates[pick]["url"], agent, domains=domains)
-                        state["as_pick"] = {"agent": agent, "domains": domains, "focus": focus,
-                                            "name": candidates[pick]["label"] if candidates[pick].get("wikidata") else ""}
+                    state["as_pick"] = {"agent": agent, "domains": domains, "focus": focus,
+                                        "name": candidates[pick]["label"] if candidates[pick].get("wikidata") else ""}
+                    with st.spinner("Checking the page and which agent it suits..."):
+                        _inspect_into_state(candidates[pick]["url"], None if agent == _AUTO_AGENT else agent, domains)
                     st.rerun()
             if b2.button("No, cancel", width="stretch"):
                 _reset_add_source()
                 st.rerun()
 
-        # ---- step 3: confirm after the check
+        # ---- step 3: page check + agent fit
         inspection = state.get("as_inspection")
         if inspection:
             pick = state["as_pick"]
             ok_status = bool(inspection.status and inspection.status < 400)
             url = inspection.final_url if inspection.final_url and ok_status else inspection.url
-            st.subheader("Confirm before adding")
+            fits = inspection.agent_fits
+            suggested = best_agents(fits)
+            st.subheader("Check before adding")
             with st.container(border=True):
                 st.markdown(f"**Page title:** {inspection.title or '—'}")
                 st.markdown(f"**URL:** {url}")
                 if inspection.final_url and inspection.final_url.rstrip('/') != inspection.url.rstrip('/'):
                     st.caption(f"Redirected from {inspection.url}")
-                st.markdown(f"**Agent:** {us.AGENT_LABELS[pick['agent']]} · **Domains:** {', '.join(pick['domains'])}")
                 evidence = ", ".join(d for d, _score in inspection.domain_evidence) or "none found"
                 st.markdown(f"**Domains detected on the page:** {evidence}")
                 robots = {True: "allowed", False: "not allowed"}.get(inspection.robots_allowed, "unknown")
                 st.markdown(f"**robots.txt:** {robots} · **HTTP status:** {inspection.status or '—'}")
-                for problem in inspection.problems:
-                    st.error(problem)
-                for warning in inspection.warnings:
-                    st.warning(warning)
-                name = st.text_input("Source name", value=pick["name"] or inspection.title or "")
+
+            # -- which agent
+            st.markdown("#### Which agent")
+            chosen = state.get("as_agent_override") or pick["agent"]
+            if chosen == _AUTO_AGENT:
+                if suggested:
+                    st.info("The app suggests the agent this page is most useful for. You can change it.")
+                    chosen = st.radio(
+                        "Suggested agents", [f.agent for f in suggested], label_visibility="collapsed",
+                        format_func=lambda a: f"{us.AGENT_LABELS[a]} — evidence: "
+                        + _evidence_text(next(f for f in suggested if f.agent == a)))
+                else:
+                    st.warning("The page has too little readable text to tell which agent it suits "
+                               "(often a JavaScript-only page). Pick an agent, or paste a more specific page.")
+                    chosen = st.selectbox("Agent", list(us.AGENT_FILES), format_func=lambda a: us.AGENT_LABELS[a])
+            else:
+                own = next((f for f in fits if f.agent == chosen), None)
+                if fits and fits_agent(fits, chosen):
+                    st.success(f"This page fits the {us.AGENT_LABELS[chosen]} agent — evidence: {_evidence_text(own)}.")
+                elif fits:
+                    other = suggested[0] if suggested and suggested[0].agent != chosen else None
+                    message = f"This page does not look like a {us.AGENT_LABELS[chosen]} source"
+                    message += f" (evidence: {_evidence_text(own)})." if own and own.evidence else "."
+                    if other:
+                        message += f" It looks most like a {us.AGENT_LABELS[other.agent]} source ({_evidence_text(other, 4)})."
+                    st.warning(message)
+                    b1, b2 = st.columns(2)
+                    if b1.button(f"Find a better page for {us.AGENT_LABELS[chosen]} on this site", width="stretch"):
+                        with st.spinner("Following the site's links and checking each page..."):
+                            state["as_trace"] = {"agent": chosen, "pages": trace_pages(url, chosen)}
+                        st.rerun()
+                    if other and b2.button(f"Use the {us.AGENT_LABELS[other.agent]} agent instead", width="stretch"):
+                        state["as_agent_override"] = other.agent
+                        _inspect_into_state(url, other.agent, pick["domains"])
+                        st.rerun()
+                else:
+                    st.warning("The page text could not be read, so its fit with the agent is unknown.")
+
+            # -- traced pages
+            trace = state.get("as_trace")
+            if trace and trace["agent"] == chosen:
+                given = next((p for p in trace["pages"] if p.note == "the page you gave"), None)
+                given_score = given.score if given else 0.0
+                better = [p for p in trace["pages"] if p.note != "the page you gave" and p.score >= 8 and p.score > given_score]
+                checked = len(trace["pages"]) - (1 if given else 0)
+                if better:
+                    st.markdown(f"**Pages on this site that fit the {us.AGENT_LABELS[chosen]} agent better** "
+                                f"(checked {checked} linked pages):")
+                    choice = st.radio("Better pages", list(range(len(better))), label_visibility="collapsed",
+                                      format_func=lambda i: f"{better[i].title or better[i].url} — {better[i].url} "
+                                      f"(evidence: {', '.join(better[i].evidence[:4])})")
+                    if st.button("Use this page", type="primary"):
+                        state["as_agent_override"] = chosen
+                        with st.spinner("Checking the page..."):
+                            _inspect_into_state(better[choice].url, chosen, pick["domains"])
+                        st.rerun()
+                else:
+                    st.info(f"No linked page on this site fits the {us.AGENT_LABELS[chosen]} agent better "
+                            f"(checked {checked} linked pages). You can still add this page, or paste a specific page.")
+
+            # -- problems and confirmation
+            problems = list(inspection.problems)
+            if chosen == "opensource" and not re.match(r"^https://github\.com/[^/]+/[^/#?]+/?$", url):
+                problems.append("The Open source agent needs a GitHub repository URL (github.com/owner/repo).")
+            same_agent = [d for d in inspection.duplicate_of if d.startswith(us.AGENT_LABELS[chosen] + ": ")]
+            if same_agent and not any("Already configured" in p for p in problems):
+                problems.append("Already configured for this agent: " + "; ".join(same_agent))
+            for problem in problems:
+                st.error(problem)
+            for warning in inspection.warnings:
+                st.warning(warning)
+            name = st.text_input("Source name", value=pick["name"] or inspection.title or "")
             b1, b2 = st.columns(2)
-            if b1.button(f"Yes, add to the {us.AGENT_LABELS[pick['agent']]} agent", type="primary",
-                         width="stretch", disabled=bool(inspection.problems) or not name.strip()):
+            if b1.button(f"Yes, add to the {us.AGENT_LABELS[chosen]} agent", type="primary",
+                         width="stretch", disabled=bool(problems) or not name.strip()):
                 try:
-                    path = us.add_user_source(pick["agent"], name, url, pick["domains"], pick["focus"])
-                    us.sync_registry_for(pick["agent"], url)
+                    path = us.add_user_source(chosen, name, url, pick["domains"], pick["focus"])
+                    us.sync_registry_for(chosen, url)
                     _reset_add_source()
-                    state["as_done"] = (f"Added \"{name.strip()}\" to the {us.AGENT_LABELS[pick['agent']]} agent "
+                    state["as_done"] = (f"Added \"{name.strip()}\" to the {us.AGENT_LABELS[chosen]} agent "
                                         f"({path.name}). It will be collected on the next run.")
                     st.rerun()
                 except us.UserSourceError as exc:

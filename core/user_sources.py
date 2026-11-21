@@ -112,6 +112,7 @@ class UrlInspection:
     duplicate_of: list[str] = field(default_factory=list)
     domain_evidence: list[tuple[str, float]] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)   # block adding
+    agent_fits: list[Any] = field(default_factory=list)  # core.agent_fit.AgentFit, best first
     warnings: list[str] = field(default_factory=list)   # shown, do not block
 
 
@@ -124,8 +125,13 @@ def configured_urls() -> dict[str, list[str]]:
     return out
 
 
-def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | None = None,
+def inspect_url(url: str, agent: str | None, session: Any = None, domains: list[str] | None = None,
                 crawler_check: bool = True) -> UrlInspection:
+    """Reachability, robots.txt, duplicates, domains and agent fit for a URL.
+
+    ``agent=None`` means "let the app decide": agent-specific checks are skipped and
+    ``agent_fits`` ranks every agent for the page.
+    """
     import html as html_lib
 
     import requests
@@ -137,7 +143,7 @@ def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | 
     if agent == "opensource" and not re.match(r"^https://github\.com/[^/]+/[^/#?]+/?$", result.url):
         result.problems.append("Open-source sources must be a GitHub repository URL (github.com/owner/repo).")
     result.duplicate_of = configured_urls().get(_url_key(result.url), [])
-    same_agent = [d for d in result.duplicate_of if d.startswith(AGENT_LABELS[agent] + ": ")]
+    same_agent = [d for d in result.duplicate_of if agent and d.startswith(AGENT_LABELS[agent] + ": ")]
     if same_agent:
         result.problems.append("Already configured for this agent: " + "; ".join(same_agent))
     elif result.duplicate_of:
@@ -153,6 +159,9 @@ def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | 
         body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
         body = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))[:60000]
         result.domain_evidence = [(d["domain"], d["raw_score"]) for d in rank_research_areas(body) if d["raw_score"] > 0][:3]
+        from core.agent_fit import score_agents
+
+        result.agent_fits = score_agents(result.final_url or result.url, result.title, body)
     except Exception as exc:  # network errors are reported, not raised
         result.problems.append(f"Could not load the page ({type(exc).__name__}).")
     if result.status is not None and result.status >= 400:
@@ -181,6 +190,12 @@ def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | 
                 reason = crawled.error or f"HTTP {crawled.status_code}"
                 result.warnings.append(f"The agents' crawler could not fetch this page ({reason}); "
                                        "collection will most likely get nothing from it.")
+            elif crawled.clean_text:
+                # Judge agent fit on what the agents' crawler really sees.
+                from core.agent_fit import score_agents
+
+                result.agent_fits = score_agents(crawled.final_url or result.final_url or result.url,
+                                                 crawled.title or result.title, crawled.clean_text)
         except Exception as exc:
             result.warnings.append(f"The agents' crawler could not be tried ({type(exc).__name__}).")
     if result.status and result.status < 400 and not result.domain_evidence:
