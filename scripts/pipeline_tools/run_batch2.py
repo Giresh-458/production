@@ -15,6 +15,15 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+# API keys (e.g. OPENALEX_API_KEY) from the project's git-ignored .env, as
+# run_pipeline.py and the UI do. Existing environment variables take precedence.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(REPOSITORY_ROOT / ".env")
+except ImportError:
+    pass
+
 from core.batch2 import execute_batch2
 from core.funding_selection import FundingCallContext
 

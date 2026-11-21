@@ -17,6 +17,13 @@ from typing import Any
 import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+try:  # API keys (e.g. OPENALEX_API_KEY) from the project's git-ignored .env
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:  # python-dotenv is a declared dependency; tolerate absence
+    pass
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -1242,45 +1249,171 @@ def render_review_and_promotion() -> None:
                 render_json_expander("Raw Promotion Overrides", promotion_overrides)
 
 
-def main() -> None:
-    st.set_page_config(page_title="RIF UI", layout="wide")
-    st.sidebar.title("RIF Navigation")
-    page = st.sidebar.radio(
-        "Page",
-        [
-            "Dashboard",
-            "Run Full Pipeline",
-            "Run Agent",
-            "Manual Input",
-            "View Outputs",
-            "Insights",
-            "Operational Views",
-            "Processing And Intelligence",
-            "Review And Promotion",
-            "Settings",
-        ],
-    )
 
-    if page == "Dashboard":
-        render_dashboard()
-    elif page == "Run Full Pipeline":
+_CARD_CSS = """
+<style>
+.rif-chips {display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.35rem;}
+.rif-chip {font-size:.72rem; font-weight:600; padding:.12rem .55rem; border-radius:999px;
+           border:1px solid rgba(128,128,128,.35); opacity:.9;}
+.rif-chip.rif-soon {border-color:#d9534f; color:#d9534f;}
+.rif-chip.rif-ok {border-color:#2e9d6b; color:#2e9d6b;}
+.rif-title {font-size:1.05rem; font-weight:650; line-height:1.35; margin:.1rem 0 .2rem 0;}
+.rif-sub {font-size:.8rem; opacity:.65; margin-bottom:.5rem;}
+.rif-row {font-size:.86rem; margin:.15rem 0;}
+.rif-problem {font-size:.84rem; opacity:.85; border-left:3px solid rgba(128,128,128,.35);
+              padding-left:.6rem; margin:.55rem 0 .4rem 0;}
+</style>
+"""
+
+_REASON_TEXT = (
+    ("research intent", "Not research funding (innovation, coordination or procurement action)"),
+    ("source-grounded research problem", "No research problem stated in the official text"),
+    ("research-context confidence", "No research problem stated in the official text"),
+    ("domain-specific evidence", "Outside the 7 research domains"),
+    ("requires a direct", "Outside the 7 research domains"),
+    ("eligibility", "Eligibility not stated on the source"),
+    ("verified individual call", "Could not be verified as an individual open call"),
+    ("currently open", "Could not be verified as open"),
+)
+
+
+def _plain_reason(reasons: list[str]) -> str:
+    text = " ".join(str(r) for r in reasons or []).casefold()
+    for needle, label in _REASON_TEXT:
+        if needle in text:
+            return label
+    return str((reasons or ["Did not qualify"])[0])
+
+
+def _days_left(deadline: str | None) -> int | None:
+    from datetime import date
+
+    try:
+        return (date.fromisoformat(str(deadline)[:10]) - date.today()).days
+    except (TypeError, ValueError):
+        return None
+
+
+def collect_open_calls(run_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Qualified open calls (one per call folder) and the other open calls with reasons."""
+    qualified: list[dict[str, Any]] = []
+    others: dict[str, dict[str, Any]] = {}
+    for call_dir in sorted((run_root / "calls").glob("*")):
+        payload = read_json_file(call_dir / "workflow" / "selected_funding_call.json") or {}
+        selected = payload.get("selected") if isinstance(payload, dict) else None
+        if isinstance(selected, dict):
+            qualified.append(selected)
+        for item in (payload.get("rejected_alternatives") or []) if isinstance(payload, dict) else []:
+            if isinstance(item, dict) and item.get("status") == "OPEN_CALL":
+                others.setdefault(str(item.get("title")), item)
+    # The run summary keeps two more groups of rejected open calls.
+    summary = read_json_file(run_root / "workflow" / "pipeline_summary.json") or {}
+    for key, fallback in (("rejected_non_research", ["research intent is not verified as research"]),
+                          ("rejected_unverified_research_context", ["missing source-grounded research problem signal"])):
+        for entry in (summary.get(key) or []) if isinstance(summary, dict) else []:
+            call = entry.get("call") if isinstance(entry, dict) else None
+            if isinstance(call, dict) and call.get("status") == "OPEN_CALL":
+                others.setdefault(str(call.get("title")), {
+                    "title": call.get("title"), "status": call.get("status"), "source_url": call.get("source_url"),
+                    "reasons": entry.get("reasons") or fallback,
+                })
+    qualified_titles = {str(c.get("title")) for c in qualified}
+    qualified.sort(key=lambda c: str(c.get("deadline") or "9999"))
+    rest = [o for t, o in others.items() if t not in qualified_titles]
+    rest.sort(key=lambda o: str(o.get("title") or ""))
+    return qualified, rest
+
+
+def render_call_card(call: dict[str, Any]) -> None:
+    import html
+
+    rc = call.get("research_context") if isinstance(call.get("research_context"), dict) else {}
+    days = _days_left(call.get("deadline"))
+    chips = [f'<span class="rif-chip">{html.escape(str(call.get("research_area") or call.get("focus_area") or "Unscoped"))}</span>']
+    if days is not None:
+        cls = "rif-soon" if days <= 30 else "rif-ok"
+        chips.append(f'<span class="rif-chip {cls}">{days} days left</span>')
+    problem = (rc.get("inferred_challenges") or [None])[0]
+    body = (
+        f'<div class="rif-chips">{"".join(chips)}</div>'
+        f'<div class="rif-title">{html.escape(str(call.get("title") or "Untitled call"))}</div>'
+        f'<div class="rif-sub">{html.escape(str(call.get("call_id") or ""))} · {html.escape(str(call.get("funding_body") or ""))}</div>'
+        f'<div class="rif-row"><b>Deadline</b> {html.escape(str(call.get("deadline") or "not stated"))}</div>'
+        f'<div class="rif-row"><b>Budget</b> {html.escape(str(call.get("funding_amount") or "not stated"))}</div>'
+    )
+    if problem:
+        body += f'<div class="rif-problem">{html.escape(str(problem))}</div>'
+    with st.container(border=True):
+        st.markdown(body, unsafe_allow_html=True)
+        if call.get("eligibility"):
+            with st.expander("Eligibility"):
+                st.write(str(call["eligibility"]))
+        links = st.columns(2)
+        if call.get("application_url"):
+            links[0].link_button("Apply", str(call["application_url"]), width="stretch")
+        if call.get("source_url"):
+            links[1].link_button("Official page", str(call["source_url"]), width="stretch")
+
+
+def render_open_calls() -> None:
+    st.markdown(_CARD_CSS, unsafe_allow_html=True)
+    st.title("Open calls")
+    runs = latest_pipeline_runs(1)
+    if not runs:
+        st.info("No scan yet. Open **Run pipeline** in the sidebar to scan live funding sources.")
+        return
+    run_root = runs[0]
+    qualified, others = collect_open_calls(run_root)
+    st.caption(
+        f"{len(qualified)} qualified · {len(others)} other open · from scan {run_root.name}. "
+        "Qualified = open, research funding, in the 7 domains, with a stated problem and eligibility."
+    )
+    if not qualified:
+        st.info("No open call qualified in the latest scan.")
+    columns = st.columns(2)
+    for index, call in enumerate(qualified):
+        with columns[index % 2]:
+            render_call_card(call)
+    if others:
+        with st.expander(f"Other open calls ({len(others)}) — did not qualify"):
+            for item in others:
+                url = item.get("source_url")
+                title = str(item.get("title") or "Untitled")
+                st.markdown(
+                    f"- [{title}]({url}) — {_plain_reason(item.get('reasons') or [])}" if url
+                    else f"- {title} — {_plain_reason(item.get('reasons') or [])}"
+                )
+
+
+_ADVANCED_PAGES = {
+    "Dashboard": "render_dashboard",
+    "Run Agent": "render_run_agent",
+    "Manual Input": "render_manual_input",
+    "View Outputs": "render_view_outputs",
+    "Insights": "render_insights",
+    "Operational Views": "render_operational_views",
+    "Processing And Intelligence": "render_processing_and_intelligence_views",
+    "Review And Promotion": "render_review_and_promotion",
+    "Settings": "render_settings",
+}
+
+
+def render_advanced() -> None:
+    st.title("Advanced")
+    choice = st.selectbox("Tool", list(_ADVANCED_PAGES))
+    globals()[_ADVANCED_PAGES[choice]]()
+
+
+def main() -> None:
+    st.set_page_config(page_title="RIF", layout="wide")
+    st.sidebar.title("RIF")
+    page = st.sidebar.radio("Page", ["Open calls", "Run pipeline", "Advanced"], label_visibility="collapsed")
+    if page == "Open calls":
+        render_open_calls()
+    elif page == "Run pipeline":
         render_full_pipeline()
-    elif page == "Run Agent":
-        render_run_agent()
-    elif page == "Manual Input":
-        render_manual_input()
-    elif page == "View Outputs":
-        render_view_outputs()
-    elif page == "Insights":
-        render_insights()
-    elif page == "Operational Views":
-        render_operational_views()
-    elif page == "Processing And Intelligence":
-        render_processing_and_intelligence_views()
-    elif page == "Review And Promotion":
-        render_review_and_promotion()
     else:
-        render_settings()
+        render_advanced()
 
 
 if __name__ == "__main__":

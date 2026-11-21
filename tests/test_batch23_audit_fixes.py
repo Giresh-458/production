@@ -424,3 +424,34 @@ def test_rwa_security_token_vocabulary(text, rwa):
 
     score = next(d for d in rank_research_areas(text) if d["domain"] == "RWA")["raw_score"]
     assert (score > 0) is rwa
+
+
+def test_ui_open_calls_merges_all_rejection_groups(tmp_path):
+    """The Open calls page must list every open call the run rejected, with a plain reason."""
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("rif_ui", "ui/streamlit_app.py")
+    ui = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ui)
+    run = tmp_path / "run"
+    (run / "calls" / "C1" / "workflow").mkdir(parents=True)
+    (run / "workflow").mkdir()
+    (run / "calls" / "C1" / "workflow" / "selected_funding_call.json").write_text(json.dumps({
+        "selected": {"title": "Qualified call", "deadline": "2099-01-01", "status": "OPEN_CALL"},
+        "rejected_alternatives": [
+            {"title": "Out of domain", "status": "OPEN_CALL", "reasons": ["no sufficiently strong, domain-specific evidence"]},
+            {"title": "Closed one", "status": "CLOSED_CALL", "reasons": ["closed"]},
+        ]}), encoding="utf-8")
+    (run / "workflow" / "pipeline_summary.json").write_text(json.dumps({
+        "rejected_non_research": [{"call": {"title": "Innovation action", "status": "OPEN_CALL"}, "reason": "non_research"}],
+        "rejected_unverified_research_context": [{"call": {"title": "No problem", "status": "OPEN_CALL"},
+                                                  "reasons": ["missing source-grounded research problem signal"]}],
+    }), encoding="utf-8")
+    qualified, others = ui.collect_open_calls(run)
+    assert [c["title"] for c in qualified] == ["Qualified call"]
+    assert {o["title"]: ui._plain_reason(o["reasons"]) for o in others} == {
+        "Innovation action": "Not research funding (innovation, coordination or procurement action)",
+        "No problem": "No research problem stated in the official text",
+        "Out of domain": "Outside the 7 research domains",
+    }
