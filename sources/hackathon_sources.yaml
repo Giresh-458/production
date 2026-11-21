@@ -114,28 +114,3 @@ hackathon_sources:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
-  cps_challenges:
-  - name: DARPA Challenges
-    type: government_challenge_platform
-    url: https://www.darpa.mil/work-with-us
-    focus: robotics, autonomy, resilient systems, CPS
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: Hackster.io Contests
-    type: hardware_hackathon_platform
-    url: https://www.hackster.io/contests
-    focus: IoT, embedded systems, robotics, smart devices, CPS prototypes
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: IEEE Hackathons / Challenges
-    type: challenge_platform
-    url: https://www.ieee.org/
-    focus: smart grid, IoT, robotics, CPS, embedded systems
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60

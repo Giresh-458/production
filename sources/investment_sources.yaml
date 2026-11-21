@@ -58,7 +58,7 @@ investment_sources:
       max_seconds: 120
   - name: CoinFund
     type: vc_blog
-    url: https://www.coinfund.io/blog
+    url: https://www.coinfund.io/insights
     focus: Web3, DeFi, infrastructure, digital assets
     limits:
       max_pages: 12
@@ -123,50 +123,10 @@ investment_sources:
       max_depth: 2
       max_seconds: 120
   cps_investment:
-  - name: Lux Capital
-    type: vc_blog
-    url: https://www.luxcapital.com/
-    focus: robotics, autonomy, deep tech, CPS, industrial systems
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: DCVC
-    type: vc_blog
-    url: https://www.dcvc.com/
-    focus: deep tech, industrial systems, robotics, cyber-physical infrastructure
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: Eclipse Ventures
-    type: vc_blog
-    url: https://www.eclipse.vc/
-    focus: industrial technology, robotics, manufacturing, automation
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: a16z American Dynamism
-    type: vc_blog
-    url: https://a16z.com/american-dynamism/
-    focus: infrastructure, defense, manufacturing, physical-world systems
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
   - name: Energy Impact Partners
     type: vc_blog
     url: https://www.energyimpactpartners.com/
     focus: grid, energy, climate infrastructure, industrial systems
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: Robotics Business Review
-    type: market_report
-    url: https://www.roboticsbusinessreview.com/
-    focus: robotics market trends, industrial automation, autonomous systems
     limits:
       max_pages: 12
       max_depth: 2

@@ -364,3 +364,63 @@ def test_adaptive_research_dedupes_scholarly_versions():
     page_a = AdaptiveDocument(title="Home", source="https://a.org", content="x")
     page_b = AdaptiveDocument(title="Home", source="https://b.org", content="x")
     assert _dedupe_key(page_a) != _dedupe_key(page_b)
+
+
+# ---------------- source configuration audit (2026-11-21) ----------------
+
+def _all_sources():
+    import glob
+    import yaml
+
+    out = []
+
+    def walk(o, agent):
+        if isinstance(o, dict):
+            if "url" in o and "name" in o:
+                out.append((agent, o))
+            for v in o.values():
+                walk(v, agent)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, agent)
+    for f in glob.glob("sources/*_sources.yaml"):
+        walk(yaml.safe_load(open(f, encoding="utf-8")), f)
+    return out
+
+
+def test_removed_cps_domain_sources_are_gone_and_kept_ones_remain():
+    """DigitalHealthCPS was removed from the domains (807725d) but its sources stayed."""
+    names = {e["name"] for _, e in _all_sources()}
+    for gone in ("SWaT Dataset", "Rockwell Automation", "IEC 62443", "Dragos Blog", "ROS 2", "Lux Capital",
+                 "MITRE ATT&CK for ICS", "OpenAQ"):
+        assert gone not in names
+    for kept in ("ISO/SAE 21434", "AutoDRIVE", "SUMO", "Open Power System Data",
+                 "EU Electricity Market Regulation 2019/943"):
+        assert kept in names
+
+
+def test_moved_and_added_source_urls():
+    urls = {e["url"] for _, e in _all_sources()}
+    assert "https://www.coinfund.io/insights" in urls and "https://www.coinfund.io/blog" not in urls
+    assert "https://hivemapper.com/coverage" in urls and "https://hivemapper.com/explorer" not in urls
+    for added in ("https://eur-lex.europa.eu/eli/reg/2024/1183/oj", "https://eur-lex.europa.eu/eli/reg/2023/1114/oj",
+                  "https://icvcm.org/core-carbon-principles/", "https://identity.foundation/",
+                  "https://github.com/ERC-3643/ERC-3643", "https://depinscan.io/"):
+        assert added in urls
+
+
+def test_every_source_entry_has_name_and_http_url():
+    for f, e in _all_sources():
+        assert str(e["url"]).startswith("https://"), (f, e["name"])
+
+
+@pytest.mark.parametrize("text,rwa", [
+    ("A security token offering (STO) of tokenized securities.", True),
+    ("The Security Token Contract handles the transfer of security tokens.", True),
+    ("Hardware security token for two-factor login.", False),
+])
+def test_rwa_security_token_vocabulary(text, rwa):
+    from core.schemas import rank_research_areas
+
+    score = next(d for d in rank_research_areas(text) if d["domain"] == "RWA")["raw_score"]
+    assert (score > 0) is rwa

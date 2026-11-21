@@ -65,14 +65,6 @@ data_sources:
       max_pages: 12
       max_depth: 2
       max_seconds: 120
-  - name: OpenAQ
-    type: dataset_or_api
-    url: https://openaq.org/
-    focus: air quality data
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
   - name: Climate TRACE
     type: emissions_data_platform
     url: https://climatetrace.org/
@@ -156,6 +148,14 @@ data_sources:
       max_depth: 1
       max_seconds: 60
   depin:
+  - name: DePINscan
+    type: dashboard
+    url: https://depinscan.io/
+    focus: DePIN projects, decentralized physical infrastructure network data
+    limits:
+      max_pages: 12
+      max_depth: 2
+      max_seconds: 120
   - name: Helium Explorer
     type: dashboard_or_explorer
     url: https://explorer.helium.com/
@@ -174,7 +174,7 @@ data_sources:
       max_seconds: 120
   - name: Hivemapper Explorer
     type: dashboard
-    url: https://hivemapper.com/explorer
+    url: https://hivemapper.com/coverage
     focus: decentralized mapping coverage
     limits:
       max_pages: 12
@@ -262,64 +262,7 @@ data_sources:
       max_pages: 12
       max_depth: 2
       max_seconds: 120
-  cps:
-  - name: NIST CPS / IoT Testbed
-    type: testbed
-    url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
-    focus: smart grid, SCADA, robotics, autonomous vehicles, IoT, CPS experiments
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: University of Birmingham RITICS Datasets
-    type: dataset_repository
-    url: https://uob-ritics.github.io/
-    focus: industrial control system datasets, CPS security research
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: SWaT Dataset
-    type: dataset
-    url: https://www.sutd.edu.sg/itrust/itrust-labs/datasets/
-    focus: water treatment CPS, ICS anomaly detection
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: WADI Dataset
-    type: dataset
-    url: https://www.sutd.edu.sg/itrust/itrust-labs/datasets/
-    focus: water distribution CPS, attack detection
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: HAI Dataset
-    type: dataset
-    url: https://github.com/icsdataset/hai
-    focus: industrial control system anomaly detection, CPS security
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: Data4Cyber
-    type: dataset
-    url: https://zenodo.org/records/19965384
-    focus: distribution-grid management systems, representative OT attacks, smart
-      grid CPS
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: DataPort CPS Datasets
-    type: dataset_repository
-    url: https://www.hsu-hh.de/dataport
-    focus: cyber-physical systems and cyber-physical production systems datasets
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
+  vehicle_simulation:
   - name: SUMO
     type: simulator
     url: https://eclipse.dev/sumo/
@@ -344,14 +287,6 @@ data_sources:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
-  - name: CPSim
-    type: simulator
-    url: https://sim.cpsec.org/
-    focus: CPS security simulation and attack simulation
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
   - name: AutoDRIVE
     type: simulator_testbed
     url: https://github.com/Tinker-Twins/AutoDRIVE

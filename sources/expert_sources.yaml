@@ -26,22 +26,6 @@ expert_sources:
       max_pages: 12
       max_depth: 2
       max_seconds: 120
-  - name: IISc SINESys Lab
-    type: lab_page
-    url: https://labs.dese.iisc.ac.in/sinesyslab/
-    focus: blockchain, cryptography, authentication protocols, secure systems
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: IIT Bombay CoE for Blockchain
-    type: research_center
-    url: https://isrdc.iitb.ac.in/blockchain/coe/about.html
-    focus: blockchain R&D, fintech, distributed ledgers, faculty ecosystem
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
   - name: IIT Bombay Synerg Lab People
     type: lab_page
     url: https://www.cse.iitb.ac.in/synerg/people
@@ -73,14 +57,6 @@ expert_sources:
     url: https://cse.iith.ac.in/people/faculty.html
     focus: blockchain, lattice cryptography, databases, distributed systems, faculty
       profiles
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: IIT Kanpur National Blockchain Project Team
-    type: project_team
-    url: https://blockchain.cse.iitk.ac.in/team.html
-    focus: blockchain project team, faculty, researchers, decentralized systems
     limits:
       max_pages: 12
       max_depth: 2
@@ -158,28 +134,3 @@ expert_sources:
       max_pages: 12
       max_depth: 2
       max_seconds: 120
-  cps_experts:
-  - name: Vanderbilt Institute for Software Integrated Systems
-    type: academic_lab
-    url: https://www.isis.vanderbilt.edu/
-    focus: CPS, model-integrated computing, autonomous systems
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: Carnegie Mellon CyLab
-    type: academic_research_center
-    url: https://www.cylab.cmu.edu/
-    focus: cybersecurity, IoT security, CPS security
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: NIST Cyber-Physical Systems Public Working Group
-    type: government_research_group
-    url: https://pages.nist.gov/cpspwg/
-    focus: CPS framework, trustworthiness, cybersecurity
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60

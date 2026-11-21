@@ -59,64 +59,8 @@ labs:
     max_pages: 12
     max_depth: 2
     max_seconds: 120
-- name: NIST Cyber-Physical Systems Public Working Group
-  url: https://pages.nist.gov/cpspwg/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 4
-    max_depth: 1
-    max_seconds: 60
-- name: NIST CPS / IoT Testbed
-  url: https://www.nist.gov/programs-projects/cyber-physical-systemsinternet-things-testbed
-  focus_pages:
-  - /
-  limits:
-    max_pages: 4
-    max_depth: 1
-    max_seconds: 60
-- name: Vanderbilt Institute for Software Integrated Systems
-  url: https://www.isis.vanderbilt.edu/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 12
-    max_depth: 2
-    max_seconds: 120
-- name: UC Berkeley Cyber-Physical Systems Research
-  url: https://ptolemy.berkeley.edu/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 12
-    max_depth: 2
-    max_seconds: 120
-- name: Carnegie Mellon CyLab
-  url: https://www.cylab.cmu.edu/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 12
-    max_depth: 2
-    max_seconds: 120
-- name: University of Birmingham RITICS
-  url: https://uob-ritics.github.io/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 12
-    max_depth: 2
-    max_seconds: 120
 - name: Singapore University of Technology and Design iTrust
   url: https://itrust.sutd.edu.sg/
-  focus_pages:
-  - /
-  limits:
-    max_pages: 12
-    max_depth: 2
-    max_seconds: 120
-- name: Fraunhofer CPS / Industrial Security Research
-  url: https://www.sit.fraunhofer.de/en/offers/fields-of-expertise/cyber-physical-systems/
   focus_pages:
   - /
   limits:

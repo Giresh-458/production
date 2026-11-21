@@ -74,6 +74,24 @@ regulation_sources:
       max_depth: 1
       max_seconds: 60
   eu:
+  - name: EU eIDAS 2 / European Digital Identity Regulation (EU) 2024/1183
+    url: https://eur-lex.europa.eu/eli/reg/2024/1183/oj
+    focus: European Digital Identity Wallets, verifiable credentials, decentralized identity
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: EU MiCA Regulation (EU) 2023/1114
+    url: https://eur-lex.europa.eu/eli/reg/2023/1114/oj
+    focus: crypto-asset markets, e-money tokens, asset-referenced tokens, stablecoins
+    source_type: Regulation
+    evidence_type: Official Regulation
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
   - name: EU MiCA
     url: https://finance.ec.europa.eu/digital-finance/crypto-assets_en
     focus: crypto-assets, stablecoins, CASPs
@@ -140,6 +158,15 @@ regulation_sources:
       max_depth: 1
       max_seconds: 60
   climate_carbon:
+  - name: ICVCM Core Carbon Principles
+    url: https://icvcm.org/core-carbon-principles/
+    focus: carbon credit integrity, MRV, carbon markets
+    source_type: Standard
+    evidence_type: Official Standard
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
   - name: Verra
     url: https://verra.org/
     focus: carbon standards, carbon markets
@@ -231,67 +258,11 @@ regulation_sources:
       max_pages: 12
       max_depth: 2
       max_seconds: 120
-  cps_standards:
-  - name: NIST CPS Framework
-    url: https://www.nist.gov/publications/framework-cyber-physical-systems-volume-1-overview
-    source_type: framework
-    focus: CPS architecture, trustworthiness, timing, data, lifecycle, assurance
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: NIST CPS Public Working Group
-    url: https://pages.nist.gov/cpspwg/
-    source_type: standards_working_group
-    focus: CPS trustworthiness, cybersecurity, standards, timing, data interoperability
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: NIST Cyber-Physical Systems CSRC Topic
-    url: https://csrc.nist.gov/topics/applications/cyber-physical-systems
-    source_type: government_guidance
-    focus: CPS, IoT, operational technology, smart grid, cybersecurity
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: IEC 62443
-    url: https://www.iec.ch/
-    source_type: industrial_security_standard
-    focus: industrial automation and control system security
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
+  vehicle_standards:
   - name: ISO/SAE 21434
     url: https://www.iso.org/
     source_type: automotive_cybersecurity_standard
     focus: road vehicle cybersecurity engineering
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: NERC CIP
-    url: https://www.nerc.com/
-    source_type: critical_infrastructure_standard
-    focus: electric grid cybersecurity and reliability
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
-  - name: CISA Industrial Control Systems
-    url: https://www.cisa.gov/topics/industrial-control-systems
-    source_type: government_guidance
-    focus: ICS security, critical infrastructure, OT cybersecurity
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: IEEE Cyber-Physical Systems Standards
-    url: https://standards.ieee.org/
-    source_type: standards_body
-    focus: CPS, IoT, smart grid, autonomy, trustworthy systems
     limits:
       max_pages: 4
       max_depth: 1

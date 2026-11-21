@@ -137,6 +137,22 @@ opensource_sources:
       max_depth: 2
       max_seconds: 120
   did:
+  - name: EUDI Wallet Architecture and Reference Framework
+    type: github_repo
+    url: https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework
+    focus: European digital identity wallet, verifiable credentials, DID
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  - name: Decentralized Identity Foundation
+    type: documentation
+    url: https://identity.foundation/
+    focus: decentralized identifiers, verifiable credentials, interoperability
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
   - name: Veramo
     type: github_repo
     url: https://github.com/decentralized-identity/veramo
@@ -153,15 +169,7 @@ opensource_sources:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
-  cps:
-  - name: CPSim
-    type: simulator
-    url: https://sim.cpsec.org/
-    focus: CPS security simulation, attack simulator, anomaly/security experiments
-    limits:
-      max_pages: 12
-      max_depth: 2
-      max_seconds: 120
+  vehicles_and_digital_twins:
   - name: CARLA Simulator
     type: github_repo
     url: https://github.com/carla-simulator/carla
@@ -194,34 +202,28 @@ opensource_sources:
       max_pages: 4
       max_depth: 1
       max_seconds: 60
-  - name: ROS 2
-    type: github_repo
-    url: https://github.com/ros2/ros2
-    focus: robotics middleware, distributed CPS, communication, autonomy
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: Awesome ROS Security
-    type: github_repo
-    url: https://github.com/iotsrg/awesome-ros-security
-    focus: robotics security, ROS security, CPS attack surfaces
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
-  - name: OpenPLC
-    type: github_repo
-    url: https://github.com/thiagoralves/OpenPLC
-    focus: open-source industrial control systems, PLC runtime, OT security experimentation
-    limits:
-      max_pages: 4
-      max_depth: 1
-      max_seconds: 60
   - name: TRIPLE Digital Twin
     type: github_repo
     url: https://github.com/mubashar-iqbal/triple-digital-twin
     focus: blockchain-based digital twin framework for CPS security
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  rwa:
+  - name: ERC-3643 Permissioned Security Tokens
+    type: github_repo
+    url: https://github.com/ERC-3643/ERC-3643
+    focus: tokenized securities, real-world asset tokenization, compliance
+    limits:
+      max_pages: 4
+      max_depth: 1
+      max_seconds: 60
+  esg_carbon:
+  - name: Toucan Protocol Contracts
+    type: github_repo
+    url: https://github.com/ToucanProtocol/contracts
+    focus: tokenized carbon credits, carbon registry bridging, MRV
     limits:
       max_pages: 4
       max_depth: 1

@@ -92,6 +92,9 @@ AREA_KEYWORDS = {
         "tokenized treasury",
         "tokenized fund",
         "tokenized security",
+        "tokenized securities",
+        "security token offering",
+        "security token contract",
         "asset tokenization",
         "proof of reserve",
     ],
@@ -311,6 +314,10 @@ DOMAIN_TERM_WEIGHTS = {
     "RWA": {
         "real-world asset": 3.0, "real world asset": 3.0, "tokenized treasury": 3.0,
         "tokenized fund": 3.0, "tokenized security": 3.0, "asset tokenization": 3.0,
+        # Tokenized securities are RWA (ERC-3643: "Security Token Contract", "transfer
+        # of security tokens"). Bare "security token" also names 2FA hardware tokens.
+        "tokenized securities": 3.0, "security token offering": 3.0, "security token contract": 2.5,
+        "issuance of security tokens": 2.5, "transfer of security tokens": 2.5,
         "proof of reserve": 2.5, "rwa": 2.5,
     },
     "ESG": {
