@@ -53,12 +53,14 @@ class RobotsPolicy:
         # RFC 9309 explicitly allows the robots.txt URI itself.
         if urlsplit(url).path == "/robots.txt":
             return True, 0.0
-        agent = str(user_agent or "*").lower()
+        # RFC 9309 2.2.1: match the crawler's product token ("RIF" in "RIF/3.1")
+        # case-insensitively against each group's user-agent value.
+        product_token = str(user_agent or "*").strip().split("/", 1)[0].split()[0].lower() if str(user_agent or "").strip() else "*"
         matching = [
             group
             for group in self.groups
             if any(
-                token != "*" and token and token.lower() in agent
+                token != "*" and token and token.lower() == product_token
                 for token in group.user_agents
             )
         ]
@@ -143,9 +145,12 @@ def _parse_robots(text: str) -> RobotsPolicy:
     rules: list[_Rule] = []
     crawl_delay = 0.0
     sitemaps: list[str] = []
+    # True once the current group has had a rule line. Tracked separately from
+    # `rules` because an empty "Disallow:" is a rule line that compiles to nothing.
+    group_has_rule_lines = False
 
     def finish_group() -> None:
-        nonlocal agents, rules, crawl_delay
+        nonlocal agents, rules, crawl_delay, group_has_rule_lines
         if agents:
             groups.append(
                 _Group(
@@ -157,6 +162,7 @@ def _parse_robots(text: str) -> RobotsPolicy:
         agents = []
         rules = []
         crawl_delay = 0.0
+        group_has_rule_lines = False
 
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].strip()
@@ -170,11 +176,12 @@ def _parse_robots(text: str) -> RobotsPolicy:
         if directive == "user-agent":
             if not value or (value != "*" and not re.fullmatch(r"[A-Za-z_-]+", value)):
                 continue
-            if rules:
+            if group_has_rule_lines:
                 finish_group()
             agents.append(value)
         elif directive in {"allow", "disallow"}:
             if agents:
+                group_has_rule_lines = True
                 rule = _compile_rule(value, allowed=(directive == "allow"))
                 if rule is not None:
                     rules.append(rule)
@@ -189,6 +196,7 @@ def _parse_robots(text: str) -> RobotsPolicy:
             ):
                 sitemaps.append(sitemap_url)
         elif directive == "crawl-delay" and agents:
+            group_has_rule_lines = True
             try:
                 parsed_delay = float(value)
                 if parsed_delay >= 0:
@@ -345,7 +353,7 @@ def _fetch_robots_with_network_retry(
         return get_response(
             robots_url,
             headers={"User-Agent": user_agent},
-            timeout=(max(0.1, timeout), max(0.1, timeout)),
+            timeout=(max(0.1, min(timeout, 10.0)), max(0.1, timeout)),
             retries=0,
             check_redirect_robots=False,
         )
@@ -363,7 +371,7 @@ def check_robots(
     url: str,
     *,
     user_agent: str = "RIF/3.1",
-    timeout: float = 5.0,
+    timeout: float = 20.0,  # read timeout; connect is capped at 10 s (observed ~10 s robots.txt hosts)
     cache: dict[str, tuple[float, RobotsPolicy | None, bool, str | None]] | None = None,
 ) -> tuple[bool, str | None, float]:
     """Return (allowed, reason, crawl_delay) under RFC 9309 failure semantics.

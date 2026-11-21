@@ -387,10 +387,16 @@ def fetch_html(url: str) -> str:
 def extract_page_text(html: str) -> tuple[str, str]:
     _, BeautifulSoup = load_requests_and_bs4()
     soup = BeautifulSoup(html, "html.parser")
+    # EU Publications Office XHTML (CELEX resolver) has a file name as <title>
+    # (e.g. "L_2023150EN.01004001.xml"); its real title is marked eli-main-title.
+    eli_title = soup.select_one(".eli-main-title")
+    eli_title_text = cleaned_text(eli_title.get_text(" ", strip=True)) if eli_title else ""
     for tag in soup(["script", "style", "noscript", "svg", "footer", "nav", "header"]):
         tag.decompose()
     title_node = soup.find("h1") or soup.title
     title = cleaned_text(title_node.get_text(" ", strip=True)) if title_node else "Untitled"
+    if eli_title_text and (not title_node or re.fullmatch(r"[\w.-]+\.(?:xml|fmx|html?)", title, re.IGNORECASE)):
+        title = eli_title_text[:300]
     blocks = extract_text_blocks(soup)
     content = cleaned_text(" ".join(blocks))
     focused_content = build_focused_content(

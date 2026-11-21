@@ -403,7 +403,7 @@ def test_moved_and_added_source_urls():
     urls = {e["url"] for _, e in _all_sources()}
     assert "https://www.coinfund.io/insights" in urls and "https://www.coinfund.io/blog" not in urls
     assert "https://hivemapper.com/coverage" in urls and "https://hivemapper.com/explorer" not in urls
-    for added in ("https://eur-lex.europa.eu/eli/reg/2024/1183/oj", "https://eur-lex.europa.eu/eli/reg/2023/1114/oj",
+    for added in ("https://publications.europa.eu/resource/celex/32024R1183", "https://publications.europa.eu/resource/celex/32023R1114",
                   "https://icvcm.org/core-carbon-principles/", "https://identity.foundation/",
                   "https://github.com/ERC-3643/ERC-3643", "https://depinscan.io/"):
         assert added in urls

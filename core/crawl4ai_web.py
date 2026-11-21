@@ -18,7 +18,6 @@ import time
 import threading
 import zipfile
 import xml.etree.ElementTree as ET
-from urllib.robotparser import RobotFileParser
 from collections import deque
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -42,7 +41,7 @@ _ROBOTS_USER_AGENT = "RIF/3.1"
 _ROBOTS_CACHE_TTL = 6 * 60 * 60
 _ROBOTS_FAILURE_TTL = 5 * 60
 _DEFAULT_HOST_DELAY = 1.0
-_ROBOTS_CACHE: dict[str, tuple[float, RobotFileParser | None, bool, float, str | None]] = {}
+_ROBOTS_CACHE: dict[str, tuple[float, Any, bool, float, str | None]] = {}
 _ROBOTS_LOCK = threading.Lock()
 _HOST_LAST_REQUEST: dict[str, float] = {}
 _HOST_LOCK = threading.Lock()
@@ -65,7 +64,7 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             if allow_all:
                 return True, delay, None
             assert parser is not None
-            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
+            allowed, _ = parser.decision(_ROBOTS_USER_AGENT, url)
             return allowed, delay, None if allowed else "robots.txt disallows this URL"
 
     robots_url = f"{origin}/robots.txt"
@@ -79,12 +78,12 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
             return get_response(
                 robots_url,
                 headers={"User-Agent": _ROBOTS_USER_AGENT},
-                timeout=(5.0, 10.0),
+                timeout=(10.0, 20.0),  # slow but valid hosts (observed: ~10 s robots.txt)
                 # A 4xx response (except 429) means robots.txt is unavailable under
                 # RFC 9309; this crawler explicitly permits the resource in that case.
                 # A 429 remains fail-closed, and 5xx/network failures remain fail-closed.
                 retries=2,
-                expected_status=(200, *range(400, 500)),
+                expected_status=(*range(200, 300), *range(400, 500)),
                 check_redirect_robots=False,
             )
 
@@ -112,24 +111,19 @@ def _get_robots_policy(url: str) -> tuple[bool, float, str | None]:
                         _DEFAULT_HOST_DELAY, None,
                     )
                 return True, _DEFAULT_HOST_DELAY, None
-            if status_code != 200:
+            if not 200 <= status_code < 300:
                 raise RuntimeError(f"robots.txt returned HTTP {status_code}")
 
-            parser = RobotFileParser(robots_url)
-            parser.parse(str(response.text or "").splitlines())
-            delays = [
-                float(parser.crawl_delay(_ROBOTS_USER_AGENT) or 0.0),
-                float(parser.crawl_delay("*") or 0.0),
-            ]
-            for rate in (parser.request_rate(_ROBOTS_USER_AGENT), parser.request_rate("*")):
-                if rate and rate.requests > 0:
-                    delays.append(float(rate.seconds) / float(rate.requests))
-            delay = max([_DEFAULT_HOST_DELAY, *delays])
+            # Shared RFC 9309 parser (wildcards, longest match, Allow wins ties).
+            from core.robots_policy import _parse_robots
+
+            parser = _parse_robots(str(response.text or ""))
+            allowed, robots_delay = parser.decision(_ROBOTS_USER_AGENT, url)
+            delay = max(_DEFAULT_HOST_DELAY, float(robots_delay or 0.0))
             with _ROBOTS_LOCK:
                 _ROBOTS_CACHE[origin] = (
                     time.monotonic() + _ROBOTS_CACHE_TTL, parser, False, delay, None,
                 )
-            allowed = parser.can_fetch(_ROBOTS_USER_AGENT, url)
             return allowed, delay, None if allowed else "robots.txt disallows this URL"
         finally:
             close_response = getattr(response, "close", None)

@@ -748,16 +748,10 @@ def collect_source(
                     text = better[1]
                 
                 def _needs_browser(h, t):
-                    challenge_text = (h + " " + t).lower()
-                    if (
-                        ("cloudflare" in challenge_text and ("ray id" in challenge_text or "challenge" in challenge_text))
-                        or ("verify you are" in challenge_text and "human" in challenge_text)
-                        or ("just a moment" in challenge_text and "enable javascript" in challenge_text)
-                        or "pardon our interruption" in challenge_text
-                        or "vercel security checkpoint" in challenge_text
-                        or "checking if the site connection is secure" in challenge_text
-                        or "we're verifying your browser" in challenge_text
-                    ):
+                    from core.antibot import is_challenge_page
+
+                    # Challenge pages are rejected, never browser-escalated.
+                    if is_challenge_page(h, "", t):
                         return False
                     if len(t.strip()) >= 800: return False
                     headings = len(re.findall(r"<h[1-6][^>]*>", h, re.I))
@@ -853,16 +847,9 @@ def collect_source(
                 continue
 
         def _is_challenge(t: str, head: str, raw_html: str = "") -> bool:
-            c = (t + " " + head + " " + raw_html).lower()
-            return bool(
-                ("verify you are" in c and "human" in c) or 
-                ("cloudflare" in c and "ray id" in c) or
-                ("just a moment" in c and "enable javascript" in c) or
-                "pardon our interruption" in c or
-                "checking if the site connection is secure" in c or
-                "vercel security checkpoint" in c or
-                "we're verifying your browser" in c
-            )
+            from core.antibot import is_challenge_page
+
+            return is_challenge_page(raw_html, head, t)
 
         if _is_challenge(text, title, html):
             failed.append({"url": url, "reason": "anti-bot/challenge detected"})

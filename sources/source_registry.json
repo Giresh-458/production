@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-21T10:30:04.138146+00:00",
+  "generated_at": "2026-11-21T15:56:50.686179+00:00",
   "entries": [
     {
       "source_id": "company:abb-ability:98e9b7aa54",
@@ -7402,7 +7402,7 @@
       "source_path": "regulation_sources.global_finance.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:cdp:1c0a912f0f",
@@ -7429,7 +7429,7 @@
       "source_path": "regulation_sources.esg_reporting.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:cisa-industrial-control-systems:2bae2cc861",
@@ -7456,7 +7456,7 @@
       "source_path": "regulation_sources.cps_standards.[6]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:csrd:7e97ea8859",
@@ -7483,7 +7483,7 @@
       "source_path": "regulation_sources.eu.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:climate-action-data-trust:2ca5a8fb8b",
@@ -7510,7 +7510,7 @@
       "source_path": "regulation_sources.climate_carbon.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:esrs:ca5fe787cc",
@@ -7537,7 +7537,7 @@
       "source_path": "regulation_sources.eu.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-design-directive-2024-1711:99f54aeb65",
@@ -7548,7 +7548,7 @@
       "area_hints": [],
       "trust_score": 0.9,
       "relevance_score": 0.6,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-11-21T10:30:04.138146+00:00",
       "etag": "",
@@ -7560,9 +7560,34 @@
       "notes": "electricity market design, energy-system digitalisation, grid connection capacity information, demand response, renewable integration, and flexibility",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.energy_systems.[1]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+    },
+    {
+      "source_id": "regulation:eu-electricity-market-design-directive-2024-1711:30f3bc598b",
+      "agent_name": "regulation",
+      "name": "EU Electricity Market Design Directive 2024/1711",
+      "url": "https://publications.europa.eu/resource/celex/32024L1711",
+      "source_type": "Directive",
+      "area_hints": [],
+      "trust_score": 0.9,
+      "relevance_score": 0.6,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T15:56:50.686179+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "e13df6e8aaf6f1f235b6b108e53040216ba79a74",
+      "discovery_method": "configured_seed",
+      "notes": "electricity market design, energy-system digitalisation, grid connection capacity information, demand response, renewable integration, and flexibility",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.energy_systems.[1]",
+      "active_config": true,
+      "created_at": "2026-11-21T15:56:50.686179+00:00",
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-regulation-2019-943:f5d94cc5d9",
@@ -7573,7 +7598,7 @@
       "area_hints": [],
       "trust_score": 0.9,
       "relevance_score": 0.6,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-11-21T10:30:04.138146+00:00",
       "etag": "",
@@ -7585,9 +7610,34 @@
       "notes": "internal electricity market rules, cross-border electricity flows, system operation, balancing, flexibility, energy storage, demand response, and transparency obligations",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.energy_systems.[0]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+    },
+    {
+      "source_id": "regulation:eu-electricity-market-regulation-2019-943:f7740781c9",
+      "agent_name": "regulation",
+      "name": "EU Electricity Market Regulation 2019/943",
+      "url": "https://publications.europa.eu/resource/celex/32019R0943",
+      "source_type": "Regulation",
+      "area_hints": [],
+      "trust_score": 0.9,
+      "relevance_score": 0.6,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T15:56:50.686179+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "dc71f5d504f97dae77e4badb876c7da21c224a1b",
+      "discovery_method": "configured_seed",
+      "notes": "internal electricity market rules, cross-border electricity flows, system operation, balancing, flexibility, energy storage, demand response, and transparency obligations",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.energy_systems.[0]",
+      "active_config": true,
+      "created_at": "2026-11-21T15:56:50.686179+00:00",
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:eu-mica:a180845448",
@@ -7614,7 +7664,7 @@
       "source_path": "regulation_sources.eu.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:eu-mica-regulation-eu-2023-1114:7ce62cbd92",
@@ -7627,7 +7677,7 @@
       ],
       "trust_score": 0.9,
       "relevance_score": 0.7,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-11-21T10:30:04.138146+00:00",
       "etag": "",
@@ -7639,9 +7689,36 @@
       "notes": "crypto-asset markets, e-money tokens, asset-referenced tokens, stablecoins",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.eu.[1]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+    },
+    {
+      "source_id": "regulation:eu-mica-regulation-eu-2023-1114:c7a3f8b3ef",
+      "agent_name": "regulation",
+      "name": "EU MiCA Regulation (EU) 2023/1114",
+      "url": "https://publications.europa.eu/resource/celex/32023R1114",
+      "source_type": "Regulation",
+      "area_hints": [
+        "Stablecoins"
+      ],
+      "trust_score": 0.9,
+      "relevance_score": 0.7,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T15:56:50.686179+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "d1c921c070b60c980fd62846fce7e477b6668c53",
+      "discovery_method": "configured_seed",
+      "notes": "crypto-asset markets, e-money tokens, asset-referenced tokens, stablecoins",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.eu.[1]",
+      "active_config": true,
+      "created_at": "2026-11-21T15:56:50.686179+00:00",
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:eu-eidas-2-european-digital-identity-regulation-eu-2024-1183:2cccaa6cee",
@@ -7654,7 +7731,7 @@
       ],
       "trust_score": 0.9,
       "relevance_score": 0.7,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-11-21T10:30:04.138146+00:00",
       "etag": "",
@@ -7666,9 +7743,36 @@
       "notes": "European Digital Identity Wallets, verifiable credentials, decentralized identity",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.eu.[0]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+    },
+    {
+      "source_id": "regulation:eu-eidas-2-european-digital-identity-regulation-eu-2024-1183:15af80a0f9",
+      "agent_name": "regulation",
+      "name": "EU eIDAS 2 / European Digital Identity Regulation (EU) 2024/1183",
+      "url": "https://publications.europa.eu/resource/celex/32024R1183",
+      "source_type": "Regulation",
+      "area_hints": [
+        "DID"
+      ],
+      "trust_score": 0.9,
+      "relevance_score": 0.7,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T15:56:50.686179+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "1cde2dfc35f9a7497e49eb04fccfd8c8b708e600",
+      "discovery_method": "configured_seed",
+      "notes": "European Digital Identity Wallets, verifiable credentials, decentralized identity",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.eu.[0]",
+      "active_config": true,
+      "created_at": "2026-11-21T15:56:50.686179+00:00",
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:fatf:7add893981",
@@ -7693,7 +7797,7 @@
       "source_path": "regulation_sources.global_finance.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:gri:49de6dd76a",
@@ -7720,7 +7824,7 @@
       "source_path": "regulation_sources.esg_reporting.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:gold-standard:daabeb0ce4",
@@ -7747,7 +7851,7 @@
       "source_path": "regulation_sources.climate_carbon.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:icvcm-core-carbon-principles:91ac3ea067",
@@ -7774,7 +7878,7 @@
       "source_path": "regulation_sources.climate_carbon.[0]",
       "active_config": true,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:iec-62443:b80b63e55f",
@@ -7801,7 +7905,7 @@
       "source_path": "regulation_sources.cps_standards.[3]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:ieee-cyber-physical-systems-standards:4a7bb99cc7",
@@ -7829,7 +7933,7 @@
       "source_path": "regulation_sources.cps_standards.[7]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:ifrs-sustainability:32e5d9ef50",
@@ -7856,7 +7960,7 @@
       "source_path": "regulation_sources.esg_reporting.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:iosco:332561fbd7",
@@ -7881,7 +7985,7 @@
       "source_path": "regulation_sources.global_finance.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:iso-blockchain-standards:49a62d4cce",
@@ -7906,7 +8010,7 @@
       "source_path": "regulation_sources.standards.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:iso-sae-21434:7b342c8054",
@@ -7931,7 +8035,7 @@
       "source_path": "regulation_sources.vehicle_standards.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:meity:c486e5bd1b",
@@ -7956,7 +8060,7 @@
       "source_path": "regulation_sources.india.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:nerc-cip:1f6aa6f0be",
@@ -7983,7 +8087,7 @@
       "source_path": "regulation_sources.cps_standards.[5]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:nist-cps-framework:ebdb191c53",
@@ -8010,7 +8114,7 @@
       "source_path": "regulation_sources.cps_standards.[0]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:nist-cps-public-working-group:28fd97025e",
@@ -8037,7 +8141,7 @@
       "source_path": "regulation_sources.cps_standards.[1]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:nist-cyber-physical-systems-csrc-topic:3ab46cf15a",
@@ -8065,7 +8169,7 @@
       "source_path": "regulation_sources.cps_standards.[2]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:nist-digital-identity:e172e4cac3",
@@ -8092,7 +8196,7 @@
       "source_path": "regulation_sources.standards.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:rbi:039922fb1b",
@@ -8119,7 +8223,7 @@
       "source_path": "regulation_sources.india.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:sasb:efb05fb0c4",
@@ -8146,7 +8250,7 @@
       "source_path": "regulation_sources.esg_reporting.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:sbti:fe0f0ec3f6",
@@ -8173,7 +8277,7 @@
       "source_path": "regulation_sources.esg_reporting.[5]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:sebi:5662a5f8ed",
@@ -8198,7 +8302,7 @@
       "source_path": "regulation_sources.india.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:sebi-brsr:0604bd6c4a",
@@ -8225,7 +8329,7 @@
       "source_path": "regulation_sources.india.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:sec-climate-disclosure:eae3d8bbad",
@@ -8252,7 +8356,7 @@
       "source_path": "regulation_sources.global_finance.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:tcfd:a766e8b6a7",
@@ -8279,7 +8383,7 @@
       "source_path": "regulation_sources.esg_reporting.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:verra:fec56a666c",
@@ -8306,7 +8410,7 @@
       "source_path": "regulation_sources.climate_carbon.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:w3c-did:39a2a28136",
@@ -8333,7 +8437,7 @@
       "source_path": "regulation_sources.standards.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:w3c-verifiable-credentials:90dc1e9e62",
@@ -8360,7 +8464,7 @@
       "source_path": "regulation_sources.standards.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     },
     {
       "source_id": "regulation:world-bank-carbon-markets:dbdda5194e",
@@ -8387,18 +8491,18 @@
       "source_path": "regulation_sources.climate_carbon.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T15:56:50.686179+00:00"
     }
   ],
   "stats": {
-    "total_entries": 316,
+    "total_entries": 320,
     "active_entries": 216,
-    "deprecated_entries": 100,
+    "deprecated_entries": 104,
     "status_counts": {
       "active": 216,
       "approved": 0,
       "candidate": 0,
-      "deprecated": 100,
+      "deprecated": 104,
       "paused": 0,
       "stale": 0
     }

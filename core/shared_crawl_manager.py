@@ -323,17 +323,10 @@ class SharedCrawlManager:
             return result
 
     @staticmethod
-    def _is_anti_bot_challenge(html: str, title: str, text: str) -> bool:
-        content = f"{html} {title} {text}".lower()
-        return bool(
-            ("cloudflare" in content and ("ray id" in content or "challenge" in content))
-            or ("verify you are" in content and "human" in content)
-            or ("just a moment" in content and "enable javascript" in content)
-            or "pardon our interruption" in content
-            or "vercel security checkpoint" in content
-            or "checking if the site connection is secure" in content
-            or "we're verifying your browser" in content
-        )
+    def _is_anti_bot_challenge(html: str, title: str, text: str, *, status=None, headers=None) -> bool:
+        from core.antibot import is_challenge_page
+
+        return is_challenge_page(html, title, text, status=status, headers=headers)
 
     def _needs_browser(self, html: str, status_code: int) -> bool:
         if not 200 <= status_code < 300:
@@ -395,7 +388,9 @@ class SharedCrawlManager:
                     title = title_tag.get_text(strip=True) if title_tag else ""
                     clean_text = soup.get_text(separator=" ", strip=True)
                     content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
-                    if self._is_anti_bot_challenge(html, title, clean_text):
+                    if self._is_anti_bot_challenge(
+                        html, title, clean_text, status=status, headers=response.headers
+                    ):
                         return CrawlResult(
                             canonical_url=url, final_url=final_url, status_code=status,
                             content_type=ctype, title=title, html="", clean_text="",
@@ -549,7 +544,7 @@ class SharedCrawlManager:
                 soup = BeautifulSoup(html, "html.parser")
                 clean_text = soup.get_text(separator=" ", strip=True)
                 content_hash = hashlib.sha256(clean_text.encode("utf-8")).hexdigest()
-                if self._is_anti_bot_challenge(html, title, clean_text):
+                if self._is_anti_bot_challenge(html, title, clean_text, status=status):
                     return CrawlResult(
                         canonical_url=url, final_url=final_url, status_code=status,
                         content_type="text/html", title=title, html="", clean_text="",

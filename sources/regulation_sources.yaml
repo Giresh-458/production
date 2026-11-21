@@ -74,8 +74,10 @@ regulation_sources:
       max_depth: 1
       max_seconds: 60
   eu:
+  # EU legal texts use the Publications Office CELEX resolver: eur-lex.europa.eu pages
+  # answer automated clients with an AWS WAF challenge (HTTP 202, x-amzn-waf-action).
   - name: EU eIDAS 2 / European Digital Identity Regulation (EU) 2024/1183
-    url: https://eur-lex.europa.eu/eli/reg/2024/1183/oj
+    url: https://publications.europa.eu/resource/celex/32024R1183
     focus: European Digital Identity Wallets, verifiable credentials, decentralized identity
     source_type: Regulation
     evidence_type: Official Regulation
@@ -84,7 +86,7 @@ regulation_sources:
       max_depth: 1
       max_seconds: 60
   - name: EU MiCA Regulation (EU) 2023/1114
-    url: https://eur-lex.europa.eu/eli/reg/2023/1114/oj
+    url: https://publications.europa.eu/resource/celex/32023R1114
     focus: crypto-asset markets, e-money tokens, asset-referenced tokens, stablecoins
     source_type: Regulation
     evidence_type: Official Regulation
@@ -269,7 +271,7 @@ regulation_sources:
       max_seconds: 60
   energy_systems:
   - name: EU Electricity Market Regulation 2019/943
-    url: https://eur-lex.europa.eu/eli/reg/2019/943/oj
+    url: https://publications.europa.eu/resource/celex/32019R0943
     focus: internal electricity market rules, cross-border electricity flows, system operation, balancing, flexibility, energy storage, demand response, and transparency obligations
     source_type: Regulation
     evidence_type: Official Regulation
@@ -278,7 +280,7 @@ regulation_sources:
       max_depth: 1
       max_seconds: 60
   - name: EU Electricity Market Design Directive 2024/1711
-    url: https://eur-lex.europa.eu/eli/dir/2024/1711/oj/eng
+    url: https://publications.europa.eu/resource/celex/32024L1711
     focus: electricity market design, energy-system digitalisation, grid connection capacity information, demand response, renewable integration, and flexibility
     source_type: Directive
     evidence_type: Official Regulation

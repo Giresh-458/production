@@ -183,6 +183,9 @@ AREA_KEYWORDS = {
         "depeg",
         "vault",
         "reserve",
+        # MiCA's legal terms for stablecoins (Regulation (EU) 2023/1114).
+        "e-money token",
+        "asset-referenced token",
     ],
 }
 
