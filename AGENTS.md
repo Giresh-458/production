@@ -114,6 +114,11 @@ Supported modes:
 - passes every result through the mission relevance gate, deduplicates (scholarly works by title) and caps the set at 24
 - writes artifacts under the `Adaptive Research` layer; it is not one of the 11 collectors counted by the Batch-2 health check
 
+### User-added sources
+- the UI page **Add source** takes a name or URL, looks up the official website (Wikidata "official website") and asks the user to confirm it
+- after a page check (HTTP, robots.txt, duplicates, domain words) and a second confirmation, `core/user_sources.py` writes the entry into that agent's own `sources/*.yaml` file with `user_added: true`, in the same shape as curated entries, and syncs the registry
+- curated-catalogue tests ignore `user_added` entries; user-added sources can be removed from the same page
+
 ---
 
 ## 5. Implemented Processing Agents

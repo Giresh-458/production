@@ -21,7 +21,8 @@ def _entries():
         for tier_entries in sources.values()
         if isinstance(tier_entries, list)
         for entry in tier_entries
-        if isinstance(entry, dict)
+        # User-added sources (UI "Add source") are not part of the curated catalogue.
+        if isinstance(entry, dict) and not entry.get("user_added")
     ]
 
 

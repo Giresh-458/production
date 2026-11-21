@@ -1585,13 +1585,137 @@ def render_advanced() -> None:
     globals()[_ADVANCED_PAGES[choice]]()
 
 
+def _reset_add_source() -> None:
+    for key in ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done"):
+        st.session_state.pop(key, None)
+
+
+def render_add_source() -> None:
+    from core import user_sources as us
+
+    st.title("Add a source")
+    st.caption("Give a name or a link. You confirm the website before anything is added; "
+               "the agent then collects it on the next run, exactly like its built-in sources.")
+    state = st.session_state
+
+    if state.get("as_done"):
+        st.success(state["as_done"])
+
+    # ---- step 1: what and where
+    with st.container(border=True):
+        query = st.text_input("Name or URL", placeholder="e.g. Gitcoin   or   https://gitcoin.co/grants")
+        c1, c2 = st.columns(2)
+        agent = c1.selectbox("Add to agent", list(us.AGENT_FILES), format_func=lambda a: us.AGENT_LABELS[a],
+                             index=list(us.AGENT_FILES).index("funding"))
+        domains = c2.multiselect("Research domains", list(us.DOMAINS), placeholder="Pick one or more")
+        focus = st.text_input("Note (optional)", placeholder="What should the agent look for on this site?")
+        if st.button("Find website", type="primary", disabled=not query.strip()):
+            _reset_add_source()
+            state["as_query"] = query.strip()
+            if us.looks_like_url(query):
+                state["as_candidates"] = [{"label": query.strip(), "description": "the link you gave",
+                                           "url": us.normalize_url(query)}]
+            else:
+                with st.spinner("Looking up the official website..."):
+                    try:
+                        state["as_candidates"] = us.find_url_candidates(query)
+                    except Exception as exc:
+                        state["as_candidates"] = []
+                        st.error(f"Lookup failed ({type(exc).__name__}). Paste the link instead.")
+
+    candidates = state.get("as_candidates")
+    if candidates is not None:
+        # ---- step 2: is this the right URL?
+        if not candidates:
+            st.warning(f"No official website found for \"{state.get('as_query')}\". Paste the link instead.")
+        elif not state.get("as_inspection"):
+            st.subheader("Is this the right website?")
+            pick = st.radio("Website", list(range(len(candidates))), label_visibility="collapsed",
+                            format_func=lambda i: f"{candidates[i]['label']} — {candidates[i]['url']}"
+                            + (f"  ({candidates[i]['description']})" if candidates[i].get("description") else ""))
+            if candidates[0].get("wikidata"):
+                st.caption("Found via Wikidata's \"official website\" field. That is usually the homepage; "
+                           "for a specific programme page, paste its link instead.")
+            b1, b2 = st.columns(2)
+            if b1.button("Yes, this one", type="primary", width="stretch"):
+                if not domains:
+                    st.error("Pick at least one research domain first.")
+                else:
+                    with st.spinner("Checking the page..."):
+                        state["as_inspection"] = us.inspect_url(candidates[pick]["url"], agent, domains=domains)
+                        state["as_pick"] = {"agent": agent, "domains": domains, "focus": focus,
+                                            "name": candidates[pick]["label"] if candidates[pick].get("wikidata") else ""}
+                    st.rerun()
+            if b2.button("No, cancel", width="stretch"):
+                _reset_add_source()
+                st.rerun()
+
+        # ---- step 3: confirm after the check
+        inspection = state.get("as_inspection")
+        if inspection:
+            pick = state["as_pick"]
+            ok_status = bool(inspection.status and inspection.status < 400)
+            url = inspection.final_url if inspection.final_url and ok_status else inspection.url
+            st.subheader("Confirm before adding")
+            with st.container(border=True):
+                st.markdown(f"**Page title:** {inspection.title or '—'}")
+                st.markdown(f"**URL:** {url}")
+                if inspection.final_url and inspection.final_url.rstrip('/') != inspection.url.rstrip('/'):
+                    st.caption(f"Redirected from {inspection.url}")
+                st.markdown(f"**Agent:** {us.AGENT_LABELS[pick['agent']]} · **Domains:** {', '.join(pick['domains'])}")
+                evidence = ", ".join(d for d, _score in inspection.domain_evidence) or "none found"
+                st.markdown(f"**Domains detected on the page:** {evidence}")
+                robots = {True: "allowed", False: "not allowed"}.get(inspection.robots_allowed, "unknown")
+                st.markdown(f"**robots.txt:** {robots} · **HTTP status:** {inspection.status or '—'}")
+                for problem in inspection.problems:
+                    st.error(problem)
+                for warning in inspection.warnings:
+                    st.warning(warning)
+                name = st.text_input("Source name", value=pick["name"] or inspection.title or "")
+            b1, b2 = st.columns(2)
+            if b1.button(f"Yes, add to the {us.AGENT_LABELS[pick['agent']]} agent", type="primary",
+                         width="stretch", disabled=bool(inspection.problems) or not name.strip()):
+                try:
+                    path = us.add_user_source(pick["agent"], name, url, pick["domains"], pick["focus"])
+                    us.sync_registry_for(pick["agent"])
+                    _reset_add_source()
+                    state["as_done"] = (f"Added \"{name.strip()}\" to the {us.AGENT_LABELS[pick['agent']]} agent "
+                                        f"({path.name}). It will be collected on the next run.")
+                    st.rerun()
+                except us.UserSourceError as exc:
+                    st.error(str(exc))
+            if b2.button("No, cancel", key="as_cancel2", width="stretch"):
+                _reset_add_source()
+                st.rerun()
+
+    # ---- sources the user added
+    rows = us.list_user_sources()
+    st.subheader(f"Sources you added ({len(rows)})")
+    if not rows:
+        st.caption("None yet.")
+    for index, row in enumerate(rows):
+        c1, c2 = st.columns([6, 1])
+        c1.markdown(f"**{row['name']}** · {us.AGENT_LABELS[row['agent']]} · added {row.get('added_at') or '—'}  \n{row['url']}")
+        if c2.button("Remove", key=f"as_rm_{index}", width="stretch"):
+            us.remove_user_source(row["agent"], row["name"])
+            us.sync_registry_for(row["agent"])
+            state.pop("as_done", None)
+            st.rerun()
+    if rows:
+        st.caption("Added sources are saved in the agents' files under sources/. "
+                   "Commit them to keep them in git and to use them in GitHub CI.")
+
+
 def main() -> None:
     st.set_page_config(page_title="RIF", page_icon="🔎", layout="wide")
     st.sidebar.title("RIF")
     st.sidebar.caption("Research Intelligence Framework")
-    page = st.sidebar.radio("Page", ["Open calls", "Run pipeline", "Advanced"], label_visibility="collapsed")
+    page = st.sidebar.radio("Page", ["Open calls", "Add source", "Run pipeline", "Advanced"],
+                            label_visibility="collapsed")
     if page == "Open calls":
         render_open_calls()
+    elif page == "Add source":
+        render_add_source()
     elif page == "Run pipeline":
         render_full_pipeline()
     else:

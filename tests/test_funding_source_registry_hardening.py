@@ -9,7 +9,8 @@ def _funding_sources():
 
     def walk(node):
         if isinstance(node, dict):
-            if node.get('name') and node.get('url'):
+            # User-added sources (UI "Add source") are not part of the curated catalogue.
+            if node.get('name') and node.get('url') and not node.get('user_added'):
                 out.append((str(node['name']), str(node['url'])))
             for value in node.values():
                 walk(value)
