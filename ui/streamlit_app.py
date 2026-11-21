@@ -13,6 +13,7 @@ import sys
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 
 import streamlit as st
@@ -1587,7 +1588,10 @@ def render_advanced() -> None:
 
 
 def _reset_add_source() -> None:
-    for key in ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done", "as_trace", "as_agent_override"):
+    for key in ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done", "as_trace", "as_agent_override",
+                "as_scan", "as_review"):
+        st.session_state.pop(key, None)
+    for key in [k for k in st.session_state if str(k).startswith(("as_scan_sel_", "as_scan_agent_"))]:
         st.session_state.pop(key, None)
 
 
@@ -1603,6 +1607,109 @@ def _inspect_into_state(url: str, agent: str | None, domains: list[str]) -> None
 
     st.session_state["as_inspection"] = us.inspect_url(url, agent, domains=domains)
     st.session_state.pop("as_trace", None)
+
+
+def _render_site_scan(url: str, pick: dict[str, Any], auto: bool) -> None:
+    """Scan a page and its linked pages for every agent; add only what the user approves."""
+    from core import user_sources as us
+    from core.agent_fit import scan_site
+
+    state = st.session_state
+    st.markdown("#### Pages on this site")
+    scan = state.get("as_scan")
+    if scan is None or scan["url"] != url:
+        if auto:
+            with st.spinner("Reading this page and the pages it links to, for every agent..."):
+                given, found, notes = scan_site(url)
+            state["as_scan"] = scan = {"url": url, "given": given, "found": found, "notes": notes}
+        else:
+            st.caption("Check this page and the pages it links to for every agent (nothing is added without your approval).")
+            if st.button("Scan this site for all agents"):
+                with st.spinner("Reading this page and the pages it links to, for every agent..."):
+                    given, found, notes = scan_site(url)
+                state["as_scan"] = {"url": url, "given": given, "found": found, "notes": notes}
+                st.rerun()
+            return
+
+    given, found, notes = scan["given"], scan["found"], scan["notes"]
+    if given is None:
+        st.warning(" ".join(notes) or "The page could not be read.")
+        return
+    if given.agent:
+        st.markdown(f"**The URL you gave** fits **{us.AGENT_LABELS[given.agent]}** (evidence: {', '.join(given.evidence[:4])}).")
+    else:
+        st.markdown("**The URL you gave fits no agent.**")
+    useful = [f for f in found if f.agent]
+    if useful:
+        st.markdown(f"**Inside it, {len(useful)} page(s) fit an agent.** Tick the ones to add; you can change the agent.")
+    else:
+        st.info("None of the linked pages fits an agent.")
+    agents = list(us.AGENT_FILES)
+    configured = us.configured_urls()
+    for index, finding in enumerate(useful, start=1):
+        already = configured.get(us._url_key(finding.url), [])
+        with st.container(border=True):
+            c1, c2 = st.columns([3, 2])
+            c1.checkbox(f"Page #{index}: {finding.title or finding.url}", key=f"as_scan_sel_{index}", value=False)
+            c1.caption(f"{finding.url}  \nEvidence: {', '.join(finding.evidence[:5])}"
+                       + (f"  \nAlready configured: {'; '.join(already)}" if already else "")
+                       + (f"  \nAlso fits: {', '.join(us.AGENT_LABELS[a] for a in finding.alternatives)}" if finding.alternatives else ""))
+            c2.selectbox("Agent", agents, index=agents.index(finding.agent), key=f"as_scan_agent_{index}",
+                         format_func=lambda a: us.AGENT_LABELS[a])
+    others = [f for f in found if not f.agent]
+    if others:
+        with st.expander(f"Linked pages that fit no agent ({len(others)})"):
+            st.markdown("\n".join(f"- {f.title or f.url} — {f.url}" for f in others))
+    for note in notes:
+        st.caption(note)
+
+    selected = [
+        {"url": f.url, "title": f.title, "agent": state.get(f"as_scan_agent_{i}", f.agent)}
+        for i, f in enumerate(useful, start=1) if state.get(f"as_scan_sel_{i}")
+    ]
+    if st.button(f"Review selected ({len(selected)})", disabled=not selected):
+        state["as_review"] = selected
+        st.rerun()
+
+    review = state.get("as_review")
+    if review:
+        configured = us.configured_urls()
+        st.markdown("#### Please confirm")
+        st.markdown("These pages will be added — nothing has been added yet:")
+        blocked = []
+        for item in review:
+            label = us.AGENT_LABELS[item["agent"]]
+            issue = ""
+            if any(d.startswith(label + ": ") for d in configured.get(us._url_key(item["url"]), [])):
+                issue = " — already configured for this agent, will be skipped"
+            elif item["agent"] == "opensource" and not re.match(r"^https://github\.com/[^/]+/[^/#?]+/?$", item["url"]):
+                issue = " — the Open source agent needs a GitHub repository, will be skipped"
+            if issue:
+                blocked.append(item["url"])
+            st.markdown(f"- **{item['title'] or item['url']}** → **{label}**  \n  {item['url']}{issue}")
+        st.caption(f"Domains: {', '.join(pick['domains'])}")
+        b1, b2 = st.columns(2)
+        if b1.button("Confirm and add", type="primary", width="stretch"):
+            results = []
+            for item in review:
+                if item["url"] in blocked:
+                    results.append(f"Skipped {item['url']}")
+                    continue
+                name = (item["title"] or urlsplit(item["url"]).hostname or item["url"])[:120]
+                try:
+                    us.add_user_source(item["agent"], name, item["url"], pick["domains"], pick["focus"])
+                    us.sync_registry_for(item["agent"], item["url"])
+                    results.append(f"Added \"{name}\" to the {us.AGENT_LABELS[item['agent']]} agent")
+                except us.UserSourceError as exc:
+                    results.append(f"Not added {item['url']}: {exc}")
+            _reset_add_source()
+            added_any = any(r.startswith("Added") for r in results)
+            state["as_done"] = ". ".join(results) + (". Added sources are collected on the next run."
+                                                     if added_any else ". Nothing was added.")
+            st.rerun()
+        if b2.button("Back", width="stretch"):
+            state.pop("as_review", None)
+            st.rerun()
 
 
 def render_add_source() -> None:
@@ -1674,7 +1781,7 @@ def render_add_source() -> None:
             ok_status = bool(inspection.status and inspection.status < 400)
             url = inspection.final_url if inspection.final_url and ok_status else inspection.url
             fits = inspection.agent_fits
-            suggested = best_agents(fits)
+            suggested = [f for f in best_agents(fits) if fits_agent(fits, f.agent)]
             st.subheader("Check before adding")
             with st.container(border=True):
                 st.markdown(f"**Page title:** {inspection.title or '—'}")
@@ -1686,8 +1793,10 @@ def render_add_source() -> None:
                 robots = {True: "allowed", False: "not allowed"}.get(inspection.robots_allowed, "unknown")
                 st.markdown(f"**robots.txt:** {robots} · **HTTP status:** {inspection.status or '—'}")
 
-            # -- which agent
-            st.markdown("#### Which agent")
+            _render_site_scan(url, pick, auto=pick["agent"] == _AUTO_AGENT)
+
+            # -- which agent (this page only)
+            st.markdown("#### Or add just this page")
             chosen = state.get("as_agent_override") or pick["agent"]
             if chosen == _AUTO_AGENT:
                 if suggested:
@@ -1697,8 +1806,12 @@ def render_add_source() -> None:
                         format_func=lambda a: f"{us.AGENT_LABELS[a]} — evidence: "
                         + _evidence_text(next(f for f in suggested if f.agent == a)))
                 else:
-                    st.warning("The page has too little readable text to tell which agent it suits "
-                               "(often a JavaScript-only page). Pick an agent, or paste a more specific page.")
+                    if best_agents(fits):
+                        st.warning("This page itself fits no agent clearly (see the pages on this site above). "
+                                   "To add it anyway, pick an agent.")
+                    else:
+                        st.warning("The page has too little readable text to tell which agent it suits "
+                                   "(often a JavaScript-only page). Pick an agent, or paste a more specific page.")
                     chosen = st.selectbox("Agent", list(us.AGENT_FILES), format_func=lambda a: us.AGENT_LABELS[a])
             else:
                 own = next((f for f in fits if f.agent == chosen), None)

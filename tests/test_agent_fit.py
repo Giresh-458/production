@@ -64,3 +64,38 @@ def test_trace_pages_finds_the_better_page():
     ranked = trace_pages("https://colosseum.com/", "hackathon", fetch=lambda url: pages[url])
     assert ranked[0].url == "https://colosseum.com/hackathon"
     assert ranked[0].score > ranked[1].score and ranked[1].note == "the page you gave"
+
+
+def test_scan_site_reports_each_linked_page_with_its_own_agent():
+    from core.agent_fit import scan_site
+
+    pages = {
+        "https://solana.org/": SimpleNamespace(final_url="https://solana.org/", title="The Solana Foundation", error=None,
+                                               clean_text="Welcome.",
+                                               html='<a href="/grants-funding">Grants and funding</a>'
+                                                    '<a href="/hackathons">Hackathons</a><a href="/about">About</a>'),
+        "https://solana.org/grants-funding": SimpleNamespace(final_url="https://solana.org/grants-funding", title="Grants and Funding",
+                                                             error=None, html="",
+                                                             clean_text="Grants program. Apply for funding. Request for proposals. Deadline."),
+        "https://solana.org/hackathons": SimpleNamespace(final_url="https://solana.org/hackathons", title="Hackathons", error=None,
+                                                         html="", clean_text="Global hackathons. Prize pool. Submission deadline."),
+    }
+    fetched = []
+
+    def fetch(url):
+        fetched.append(url)
+        return pages[url]
+
+    given, found, _notes = scan_site("https://solana.org/", fetch=fetch)
+    assert given.agent is None  # "the URL you gave fits no agent"
+    by_url = {f.url: f.agent for f in found}
+    assert by_url["https://solana.org/grants-funding"] == "funding"
+    assert by_url["https://solana.org/hackathons"] == "hackathon"
+    assert "https://solana.org/about" not in fetched  # unrelated links are not crawled
+
+
+def test_brand_names_and_partial_words_do_not_score():
+    fits = {f.agent: f.score for f in score_agents("https://colosseum.com/companies/rekt", "Rekt", "Rekt is a portfolio company.")}
+    assert fits["failure"] == 0
+    invest = {f.agent: f.evidence for f in score_agents("https://ukri.org/x", "UKRI", "We fund innovation across the UK.")}
+    assert not any("fund i" in e for e in invest["investment"])

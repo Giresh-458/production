@@ -49,17 +49,17 @@ AGENT_SIGNALS: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "investment": {
         "strong": ("portfolio companies", "our portfolio", "venture capital", "we invest", "led the round", "series a",
-                   "seed round", "investment thesis", "limited partners", "fund i", "backed by"),
+                   "seed round", "investment thesis", "limited partners", "backed by"),
         "weak": ("portfolio", "invest", "investing", "investors", "venture", "fund", "raised", "round", "capital", "thesis"),
         "path": ("portfolio", "invest", "venture", "thesis", "insights", "research"),
     },
     "failure": {
         "strong": ("post-mortem", "postmortem", "incident report", "root cause", "exploit", "funds stolen",
-                   "attack vector", "vulnerability disclosure", "hacks database", "security incident", "rekt",
+                   "attack vector", "vulnerability disclosure", "hacks database", "security incident",
                    "security research", "audit report", "smart contract security", "exploit analysis"),
         "weak": ("incident", "incidents", "hack", "hacked", "vulnerability", "attack", "outage", "stolen", "drained",
                  "loss", "audit", "fraud", "double counting", "security", "risk"),
-        "path": ("incident", "postmortem", "post-mortem", "hacks", "exploit", "security", "rekt", "audit"),
+        "path": ("incident", "postmortem", "post-mortem", "hacks", "exploit", "security", "audit"),
     },
     "data_availability": {
         "strong": ("dataset", "datasets", "benchmark", "open data", "data portal", "download data", "api documentation",
@@ -107,10 +107,13 @@ class AgentFit:
     evidence: list[str] = field(default_factory=list)
 
 
+_STEMS = ("opportunit",)  # phrases written as stems match any ending (opportunity/opportunities)
+
+
 def _phrase_present(text: str, phrase: str) -> bool:
-    if len(phrase) <= 4 or phrase in {"grant", "grants", "fund", "hack", "lab", "data", "law", "loss"}:
-        return re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", text) is not None
-    return phrase in text
+    """Whole-word match ("fund i" must not match "fund innovation"); stems match any ending."""
+    end = "" if phrase.endswith(_STEMS) else r"(?![a-z0-9])"
+    return re.search(rf"(?<![a-z0-9]){re.escape(phrase)}{end}", text) is not None
 
 
 def score_agents(url: str, title: str = "", text: str = "") -> list[AgentFit]:
@@ -245,3 +248,67 @@ def trace_pages(url: str, agent: str, fetch: Callable[[str], Any] | None = None,
         if key not in unique or candidate.score > unique[key].score:
             unique[key] = candidate
     return sorted(unique.values(), key=lambda c: -c.score)
+
+
+# ---------------------------------------------------------------- whole-site scan (all agents)
+@dataclass
+class PageFinding:
+    url: str
+    title: str
+    agent: str | None           # suggested agent, or None when the page fits no agent
+    score: float
+    evidence: list[str]
+    alternatives: list[str]     # other agents that also fit
+    note: str = ""
+
+
+def _finding(url: str, title: str, text: str, note: str) -> PageFinding:
+    fits = score_agents(url, title, text)
+    top = best_agents(fits)
+    suggested = top[0] if top and fits_agent(fits, top[0].agent) else None
+    alternatives = [f.agent for f in top[1:] if fits_agent(fits, f.agent)] if suggested else []
+    return PageFinding(url, title, suggested.agent if suggested else None, suggested.score if suggested else 0.0,
+                       suggested.evidence[:6] if suggested else [], alternatives, note)
+
+
+def scan_site(url: str, fetch: Callable[[str], Any] | None = None, *, per_agent_links: int = 2,
+              max_fetch: int = 10) -> tuple[PageFinding | None, list[PageFinding], list[str]]:
+    """Scan a page and its most promising same-site links for every agent.
+
+    Returns (finding for the given page, findings for linked pages, notes). Nothing is
+    added anywhere; the caller shows the findings for the user to approve.
+    """
+    if fetch is None:
+        from core.shared_crawl_manager import SharedCrawlManager
+
+        manager = SharedCrawlManager.get()
+        fetch = lambda target: manager.fetch(target)  # noqa: E731
+    notes: list[str] = []
+    start = fetch(url)
+    if getattr(start, "error", None):
+        return None, [], [f"Could not fetch the page: {start.error}"]
+    start_url = getattr(start, "final_url", "") or url
+    given = _finding(start_url, start.title, start.clean_text, "the page you gave")
+    links: dict[str, str] = {}
+    for agent in AGENTS:
+        if agent == "opensource":
+            continue  # repositories are detected from their URL; site navigation is not crawled for them
+        for link, label, _score in candidate_links(start.html, start_url, agent, limit=per_agent_links):
+            links.setdefault(link.rstrip("/"), label)
+    findings: list[PageFinding] = []
+    for link, label in list(links.items())[:max_fetch]:
+        page = fetch(link)
+        if getattr(page, "error", None):
+            notes.append(f"Skipped {link}: {page.error}")
+            continue
+        findings.append(_finding(getattr(page, "final_url", "") or link, page.title, page.clean_text,
+                                 f'linked as "{label[:60]}"'))
+    if len(links) > max_fetch:
+        notes.append(f"Checked the {max_fetch} most promising of {len(links)} linked pages.")
+    unique: dict[str, PageFinding] = {}
+    for item in findings:
+        key = item.url.rstrip("/").lower()
+        if key != start_url.rstrip("/").lower() and (key not in unique or item.score > unique[key].score):
+            unique[key] = item
+    ordered = sorted(unique.values(), key=lambda f: (f.agent is None, f.agent or "", -f.score))
+    return given, ordered, notes
