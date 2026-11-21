@@ -1257,11 +1257,15 @@ _CARD_CSS = """
            border:1px solid rgba(128,128,128,.35); opacity:.9;}
 .rif-chip.rif-soon {border-color:#d9534f; color:#d9534f;}
 .rif-chip.rif-ok {border-color:#2e9d6b; color:#2e9d6b;}
-.rif-title {font-size:1.05rem; font-weight:650; line-height:1.35; margin:.1rem 0 .2rem 0;}
-.rif-sub {font-size:.8rem; opacity:.65; margin-bottom:.5rem;}
+.rif-title {font-size:1.05rem; font-weight:650; line-height:1.35; margin:.1rem 0 .2rem 0;
+             display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+             min-height:calc(1.05rem * 1.35 * 3);}
+.rif-sub {font-size:.8rem; opacity:.65; margin-bottom:.5rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .rif-row {font-size:.86rem; margin:.15rem 0;}
-.rif-problem {font-size:.84rem; opacity:.85; border-left:3px solid rgba(128,128,128,.35);
-              padding-left:.6rem; margin:.55rem 0 .4rem 0;}
+.rif-problem {font-size:.84rem; line-height:1.5; opacity:.85; border-left:3px solid rgba(128,128,128,.35);
+              padding-left:.6rem; margin:.55rem 0 .4rem 0;
+              display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+              min-height:calc(.84rem * 1.5 * 4);}
 .rif-stats {display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.8rem; margin:.4rem 0 1rem 0;}
 .rif-stat {border:1px solid rgba(128,128,128,.25); border-radius:.6rem; padding:.7rem .9rem;}
 .rif-stat-label {font-size:.75rem; opacity:.65; text-transform:uppercase; letter-spacing:.03em;}
@@ -1474,14 +1478,15 @@ def render_call_card(call: dict[str, Any]) -> None:
     problem = (rc.get("inferred_challenges") or [None])[0]
     body = (
         f'<div class="rif-chips">{"".join(chips)}</div>'
-        f'<div class="rif-title">{html.escape(str(call.get("title") or "Untitled call"))}</div>'
+        f'<div class="rif-title" title="{html.escape(str(call.get("title") or ""))}">{html.escape(str(call.get("title") or "Untitled call"))}</div>'
         f'<div class="rif-sub">{html.escape(str(call.get("call_id") or ""))} · {html.escape(str(call.get("funding_body") or ""))}</div>'
         f'<div class="rif-row"><b>Deadline</b> {html.escape(pretty_date(call.get("deadline")))}</div>'
         f'<div class="rif-row" title="{html.escape(str(call.get("funding_amount") or ""))}"><b>Budget</b> '
         f'{html.escape(pretty_budget(call.get("funding_amount")))}</div>'
     )
-    if problem:
-        body += f'<div class="rif-problem">{html.escape(str(problem))}</div>'
+    # Always reserve the problem block so cards in a row line up.
+    body += (f'<div class="rif-problem" title="{html.escape(str(problem))}">{html.escape(str(problem))}</div>'
+             if problem else '<div class="rif-problem">No problem statement extracted.</div>')
     with st.container(border=True):
         st.markdown(body, unsafe_allow_html=True)
         if call.get("eligibility"):
@@ -1538,10 +1543,12 @@ def render_open_calls() -> None:
 
     if not qualified:
         st.info("No qualified open call matches." if query.strip() else "No open call qualified in the latest scan.")
-    columns = st.columns(2, gap="medium")
-    for index, call in enumerate(qualified):
-        with columns[index % 2]:
-            render_call_card(call)
+    # Row by row, so the two cards of each row start and line up together.
+    for row_start in range(0, len(qualified), 2):
+        columns = st.columns(2, gap="medium")
+        for column, call in zip(columns, qualified[row_start:row_start + 2]):
+            with column:
+                render_call_card(call)
 
     if others:
         st.write("")
