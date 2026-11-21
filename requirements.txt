@@ -2,8 +2,12 @@ PyYAML>=6.0.0,<7.0.0
 APScheduler>=3.10.0,<4.0.0
 requests>=2.31.0,<3.0.0
 beautifulsoup4>=4.12.0,<5.0.0
-streamlit>=1.30.0,<2.0.0
+streamlit>=1.49.0,<2.0.0
 sentence-transformers>=2.2.0,<3.0.0
+# Imported directly (core/semantic_retrieval.py, core/web_collection.py); were only
+# present transitively before.
+numpy>=1.24,<3
+defusedxml>=0.7.1,<1
 pytest
 pytest-cov
 # Free/open-source adaptive scraping stack. Playwright is an optional JS fallback;

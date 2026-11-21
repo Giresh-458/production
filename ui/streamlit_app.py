@@ -169,7 +169,7 @@ def render_agent_response(response: dict[str, Any]) -> None:
     outputs = response.get("outputs", [])
     st.subheader("Outputs")
     if outputs:
-        st.dataframe(outputs, use_container_width=True)
+        st.dataframe(outputs)
     else:
         st.info("No outputs returned.")
 
@@ -266,7 +266,7 @@ def render_pipeline_result(run_root: Path) -> None:
                 domain_rows.append(item)
     if domain_rows:
         st.subheader("Funding Domain Relevance")
-        st.dataframe(domain_rows, use_container_width=True)
+        st.dataframe(domain_rows)
 
     proposals_dir = run_root / "proposals"
     proposal_files = sorted(proposals_dir.rglob("*.md")) if proposals_dir.exists() else []
@@ -304,7 +304,7 @@ def render_full_pipeline() -> None:
         source_path = st.text_input("Funding source registry", value="sources/funding_sources.yaml")
         st.info("Leave the research area on auto. The funding call is authoritative; the hint only influences ranking and never turns a closed call into an open one.")
 
-    if st.button("🔎 Discover Open Call & Run Full Pipeline", type="primary", use_container_width=True):
+    if st.button("🔎 Discover Open Call & Run Full Pipeline", type="primary", width="stretch"):
         cmd = [sys.executable, str(get_project_root() / "run_pipeline.py"), "--funding-sources", source_path, "--max-open-calls", str(int(max_calls))]
         if area_choice != "Auto-rank from funding evidence":
             cmd.extend(["--area", area_choice])
@@ -433,7 +433,7 @@ def render_run_agent() -> None:
     else:
         st.info("Configured scan mode uses the agent's configured source file.")
 
-    if st.button("Run Agent", use_container_width=True):
+    if st.button("Run Agent", width="stretch"):
         validation_errors = validate_ui_input(selected_mode, input_data)
         if validation_errors:
             for item in validation_errors:
@@ -485,7 +485,7 @@ def render_manual_input() -> None:
         mode = "manual_text"
         input_data = build_input_data_for_mode(mode, title=title, source=source, text=text)
 
-    if st.button("Process Manual Input", use_container_width=True):
+    if st.button("Process Manual Input", width="stretch"):
         validation_errors = validate_ui_input(mode, input_data)
         if validation_errors:
             for item in validation_errors:
@@ -680,7 +680,7 @@ def render_operational_views() -> None:
             pending_synthesis_queue = queues.get("pending_synthesis_queue", [])
             if pending_synthesis_queue:
                 st.subheader("Pending Synthesis Queue")
-                st.dataframe([{"path": item} for item in pending_synthesis_queue[:25]], use_container_width=True)
+                st.dataframe([{"path": item} for item in pending_synthesis_queue[:25]])
 
             render_json_expander("Raw Operational Views", operational_views)
         else:
@@ -705,11 +705,11 @@ def render_operational_views() -> None:
 
             if by_agent:
                 st.subheader("By Agent")
-                st.dataframe(flatten_dict_rows(by_agent, key_name="agent"), use_container_width=True)
+                st.dataframe(flatten_dict_rows(by_agent, key_name="agent"))
 
             if attention_queue:
                 st.subheader("Attention Queue")
-                st.dataframe(attention_queue[:25], use_container_width=True)
+                st.dataframe(attention_queue[:25])
 
             if source_registry and isinstance(source_registry, dict):
                 entries = source_registry.get("entries", [])
@@ -732,7 +732,7 @@ def render_operational_views() -> None:
 
             if entries:
                 st.subheader("Refresh Plan Entries")
-                st.dataframe(entries[:50], use_container_width=True)
+                st.dataframe(entries[:50])
             else:
                 st.info("No refresh plan entries are currently queued.")
 
@@ -752,7 +752,7 @@ def render_operational_views() -> None:
 
             if entries:
                 st.subheader("Discovery Candidates")
-                st.dataframe(entries[:50], use_container_width=True)
+                st.dataframe(entries[:50])
             else:
                 st.info("No discovery candidates found.")
 
@@ -772,7 +772,7 @@ def render_operational_views() -> None:
 
             if entries:
                 st.subheader("Review Queue")
-                st.dataframe(entries[:50], use_container_width=True)
+                st.dataframe(entries[:50])
             else:
                 st.info("No source review entries are available.")
 
@@ -794,7 +794,7 @@ def render_operational_views() -> None:
 
             if entries:
                 st.subheader("Recursive Expansion Entries")
-                st.dataframe(entries[:50], use_container_width=True)
+                st.dataframe(entries[:50])
             else:
                 st.info("No recursive expansion review entries are available yet.")
 
@@ -895,7 +895,7 @@ def render_processing_and_intelligence_views() -> None:
                 for item in filtered_records
             ]
             if preview_rows:
-                st.dataframe(preview_rows, use_container_width=True)
+                st.dataframe(preview_rows)
 
                 selected_title = st.selectbox(
                     "Inspect Record",
@@ -929,7 +929,7 @@ def render_processing_and_intelligence_views() -> None:
                 for item in filtered_clusters
             ]
             if cluster_rows:
-                st.dataframe(cluster_rows, use_container_width=True)
+                st.dataframe(cluster_rows)
                 selected_cluster_index = st.selectbox(
                     "Inspect Cluster",
                     range(len(filtered_clusters)),
@@ -939,7 +939,7 @@ def render_processing_and_intelligence_views() -> None:
                 selected_cluster = filtered_clusters[selected_cluster_index]
                 if selected_cluster.get("members"):
                     st.subheader("Cluster Members")
-                    st.dataframe(selected_cluster.get("members"), use_container_width=True)
+                    st.dataframe(selected_cluster.get("members"))
                 render_json_expander("Selected Cluster", selected_cluster)
             else:
                 st.info("No clusters matched the current filter.")
@@ -978,7 +978,7 @@ def render_processing_and_intelligence_views() -> None:
                     }
                     for item in selected_relations
                 ]
-                st.dataframe(rows, use_container_width=True)
+                st.dataframe(rows)
                 selected_relation_index = st.selectbox(
                     "Inspect Relation",
                     range(len(selected_relations)),
@@ -1016,7 +1016,7 @@ def render_processing_and_intelligence_views() -> None:
                 for item in filtered_entries
             ]
             if rows:
-                st.dataframe(rows, use_container_width=True)
+                st.dataframe(rows)
                 selected_ranking_index = st.selectbox(
                     "Inspect Ranked Entry",
                     range(len(filtered_entries)),
@@ -1047,7 +1047,7 @@ def render_processing_and_intelligence_views() -> None:
                 }
                 for item in synthesis_index
             ]
-            st.dataframe(index_rows, use_container_width=True)
+            st.dataframe(index_rows)
             selected_synthesis_index = st.selectbox(
                 "Inspect Synthesis Manifest Entry",
                 range(len(synthesis_index)),
@@ -1135,7 +1135,7 @@ def render_review_and_promotion() -> None:
                     trust_score = st.slider("Trust Score", min_value=0.0, max_value=1.0, value=float(selected_entry.get("trust_score", 0.7) or 0.7), step=0.05, key="review_trust")
                     relevance_score = st.slider("Relevance Score", min_value=0.0, max_value=1.0, value=float(selected_entry.get("relevance_score", 0.7) or 0.7), step=0.05, key="review_relevance")
 
-                if st.button("Apply Source Review Action", use_container_width=True):
+                if st.button("Apply Source Review Action", width="stretch"):
                     if not rationale.strip():
                         st.warning("Please enter a rationale before applying a review action.")
                     else:
@@ -1214,7 +1214,7 @@ def render_review_and_promotion() -> None:
             )
 
             action_columns = st.columns(2)
-            if action_columns[0].button("Save Promotion Override", use_container_width=True):
+            if action_columns[0].button("Save Promotion Override", width="stretch"):
                 try:
                     set_promotion_override(
                         synthesized_file=synthesized_file,
@@ -1227,7 +1227,7 @@ def render_review_and_promotion() -> None:
                 except Exception as exc:
                     st.error(f"Unable to save promotion override: {exc}")
 
-            if action_columns[1].button("Clear Promotion Override", use_container_width=True):
+            if action_columns[1].button("Clear Promotion Override", width="stretch"):
                 try:
                     clear_promotion_override(synthesized_file=synthesized_file)
                     refresh_repo_views()
@@ -1238,7 +1238,7 @@ def render_review_and_promotion() -> None:
 
             if override_entries:
                 st.subheader("Existing Promotion Overrides")
-                st.dataframe(override_entries, use_container_width=True)
+                st.dataframe(override_entries)
                 render_json_expander("Raw Promotion Overrides", promotion_overrides)
 
 

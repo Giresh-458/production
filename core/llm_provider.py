@@ -91,6 +91,32 @@ def _send_request(payload: dict[str, Any], endpoint: str, timeout: int) -> dict[
 
     return data
 
+def build_generate_payload(prompt: str, selected_model: str) -> dict:
+    """Ollama /api/generate payload with reproducible sampling by default.
+
+    The pipeline uses the LLM for yes/no review decisions; default sampling
+    changed the decision on identical evidence between runs (observed live).
+    Ollama API docs, "Reproducible outputs": options {"seed": N, "temperature": 0}.
+    Override with RIF_LLM_TEMPERATURE / RIF_LLM_SEED.
+    """
+    import os
+
+    try:
+        temperature = float(os.environ.get("RIF_LLM_TEMPERATURE", "0"))
+    except ValueError:
+        temperature = 0.0
+    try:
+        seed = int(os.environ.get("RIF_LLM_SEED", "42"))
+    except ValueError:
+        seed = 42
+    return {
+        "model": selected_model,
+        "prompt": prompt.strip(),
+        "stream": False,
+        "options": {"temperature": temperature, "seed": seed},
+    }
+
+
 def generate(prompt: str, model: str | None = None) -> str:
     """Generate text using the configured local Ollama model."""
     _configure_logging()
@@ -100,11 +126,7 @@ def generate(prompt: str, model: str | None = None) -> str:
 
     settings = _settings()
     selected_model = model or settings["model"]
-    payload = {
-        "model": selected_model,
-        "prompt": prompt.strip(),
-        "stream": False,
-    }
+    payload = build_generate_payload(prompt, selected_model)
     # Qwen3 may otherwise spend the response budget on thinking tokens,
     # leaving the final response empty. Other model families keep their
     # existing request behavior.

@@ -268,3 +268,23 @@ def test_semantic_scholar_uses_one_focused_query_and_documented_key_header(monke
     lit.fetch_semanticscholar_entries("Unscoped")
     assert "query=Living%20labs%20for%20ecosystem%20restoration&" in seen["url"]
     assert seen["headers"] == {"x-api-key": "s2key"}
+
+
+def test_single_source_synthesis_cannot_claim_high_confidence():
+    """Live: one source + local LLM 'supported' review produced 'Confidence: High'."""
+    from agents.synthesis_agent import cap_confidence_by_evidence
+
+    assert cap_confidence_by_evidence("High", 1) == "Low"
+    assert cap_confidence_by_evidence("High", 2) == "Medium"
+    assert cap_confidence_by_evidence("High", 3) == "High"
+    assert cap_confidence_by_evidence("Low", 5) == "Low"
+
+
+def test_llm_requests_are_reproducible_by_default(monkeypatch):
+    """Live: identical evidence got different LLM gap decisions between runs."""
+    from core.llm_provider import build_generate_payload
+
+    monkeypatch.delenv("RIF_LLM_TEMPERATURE", raising=False)
+    monkeypatch.delenv("RIF_LLM_SEED", raising=False)
+    payload = build_generate_payload(" Is this a problem? ", "qwen3.5:4b")
+    assert payload["options"] == {"temperature": 0.0, "seed": 42} and payload["prompt"] == "Is this a problem?"

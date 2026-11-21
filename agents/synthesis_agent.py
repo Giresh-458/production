@@ -529,6 +529,13 @@ def build_cross_cluster_groups(clusters: list[dict[str, Any]], max_groups: int =
     groups.extend(_build_cross_cluster_group([cluster]) for cluster in remaining)
     return groups
 
+def cap_confidence_by_evidence(label: str, independent_units: int) -> str:
+    """Cap a confidence label by independent evidence: 1 unit -> Low, 2 -> Medium."""
+    order = {"Low": 0, "Medium": 1, "High": 2}
+    ceiling = "Low" if independent_units <= 1 else "Medium" if independent_units == 2 else "High"
+    return ceiling if order.get(label, 0) > order[ceiling] else label
+
+
 def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, note: str | None = None) -> dict[str, Any]:
     evidence_links = [item for item in cluster.get("evidence_links", []) if cleaned_text(str(item))]
     if not evidence_links:
@@ -619,6 +626,10 @@ def build_payload_from_cluster(cluster: dict[str, Any], outputs_root: Path, *, n
         ("High" if synthesis_conf >= 0.80 else "Medium" if synthesis_conf >= 0.60 else "Low")
         if gap_supported else "Low"
     )
+    # The amount of independent evidence caps confidence; a model's self-reported
+    # confidence cannot exceed it (observed live: a single-source gap accepted by
+    # the local LLM review was labelled "Confidence: High").
+    confidence = cap_confidence_by_evidence(confidence, int(evidence_assessment.get("independent_evidence_units") or 0))
     # Feasibility is not assessed by this agent; an evidence count is not feasibility.
     feasibility = "Unassessed"
     provenance = build_provenance(
