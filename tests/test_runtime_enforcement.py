@@ -48,8 +48,12 @@ def test_global_fallback():
     ctx.begin_source()
     current_crawl_context.set(ctx)
     
-    # Global fallback kicks in at 30 pages
+    # Global fallback kicks in at 30 pages. Each source is still guaranteed its
+    # entry page (otherwise sources late in a file were never fetched); the global
+    # limit applies from the source's next page on.
     ctx.pages_fetched = 30
+    assert ctx.check_limits(source_max_pages=None) == False
+    ctx.add_page(0)
     assert ctx.check_limits(source_max_pages=None) == True
     assert "global_max_pages" in ctx.stop_reasons
     assert "source_max_pages" not in ctx.stop_reasons

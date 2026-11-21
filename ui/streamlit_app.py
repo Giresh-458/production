@@ -1590,10 +1590,11 @@ def render_advanced() -> None:
 _AUTO_AGENT = "auto"
 # Session keys saved to disk so a browser reload keeps the user's progress.
 _PERSIST_KEYS = ("as_candidates", "as_query", "as_pick", "as_inspection", "as_trace", "as_agent_override",
-                 "as_scan", "as_review", "as_done", "as_form_query", "as_form_agent", "as_form_domains", "as_form_focus")
+                 "as_scan", "as_review", "as_done", "as_form_query", "as_form_agent", "as_form_domains", "as_form_focus",
+                 "as_last_added", "as_test_results")
 _PERSIST_PREFIXES = ("as_sel_", "as_agent_")
 _FLOW_KEYS = ("as_candidates", "as_pick", "as_inspection", "as_query", "as_done", "as_trace", "as_agent_override",
-              "as_scan", "as_review")
+              "as_scan", "as_review", "as_last_added", "as_test_results", "as_confirm_remove")
 
 
 def _url_id(url: str) -> str:
@@ -1691,7 +1692,9 @@ def _render_site_scan(url: str, pick: dict[str, Any], auto: bool) -> None:
         st.warning(" ".join(notes) or "The page could not be read.")
         return
     if given.agent:
-        st.markdown(f"**The URL you gave** fits **{us.AGENT_LABELS[given.agent]}** (evidence: {', '.join(given.evidence[:4])}).")
+        also = [us.AGENT_LABELS[a] for a in given.alternatives]
+        st.markdown(f"**The URL you gave** fits **{us.AGENT_LABELS[given.agent]}** (evidence: {', '.join(given.evidence[:4])})"
+                    + (f" and also fits: **{', '.join(also)}**." if also else "."))
     else:
         st.markdown("**The URL you gave fits no agent.**")
     discarded = add_source_state.load_discarded()
@@ -1758,7 +1761,7 @@ def _render_site_scan(url: str, pick: dict[str, Any], auto: bool) -> None:
         st.caption(f"Domains: {', '.join(pick['domains'])}")
         b1, b2 = st.columns(2)
         if b1.button("Confirm and add", type="primary", width="stretch"):
-            results = []
+            results, added = [], []
             for item in review:
                 if item["url"] in blocked:
                     results.append(f"Skipped {item['url']}")
@@ -1768,12 +1771,14 @@ def _render_site_scan(url: str, pick: dict[str, Any], auto: bool) -> None:
                     us.add_user_source(item["agent"], name, item["url"], pick["domains"], pick["focus"])
                     us.sync_registry_for(item["agent"], item["url"])
                     results.append(f"Added \"{name}\" to the {us.AGENT_LABELS[item['agent']]} agent")
+                    added.append({"agent": item["agent"], "url": item["url"], "name": name})
                 except us.UserSourceError as exc:
                     results.append(f"Not added {item['url']}: {exc}")
             _reset_add_source()
             added_any = any(r.startswith("Added") for r in results)
-            state["as_done"] = ". ".join(results) + (". Added sources are collected on the next run."
+            state["as_done"] = ". ".join(results) + (". Added sources are collected on every run, like the built-in sources."
                                                      if added_any else ". Nothing was added.")
+            state["as_last_added"] = added
             _rerun()
         if b2.button("Back", width="stretch"):
             state.pop("as_review", None)
@@ -1784,6 +1789,15 @@ def render_add_source() -> None:
     from core import user_sources as us
 
     _restore_add_source()
+    try:
+        restored = us.ensure_user_sources()
+        for row in restored:
+            us.sync_registry_for(row["agent"], row["url"])
+        if restored:
+            st.info(f"Restored {len(restored)} added source(s) that were missing from the source files "
+                    "(for example after a git checkout): " + "; ".join(r["url"] for r in restored))
+    except Exception as exc:
+        st.caption(f"Added sources could not be checked ({type(exc).__name__}).")
     _render_add_source_body()
     _persist_add_source()
 
@@ -1796,10 +1810,22 @@ def render_add_source() -> None:
         c1, c2 = st.columns([6, 1])
         c1.markdown(f"**{row['name']}** · {us.AGENT_LABELS[row['agent']]} · added {row.get('added_at') or '—'}  \n{row['url']}")
         if c2.button("Remove", key=f"as_rm_{index}", width="stretch"):
-            us.remove_user_source(row["agent"], row["name"])
-            us.sync_registry_for(row["agent"], row["url"])
-            st.session_state.pop("as_done", None)
+            st.session_state["as_confirm_remove"] = {"agent": row["agent"], "name": row["name"], "url": row["url"]}
             _rerun()
+        pending = st.session_state.get("as_confirm_remove")
+        if pending and pending["url"] == row["url"] and pending["agent"] == row["agent"]:
+            st.warning(f"Remove \"{row['name']}\" from the {us.AGENT_LABELS[row['agent']]} agent? "
+                       "It will no longer be collected and will not be restored.")
+            k1, k2 = st.columns(2)
+            if k1.button("Yes, remove it", key=f"as_rm_yes_{index}", type="primary", width="stretch"):
+                us.remove_user_source(row["agent"], row["name"])
+                us.sync_registry_for(row["agent"], row["url"])
+                st.session_state.pop("as_confirm_remove", None)
+                st.session_state.pop("as_done", None)
+                _rerun()
+            if k2.button("Keep it", key=f"as_rm_no_{index}", width="stretch"):
+                st.session_state.pop("as_confirm_remove", None)
+                _rerun()
     if rows:
         st.caption("Added sources are saved in the agents' files under sources/. "
                    "Commit them to keep them in git and to use them in GitHub CI.")
@@ -1815,6 +1841,30 @@ def _render_add_source_body() -> None:
     state = st.session_state
     if state.get("as_done"):
         st.success(state["as_done"])
+    last = state.get("as_last_added") or []
+    if last:
+        if st.button(f"Test collection now ({len(last)} source{'s' if len(last) != 1 else ''})",
+                     help="Runs each agent's own collection code on the new source, exactly as a pipeline run does."):
+            results = []
+            for item in last:
+                with st.spinner(f"Collecting {item['url']} with the {us.AGENT_LABELS[item['agent']]} agent..."):
+                    results.append({**item, "result": us.test_collect(item["agent"], item["url"])})
+            state["as_test_results"] = results
+            _rerun()
+    for item in state.get("as_test_results") or []:
+        r = item["result"]
+        label = f"{us.AGENT_LABELS[item['agent']]} agent · {item['url']}"
+        if not r.get("ok"):
+            st.error(f"{label}: collection failed — {r.get('error')}")
+            continue
+        summary = (f"{label}: fetched {r['pages']} page(s), produced {r['documents']} document(s)"
+                   + (f", status {r['status']}" if r.get("status") else "") + f" in {r['seconds']} s.")
+        (st.success if r["documents"] else st.warning)(summary + ("" if r["documents"] else
+            " No document passed the agent's relevance filters for the current research context."))
+        if r.get("titles"):
+            st.caption("Documents: " + "; ".join(t for t in r["titles"] if t))
+        for message in (r.get("warnings") or []) + (r.get("errors") or []):
+            st.caption(f"Note: {message}")
 
     # ---- step 1: what and where
     agent_options = [_AUTO_AGENT] + list(us.AGENT_FILES)
@@ -1864,6 +1914,7 @@ def _render_add_source_body() -> None:
                 st.error("Pick at least one research domain first.")
             else:
                 state["as_pick"] = {"agent": agent, "domains": domains, "focus": focus,
+                                    "by_name": bool(candidates[pick].get("wikidata")),
                                     "name": candidates[pick]["label"] if candidates[pick].get("wikidata") else ""}
                 with st.spinner("Checking the page and which agent it suits..."):
                     _inspect_into_state(candidates[pick]["url"], None if agent == _AUTO_AGENT else agent, domains)
@@ -1891,10 +1942,11 @@ def _render_add_source_body() -> None:
         robots = {True: "allowed", False: "not allowed"}.get(inspection.robots_allowed, "unknown")
         st.markdown(f"**robots.txt:** {robots} · **HTTP status:** {inspection.status or '—'}")
 
-    _render_site_scan(url, pick, auto=pick["agent"] == _AUTO_AGENT)
+    chosen = state.get("as_agent_override") or pick["agent"]
+    not_fit = chosen != _AUTO_AGENT and not (fits and fits_agent(fits, chosen))
+    _render_site_scan(url, pick, auto=pick["agent"] == _AUTO_AGENT or bool(pick.get("by_name")) or not_fit)
 
     st.markdown("#### Or add just this page")
-    chosen = state.get("as_agent_override") or pick["agent"]
     if chosen == _AUTO_AGENT:
         if suggested:
             st.info("The app suggests the agent this page is most useful for. You can change it.")
@@ -1913,13 +1965,16 @@ def _render_add_source_body() -> None:
     else:
         own = next((f for f in fits if f.agent == chosen), None)
         if fits and fits_agent(fits, chosen):
-            st.success(f"This page fits the {us.AGENT_LABELS[chosen]} agent — evidence: {_evidence_text(own)}.")
+            st.success(f"This page fits the {us.AGENT_LABELS[chosen]} agent — evidence: {_evidence_text(own)}. "
+                       "Once added, the agent collects it on every run exactly like its built-in sources.")
         elif fits:
             other = suggested[0] if suggested and suggested[0].agent != chosen else None
             message = f"This page does not look like a {us.AGENT_LABELS[chosen]} source"
             message += f" (evidence: {_evidence_text(own)})." if own and own.evidence else "."
             if other:
                 message += f" It looks most like a {us.AGENT_LABELS[other.agent]} source ({_evidence_text(other, 4)})."
+            else:
+                message += " No agent is a good fit for this URL itself; see the pages on this site above."
             st.warning(message)
             b1, b2 = st.columns(2)
             if b1.button(f"Find a better page for {us.AGENT_LABELS[chosen]} on this site", width="stretch"):
@@ -1973,7 +2028,8 @@ def _render_add_source_body() -> None:
             us.sync_registry_for(chosen, url)
             _reset_add_source()
             state["as_done"] = (f"Added \"{name.strip()}\" to the {us.AGENT_LABELS[chosen]} agent "
-                                f"({path.name}). It will be collected on the next run.")
+                                f"({path.name}). It is collected on every run, like the built-in sources.")
+            state["as_last_added"] = [{"agent": chosen, "url": url, "name": name.strip()}]
             _rerun()
         except us.UserSourceError as exc:
             st.error(str(exc))

@@ -232,8 +232,9 @@ def _q(value: str) -> str:
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _entry_lines(agent: str, name: str, url: str, domains: list[str], focus: str, indent: str) -> list[str]:
-    today = datetime.now(UTC).date().isoformat()
+def _entry_lines(agent: str, name: str, url: str, domains: list[str], focus: str, indent: str,
+                 added_at: str | None = None) -> list[str]:
+    today = added_at or datetime.now(UTC).date().isoformat()
     host = (urlsplit(url).hostname or "").removeprefix("www.")
     lines = [f"{indent}- name: {_q(name)}"]
     inner = indent + "  "
@@ -276,7 +277,7 @@ def _insert_into_section(text: str, section: str, entry_lines: list[str]) -> str
 
 
 def add_user_source(agent: str, name: str, url: str, domains: list[str], focus: str = "",
-                    sources_dir: Path | None = None) -> Path:
+                    sources_dir: Path | None = None, *, _record: bool = True, _added_at: str | None = None) -> Path:
     if agent not in AGENT_FILES:
         raise UserSourceError(f"Unknown agent: {agent}")
     domains = [d for d in domains if d in DOMAINS]
@@ -294,10 +295,10 @@ def add_user_source(agent: str, name: str, url: str, domains: list[str], focus: 
     if any(str(e.get("name", "")).casefold() == name.casefold() for e in existing):
         raise UserSourceError(f"A source named {name!r} already exists for this agent.")
     if layout == "list":
-        updated = original.rstrip("\n") + "\n" + "\n".join(_entry_lines(agent, name, url, domains, focus, "")) + "\n"
+        updated = original.rstrip("\n") + "\n" + "\n".join(_entry_lines(agent, name, url, domains, focus, "", _added_at)) + "\n"
     else:
         section = COMPANY_SECTION[domains[0]] if layout == "domain_sections" else USER_SECTION
-        updated = _insert_into_section(original, section, _entry_lines(agent, name, url, domains, focus, "  "))
+        updated = _insert_into_section(original, section, _entry_lines(agent, name, url, domains, focus, "  ", _added_at))
     path.write_text(updated, encoding="utf-8")
     try:
         reloaded = list(_iter_entries(_load(path)))
@@ -307,6 +308,9 @@ def add_user_source(agent: str, name: str, url: str, domains: list[str], focus: 
     except Exception:
         path.write_text(original, encoding="utf-8")  # never leave a broken config behind
         raise
+    if _record and sources_dir is None:
+        _ledger_add({"agent": agent, "name": name, "url": url, "domains": domains, "focus": focus,
+                     "added_at": _added_at or datetime.now(UTC).date().isoformat()})
     return path
 
 
@@ -357,6 +361,12 @@ def remove_user_source(agent: str, name: str, sources_dir: Path | None = None) -
                 continue
             cleaned.append(item)
         path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+        if sources_dir is None:
+            import textwrap
+
+            parsed = yaml.safe_load(textwrap.dedent(block)) or []
+            removed_url = (parsed[0] if isinstance(parsed, list) and parsed else {}).get("url", "")
+            _ledger_remove(agent, removed_url)
         return
     raise UserSourceError(f"No source named {name!r} for this agent.")
 
@@ -381,6 +391,74 @@ def forget_in_registry(agent: str, url: str, registry_path: Path | None = None) 
     return len(entries) - len(kept)
 
 
+# ---------------------------------------------------------------- permanence ledger
+# User-added sources live in the agents' tracked YAML files so agents treat them
+# exactly like curated sources. A git checkout/stash/pull can silently revert those
+# files, so every approved addition is also recorded here (outputs/ is git-ignored)
+# and restored before agents run. Only an explicit removal in the app deletes it.
+def _ledger_path() -> Path:
+    import os
+
+    return Path(os.environ.get("RIF_USER_SOURCES_LEDGER", PROJECT_ROOT / "outputs" / "workflow" / "user_sources_ledger.json"))
+
+
+def _read_ledger() -> list[dict[str, Any]]:
+    import json
+
+    try:
+        data = json.loads(_ledger_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _write_ledger(rows: list[dict[str, Any]]) -> None:
+    import json
+    import os
+
+    path = _ledger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _ledger_add(row: dict[str, Any]) -> None:
+    rows = [r for r in _read_ledger() if not (r.get("agent") == row["agent"] and _url_key(r.get("url")) == _url_key(row["url"]))]
+    _write_ledger(rows + [row])
+
+
+def _ledger_remove(agent: str, url: str) -> None:
+    rows = _read_ledger()
+    kept = [r for r in rows if not (r.get("agent") == agent and _url_key(r.get("url")) == _url_key(url))]
+    if len(kept) != len(rows):
+        _write_ledger(kept)
+
+
+def ensure_user_sources(sources_dir: Path | None = None) -> list[dict[str, Any]]:
+    """Re-add ledger sources that are missing from their agent's file. Returns what was restored."""
+    restored = []
+    for row in _read_ledger():
+        agent = row.get("agent")
+        if agent not in AGENT_FILES:
+            continue
+        fname, _, _ = AGENT_FILES[agent]
+        path = (sources_dir or SOURCES_DIR) / fname
+        try:
+            present = any(_url_key(e.get("url")) == _url_key(row.get("url")) for e in _iter_entries(_load(path)))
+        except Exception:
+            continue
+        if present:
+            continue
+        try:
+            add_user_source(agent, row["name"], row["url"], row.get("domains") or [], row.get("focus", ""),
+                            sources_dir=sources_dir, _record=False, _added_at=row.get("added_at"))
+            restored.append(row)
+        except Exception:
+            continue
+    return restored
+
+
 def sync_registry_for(agent: str, url: str | None = None) -> None:
     """Refresh the shared source registry for one agent (project tool).
 
@@ -392,3 +470,61 @@ def sync_registry_for(agent: str, url: str | None = None) -> None:
     if url:
         forget_in_registry(agent, url)
     sync_source_registry(agent_filter=agent)
+
+
+# ---------------------------------------------------------------- immediate test collection
+def test_collect(agent: str, url: str, sources_dir: Path | None = None, timeout_seconds: int = 240) -> dict[str, Any]:
+    """Run the agent's own collection code on one configured source, as a pipeline run would.
+
+    The entry is copied from the agent's real source file into a temporary file with
+    only that entry, so the agent uses the same loader, crawler, limits and filters
+    as for its built-in sources. Returns what actually happened; nothing is saved.
+    """
+    import importlib
+    import tempfile
+    import time
+
+    from core.crawl_context import CrawlContext, current_crawl_context
+
+    fname, root_key, layout = AGENT_FILES[agent]
+    data = _load((sources_dir or SOURCES_DIR) / fname)
+    entry = next((e for e in _iter_entries(data) if _url_key(e.get("url")) == _url_key(url)), None)
+    if entry is None:
+        return {"ok": False, "error": "The source is not in the agent's file."}
+    section = "user_added"
+    if layout == "domain_sections":
+        section = next((k for k, v in (data.get(root_key) or {}).items() if isinstance(v, list) and entry in v), "rwa")
+    payload = {root_key: [entry]} if layout == "list" else {root_key: {section: [entry]}}
+    tmp = Path(tempfile.mkdtemp()) / fname
+    tmp.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    ctx = CrawlContext(deadline=time.time() + timeout_seconds)
+    token = current_crawl_context.set(ctx)
+    warnings: list[str] = []
+    started = time.time()
+    try:
+        if agent == "funding":
+            from agents.funding_agent import load_sources
+            from agents.funding_collector import collect_auto_sources
+
+            results = []
+            for item in collect_auto_sources(load_sources(tmp), None, warnings=warnings, is_test_mode=False):
+                results.append(item[0] if isinstance(item, tuple) else item)
+            res = results[0] if results else None
+            titles = [getattr(o[0] if isinstance(o, tuple) else o, "title", "") for o in (getattr(res, "opportunities", None) or [])]
+            return {"ok": True, "pages": getattr(res, "pages_fetched", ctx.pages_fetched), "documents": len(titles),
+                    "titles": titles[:8], "status": getattr(res, "final_status", ""), "warnings": warnings[:5],
+                    "errors": [str(e)[:200] for e in (getattr(res, "errors", None) or [])][:3],
+                    "seconds": round(time.time() - started)}
+        module = importlib.import_module({"lab": "agents.lab_agent"}.get(agent, f"agents.{agent}_agent"))
+        if agent == "lab":
+            docs = module.build_auto_documents(tmp, tmp.parent / "labs_memory.db", None, warnings=warnings)
+        else:
+            docs = module.build_auto_documents(tmp, None, warnings=warnings)
+        titles = [str(getattr(d, "title", "") or getattr(d, "name", "") or getattr(d, "incident_name", "")) for d in docs]
+        return {"ok": True, "pages": ctx.pages_fetched, "documents": len(docs), "titles": titles[:8], "status": "",
+                "warnings": warnings[:5], "errors": [], "seconds": round(time.time() - started)}
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}", "pages": ctx.pages_fetched}
+    finally:
+        current_crawl_context.reset(token)

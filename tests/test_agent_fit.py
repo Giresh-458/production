@@ -29,7 +29,7 @@ def test_open_source_only_scores_on_code_hosts():
 
 
 def test_article_pages_are_penalised_for_programme_agents():
-    text = "Grants program and grant application lessons. Funding."
+    text = "Grants program and grant application lessons. Funding. Apply for funding. Request for proposals."
     article = {f.agent: f.score for f in score_agents("https://gitcoin.co/research/why-grants", "Why grants", text)}
     programme = {f.agent: f.score for f in score_agents("https://gitcoin.co/grants", "Grants", text)}
     assert programme["funding"] > article["funding"]
@@ -99,3 +99,11 @@ def test_brand_names_and_partial_words_do_not_score():
     assert fits["failure"] == 0
     invest = {f.agent: f.evidence for f in score_agents("https://ukri.org/x", "UKRI", "We fund innovation across the UK.")}
     assert not any("fund i" in e for e in invest["investment"])
+
+
+def test_articles_and_case_studies_are_never_programme_suggestions():
+    text = "Grants program. Grant application. Apply for funding. Request for proposals. Hackathon. Prize pool."
+    for path in ("/research/why-grants", "/case-studies/gg24-retrospective", "/blog/2026/11/rounds"):
+        fits = {f.agent: f.score for f in score_agents(f"https://gitcoin.co{path}", "Article", text)}
+        assert fits["funding"] == 0 and fits["hackathon"] == 0, path
+    assert {f.agent: f.score for f in score_agents("https://gitcoin.co/grants", "Grants", text)}["funding"] > 8

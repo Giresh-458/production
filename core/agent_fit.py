@@ -95,7 +95,8 @@ AGENT_SIGNALS: dict[str, dict[str, tuple[str, ...]]] = {
 AGENTS = tuple(AGENT_SIGNALS)
 _CODE_HOSTS = ("github.com", "gitlab.com", "codeberg.org")
 _PROGRAMME_AGENTS = {"funding", "hackathon"}
-_ARTICLE_PATH = re.compile(r"/(?:blog|news|research|insights|posts?|articles?|stories|press|media|writing)/|/20\d\d/\d\d/", re.I)
+_ARTICLE_PATH = re.compile(r"/(?:blog|news|research|insights|posts?|articles?|stories|press|media|writing|case-studies|"
+                           r"case_studies|retrospectives?|updates)(?:/|$)|/20\d\d/\d\d/", re.I)
 _SKIP_LINK = re.compile(r"^(?:mailto:|tel:|javascript:)|\.(?:png|jpe?g|gif|svg|webp|ico|css|js|zip|gz|mp4|mp3|woff2?)(?:[?#].*)?$", re.I)
 _LOGIN_PATH = re.compile(r"/(?:login|signin|sign-in|signup|sign-up|register|cart|account|privacy|cookie|terms)\b", re.I)
 
@@ -141,9 +142,9 @@ def score_agents(url: str, title: str = "", text: str = "") -> list[AgentFit]:
             score += 4
             evidence.append(f"URL path: {hits[0]}")
         if agent in _PROGRAMME_AGENTS and _ARTICLE_PATH.search(path) and score > 0:
-            # Calls and hackathons are programme pages; articles only discuss them.
-            score = max(0.0, score - 6)
-            evidence.append("article page (penalised)")
+            # Calls and hackathons are programme pages; articles and case studies only
+            # discuss them, so they are never suggested as funding/hackathon sources.
+            score, evidence = 0.0, ["article or case-study page, not a programme page"]
         if agent == "opensource":
             if any(host == h or host.endswith("." + h) for h in _CODE_HOSTS):
                 score += 10
@@ -170,8 +171,12 @@ def fits_agent(fits: list[AgentFit], agent: str, *, min_score: float = 8.0, min_
     """True when `agent` scores well in absolute terms and is close to the best agent."""
     by_agent = {fit.agent: fit for fit in fits}
     best = max((fit.score for fit in fits), default=0.0)
-    own = by_agent.get(agent).score if agent in by_agent else 0.0
-    return own >= min_score and best > 0 and own >= min_share * best
+    fit = by_agent.get(agent)
+    own = fit.score if fit else 0.0
+    # Common words alone (fund, research, data, ...) are not enough: a fit needs at least one
+    # agent-specific phrase (shown quoted in the evidence) or, for open source, a code host.
+    specific = bool(fit) and any(e.startswith('"') or e.startswith("code host") for e in fit.evidence)
+    return specific and own >= min_score and best > 0 and own >= min_share * best
 
 
 @dataclass

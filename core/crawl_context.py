@@ -41,12 +41,15 @@ class CrawlContext:
     # Per-source tracking (reset for each source)
     source_pages_fetched: int = 0
     source_documents_collected: int = 0
+    # Set by begin_source(): the current source has not fetched its first page yet.
+    source_entry_pending: bool = False
     source_start_time: float = field(default_factory=time.time)
     
     lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     
     def begin_source(self):
         with self.lock:
+            self.source_entry_pending = True
             self.source_pages_fetched = 0
             self.source_documents_collected = 0
             self.source_start_time = time.time()
@@ -65,19 +68,27 @@ class CrawlContext:
                 self.stop_reasons.add("deadline")
                 return True
                 
-            # Global limits
-            if now - self.start_time >= GLOBAL_MAX_SECONDS:
-                self.stop_reasons.add("global_max_seconds")
-                return True
-            if self.pages_fetched >= GLOBAL_MAX_PAGES:
-                self.stop_reasons.add("global_max_pages")
-                return True
-            if self.documents_collected >= GLOBAL_MAX_DOCUMENTS:
-                self.stop_reasons.add("global_max_documents")
-                return True
-            if self.bytes_downloaded >= GLOBAL_MAX_BYTES:
-                self.stop_reasons.add("global_max_bytes")
-                return True
+            # Every configured source is guaranteed its entry page. The run-wide
+            # page/document/time budget then applies to deeper pages only.
+            # Live audit 2026-11-21: one context spans a whole agent run, and 9 of 11
+            # collectors hit global_max_pages; e.g. 12 of 16 investment sources
+            # were never fetched because the first three used the whole budget.
+            # The hard deadline above still applies.
+            entry_page = self.source_entry_pending and self.source_pages_fetched == 0
+            if not entry_page:
+                # Global limits
+                if now - self.start_time >= GLOBAL_MAX_SECONDS:
+                    self.stop_reasons.add("global_max_seconds")
+                    return True
+                if self.pages_fetched >= GLOBAL_MAX_PAGES:
+                    self.stop_reasons.add("global_max_pages")
+                    return True
+                if self.documents_collected >= GLOBAL_MAX_DOCUMENTS:
+                    self.stop_reasons.add("global_max_documents")
+                    return True
+                if self.bytes_downloaded >= GLOBAL_MAX_BYTES:
+                    self.stop_reasons.add("global_max_bytes")
+                    return True
                 
             # Source limits (min of source config and global default)
             effective_pages = min(source_max_pages or GLOBAL_MAX_PAGES, GLOBAL_MAX_PAGES)

@@ -144,6 +144,15 @@ def run_registered_agent(
     normalized = (agent_name or "").strip().lower()
     payload = input_data or {}
     spec = AGENT_REGISTRY.get(normalized)
+    try:
+        # User-added sources are permanent until the user removes them: restore any that
+        # a git checkout/stash removed from the tracked source files.
+        from core.user_sources import ensure_user_sources, sync_registry_for
+
+        for row in ensure_user_sources():
+            sync_registry_for(row["agent"], row["url"])
+    except Exception:  # never block an agent run on this
+        pass
 
     if spec is None:
         return create_error_response(

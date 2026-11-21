@@ -169,3 +169,47 @@ def test_removed_then_readded_source_is_active_again(sources_dir, tmp_path):
     us.add_user_source("funding", name, url, ["ESG"], sources_dir=sources_dir)
     sync()
     assert rows() == ["active"]
+
+
+def test_ledger_restores_sources_a_git_checkout_removed_and_respects_user_removal(tmp_path, monkeypatch):
+    """User-added sources are permanent until the user removes them in the app."""
+    import shutil
+
+    sources = tmp_path / "live_sources"
+    shutil.copytree(PROJECT_SOURCES, sources)
+    monkeypatch.setattr(us, "SOURCES_DIR", sources)
+    monkeypatch.setenv("RIF_USER_SOURCES_LEDGER", str(tmp_path / "ledger.json"))
+    pristine = (sources / "funding_sources.yaml").read_text(encoding="utf-8")
+
+    us.add_user_source("funding", "Example Grants", "https://example.org/grants", ["ESG"])
+    assert any(r["url"] == "https://example.org/grants" for r in us.list_user_sources(sources))
+
+    # simulate `git checkout -- sources/` wiping the uncommitted addition
+    (sources / "funding_sources.yaml").write_text(pristine, encoding="utf-8")
+    assert not us.list_user_sources(sources)
+    restored = us.ensure_user_sources()
+    assert [r["url"] for r in restored] == ["https://example.org/grants"]
+    assert [r["url"] for r in us.list_user_sources(sources)] == ["https://example.org/grants"]
+    assert us.ensure_user_sources() == []  # idempotent
+
+    # an explicit removal by the user is final
+    us.remove_user_source("funding", "Example Grants")
+    assert us.ensure_user_sources() == []
+    assert not us.list_user_sources(sources)
+
+
+def test_crawl_budget_guarantees_each_source_its_entry_page():
+    from core.crawl_context import GLOBAL_MAX_PAGES, CrawlContext
+
+    ctx = CrawlContext()
+    ctx.pages_fetched = GLOBAL_MAX_PAGES  # run-wide budget already used by earlier sources
+    ctx.begin_source()
+    assert ctx.check_limits() is False  # the next source still gets its entry page
+    ctx.add_page(0)
+    assert ctx.check_limits() is True  # deeper pages share the exhausted budget
+    assert "global_max_pages" in ctx.stop_reasons
+    import time
+
+    late = CrawlContext(deadline=time.time() - 1)
+    late.begin_source()
+    assert late.check_limits() is True  # the hard deadline is never exempt
