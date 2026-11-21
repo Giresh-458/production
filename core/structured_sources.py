@@ -4,6 +4,7 @@ import json
 import os, re, time
 from dataclasses import dataclass
 from typing import Any, Optional
+from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from core.http_client import fetch_json, post_json, post_multipart_json, get_response
@@ -126,6 +127,143 @@ def _sec(url: str) -> StructuredResult | None:
     for x in items[:50]: lines.append(f"Company: {x.get('title','')} | ticker {x.get('ticker','')} | CIK {x.get('cik_str','')}")
     return StructuredResult(_q('\n'.join(lines)),'https://www.sec.gov/files/company_tickers.json','SEC EDGAR API',{'api':'sec','authenticated':False})
 
+
+
+# ---------------------------------------------------------------- official feeds / open data
+# Used when a site's HTML pages answer automated clients with an anti-bot challenge
+# but the publisher offers an official machine-readable route (live audit 2026-11-21).
+_FEED_PATH = re.compile(r"(?:\.rss|\.atom|/feed/?|/rss/?)$", re.IGNORECASE)
+
+
+def _strip_html(value: str) -> str:
+    return _q(re.sub(r"<[^>]+>", " ", value or ""))
+
+
+def _rss(url: str, limit: int = 30) -> StructuredResult | None:
+    """Official RSS/Atom feed of a publisher (e.g. carbonmarketwatch.org/feed/, sec.gov/*.rss)."""
+    if not _FEED_PATH.search(urlparse(url).path or ""):
+        return None
+    from defusedxml import ElementTree as ET
+
+    from core.robots_policy import check_robots
+
+    allowed, reason, _delay = check_robots(url)
+    if not allowed:
+        raise PermissionError(f"robots.txt: {reason}")
+    response = get_response(url, headers={"Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.5"},
+                            timeout=(10.0, 30.0), retries=1)
+    try:
+        root = ET.fromstring(response.content)
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+    atom = "{http://www.w3.org/2005/Atom}"
+    channel = root.find("channel")
+    feed_title = _q((channel.findtext("title") if channel is not None else root.findtext(f"{atom}title")) or "")
+    items = root.findall("./channel/item") or root.findall(f"{atom}entry")
+    lines = []
+    for item in items[:limit]:
+        title = _q(item.findtext("title") or item.findtext(f"{atom}title") or "")
+        link = _q(item.findtext("link") or "")
+        if not link:
+            link_node = item.find(f"{atom}link")
+            link = link_node.get("href", "") if link_node is not None else ""
+        date = _q(item.findtext("pubDate") or item.findtext(f"{atom}updated") or item.findtext(f"{atom}published") or "")
+        summary = _strip_html(item.findtext("description") or item.findtext(f"{atom}summary") or "")[:400]
+        if title:
+            lines.append(f"Title: {title} | Date: {date} | URL: {link} | Summary: {summary}")
+    if not lines:
+        return None
+    return StructuredResult("\n".join([f"Official feed: {feed_title} ({len(lines)} items)"] + lines), url,
+                            feed_title or "Official feed", {"api": "rss", "items": len(lines)})
+
+
+_ISO_OPEN_DATA = "https://isopublicstorageprod.blob.core.windows.net/opendata/_latest"
+_ISO_CACHE_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _iso_stage(stage: Any) -> str:
+    # ISO harmonized stage codes: 60.60 published, 90.xx review, 95.xx withdrawal.
+    try:
+        code = int(stage)
+    except (TypeError, ValueError):
+        return "unknown stage"
+    if code >= 9500:
+        return "withdrawn"
+    if code >= 6060:
+        return "published"
+    return "under development"
+
+
+def _iso_stream_deliverables(match) -> list[dict[str, Any]]:
+    import requests
+
+    from core.http_client import DEFAULT_HEADERS
+    from core.robots_policy import check_robots
+
+    url = f"{_ISO_OPEN_DATA}/iso_deliverables_metadata/json/iso_deliverables_metadata.jsonl"
+    allowed, reason, _delay = check_robots(url)
+    if not allowed:
+        raise PermissionError(f"robots.txt: {reason}")
+    rows = []
+    # ~80 MB: streamed line by line (the shared client caps bodies at 10 MB).
+    with requests.get(url, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=(10, 120), stream=True) as response:
+        response.raise_for_status()
+        for raw in response.iter_lines():
+            if not raw:
+                continue
+            record = json.loads(raw)
+            if match(record):
+                rows.append({
+                    "id": record.get("id"), "reference": record.get("reference"),
+                    "title": (record.get("title") or {}).get("en", ""),
+                    "status": _iso_stage(record.get("currentStage")),
+                    "publicationDate": record.get("publicationDate"),
+                    "ownerCommittee": record.get("ownerCommittee"),
+                    "scope": _strip_html((record.get("scope") or {}).get("en", ""))[:500],
+                })
+    return rows
+
+
+def _iso_open_data(url: str, limit: int = 40) -> StructuredResult | None:
+    """ISO Open Data (official) for iso.org committee/standard pages behind a bot challenge."""
+    m = re.search(r"iso\.org/(committee|standard)/(\d+)(?:\.html)?", url)
+    if not m:
+        return None
+    kind, ident = m.group(1), int(m.group(2))
+    cache_dir = Path(os.environ.get("RIF_ISO_CACHE_DIR", "outputs/cache/iso_open_data"))
+    cache_file = cache_dir / f"{kind}_{ident}.json"
+    payload = None
+    if cache_file.exists() and time.time() - cache_file.stat().st_mtime < _ISO_CACHE_TTL_SECONDS:
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+    if payload is None:
+        if kind == "committee":
+            response = get_response(f"{_ISO_OPEN_DATA}/iso_technical_committees/json/iso_technical_committees.jsonl",
+                                    timeout=(10.0, 60.0), retries=1)
+            committee = next((json.loads(line) for line in response.text.splitlines()
+                              if line.strip() and json.loads(line).get("id") == ident), None)
+            if committee is None:
+                return None
+            reference = committee.get("reference")
+            rows = _iso_stream_deliverables(lambda r: str(r.get("ownerCommittee") or "") == reference
+                                            or str(r.get("ownerCommittee") or "").startswith(reference + "/"))
+            payload = {"heading": f"{reference} {(committee.get('title') or {}).get('en', '')}",
+                       "scope": _strip_html((committee.get("scope") or {}).get("en", "")), "rows": rows}
+        else:
+            rows = _iso_stream_deliverables(lambda r: r.get("id") == ident)
+            if not rows:
+                return None
+            payload = {"heading": f"{rows[0]['reference']} {rows[0]['title']}", "scope": rows[0]["scope"], "rows": rows}
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(payload), encoding="utf-8")
+    rows = [r for r in payload["rows"] if r["status"] != "withdrawn"]
+    rows.sort(key=lambda r: (r["status"] != "published", str(r.get("publicationDate") or "")), reverse=False)
+    lines = [f"ISO Open Data: {payload['heading']}", f"Scope: {payload['scope']}"]
+    for r in rows[:limit]:
+        lines.append(f"{r['reference']} | {r['title']} | {r['status']} | {r.get('publicationDate') or 'no publication date'} | {r['scope']}")
+    return StructuredResult("\n".join(lines), url, payload["heading"],
+                            {"api": "iso_open_data", "deliverables": len(rows)})
 
 
 def grantsgov_paginated_search(
@@ -836,7 +974,7 @@ def collect_structured_source(url: str, source_type: str = '', area: str | None 
     if "api.grants.gov" in lower or "search2" in lower:
         return None # Grants.gov is now handled natively via paginated API outside this fallback pipeline
 
-    for fn in (_github,_zenodo):
+    for fn in (_rss, _iso_open_data, _github, _zenodo):
         try:
             result=fn(url)
             if result and result.text: return result

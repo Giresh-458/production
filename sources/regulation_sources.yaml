@@ -65,7 +65,8 @@ regulation_sources:
       max_depth: 2
       max_seconds: 120
   - name: SEC Climate Disclosure
-    url: https://www.sec.gov/
+    # www.sec.gov HTML returns 403 (request-rate threshold) to automated clients; SEC's official RSS is open.
+    url: https://www.sec.gov/news/pressreleases.rss
     focus: climate disclosure, ESG assurance, reporting controls
     source_type: Regulation
     evidence_type: Official Regulation
@@ -262,7 +263,8 @@ regulation_sources:
       max_seconds: 120
   vehicle_standards:
   - name: ISO/SAE 21434
-    url: https://www.iso.org/
+    # iso.org is behind a Cloudflare challenge; collected via ISO Open Data (id 70918 = ISO/SAE 21434:2021).
+    url: https://www.iso.org/standard/70918.html
     source_type: automotive_cybersecurity_standard
     focus: road vehicle cybersecurity engineering
     limits:

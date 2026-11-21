@@ -51,7 +51,9 @@ hackathon_sources:
       max_seconds: 120
   - name: Solana Hackathons
     type: ecosystem_hackathon
-    url: https://solana.com/developers/events
+    # solana.com answers automated clients with a Vercel Security Checkpoint; Solana's official
+    # global hackathons are run on Colosseum, whose hackathon page is open.
+    url: https://arena.colosseum.org/hackathon
     focus: high-performance apps, DePIN, payments, stablecoins
     limits:
       max_pages: 12

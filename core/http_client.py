@@ -5,6 +5,7 @@ import ipaddress
 import socket
 import logging
 import random
+import re
 import time
 import threading
 from typing import Any
@@ -283,6 +284,39 @@ def _openalex_cache_write(path, data: dict[str, Any]) -> None:
         LOGGER.debug("OpenAlex cache write failed for %s: %s", path, exc)
 
 
+_META_CHARSET = re.compile(rb"""<meta[^>]+charset=["']?\s*([A-Za-z0-9_.:-]+)""", re.IGNORECASE)
+_XML_ENCODING = re.compile(rb"""<\?xml[^>]+encoding=["']([A-Za-z0-9_.:-]+)""", re.IGNORECASE)
+
+
+def _fix_missing_charset(response: Any) -> None:
+    """Pick the right text encoding when the server's Content-Type has no charset.
+
+    requests then falls back to ISO-8859-1 for text/*, which garbled 18 of 185
+    configured UTF-8 pages in the 2026-11-21 audit ("Colosseumâs").
+    Order: the document's own <meta charset>/XML declaration, then UTF-8 if the
+    bytes are valid UTF-8; otherwise requests' default is kept.
+    """
+    import codecs
+
+    try:
+        content_type = str(response.headers.get("Content-Type", "")).lower()
+        if "charset=" in content_type or not any(t in content_type for t in ("text/", "html", "xml")):
+            return
+        body = response.content or b""
+        if not isinstance(body, (bytes, bytearray)):
+            return
+        declared = _META_CHARSET.search(body[:4096]) or _XML_ENCODING.search(body[:256])
+        if declared:
+            encoding = declared.group(1).decode("ascii", "ignore")
+            codecs.lookup(encoding)
+            response.encoding = encoding
+            return
+        body.decode("utf-8")
+        response.encoding = "utf-8"
+    except (LookupError, UnicodeDecodeError, AttributeError, TypeError, ValueError):
+        return
+
+
 def get_response(
     url: str,
     *,
@@ -439,6 +473,8 @@ def get_response(
                     )
                 response._content = body
                 response._content_consumed = True
+
+            _fix_missing_charset(response)
 
             if _openalex_note_rate_limit(request_url, response):
                 response.close()

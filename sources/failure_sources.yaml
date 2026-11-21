@@ -125,7 +125,8 @@ failure_sources:
       max_seconds: 120
   - name: Carbon Market Watch
     type: watchdog_reports
-    url: https://carbonmarketwatch.org/publications/
+    # HTML pages answer automated clients with a Cloudflare challenge; the site's own RSS feed is open.
+    url: https://carbonmarketwatch.org/feed/
     focus: carbon market fraud, double counting, credit quality
     limits:
       max_pages: 12

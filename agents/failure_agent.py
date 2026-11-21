@@ -460,16 +460,24 @@ def build_auto_documents(sources_path: Path, area: str | None = None, *, warning
     for source in load_sources(sources_path):
         LOGGER.info("Collecting failure incident intelligence from %s", source.name)
         try:
-            limits = limits_by_url.get(source.url, {})
+            from core.structured_sources import collect_structured_source
 
-            ctx = current_crawl_context.get(None)
+            # Official feeds/APIs first (e.g. a publisher RSS feed when its HTML is bot-challenged).
+            structured = collect_structured_source(source.url, source.type, area)
+            if structured:
+                title = structured.title
+                full_text = cleaned_text(f"{structured.title} {structured.text}")
+            else:
+                limits = limits_by_url.get(source.url, {})
 
-            if ctx: ctx.begin_source()
+                ctx = current_crawl_context.get(None)
 
-            result = collect_source(source.url, keywords=('incident', 'exploit', 'vulnerability', 'postmortem', 'outage', 'attack'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
-            collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
-            title = result.pages[0].title if result.pages else "Failure source"
-            full_text = cleaned_text(combine_pages(result))
+                if ctx: ctx.begin_source()
+
+                result = collect_source(source.url, keywords=('incident', 'exploit', 'vulnerability', 'postmortem', 'outage', 'attack'), max_depth=limits.get('max_depth', 2), max_pages=limits.get('max_pages', 8), max_documents=limits.get('max_documents'), max_seconds=limits.get('max_seconds'))
+                collected_warnings.extend(collection_failure_warnings(source.name, getattr(result, "failed_urls", [])))
+                title = result.pages[0].title if result.pages else "Failure source"
+                full_text = cleaned_text(combine_pages(result))
         except Exception as exc:
             message = f"Source '{source.name}' collection failed: {exc}"
             LOGGER.warning(message)

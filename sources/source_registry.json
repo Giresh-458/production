@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-21T15:56:50.686179+00:00",
+  "generated_at": "2026-11-21T16:14:17.215376+00:00",
   "entries": [
     {
       "source_id": "company:abb-ability:98e9b7aa54",
@@ -2715,7 +2715,34 @@
       "source_path": "failure_sources.cps_failures.[0]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
+    },
+    {
+      "source_id": "failure:carbon-market-watch:50fee8bbf5",
+      "agent_name": "failure",
+      "name": "Carbon Market Watch",
+      "url": "https://carbonmarketwatch.org/feed/",
+      "source_type": "watchdog_reports",
+      "area_hints": [
+        "ESG"
+      ],
+      "trust_score": 0.7,
+      "relevance_score": 0.7,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T16:14:17.175537+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "daily",
+      "content_hash": "",
+      "config_hash": "5bf6537c93f2186f930257e8313db9b550f86575",
+      "discovery_method": "configured_seed",
+      "notes": "carbon market fraud, double counting, credit quality",
+      "source_file": "failure_sources.yaml",
+      "source_path": "failure_sources.carbon_esg_failure_sources.[2]",
+      "active_config": true,
+      "created_at": "2026-11-21T16:14:17.175537+00:00",
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:carbon-market-watch:1708b0e435",
@@ -2728,7 +2755,7 @@
       ],
       "trust_score": 0.7,
       "relevance_score": 0.7,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "2026-09-26T15:53:30.545190+00:00",
       "last_changed": "2026-09-21T05:53:31.070705+00:00",
       "etag": "",
@@ -2740,9 +2767,9 @@
       "notes": "carbon market fraud, double counting, credit quality",
       "source_file": "failure_sources.yaml",
       "source_path": "failure_sources.carbon_esg_failure_sources.[2]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:certik-blog:61acf0e3a0",
@@ -2767,7 +2794,7 @@
       "source_path": "failure_sources.incident_databases.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:chainsecurity-blog:4f6f9c30ea",
@@ -2792,7 +2819,7 @@
       "source_path": "failure_sources.audit_security_blogs.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:chainalysis-crypto-crime-reports:21d7884047",
@@ -2817,7 +2844,7 @@
       "source_path": "failure_sources.incident_databases.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:claroty-research:7b435ae350",
@@ -2845,7 +2872,7 @@
       "source_path": "failure_sources.cps_failures.[4]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:consensys-diligence:3c8cc65306",
@@ -2870,7 +2897,7 @@
       "source_path": "failure_sources.audit_security_blogs.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:curve-finance-blog:c0547107b1",
@@ -2897,7 +2924,7 @@
       "source_path": "failure_sources.protocol_postmortems.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:defillama-hacks:888c142c19",
@@ -2922,7 +2949,7 @@
       "source_path": "failure_sources.incident_databases.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:dragos-year-in-review:ed74519c0f",
@@ -2949,7 +2976,7 @@
       "source_path": "failure_sources.cps_failures.[2]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:flashbots-writings:88ee68fbda",
@@ -2976,7 +3003,7 @@
       "source_path": "failure_sources.protocol_postmortems.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:gold-standard-news:8d55409654",
@@ -3003,7 +3030,7 @@
       "source_path": "failure_sources.carbon_esg_failure_sources.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:ics-advisory-project-cisa-ics:abdce8f218",
@@ -3030,7 +3057,7 @@
       "source_path": "failure_sources.cps_failures.[1]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:immunefi-reports:d11b5e986c",
@@ -3055,7 +3082,7 @@
       "source_path": "failure_sources.incident_databases.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:mitre-att-ck-for-ics:4663fcc5d2",
@@ -3082,7 +3109,7 @@
       "source_path": "failure_sources.cps_failures.[5]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:makerdao-forum:a3fc1bc6a8",
@@ -3109,7 +3136,7 @@
       "source_path": "failure_sources.protocol_postmortems.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:nozomi-ot-iot-security-reports:4ab2e94afb",
@@ -3137,7 +3164,7 @@
       "source_path": "failure_sources.cps_failures.[3]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:openzeppelin-blog:7d55cd6b5c",
@@ -3162,7 +3189,7 @@
       "source_path": "failure_sources.audit_security_blogs.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:rekt-news:083ab480b3",
@@ -3187,7 +3214,7 @@
       "source_path": "failure_sources.incident_databases.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:slowmist-hacked-archive:e8d97b5c7c",
@@ -3212,7 +3239,7 @@
       "source_path": "failure_sources.incident_databases.[5]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:trail-of-bits-blog:eb85180490",
@@ -3237,7 +3264,7 @@
       "source_path": "failure_sources.audit_security_blogs.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "failure:verra-news:5b454b429e",
@@ -3264,7 +3291,7 @@
       "source_path": "failure_sources.carbon_esg_failure_sources.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.175537+00:00"
     },
     {
       "source_id": "funding:arpa-e:f1439ae62c",
@@ -4278,7 +4305,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:challenge-gov:30b0309171",
@@ -4303,7 +4330,7 @@
       "source_path": "hackathon_sources.challenge_platforms.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:darpa-challenges:238b50e456",
@@ -4330,7 +4357,7 @@
       "source_path": "hackathon_sources.cps_challenges.[2]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:devfolio:74fa15acc1",
@@ -4355,7 +4382,7 @@
       "source_path": "hackathon_sources.web3_hackathon_platforms.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:devpost:dc286d806f",
@@ -4380,7 +4407,7 @@
       "source_path": "hackathon_sources.web3_hackathon_platforms.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:dorahacks:ddff5a5b53",
@@ -4405,7 +4432,7 @@
       "source_path": "hackathon_sources.web3_hackathon_platforms.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:ethglobal:e9625d4d9c",
@@ -4430,7 +4457,7 @@
       "source_path": "hackathon_sources.web3_hackathon_platforms.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:filecoin-events:a6ae8f2083",
@@ -4457,7 +4484,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[4]",
       "active_config": true,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:filecoin-events:18b221c21e",
@@ -4484,7 +4511,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[4]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:gitcoin:286801817e",
@@ -4509,7 +4536,7 @@
       "source_path": "hackathon_sources.web3_hackathon_platforms.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:hackerearth-challenges:b2f4d8611c",
@@ -4534,7 +4561,7 @@
       "source_path": "hackathon_sources.challenge_platforms.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:hackster-io-contests:d004494325",
@@ -4562,7 +4589,7 @@
       "source_path": "hackathon_sources.cps_challenges.[3]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:ieee-hackathons-challenges:af414689bc",
@@ -4590,7 +4617,7 @@
       "source_path": "hackathon_sources.cps_challenges.[4]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:polygon-hackathons:f44ea5957f",
@@ -4618,7 +4645,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:smart-india-hackathon:b1006deafe",
@@ -4645,7 +4672,35 @@
       "source_path": "hackathon_sources.challenge_platforms.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
+    },
+    {
+      "source_id": "hackathon:solana-hackathons:d36f2ce820",
+      "agent_name": "hackathon",
+      "name": "Solana Hackathons",
+      "url": "https://arena.colosseum.org/hackathon",
+      "source_type": "ecosystem_hackathon",
+      "area_hints": [
+        "DePIN",
+        "Stablecoins"
+      ],
+      "trust_score": 0.65,
+      "relevance_score": 0.8,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T16:14:17.215376+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "weekly",
+      "content_hash": "",
+      "config_hash": "933d8295c7d3fc5cd188f2b69991a217320c58db",
+      "discovery_method": "configured_seed",
+      "notes": "high-performance apps, DePIN, payments, stablecoins",
+      "source_file": "hackathon_sources.yaml",
+      "source_path": "hackathon_sources.ecosystem_hackathons.[1]",
+      "active_config": true,
+      "created_at": "2026-11-21T16:14:17.215376+00:00",
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:solana-hackathons:7c900db3e4",
@@ -4659,7 +4714,7 @@
       ],
       "trust_score": 0.8,
       "relevance_score": 0.8,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-09-21T05:53:31.070705+00:00",
       "etag": "",
@@ -4671,9 +4726,9 @@
       "notes": "high-performance apps, DePIN, payments, stablecoins",
       "source_file": "hackathon_sources.yaml",
       "source_path": "hackathon_sources.ecosystem_hackathons.[1]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:starknet-events:2c44e590e2",
@@ -4700,7 +4755,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[3]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:starknet-events:b602743621",
@@ -4727,7 +4782,7 @@
       "source_path": "hackathon_sources.ecosystem_hackathons.[3]",
       "active_config": true,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "hackathon:startup-india-challenges:6f377ef403",
@@ -4752,7 +4807,7 @@
       "source_path": "hackathon_sources.challenge_platforms.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T10:30:04.138146+00:00"
+      "updated_at": "2026-11-21T16:14:17.215376+00:00"
     },
     {
       "source_id": "investment:binance-labs:7348d1bb1d",
@@ -7402,7 +7457,7 @@
       "source_path": "regulation_sources.global_finance.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:cdp:1c0a912f0f",
@@ -7429,7 +7484,7 @@
       "source_path": "regulation_sources.esg_reporting.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:cisa-industrial-control-systems:2bae2cc861",
@@ -7456,7 +7511,7 @@
       "source_path": "regulation_sources.cps_standards.[6]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:csrd:7e97ea8859",
@@ -7483,7 +7538,7 @@
       "source_path": "regulation_sources.eu.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:climate-action-data-trust:2ca5a8fb8b",
@@ -7510,7 +7565,7 @@
       "source_path": "regulation_sources.climate_carbon.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:esrs:ca5fe787cc",
@@ -7537,7 +7592,7 @@
       "source_path": "regulation_sources.eu.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-design-directive-2024-1711:99f54aeb65",
@@ -7562,7 +7617,7 @@
       "source_path": "regulation_sources.energy_systems.[1]",
       "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-design-directive-2024-1711:30f3bc598b",
@@ -7587,7 +7642,7 @@
       "source_path": "regulation_sources.energy_systems.[1]",
       "active_config": true,
       "created_at": "2026-11-21T15:56:50.686179+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-regulation-2019-943:f5d94cc5d9",
@@ -7612,7 +7667,7 @@
       "source_path": "regulation_sources.energy_systems.[0]",
       "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-electricity-market-regulation-2019-943:f7740781c9",
@@ -7637,7 +7692,7 @@
       "source_path": "regulation_sources.energy_systems.[0]",
       "active_config": true,
       "created_at": "2026-11-21T15:56:50.686179+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-mica:a180845448",
@@ -7664,7 +7719,7 @@
       "source_path": "regulation_sources.eu.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-mica-regulation-eu-2023-1114:7ce62cbd92",
@@ -7691,7 +7746,7 @@
       "source_path": "regulation_sources.eu.[1]",
       "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-mica-regulation-eu-2023-1114:c7a3f8b3ef",
@@ -7718,7 +7773,7 @@
       "source_path": "regulation_sources.eu.[1]",
       "active_config": true,
       "created_at": "2026-11-21T15:56:50.686179+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-eidas-2-european-digital-identity-regulation-eu-2024-1183:2cccaa6cee",
@@ -7745,7 +7800,7 @@
       "source_path": "regulation_sources.eu.[0]",
       "active_config": false,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:eu-eidas-2-european-digital-identity-regulation-eu-2024-1183:15af80a0f9",
@@ -7772,7 +7827,7 @@
       "source_path": "regulation_sources.eu.[0]",
       "active_config": true,
       "created_at": "2026-11-21T15:56:50.686179+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:fatf:7add893981",
@@ -7797,7 +7852,7 @@
       "source_path": "regulation_sources.global_finance.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:gri:49de6dd76a",
@@ -7824,7 +7879,7 @@
       "source_path": "regulation_sources.esg_reporting.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:gold-standard:daabeb0ce4",
@@ -7851,7 +7906,7 @@
       "source_path": "regulation_sources.climate_carbon.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:icvcm-core-carbon-principles:91ac3ea067",
@@ -7878,7 +7933,7 @@
       "source_path": "regulation_sources.climate_carbon.[0]",
       "active_config": true,
       "created_at": "2026-11-21T10:30:04.138146+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:iec-62443:b80b63e55f",
@@ -7905,7 +7960,7 @@
       "source_path": "regulation_sources.cps_standards.[3]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:ieee-cyber-physical-systems-standards:4a7bb99cc7",
@@ -7933,7 +7988,7 @@
       "source_path": "regulation_sources.cps_standards.[7]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:ifrs-sustainability:32e5d9ef50",
@@ -7960,7 +8015,7 @@
       "source_path": "regulation_sources.esg_reporting.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:iosco:332561fbd7",
@@ -7985,7 +8040,7 @@
       "source_path": "regulation_sources.global_finance.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:iso-blockchain-standards:49a62d4cce",
@@ -8010,7 +8065,7 @@
       "source_path": "regulation_sources.standards.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:iso-sae-21434:7b342c8054",
@@ -8021,7 +8076,7 @@
       "area_hints": [],
       "trust_score": 0.9,
       "relevance_score": 0.6,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "",
       "last_changed": "2026-11-21T10:30:04.138146+00:00",
       "etag": "",
@@ -8033,9 +8088,34 @@
       "notes": "road vehicle cybersecurity engineering",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.vehicle_standards.[0]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
+    },
+    {
+      "source_id": "regulation:iso-sae-21434:bf4e6bf8eb",
+      "agent_name": "regulation",
+      "name": "ISO/SAE 21434",
+      "url": "https://www.iso.org/standard/70918.html",
+      "source_type": "automotive_cybersecurity_standard",
+      "area_hints": [],
+      "trust_score": 0.9,
+      "relevance_score": 0.6,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T16:14:17.119623+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "495892ee1306df076d4b6a4010fb2c2dcf9deb3f",
+      "discovery_method": "configured_seed",
+      "notes": "road vehicle cybersecurity engineering",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.vehicle_standards.[0]",
+      "active_config": true,
+      "created_at": "2026-11-21T16:14:17.119623+00:00",
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:meity:c486e5bd1b",
@@ -8060,7 +8140,7 @@
       "source_path": "regulation_sources.india.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:nerc-cip:1f6aa6f0be",
@@ -8087,7 +8167,7 @@
       "source_path": "regulation_sources.cps_standards.[5]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:nist-cps-framework:ebdb191c53",
@@ -8114,7 +8194,7 @@
       "source_path": "regulation_sources.cps_standards.[0]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:nist-cps-public-working-group:28fd97025e",
@@ -8141,7 +8221,7 @@
       "source_path": "regulation_sources.cps_standards.[1]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:nist-cyber-physical-systems-csrc-topic:3ab46cf15a",
@@ -8169,7 +8249,7 @@
       "source_path": "regulation_sources.cps_standards.[2]",
       "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:nist-digital-identity:e172e4cac3",
@@ -8196,7 +8276,7 @@
       "source_path": "regulation_sources.standards.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:rbi:039922fb1b",
@@ -8223,7 +8303,7 @@
       "source_path": "regulation_sources.india.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:sasb:efb05fb0c4",
@@ -8250,7 +8330,7 @@
       "source_path": "regulation_sources.esg_reporting.[2]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:sbti:fe0f0ec3f6",
@@ -8277,7 +8357,7 @@
       "source_path": "regulation_sources.esg_reporting.[5]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:sebi:5662a5f8ed",
@@ -8302,7 +8382,7 @@
       "source_path": "regulation_sources.india.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:sebi-brsr:0604bd6c4a",
@@ -8329,7 +8409,7 @@
       "source_path": "regulation_sources.india.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:sec-climate-disclosure:eae3d8bbad",
@@ -8342,7 +8422,7 @@
       ],
       "trust_score": 0.9,
       "relevance_score": 0.7,
-      "status": "active",
+      "status": "deprecated",
       "last_checked": "2026-09-11T23:45:42.283657+00:00",
       "last_changed": "2026-09-21T05:53:31.070705+00:00",
       "etag": "",
@@ -8354,9 +8434,36 @@
       "notes": "climate disclosure, ESG assurance, reporting controls",
       "source_file": "regulation_sources.yaml",
       "source_path": "regulation_sources.global_finance.[3]",
-      "active_config": true,
+      "active_config": false,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
+    },
+    {
+      "source_id": "regulation:sec-climate-disclosure:d6fc9d727e",
+      "agent_name": "regulation",
+      "name": "SEC Climate Disclosure",
+      "url": "https://www.sec.gov/news/pressreleases.rss",
+      "source_type": "Regulation",
+      "area_hints": [
+        "ESG"
+      ],
+      "trust_score": 0.9,
+      "relevance_score": 0.7,
+      "status": "active",
+      "last_checked": "",
+      "last_changed": "2026-11-21T16:14:17.119623+00:00",
+      "etag": "",
+      "last_modified": "",
+      "fetch_frequency": "monthly",
+      "content_hash": "",
+      "config_hash": "b6a3af052b47b98aea60f6545de3804c6d11b4e1",
+      "discovery_method": "configured_seed",
+      "notes": "climate disclosure, ESG assurance, reporting controls",
+      "source_file": "regulation_sources.yaml",
+      "source_path": "regulation_sources.global_finance.[3]",
+      "active_config": true,
+      "created_at": "2026-11-21T16:14:17.119623+00:00",
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:tcfd:a766e8b6a7",
@@ -8383,7 +8490,7 @@
       "source_path": "regulation_sources.esg_reporting.[3]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:verra:fec56a666c",
@@ -8410,7 +8517,7 @@
       "source_path": "regulation_sources.climate_carbon.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:w3c-did:39a2a28136",
@@ -8437,7 +8544,7 @@
       "source_path": "regulation_sources.standards.[0]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:w3c-verifiable-credentials:90dc1e9e62",
@@ -8464,7 +8571,7 @@
       "source_path": "regulation_sources.standards.[1]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     },
     {
       "source_id": "regulation:world-bank-carbon-markets:dbdda5194e",
@@ -8491,18 +8598,18 @@
       "source_path": "regulation_sources.climate_carbon.[4]",
       "active_config": true,
       "created_at": "2026-09-11T12:29:10.643823+00:00",
-      "updated_at": "2026-11-21T15:56:50.686179+00:00"
+      "updated_at": "2026-11-21T16:14:17.119623+00:00"
     }
   ],
   "stats": {
-    "total_entries": 320,
+    "total_entries": 324,
     "active_entries": 216,
-    "deprecated_entries": 104,
+    "deprecated_entries": 108,
     "status_counts": {
       "active": 216,
       "approved": 0,
       "candidate": 0,
-      "deprecated": 104,
+      "deprecated": 108,
       "paused": 0,
       "stale": 0
     }
