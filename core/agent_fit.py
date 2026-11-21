@@ -272,7 +272,8 @@ def _finding(url: str, title: str, text: str, note: str) -> PageFinding:
 
 
 def scan_site(url: str, fetch: Callable[[str], Any] | None = None, *, per_agent_links: int = 2,
-              max_fetch: int = 10) -> tuple[PageFinding | None, list[PageFinding], list[str]]:
+              max_fetch: int = 10, skip: Callable[[str], bool] | None = None,
+              ) -> tuple[PageFinding | None, list[PageFinding], list[str]]:
     """Scan a page and its most promising same-site links for every agent.
 
     Returns (finding for the given page, findings for linked pages, notes). Nothing is
@@ -289,14 +290,21 @@ def scan_site(url: str, fetch: Callable[[str], Any] | None = None, *, per_agent_
         return None, [], [f"Could not fetch the page: {start.error}"]
     start_url = getattr(start, "final_url", "") or url
     given = _finding(start_url, start.title, start.clean_text, "the page you gave")
-    links: dict[str, str] = {}
+    links: dict[str, tuple[str, str]] = {}
+    skipped: set[str] = set()
     for agent in AGENTS:
         if agent == "opensource":
             continue  # repositories are detected from their URL; site navigation is not crawled for them
-        for link, label, _score in candidate_links(start.html, start_url, agent, limit=per_agent_links):
-            links.setdefault(link.rstrip("/"), label)
+        for link, label, _score in candidate_links(start.html, start_url, agent, limit=per_agent_links + 2):
+            if skip and skip(link):
+                skipped.add(link.rstrip("/"))
+                continue
+            if sum(1 for value in links.values() if value[1] == agent) < per_agent_links:
+                links.setdefault(link.rstrip("/"), (label, agent))
     findings: list[PageFinding] = []
-    for link, label in list(links.items())[:max_fetch]:
+    if skipped:
+        notes.append(f"{len(skipped)} previously discarded page(s) were not checked again.")
+    for link, (label, _agent) in list(links.items())[:max_fetch]:
         page = fetch(link)
         if getattr(page, "error", None):
             notes.append(f"Skipped {link}: {page.error}")
