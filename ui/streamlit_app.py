@@ -1262,6 +1262,12 @@ _CARD_CSS = """
 .rif-row {font-size:.86rem; margin:.15rem 0;}
 .rif-problem {font-size:.84rem; opacity:.85; border-left:3px solid rgba(128,128,128,.35);
               padding-left:.6rem; margin:.55rem 0 .4rem 0;}
+.rif-stats {display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.8rem; margin:.4rem 0 1rem 0;}
+.rif-stat {border:1px solid rgba(128,128,128,.25); border-radius:.6rem; padding:.7rem .9rem;}
+.rif-stat-label {font-size:.75rem; opacity:.65; text-transform:uppercase; letter-spacing:.03em;}
+.rif-stat-value {font-size:1.45rem; font-weight:650; margin-top:.15rem; white-space:nowrap;}
+.rif-stat-sub {font-size:.78rem; opacity:.65; min-height:1rem;}
+@media (max-width: 800px) {.rif-stats {grid-template-columns:repeat(2, minmax(0, 1fr));}}
 </style>
 """
 
@@ -1406,6 +1412,56 @@ def eligibility_markdown(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def pretty_date(value: str | None) -> str:
+    from datetime import date
+
+    try:
+        return date.fromisoformat(str(value)[:10]).strftime("%d %b %Y").lstrip("0")
+    except (TypeError, ValueError):
+        return str(value or "not stated")
+
+
+def _money(amount: str) -> str:
+    number = float(amount.replace(",", ""))
+    if number >= 1_000_000:
+        text = f"{number / 1_000_000:.1f}".rstrip("0").rstrip(".")
+        return f"{text}M"
+    if number >= 1_000:
+        return f"{number / 1_000:.0f}K"
+    return f"{number:.0f}"
+
+
+def pretty_budget(text: str | None) -> str:
+    """Compact EU budget line, e.g. "€60M total · €10M per project · 6 grants"; raw text otherwise."""
+    import re
+
+    raw = str(text or "").strip()
+    if not raw:
+        return "not stated"
+    parts = []
+    symbol = "€" if "EUR" in raw else ""
+    total = re.search(r"topic budget [A-Z]{3}\s*([\d,]+)", raw)
+    per = re.search(r"per project [A-Z]{3}\s*([\d,]+)(?:\s*-\s*([\d,]+))?", raw)
+    grants = re.search(r"expected grants\s*(\d+)", raw)
+    if total:
+        parts.append(f"{symbol}{_money(total.group(1))} total")
+    if per:
+        low = _money(per.group(1))
+        parts.append(f"{symbol}{low}–{_money(per.group(2))} per project" if per.group(2) else f"{symbol}{low} per project")
+    if grants:
+        parts.append(f"{grants.group(1)} grants")
+    return " · ".join(parts) if parts else raw
+
+
+def pretty_scan_time(run_name: str) -> str:
+    from datetime import datetime
+
+    try:
+        return datetime.strptime(run_name[:15], "%Y%m%d-%H%M%S").strftime("%d %b %Y, %H:%M").lstrip("0")
+    except ValueError:
+        return run_name
+
+
 def render_call_card(call: dict[str, Any]) -> None:
     import html
 
@@ -1420,8 +1476,9 @@ def render_call_card(call: dict[str, Any]) -> None:
         f'<div class="rif-chips">{"".join(chips)}</div>'
         f'<div class="rif-title">{html.escape(str(call.get("title") or "Untitled call"))}</div>'
         f'<div class="rif-sub">{html.escape(str(call.get("call_id") or ""))} · {html.escape(str(call.get("funding_body") or ""))}</div>'
-        f'<div class="rif-row"><b>Deadline</b> {html.escape(str(call.get("deadline") or "not stated"))}</div>'
-        f'<div class="rif-row"><b>Budget</b> {html.escape(str(call.get("funding_amount") or "not stated"))}</div>'
+        f'<div class="rif-row"><b>Deadline</b> {html.escape(pretty_date(call.get("deadline")))}</div>'
+        f'<div class="rif-row" title="{html.escape(str(call.get("funding_amount") or ""))}"><b>Budget</b> '
+        f'{html.escape(pretty_budget(call.get("funding_amount")))}</div>'
     )
     if problem:
         body += f'<div class="rif-problem">{html.escape(str(problem))}</div>'
@@ -1440,31 +1497,66 @@ def render_call_card(call: dict[str, Any]) -> None:
 def render_open_calls() -> None:
     st.markdown(_CARD_CSS, unsafe_allow_html=True)
     st.title("Open calls")
+    st.caption("Live funding calls that fit your research domains. Light / dark: ⋮ menu (top right).")
     runs = latest_pipeline_runs(1)
     if not runs:
         st.info("No scan yet. Open **Run pipeline** in the sidebar to scan live funding sources.")
         return
     run_root = runs[0]
     qualified, others = collect_open_calls(run_root)
-    st.caption(
-        f"{len(qualified)} qualified · {len(others)} other open · from scan {run_root.name}. "
-        "Qualified = open, research funding, in the 7 domains, with a stated problem and eligibility."
+
+    import html
+
+    earliest = next((c for c in qualified if _days_left(c.get("deadline")) is not None), None)
+    scan = pretty_scan_time(run_root.name)
+    scan_day, _, scan_hour = scan.partition(", ")
+    stats = [
+        ("Qualified calls", str(len(qualified)), "open · research · in your domains"),
+        ("Earliest deadline", pretty_date(earliest.get("deadline")) if earliest else "—",
+         f"{_days_left(earliest.get('deadline'))} days left" if earliest else ""),
+        ("Other open calls", str(len(others)), "did not qualify"),
+        ("Last scan", scan_day, scan_hour),
+    ]
+    st.markdown(
+        '<div class="rif-stats">' + "".join(
+            f'<div class="rif-stat"><div class="rif-stat-label">{html.escape(label)}</div>'
+            f'<div class="rif-stat-value">{html.escape(value)}</div>'
+            f'<div class="rif-stat-sub">{html.escape(sub)}</div></div>'
+            for label, value, sub in stats
+        ) + "</div>",
+        unsafe_allow_html=True,
     )
+
+    query = st.text_input("Search", placeholder="Search by title, ID or topic", label_visibility="collapsed")
+    if query.strip():
+        needle = query.strip().casefold()
+        qualified = [
+            c for c in qualified
+            if needle in " ".join(str(c.get(k) or "") for k in ("title", "call_id", "research_area", "funding_body")).casefold()
+            or needle in " ".join((c.get("research_context") or {}).get("inferred_challenges") or []).casefold()
+        ]
+
     if not qualified:
-        st.info("No open call qualified in the latest scan.")
-    columns = st.columns(2)
+        st.info("No qualified open call matches." if query.strip() else "No open call qualified in the latest scan.")
+    columns = st.columns(2, gap="medium")
     for index, call in enumerate(qualified):
         with columns[index % 2]:
             render_call_card(call)
+
     if others:
+        st.write("")
         with st.expander(f"Other open calls ({len(others)}) — did not qualify"):
+            groups: dict[str, list[dict[str, Any]]] = {}
             for item in others:
-                url = item.get("source_url")
-                title = str(item.get("title") or "Untitled")
-                st.markdown(
-                    f"- [{title}]({url}) — {_plain_reason(item.get('reasons') or [])}" if url
-                    else f"- {title} — {_plain_reason(item.get('reasons') or [])}"
-                )
+                groups.setdefault(_plain_reason(item.get("reasons") or []), []).append(item)
+            for reason, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+                st.markdown(f"**{reason}** · {len(items)}")
+                st.markdown("\n".join(
+                    f"- [{str(i.get('title') or 'Untitled')}]({i['source_url']})" if i.get("source_url")
+                    else f"- {str(i.get('title') or 'Untitled')}"
+                    for i in items
+                ))
+    st.caption("Qualified = open, research funding, in the 7 domains, with a stated problem and eligibility.")
 
 
 _ADVANCED_PAGES = {
@@ -1487,8 +1579,9 @@ def render_advanced() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="RIF", layout="wide")
+    st.set_page_config(page_title="RIF", page_icon="🔎", layout="wide")
     st.sidebar.title("RIF")
+    st.sidebar.caption("Research Intelligence Framework")
     page = st.sidebar.radio("Page", ["Open calls", "Run pipeline", "Advanced"], label_visibility="collapsed")
     if page == "Open calls":
         render_open_calls()
