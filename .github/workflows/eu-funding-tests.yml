@@ -107,6 +107,8 @@ jobs:
           # Real sentence embeddings for the Batch-2 semantic call-match gate (CPU wheel).
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
           python -m pip install "sentence-transformers>=2.2.0,<3.0.0"
+          # UI module (tested by the full suite) and the safe XML parser are declared deps.
+          python -m pip install "streamlit>=1.49.0,<2.0.0" "defusedxml>=0.7.1,<1"
           python -m playwright install --with-deps chromium
 
       - name: Run complete deterministic test suite

@@ -431,6 +431,7 @@ def test_ui_open_calls_merges_all_rejection_groups(tmp_path):
     import importlib.util
     import json
 
+    pytest.importorskip("streamlit")
     spec = importlib.util.spec_from_file_location("rif_ui", "ui/streamlit_app.py")
     ui = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ui)
