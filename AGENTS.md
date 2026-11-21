@@ -108,6 +108,12 @@ Supported modes:
 - tracks researchers, faculty, labs, and domain experts
 - collects expertise, affiliations, recent work, and collaboration relevance
 
+### Optional: `adaptive_research_agent.py`
+- runs only in `configured_scan` mode with a selected funding call context
+- searches OpenAlex (public web search as fallback) with the call's own title/problem queries
+- passes every result through the mission relevance gate, deduplicates (scholarly works by title) and caps the set at 24
+- writes artifacts under the `Adaptive Research` layer; it is not one of the 11 collectors counted by the Batch-2 health check
+
 ---
 
 ## 5. Implemented Processing Agents
