@@ -1677,7 +1677,7 @@ def render_add_source() -> None:
                          width="stretch", disabled=bool(inspection.problems) or not name.strip()):
                 try:
                     path = us.add_user_source(pick["agent"], name, url, pick["domains"], pick["focus"])
-                    us.sync_registry_for(pick["agent"])
+                    us.sync_registry_for(pick["agent"], url)
                     _reset_add_source()
                     state["as_done"] = (f"Added \"{name.strip()}\" to the {us.AGENT_LABELS[pick['agent']]} agent "
                                         f"({path.name}). It will be collected on the next run.")
@@ -1698,7 +1698,7 @@ def render_add_source() -> None:
         c1.markdown(f"**{row['name']}** · {us.AGENT_LABELS[row['agent']]} · added {row.get('added_at') or '—'}  \n{row['url']}")
         if c2.button("Remove", key=f"as_rm_{index}", width="stretch"):
             us.remove_user_source(row["agent"], row["name"])
-            us.sync_registry_for(row["agent"])
+            us.sync_registry_for(row["agent"], row["url"])
             state.pop("as_done", None)
             st.rerun()
     if rows:

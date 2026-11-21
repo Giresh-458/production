@@ -128,15 +128,44 @@ class _PageSession:
 
 
 def test_inspection_reports_title_domains_and_cross_agent_duplicates(monkeypatch):
-    import core.crawl4ai_web as crawl
+    import core.robots_policy as robots
 
-    monkeypatch.setattr(crawl, "_get_robots_policy", lambda url: (True, 0.0, None))
+    monkeypatch.setattr(robots, "check_robots", lambda url: (True, None, 0.0))
     monkeypatch.setattr(us, "configured_urls", lambda: {us._url_key("https://example.org/grants"): ["Hackathon: Example"]})
-    result = us.inspect_url("https://example.org/grants", "funding", session=_PageSession(), domains=["ESG"])
+    result = us.inspect_url("https://example.org/grants", "funding", session=_PageSession(), domains=["ESG"],
+                           crawler_check=False)
     assert result.title == "Example Grants"
     assert [d for d, _ in result.domain_evidence] == ["Stablecoins"]
     assert result.problems == []  # another agent using the URL is only a warning
     assert any("another agent" in w for w in result.warnings)
     assert any("domains you picked" in w for w in result.warnings)
-    blocked = us.inspect_url("https://example.org/grants", "hackathon", session=_PageSession())
+    blocked = us.inspect_url("https://example.org/grants", "hackathon", session=_PageSession(), crawler_check=False)
     assert any("Already configured for this agent" in p for p in blocked.problems)
+
+
+def test_removed_then_readded_source_is_active_again(sources_dir, tmp_path):
+    """Regression: a removed source stayed 'deprecated' in the registry, so re-adding it was silently skipped."""
+    import json
+
+    from core.source_registry import sync_source_registry
+
+    registry = tmp_path / "source_registry.json"
+    url, name = "https://example.org/grants", "Example Grants"
+
+    def rows():
+        return [e["status"] for e in json.loads(registry.read_text(encoding="utf-8"))["entries"]
+                if us._url_key(e.get("url")) == us._url_key(url)]
+
+    def sync():
+        us.forget_in_registry("funding", url, registry_path=registry)
+        sync_source_registry(sources_dir=sources_dir, registry_path=registry, agent_filter="funding")
+
+    us.add_user_source("funding", name, url, ["ESG"], sources_dir=sources_dir)
+    sync()
+    assert rows() == ["active"]
+    us.remove_user_source("funding", name, sources_dir=sources_dir)
+    sync()
+    assert rows() == []
+    us.add_user_source("funding", name, url, ["ESG"], sources_dir=sources_dir)
+    sync()
+    assert rows() == ["active"]

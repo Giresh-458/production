@@ -124,7 +124,8 @@ def configured_urls() -> dict[str, list[str]]:
     return out
 
 
-def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | None = None) -> UrlInspection:
+def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | None = None,
+                crawler_check: bool = True) -> UrlInspection:
     import html as html_lib
 
     import requests
@@ -160,14 +161,28 @@ def inspect_url(url: str, agent: str, session: Any = None, domains: list[str] | 
         else:
             result.problems.append(f"The page returned HTTP {result.status}.")
     try:
-        from core.crawl4ai_web import _get_robots_policy
+        # The project's shared RFC 9309 robots policy (wildcard-aware).
+        from core.robots_policy import check_robots
 
-        allowed, _delay, reason = _get_robots_policy(result.final_url or result.url)
+        allowed, reason, _delay = check_robots(result.final_url or result.url)
         result.robots_allowed, result.robots_reason = bool(allowed), reason
         if not allowed:
             result.problems.append(f"robots.txt does not allow crawling this page ({reason or 'disallowed'}).")
     except Exception as exc:
         result.warnings.append(f"robots.txt could not be checked ({type(exc).__name__}).")
+    if crawler_check and result.status and result.status < 400:
+        # A plain request can succeed while the agents' crawler is challenged (e.g. anti-bot
+        # pages), so also fetch with the same crawler the agents use.
+        try:
+            from core.shared_crawl_manager import SharedCrawlManager
+
+            crawled = SharedCrawlManager.get().fetch(result.final_url or result.url)
+            if crawled.error or (crawled.status_code and crawled.status_code >= 400):
+                reason = crawled.error or f"HTTP {crawled.status_code}"
+                result.warnings.append(f"The agents' crawler could not fetch this page ({reason}); "
+                                       "collection will most likely get nothing from it.")
+        except Exception as exc:
+            result.warnings.append(f"The agents' crawler could not be tried ({type(exc).__name__}).")
     if result.status and result.status < 400 and not result.domain_evidence:
         result.warnings.append("The page text shows no evidence for any of the 7 research domains.")
     elif domains and result.domain_evidence and not set(domains) & {d for d, _ in result.domain_evidence}:
@@ -331,8 +346,34 @@ def remove_user_source(agent: str, name: str, sources_dir: Path | None = None) -
     raise UserSourceError(f"No source named {name!r} for this agent.")
 
 
-def sync_registry_for(agent: str) -> None:
-    """Refresh the shared source registry for one agent (project tool)."""
+def forget_in_registry(agent: str, url: str, registry_path: Path | None = None) -> int:
+    """Drop registry rows for a user-added URL.
+
+    The registry otherwise keeps a removed source as ``deprecated``, and the agents'
+    refresh policy skips deprecated sources, so re-adding the same URL later would be
+    silently ignored. User-added sources have no curated history worth keeping.
+    """
+    from core.source_registry import SOURCE_REGISTRY_PATH, _load_registry, _save_registry
+
+    path = registry_path or SOURCE_REGISTRY_PATH
+    payload = _load_registry(path)
+    entries = payload.get("entries") or []
+    kept = [e for e in entries
+            if not (e.get("agent_name") == agent and _url_key(e.get("url")) == _url_key(url))]
+    if len(kept) != len(entries):
+        payload["entries"] = kept
+        _save_registry(payload, path)
+    return len(entries) - len(kept)
+
+
+def sync_registry_for(agent: str, url: str | None = None) -> None:
+    """Refresh the shared source registry for one agent (project tool).
+
+    With ``url``, any stale row for it is dropped first so the sync creates a fresh,
+    active entry (add) or none at all (remove).
+    """
     from core.source_registry import sync_source_registry
 
+    if url:
+        forget_in_registry(agent, url)
     sync_source_registry(agent_filter=agent)
