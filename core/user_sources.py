@@ -113,6 +113,7 @@ class UrlInspection:
     domain_evidence: list[tuple[str, float]] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)   # block adding
     agent_fits: list[Any] = field(default_factory=list)  # core.agent_fit.AgentFit, best first
+    detected_domains: list[Any] = field(default_factory=list)  # [[domain, [matched terms]], ...]
     warnings: list[str] = field(default_factory=list)   # shown, do not block
 
 
@@ -147,7 +148,7 @@ def inspect_url(url: str, agent: str | None, session: Any = None, domains: list[
     if same_agent:
         result.problems.append("Already configured for this agent: " + "; ".join(same_agent))
     elif result.duplicate_of:
-        result.warnings.append("Also used by another agent: " + "; ".join(result.duplicate_of))
+        result.warnings.append("Already in the source lists as: " + "; ".join(result.duplicate_of))
     try:
         response = client.get(result.url, headers={"User-Agent": "Mozilla/5.0 (compatible; RIF-source-check/1.0)"},
                               timeout=25, allow_redirects=True)
@@ -159,9 +160,10 @@ def inspect_url(url: str, agent: str | None, session: Any = None, domains: list[
         body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
         body = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))[:60000]
         result.domain_evidence = [(d["domain"], d["raw_score"]) for d in rank_research_areas(body) if d["raw_score"] > 0][:3]
-        from core.agent_fit import score_agents
+        from core.agent_fit import detect_domains, score_agents
 
         result.agent_fits = score_agents(result.final_url or result.url, result.title, body)
+        result.detected_domains = [[d, t] for d, t in detect_domains(f"{result.title} {body}")]
     except Exception as exc:  # network errors are reported, not raised
         result.problems.append(f"Could not load the page ({type(exc).__name__}).")
     if result.status is not None and result.status >= 400:
@@ -192,10 +194,11 @@ def inspect_url(url: str, agent: str | None, session: Any = None, domains: list[
                                        "collection will most likely get nothing from it.")
             elif crawled.clean_text:
                 # Judge agent fit on what the agents' crawler really sees.
-                from core.agent_fit import score_agents
+                from core.agent_fit import detect_domains, score_agents
 
                 result.agent_fits = score_agents(crawled.final_url or result.final_url or result.url,
                                                  crawled.title or result.title, crawled.clean_text)
+                result.detected_domains = [[d, t] for d, t in detect_domains(f"{crawled.title} {crawled.clean_text}")]
         except Exception as exc:
             result.warnings.append(f"The agents' crawler could not be tried ({type(exc).__name__}).")
     if result.status and result.status < 400 and not result.domain_evidence:

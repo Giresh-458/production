@@ -137,7 +137,7 @@ def test_inspection_reports_title_domains_and_cross_agent_duplicates(monkeypatch
     assert result.title == "Example Grants"
     assert [d for d, _ in result.domain_evidence] == ["Stablecoins"]
     assert result.problems == []  # another agent using the URL is only a warning
-    assert any("another agent" in w for w in result.warnings)
+    assert any("Already in the source lists as: Hackathon: Example" in w for w in result.warnings)
     assert any("domains you picked" in w for w in result.warnings)
     blocked = us.inspect_url("https://example.org/grants", "hackathon", session=_PageSession(), crawler_check=False)
     assert any("Already configured for this agent" in p for p in blocked.problems)

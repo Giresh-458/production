@@ -255,6 +255,18 @@ def trace_pages(url: str, agent: str, fetch: Callable[[str], Any] | None = None,
     return sorted(unique.values(), key=lambda c: -c.score)
 
 
+# ---------------------------------------------------------------- research domains from page text
+DOMAIN_MIN_SCORE = 3.0  # one strong term (weight 3) or two medium terms; "settlement"+"reserve" (2.5) is not enough
+
+
+def detect_domains(text: str) -> list[tuple[str, list[str]]]:
+    """Research domains evidenced by the page text, with the matched terms (project scorer)."""
+    from core.schemas import rank_research_areas
+
+    return [(r["domain"], list(r["matched_terms"])[:5]) for r in rank_research_areas((text or "")[:60000])
+            if r["raw_score"] >= DOMAIN_MIN_SCORE]
+
+
 # ---------------------------------------------------------------- whole-site scan (all agents)
 @dataclass
 class PageFinding:
@@ -265,6 +277,7 @@ class PageFinding:
     evidence: list[str]
     alternatives: list[str]     # other agents that also fit
     note: str = ""
+    domains: list[list[Any]] = field(default_factory=list)  # [[domain, [matched terms]], ...]
 
 
 def _finding(url: str, title: str, text: str, note: str) -> PageFinding:
@@ -273,7 +286,8 @@ def _finding(url: str, title: str, text: str, note: str) -> PageFinding:
     suggested = top[0] if top and fits_agent(fits, top[0].agent) else None
     alternatives = [f.agent for f in top[1:] if fits_agent(fits, f.agent)] if suggested else []
     return PageFinding(url, title, suggested.agent if suggested else None, suggested.score if suggested else 0.0,
-                       suggested.evidence[:6] if suggested else [], alternatives, note)
+                       suggested.evidence[:6] if suggested else [], alternatives, note,
+                       [[domain, terms] for domain, terms in detect_domains(f"{title} {text}")])
 
 
 def scan_site(url: str, fetch: Callable[[str], Any] | None = None, *, per_agent_links: int = 2,

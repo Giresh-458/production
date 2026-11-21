@@ -107,3 +107,24 @@ def test_articles_and_case_studies_are_never_programme_suggestions():
         fits = {f.agent: f.score for f in score_agents(f"https://gitcoin.co{path}", "Article", text)}
         assert fits["funding"] == 0 and fits["hackathon"] == 0, path
     assert {f.agent: f.score for f in score_agents("https://gitcoin.co/grants", "Grants", text)}["funding"] > 8
+
+
+def test_domains_are_detected_only_with_enough_evidence():
+    from core.agent_fit import detect_domains
+
+    assert detect_domains("Carbon credits registry and MRV for emissions.")[0][0] == "ESG"
+    assert detect_domains("We discuss settlement and reserve vaults.") == []  # generic words only
+    assert detect_domains("Our platform is fast.") == []
+
+
+def test_scan_findings_carry_detected_domains():
+    from core.agent_fit import scan_site
+
+    pages = {
+        "https://x.org/": SimpleNamespace(final_url="https://x.org/", title="X", error=None, clean_text="Welcome.",
+                                          html='<a href="/grants">Grants</a>'),
+        "https://x.org/grants": SimpleNamespace(final_url="https://x.org/grants", title="Grants", error=None, html="",
+                                                clean_text="Grants program. Apply for funding. Carbon credits and MRV."),
+    }
+    _given, found, _notes = scan_site("https://x.org/", fetch=lambda url: pages[url])
+    assert found[0].agent == "funding" and found[0].domains[0][0] == "ESG"
