@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -625,6 +625,26 @@ def build_problem_signature(area: str, incident_type: str, technical_problem: st
     return f"{area} | {cleaned_text(incident_type).lower()} | {cleaned_text(technical_problem).lower()[:60]}"
 
 
+_INCIDENT_TYPE_PATTERNS = (
+    ("Bridge Hack", r"\bbridge\b[^.]{0,60}\b(?:hack|exploit|drain)"),
+    ("Oracle Failure", r"\boracle\b[^.]{0,60}\b(?:fail|manipulat|attack|exploit)"),
+    ("Governance Attack", r"\bgovernance\b[^.]{0,40}\b(?:attack|takeover|exploit)"),
+    ("Depeg", r"\bde-?peg"),
+    ("Carbon Fraud", r"\bcarbon\b[^.]{0,60}\b(?:fraud|double[- ]count)"),
+    ("Privacy Failure", r"\b(?:privacy|data)\b[^.]{0,40}\b(?:leak|breach|exposure)"),
+    ("Exploit", r"\b(?:exploit|hack|drain(?:ed)?)\b"),
+)
+
+
+def infer_incident_type(text: str) -> str:
+    """Map source text onto FAILURE_TYPES; "Operational Failure" is the list's catch-all."""
+    lowered = str(text or "").lower()
+    for incident_type, pattern in _INCIDENT_TYPE_PATTERNS:
+        if re.search(pattern, lowered):
+            return incident_type
+    return "Operational Failure"
+
+
 def fallback_analysis(document: Any) -> Any:
     raise ValueError("LLM extraction failed and synthetic fallback is disabled")
 
@@ -641,7 +661,10 @@ def analyze_document(document: FailureDocument) -> FailureAnalysis:
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")
-    incident_type = infer_incident_type(document.content)
+    # Prefer the extracted type when it is one of the agent's own types; else
+    # match those type names in the source text (infer_incident_type was called
+    # but never defined).
+    incident_type = coalesce_text(parsed.get("incident_type"), "")
     if incident_type not in FAILURE_TYPES:
         incident_type = infer_incident_type(document.content)
     what_failed = coalesce_text(parsed.get("what_failed"), "UNKNOWN")

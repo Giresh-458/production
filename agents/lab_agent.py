@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.source_registry import apply_refresh_policy, extract_yaml_limits
 from core.llm_provider import generate as llm_generate
 from core.schemas import AREA_KEYWORDS
@@ -640,7 +640,7 @@ def analyze_document(document: LabDocument) -> LabAnalysis:
 
     research_area = "General"
     if research_area not in FOCUS_AREAS:
-        research_area = infer_research_area(json.dumps(parsed))
+        research_area = infer_theme_area(json.dumps(parsed))
     research_themes = sanitize_list(parsed.get("research_themes"), 5)
     keywords = sanitize_keywords(parsed.get("keywords"), 6)
     active_problems = sanitize_list(parsed.get("active_problems"), 5)
@@ -648,7 +648,9 @@ def analyze_document(document: LabDocument) -> LabAnalysis:
     industry_signals = sanitize_list(parsed.get("industry_signals"), 4)
     combined_text = " ".join(page.content for page in document.pages)
     problem_signatures = sanitize_list(parsed.get("problem_signatures"), 4) or build_problem_signatures(keywords, research_themes)
-    problem = active_problems[0] if active_problems else "", combined_text[:220]
+    # Never fall back to raw page text as a "problem" (was an accidental tuple
+    # with combined_text[:220]); use the extracted problem or UNKNOWN.
+    problem = coalesce_text(active_problems[0] if active_problems else None, "UNKNOWN")
     why_important = coalesce_text(parsed.get("why_important"), "UNKNOWN")
     
     existing_solutions = coalesce_text(parsed.get("existing_solutions"), "UNKNOWN")

@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+import hashlib
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 

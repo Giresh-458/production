@@ -288,3 +288,48 @@ def test_llm_requests_are_reproducible_by_default(monkeypatch):
     monkeypatch.delenv("RIF_LLM_SEED", raising=False)
     payload = build_generate_payload(" Is this a problem? ", "qwen3.5:4b")
     assert payload["options"] == {"temperature": 0.0, "seed": 42} and payload["prompt"] == "Is this a problem?"
+
+
+@pytest.mark.parametrize("module", ["company", "expert", "failure", "investment", "lab", "opensource",
+                                    "practitioner", "regulation", "data_availability"])
+def test_collectors_analyze_mode_helpers_are_defined(module):
+    """Live: analyze mode raised NameError: name 'coalesce_text' is not defined."""
+    import importlib
+
+    mod = importlib.import_module(f"agents.{module}_agent")
+    assert callable(getattr(mod, "coalesce_text"))
+    assert mod.coalesce_text(None) == "UNKNOWN" and mod.coalesce_text("  x ") == "x"
+
+
+def test_failure_incident_type_inference_stays_in_taxonomy():
+    from agents.failure_agent import FAILURE_TYPES, infer_incident_type
+
+    assert infer_incident_type("The cross-chain bridge was hacked and drained of funds.") == "Bridge Hack"
+    assert infer_incident_type("The stablecoin lost its peg during the depeg event.") == "Depeg"
+    assert infer_incident_type("Maintenance window caused downtime.") == "Operational Failure"
+    assert all(infer_incident_type(t) in FAILURE_TYPES for t in ("x", "oracle manipulation attack"))
+
+
+def test_renamed_helpers_resolve():
+    import agents.expert_agent as expert
+    import agents.lab_agent as lab
+
+    assert expert.build_problem_signature("RWA", "Ada", "tokenization").startswith("RWA | ada")
+    assert lab.infer_theme_area("tokenized real-world asset settlement") in lab.FOCUS_AREAS
+
+
+def test_no_accidental_tuple_assignments_in_collector_analysis():
+    """Live: `x = a, b` (meant `a or b`) crashed analyze mode in 4 collectors."""
+    import ast
+    import glob
+
+    found = []
+    for path in glob.glob("agents/*_agent.py"):
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        for fn in ast.walk(tree):
+            if isinstance(fn, ast.FunctionDef) and fn.name == "analyze_document":
+                for node in ast.walk(fn):
+                    if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Tuple)
+                            and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)):
+                        found.append(f"{path}:{node.lineno}")
+    assert found == []

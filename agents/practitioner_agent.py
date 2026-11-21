@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -696,7 +696,7 @@ def analyze_document(document: PractitionerDocument) -> PractitionerAnalysis:
 
     source_type = document.source_type
     evidence_type = document.evidence_type
-    practitioner_role = document.practitioner_role_hint, "Unknown"
+    practitioner_role = document.practitioner_role_hint or "Unknown"
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")

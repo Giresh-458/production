@@ -1,3 +1,4 @@
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -42,7 +43,7 @@ class CrawlContext:
     source_documents_collected: int = 0
     source_start_time: float = field(default_factory=time.time)
     
-    lock: __import__('threading').Lock = field(default_factory=__import__('threading').Lock, init=False, repr=False)
+    lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     
     def begin_source(self):
         with self.lock:

@@ -59,3 +59,16 @@ def run_llm_json_prompt(
     return extract_json_fields(response_text, required_keys)
 
 
+
+
+def coalesce_text(value: object, fallback: str = "UNKNOWN") -> str:
+    """Return a cleaned non-empty scalar or a safe fallback.
+
+    Shared by the collection agents' analyze mode (previously defined only in
+    data_availability_agent; eight other agents called it without importing it
+    and raised NameError in analyze mode / standalone CLI).
+    """
+    if value is None:
+        return fallback
+    text = cleaned_text(str(value))
+    return text if text else fallback

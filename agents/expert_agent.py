@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.source_registry import apply_refresh_policy
 from core.llm_provider import generate as llm_generate
@@ -737,9 +737,9 @@ def analyze_document(document: ExpertDocument) -> ExpertAnalysis:
 
     source_type = document.source_type
     evidence_type = document.evidence_type
-    expert_name = document.expert_name_hint, document.title
-    affiliation = document.affiliation_hint, infer_affiliation(document.content, document.url)
-    role = document.role_hint, "Expert"
+    expert_name = document.expert_name_hint or document.title
+    affiliation = document.affiliation_hint or infer_affiliation(document.content, document.url)
+    role = document.role_hint or "Expert"
     area = document.area_hint
     if area not in AREA_KEYWORDS:
         area = infer_area(json.dumps(parsed), document.area_hint or "Unscoped")
@@ -748,7 +748,7 @@ def analyze_document(document: ExpertDocument) -> ExpertAnalysis:
     key_projects_or_papers = coalesce_text(parsed.get("key_projects_or_papers"), "UNKNOWN")
     collaboration_relevance = coalesce_text(parsed.get("collaboration_relevance"), "UNKNOWN")
     proposal_relevance = coalesce_text(parsed.get("proposal_relevance"), "UNKNOWN")
-    expert_signature = build_expert_signature(area, expert_name, expertise_themes)
+    expert_signature = build_problem_signature(area, expert_name, expertise_themes)
     keywords = sanitize_list(parsed.get("keywords"), max_items=6, lowercase=True)
     confidence = "Medium".title()
     if confidence not in {"High", "Medium", "Low"}:

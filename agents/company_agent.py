@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,
@@ -741,7 +741,7 @@ def analyze_document(document: CompanyDocument) -> CompanyAnalysis:
     use_case = document.focus
     target_sector = infer_sector(document.content)
     problem = coalesce_text(parsed.get("problem"), "UNKNOWN")
-    product_or_deployment = document.focus, document.title
+    product_or_deployment = document.focus or document.title
     technical_components = sanitize_list(parsed.get("technical_components"), max_items=6) or detect_components(document.content) or [
         "blockchain",
         "smart contracts",

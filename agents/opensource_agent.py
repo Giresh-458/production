@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.db import db_connect
-from agents.utils import cleaned_text
+from agents.utils import cleaned_text, coalesce_text
 from core.focused_extraction import build_focused_content, extract_text_blocks
 from core.recursive_collection import (
     RecursiveCollectionConfig,

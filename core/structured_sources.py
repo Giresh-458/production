@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os, re, time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote, urlparse
 
 from core.http_client import fetch_json, post_json, post_multipart_json, get_response
